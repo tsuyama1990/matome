@@ -12,12 +12,12 @@ The following file structure represents the initial state of the project. **Bold
 .
 ├── dev_documents/
 ├── src/
+│   ├── **domain_models/**      # Core Pydantic models (Modularized)
+│   │   ├── **__init__.py**
+│   │   ├── **config.py**       # Configuration management
+│   │   └── **manifest.py**     # Data structures (Chunk, Document)
 │   └── matome/
 │       ├── **__init__.py**
-│       ├── **config.py**       # Configuration management
-│       ├── **domain/**
-│       │   ├── **__init__.py**
-│       │   └── **models.py**   # Core Pydantic models (Chunk, Document)
 │       ├── **engines/**
 │       │   ├── **__init__.py**
 │       │   └── **chunker.py**  # Japanese-optimized semantic chunker
@@ -35,19 +35,24 @@ The following file structure represents the initial state of the project. **Bold
 
 ## 3. Design Architecture
 
-### 3.1. Domain Models (`src/matome/domain/models.py`)
+### 3.1. Domain Models (`src/domain_models/`)
 
 We will use Pydantic V2 for strict type validation.
 
-*   **`Document`**: Represents the raw input file.
-    *   `content`: `str` (Full text)
-    *   `metadata`: `dict` (Filename, path, etc.)
-*   **`Chunk`**: Represents a segment of text.
-    *   `index`: `int` (Sequential ID)
-    *   `text`: `str` (The actual content)
-    *   `start_char_idx`: `int` (Position in original text)
-    *   `end_char_idx`: `int`
-    *   `metadata`: `dict` (Optional extra info)
+*   **`manifest.py`**:
+    *   **`Document`**: Represents the raw input file.
+        *   `content`: `str` (Full text)
+        *   `metadata`: `dict` (Filename, path, etc.)
+    *   **`Chunk`**: Represents a segment of text.
+        *   `index`: `int` (Sequential ID)
+        *   `text`: `str` (The actual content)
+        *   `start_char_idx`: `int` (Position in original text)
+        *   `end_char_idx`: `int`
+        *   `metadata`: `dict` (Optional extra info)
+*   **`config.py`**:
+    *   **`ProcessingConfig`**: Configuration for chunking and other processes.
+        *   `max_tokens`: `int` (Default 500)
+        *   `overlap`: `int` (Default 0, optional for now)
 
 ### 3.2. Text Utilities (`src/matome/utils/text.py`)
 
@@ -58,7 +63,7 @@ This module encapsulates the logic for Japanese sentence boundary detection.
 ### 3.3. Semantic Chunker (`src/matome/engines/chunker.py`)
 
 *   **Class**: `JapaneseSemanticChunker`
-*   **Method**: `split_text(text: str, max_tokens: int = 500) -> List[Chunk]`
+*   **Method**: `split_text(text: str, config: ProcessingConfig) -> List[Chunk]`
     *   **Logic**:
         1.  Normalize the text.
         2.  Split text into sentences using the regex.
@@ -71,7 +76,8 @@ This module encapsulates the logic for Japanese sentence boundary detection.
     *   Set up `pyproject.toml` with `ruff`, `mypy`, `pytest`.
     *   Create the directory structure.
 2.  **Domain Modeling**:
-    *   Implement `Document` and `Chunk` classes in `src/matome/domain/models.py`.
+    *   Implement `Document` and `Chunk` classes in `src/domain_models/manifest.py`.
+    *   Implement configuration in `src/domain_models/config.py`.
 3.  **Utility Implementation**:
     *   Implement `normalize_text` and `split_sentences` in `src/matome/utils/text.py`.
     *   Verify regex behavior against tricky Japanese sentences (e.g., brackets `「...」` containing punctuation).
