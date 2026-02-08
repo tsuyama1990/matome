@@ -49,3 +49,18 @@ def test_invalid_config_parameters() -> None:
     # Test valid embedding_batch_size
     config = ProcessingConfig(embedding_batch_size=1)
     assert config.embedding_batch_size == 1
+
+def test_config_factory_methods() -> None:
+    # Test default()
+    default_config = ProcessingConfig.default()
+    assert default_config.max_tokens == 500
+    assert default_config.overlap == 0
+    assert default_config.embedding_model == "intfloat/multilingual-e5-large"
+    assert default_config.clustering_algorithm == "gmm"
+
+    # Test high_precision()
+    hp_config = ProcessingConfig.high_precision()
+    assert hp_config.max_tokens == 200
+    assert hp_config.overlap == 20
+    # Ensure defaults are preserved for others
+    assert hp_config.embedding_model == "intfloat/multilingual-e5-large"

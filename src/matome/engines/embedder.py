@@ -54,13 +54,17 @@ class EmbeddingService:
             # Actually, encode takes full list and `batch_size` param.
             # However, providing a massive list to `encode` still creates a massive tokenized input.
             # So explicit slicing is safer for extremely large inputs.
-            batch_embeddings = self.model.encode(
-                batch_texts,
-                batch_size=batch_size,
-                convert_to_numpy=True,
-                show_progress_bar=False
-            )
-            all_embeddings.append(batch_embeddings)
+            try:
+                batch_embeddings = self.model.encode(
+                    batch_texts,
+                    batch_size=batch_size,
+                    convert_to_numpy=True,
+                    show_progress_bar=False
+                )
+                all_embeddings.append(batch_embeddings)
+            except Exception as e:
+                logger.exception(f"Failed to encode batch starting at index {i}: {e}")
+                raise
 
         # Concatenate all batches
         final_embeddings = np.vstack(all_embeddings) if all_embeddings else np.array([])

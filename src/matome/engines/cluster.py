@@ -75,6 +75,12 @@ class ClusterEngine:
                 f"due to small dataset size ({n_samples} samples)."
             )
 
+        logger.debug(
+            f"Starting clustering with {n_samples} samples. "
+            f"UMAP: n_neighbors={effective_n_neighbors}, min_dist={min_dist}. "
+            f"GMM: n_clusters={self.config.n_clusters or 'auto'}."
+        )
+
         # 1. Dimensionality Reduction (UMAP)
         # Reduce to 2 dimensions for GMM as per spec
         reducer = UMAP(
