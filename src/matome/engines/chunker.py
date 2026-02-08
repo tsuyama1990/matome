@@ -17,11 +17,17 @@ class JapaneseSemanticChunker:
     """
 
     def __init__(self, model_name: str = "cl100k_base") -> None:
+        """
+        Initialize the chunker with a specific tokenizer model.
+
+        Args:
+            model_name: The name of the encoding to use (default: "cl100k_base").
+        """
         try:
             self.tokenizer = tiktoken.get_encoding(model_name)
-        except Exception:
+        except (ValueError, ImportError) as e:
             logger.warning(
-                f"Could not load tokenizer '{model_name}', falling back to 'cl100k_base'."
+                f"Could not load tokenizer '{model_name}': {e}. Falling back to 'cl100k_base'."
             )
             # Fallback to cl100k_base if model name fails or lookup fails
             self.tokenizer = tiktoken.get_encoding("cl100k_base")
@@ -87,7 +93,17 @@ class JapaneseSemanticChunker:
         return chunks
 
     def _create_chunk(self, index: int, text: str, start_char_idx: int) -> Chunk:
-        """Helper to create a Chunk object."""
+        """
+        Helper method to instantiate a Chunk object.
+
+        Args:
+            index: The sequential index of the chunk.
+            text: The content of the chunk.
+            start_char_idx: The starting character index in the processed stream.
+
+        Returns:
+            A populated Chunk model.
+        """
         return Chunk(
             index=index,
             text=text,

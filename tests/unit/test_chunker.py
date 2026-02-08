@@ -55,3 +55,32 @@ def test_chunker_empty_input() -> None:
 
     chunks_none = chunker.split_text(None, config) # type: ignore
     assert chunks_none == []
+
+def test_chunker_single_sentence_exceeds_limit() -> None:
+    """Test behavior when a single sentence exceeds max_tokens."""
+    chunker = JapaneseSemanticChunker()
+    # Create a sentence longer than limit
+    # 'a' is 1 token in cl100k_base.
+    long_sentence = "a" * 150 + "。"
+    config = ProcessingConfig(max_tokens=100)
+
+    # Current behavior: it appends the sentence even if it exceeds limits (no recursive splitting yet)
+    chunks = chunker.split_text(long_sentence, config)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == long_sentence
+    # Ensure it didn't crash
+
+def test_chunker_unicode() -> None:
+    """Test handling of emojis and special unicode characters."""
+    chunker = JapaneseSemanticChunker()
+    text = "Hello 🌍! This is a test 🧪. 日本語もOKですか？はい。"
+    config = ProcessingConfig(max_tokens=50)
+    chunks = chunker.split_text(text, config)
+
+    assert len(chunks) > 0
+    reconstructed = "".join(c.text for c in chunks)
+    # normalization might change chars? NFKC preserves emojis usually
+    assert "🌍" in reconstructed
+    assert "🧪" in reconstructed
+    assert "日本語" in reconstructed
