@@ -1,7 +1,8 @@
 """
 Unit tests for the SummarizationAgent.
 """
-from typing import Generator, cast
+from collections.abc import Generator
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -9,7 +10,6 @@ from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
 from matome.agents.summarizer import SummarizationAgent
-from matome.utils.prompts import COD_TEMPLATE
 from matome.exceptions import SummarizationError
 
 
@@ -41,7 +41,7 @@ def test_initialization(mock_llm: MagicMock) -> None:
             api_key="sk-test-key",
             base_url="https://openrouter.ai/api/v1",
             temperature=0,
-            max_retries=3,
+            max_retries=1, # Updated to 1 as per code change
         )
 
 
@@ -145,5 +145,21 @@ def test_summarize_long_input(agent: SummarizationAgent) -> None:
 
     # Verify the prompt was constructed correctly despite length
     args, _ = llm_mock.invoke.call_args
-    prompt_content = args[0][0].content
+    # args[0] is the list of messages passed to invoke
+    messages = args[0]
+    prompt_content = messages[0].content
     assert len(prompt_content) > len(long_text)
+
+
+def test_summarize_retry_behavior(agent: SummarizationAgent) -> None:
+    """Test that retry logic is invoked on failure."""
+    # We set a low wait time for testing
+    config = ProcessingConfig(max_retries=2)
+    llm_mock = cast(MagicMock, agent.llm)
+
+    # Simulate failure on first call, success on second
+    llm_mock.invoke.side_effect = [Exception("Transient Fail"), AIMessage(content="Success")]
+
+    result = agent.summarize("context", config)
+    assert result == "Success"
+    assert llm_mock.invoke.call_count == 2

@@ -8,6 +8,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
+from tenacity import stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from matome.config import get_openrouter_api_key
@@ -41,7 +42,8 @@ class SummarizationAgent:
                 api_key=api_key,  # type: ignore[arg-type]
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0,
-                max_retries=3,
+                # We handle retries via tenacity wrapper now, but keeping internal retry low
+                max_retries=1,
             )
 
     def summarize(self, text: str, config: ProcessingConfig) -> str:
@@ -78,12 +80,37 @@ class SummarizationAgent:
         prompt = COD_TEMPLATE.format(context=text)
         logger.debug(f"[{request_id}] Prompt constructed. Starting LLM invocation for text length {len(text)}")
 
-        try:
-            # We use invoke directly. ChatOpenAI handles retries if configured.
-            messages = [HumanMessage(content=prompt)]
-            logger.debug(f"[{request_id}] Sending {len(messages)} messages to LLM.")
+        messages = [HumanMessage(content=prompt)]
 
-            response = self.llm.invoke(messages)
+        try:
+            # Call helper with retry logic
+            # We configure retry dynamically based on config inside the helper if possible,
+            # but tenacity decorators are static.
+            # To respect config.max_retries, we can create a Retrying object or
+            # use a simpler approach if the decorator is fixed.
+            # For this cycle, using a fixed robust retry or one configured at class level is acceptable,
+            # but ideally we respect the config passed in.
+
+            # Since tenacity decorators are processed at definition time,
+            # we will use the `Retrying` context manager or functional API inside the method
+            # to allow dynamic configuration from `config`.
+
+            from tenacity import Retrying
+
+            response = None
+            # Use tenacity Retrying context for dynamic configuration
+            for attempt in Retrying(
+                stop=stop_after_attempt(config.max_retries),
+                wait=wait_exponential(multiplier=1, min=2, max=10),
+                reraise=True
+            ):
+                with attempt:
+                    if attempt.retry_state.attempt_number > 1:
+                        logger.warning(f"[{request_id}] Retrying LLM call (Attempt {attempt.retry_state.attempt_number}/{config.max_retries})")
+                    response = self.llm.invoke(messages)
+
+            if not response:
+                 raise SummarizationError(f"[{request_id}] No response received from LLM.")
 
             # Add debug logging for successful response
             logger.debug(f"[{request_id}] Received response from LLM. Processing content.")
