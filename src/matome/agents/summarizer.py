@@ -3,6 +3,7 @@ Summarization Agent module.
 This module implements the summarization logic using OpenRouter and Chain of Density prompting.
 """
 import logging
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
@@ -89,15 +90,24 @@ class SummarizationAgent:
 
             response = self.llm.invoke([HumanMessage(content=prompt)])
 
+            # Add debug logging for successful response (Auditor suggestion)
+            logger.debug(f"Received response from LLM for text length {len(text)}")
+
             # response.content is usually str or list of blocks. For ChatOpenAI it's str.
-            content = response.content
+            content: str | list[str | dict[str, Any]] = response.content
+
             if isinstance(content, str):
                 return content
             if isinstance(content, list):
                 # Handle potential list content (e.g. from some models)
+                logger.warning(f"Received list content from LLM: {content}")
                 return " ".join([str(c) for c in content])
+
+            # Fallback for unexpected types
+            logger.warning(f"Received unexpected content type from LLM: {type(content)}")
             return str(content)
 
         except Exception:
-            logger.exception("Summarization failed")
+            # Enhanced error logging (Auditor suggestion)
+            logger.exception(f"Summarization failed for text length {len(text)}")
             raise

@@ -6,9 +6,9 @@ src_path = Path(__file__).parent.parent / "src"
 if str(src_path) not in sys.path:
     sys.path.append(str(src_path))
 
-import pytest
+import pytest  # noqa: E402
 
-from domain_models.manifest import Document
+from domain_models.manifest import Document  # noqa: E402
 
 
 @pytest.fixture
