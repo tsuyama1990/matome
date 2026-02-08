@@ -1,4 +1,4 @@
-from domain_models.config import ProcessingConfig, ChunkingConfig
+from domain_models.config import ChunkingConfig, ProcessingConfig
 from matome.engines.chunker import JapaneseTokenChunker
 from matome.utils.text import normalize_text, split_sentences
 

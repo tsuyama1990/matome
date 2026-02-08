@@ -1,7 +1,8 @@
-import pytest
 from collections.abc import Iterator
 
-from domain_models.config import ProcessingConfig, ChunkingConfig
+import pytest
+
+from domain_models.config import ChunkingConfig, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.chunker import JapaneseTokenChunker
 

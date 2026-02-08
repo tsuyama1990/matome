@@ -1,6 +1,6 @@
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChunkingConfig(BaseModel):
@@ -15,6 +15,23 @@ class ChunkingConfig(BaseModel):
     tokenizer_model: str = Field(
         default="cl100k_base", description="Tokenizer model/encoding name to use."
     )
+    semantic_chunking_mode: str = Field(
+        default="percentile", description="Mode for semantic chunking: 'percentile' or 'fixed'."
+    )
+    semantic_chunking_threshold: float = Field(
+        default=0.95, ge=0.0, le=1.0, description="Similarity threshold for fixed mode."
+    )
+    semantic_chunking_percentile: int = Field(
+        default=90, ge=0, le=100, description="Percentile threshold for percentile mode."
+    )
+
+    @field_validator("semantic_chunking_mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        if v not in ("percentile", "fixed"):
+            msg = "semantic_chunking_mode must be 'percentile' or 'fixed'."
+            raise ValueError(msg)
+        return v
 
 
 class EmbeddingConfig(BaseModel):

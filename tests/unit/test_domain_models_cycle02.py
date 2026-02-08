@@ -33,12 +33,12 @@ def test_config_embedding_model() -> None:
 
 def test_cluster_node_indices() -> None:
     cluster = Cluster(
-        id=1,
+        id="1",
         level=0,
         node_indices=[1, 2, 3]
     )
     assert cluster.node_indices == [1, 2, 3]
-    assert cluster.id == 1
+    assert cluster.id == "1"
     assert cluster.level == 0
 
 def test_invalid_config_parameters() -> None:

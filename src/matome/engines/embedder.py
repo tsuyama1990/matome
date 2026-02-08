@@ -75,3 +75,32 @@ class EmbeddingService:
             # We could log more specific details here
             logger.exception("Failed to encode batch")
             raise
+
+    def embed_strings(self, texts: list[str]) -> list[list[float]]:
+        """
+        Embeds a list of strings and returns their vectors.
+        Useful for Semantic Chunking where we need to embed sentences before creating Chunks.
+
+        Args:
+            texts: List of strings to embed.
+
+        Returns:
+            List of embeddings (each is a list of floats).
+        """
+        if not texts:
+            return []
+
+        try:
+            # encode returns a numpy array or list of numpy arrays
+            # We use the configured batch size
+            embeddings = self.model.encode(
+                texts,
+                batch_size=self.config.embedding.batch_size,
+                convert_to_numpy=True,
+                show_progress_bar=False
+            )
+            # Convert to list of lists
+            return [emb.tolist() for emb in embeddings]
+        except Exception:
+            logger.exception("Failed to encode strings")
+            raise
