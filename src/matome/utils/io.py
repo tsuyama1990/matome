@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Union
 
-def read_file(filepath: Union[str, Path]) -> str:
+
+def read_file(filepath: str | Path) -> str:
     """Read content from a file (UTF-8)."""
     path = Path(filepath)
     if not path.exists():

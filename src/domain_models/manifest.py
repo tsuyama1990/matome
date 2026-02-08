@@ -1,6 +1,10 @@
-from typing import Any
+from typing import Any, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
+
+# Define a type alias for Metadata to improve readability and consistency.
+# Using Any allows for flexibility (strings, ints, lists of tags, etc.)
+Metadata: TypeAlias = dict[str, Any]
 
 
 class Document(BaseModel):
@@ -9,7 +13,7 @@ class Document(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     content: str = Field(..., description="Full text content of the document.")
-    metadata: dict[str, Any] = Field(
+    metadata: Metadata = Field(
         default_factory=dict, description="Metadata associated with the document (e.g., filename)."
     )
 
@@ -27,6 +31,6 @@ class Chunk(BaseModel):
     end_char_idx: int = Field(
         ..., ge=0, description="Ending character position in the original text."
     )
-    metadata: dict[str, Any] = Field(
+    metadata: Metadata = Field(
         default_factory=dict, description="Optional extra info about the chunk."
     )

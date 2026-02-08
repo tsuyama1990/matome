@@ -1,6 +1,9 @@
-import pytest
 from pathlib import Path
+
+import pytest
+
 from matome.utils.io import read_file
+
 
 def test_read_file_success(tmp_path: Path) -> None:
     """Test reading a file successfully."""

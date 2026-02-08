@@ -1,7 +1,7 @@
-import pytest
-from matome.engines.chunker import JapaneseSemanticChunker
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
+from matome.engines.chunker import JapaneseSemanticChunker
+
 
 def test_chunker_basic() -> None:
     """Test basic chunking functionality."""
@@ -45,3 +45,13 @@ def test_chunker_invalid_model_fallback() -> None:
     """Test fallback to cl100k_base when invalid model is provided."""
     chunker = JapaneseSemanticChunker(model_name="invalid_model_name")
     assert chunker.tokenizer.name == "cl100k_base"
+
+def test_chunker_empty_input() -> None:
+    """Test that empty input returns an empty list."""
+    chunker = JapaneseSemanticChunker()
+    config = ProcessingConfig()
+    chunks = chunker.split_text("", config)
+    assert chunks == []
+
+    chunks_none = chunker.split_text(None, config) # type: ignore
+    assert chunks_none == []
