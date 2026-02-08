@@ -8,8 +8,7 @@ from domain_models.manifest import Chunk
 from matome.engines.cluster import ClusterEngine
 from matome.engines.embedder import EmbeddingService
 
-# Use a safe, allowed model name from config defaults or explicitly allowed list
-TEST_SMALL_MODEL = "text-embedding-3-small"
+TEST_SMALL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 @pytest.fixture
 def sample_chunks() -> list[Chunk]:
@@ -50,7 +49,8 @@ def test_full_pipeline_mocked(mock_gmm: MagicMock, mock_umap: MagicMock, mock_st
 
     # 1. Embedding
     embedder = EmbeddingService(config)
-    chunks_with_embeddings = embedder.embed_chunks(sample_chunks)
+    # embed_chunks returns an iterator, we consume it for clustering input
+    chunks_with_embeddings = list(embedder.embed_chunks(iter(sample_chunks)))
 
     assert chunks_with_embeddings[0].embedding is not None
 
@@ -88,7 +88,8 @@ def test_real_pipeline_small() -> None:
     # 1. Real Embedding
     try:
         embedder = EmbeddingService(config)
-        chunks = embedder.embed_chunks(chunks)
+        # Consume iterator
+        chunks = list(embedder.embed_chunks(iter(chunks)))
     except Exception as e:
         pytest.skip(f"Skipping real embedding test due to model load failure: {e}")
 

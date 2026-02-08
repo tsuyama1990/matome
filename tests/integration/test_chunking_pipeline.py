@@ -1,8 +1,9 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ProcessingConfig, ChunkingConfig
 from matome.engines.chunker import JapaneseTokenChunker
+from matome.utils.text import normalize_text
 
 
 def stream_file(filepath: Path) -> Iterator[str]:
@@ -34,18 +35,23 @@ def test_chunking_pipeline_integration() -> None:
 
     # Execute using stream
     # This proves the chunker can handle iterables (scalability requirement)
-    chunks = chunker.split_text(stream_file(sample_file), config)
+    chunk_iterator = chunker.split_text(stream_file(sample_file), config)
 
-    # Verify
-    assert len(chunks) > 0
-    assert chunks[0].index == 0
+    # Verify without loading everything to list if possible, or just consume linearly
 
     reconstructed_len = 0
     current_idx = 0
+    found_phrases = {
+        "Lost-in-the-Middle": False,
+        "RAPTOR": False,
+        "日本語": False
+    }
 
-    for i, chunk in enumerate(chunks):
+    count = 0
+    for chunk in chunk_iterator:
+        count += 1
         # 1. Sequential Index Check
-        assert chunk.index == i
+        assert chunk.index == count - 1 # indices are 0-based
 
         # 2. Start/End Index Check
         # start_char_idx should match the cumulative length so far
@@ -61,17 +67,10 @@ def test_chunking_pipeline_integration() -> None:
         # We assert each chunk is reasonable size
         assert len(chunk.text) < 1000
 
-    # 4. Content Check (without full load)
-    # We check if key phrases are present in at least one chunk
-    found_phrases = {
-        "Lost-in-the-Middle": False,
-        "RAPTOR": False,
-        "日本語": False
-    }
-
-    for chunk in chunks:
+        # 4. Phrase Check
         for phrase in found_phrases:
             if phrase in chunk.text:
                 found_phrases[phrase] = True
 
+    assert count > 0
     assert all(found_phrases.values()), f"Missing phrases: {found_phrases}"

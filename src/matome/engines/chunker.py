@@ -114,14 +114,13 @@ def _iter_sentences_from_stream(text_iter: Iterable[str]) -> Iterator[str]:
                 yield remaining
 
 
-def _perform_chunking(text_iter: Iterable[str], max_tokens: int, model_name: str) -> list[Chunk]:
+def _perform_chunking(text_iter: Iterable[str], max_tokens: int, model_name: str) -> Iterator[Chunk]:
     """
     Core chunking logic with streaming support.
     """
     # Retrieve tokenizer
     tokenizer = get_cached_tokenizer(model_name)
 
-    chunks: list[Chunk] = []
     current_chunk_sentences: list[str] = []
     current_tokens = 0
     chunk_index = 0
@@ -143,7 +142,7 @@ def _perform_chunking(text_iter: Iterable[str], max_tokens: int, model_name: str
         # Check if adding this sentence exceeds the limit
         if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:
             chunk_text = "".join(current_chunk_sentences)
-            chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
+            yield create_chunk(chunk_index, chunk_text, start_char_idx)
 
             chunk_index += 1
             start_char_idx += len(chunk_text)
@@ -157,9 +156,7 @@ def _perform_chunking(text_iter: Iterable[str], max_tokens: int, model_name: str
     # Final chunk
     if current_chunk_sentences:
         chunk_text = "".join(current_chunk_sentences)
-        chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
-
-    return chunks
+        yield create_chunk(chunk_index, chunk_text, start_char_idx)
 
 
 class JapaneseTokenChunker:
@@ -200,7 +197,7 @@ class JapaneseTokenChunker:
         tokenizer = get_cached_tokenizer(model)
         return len(tokenizer.encode(text))
 
-    def split_text(self, text: str | Iterable[str], config: ProcessingConfig) -> list[Chunk]:
+    def split_text(self, text: str | Iterable[str], config: ProcessingConfig) -> Iterator[Chunk]:
         """
         Split text into chunks.
 
@@ -209,15 +206,15 @@ class JapaneseTokenChunker:
             config: Configuration including chunking settings.
 
         Returns:
-            List of Chunk objects.
+            Iterator of Chunk objects.
         """
         if text is None:
-            return []
+            return iter([])
 
         # Check for emptiness only if it's falsy (empty str or empty list)
         # If generator, we can't know without consuming.
         if not text and isinstance(text, (str, list)):
-             return []
+             return iter([])
 
         # Use model from config
         model_name = config.chunking.tokenizer_model
@@ -230,10 +227,7 @@ class JapaneseTokenChunker:
 
         logger.debug(f"Splitting text with max_tokens={config.chunking.max_tokens}, model={model_name}")
 
-        chunks = _perform_chunking(text_iter, config.chunking.max_tokens, model_name)
-
-        logger.info(f"Successfully split text into {len(chunks)} chunks.")
-        return chunks
+        yield from _perform_chunking(text_iter, config.chunking.max_tokens, model_name)
 
 
 # Alias for backward compatibility.

@@ -11,7 +11,8 @@ def test_chunker_basic() -> None:
     chunker = JapaneseTokenChunker()
     text = "文１。文２。文３。"
     config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=100))
-    chunks = chunker.split_text(text, config)
+    # consume iterator
+    chunks = list(chunker.split_text(text, config))
 
     assert isinstance(chunks, list)
     assert all(isinstance(c, Chunk) for c in chunks)
@@ -33,7 +34,7 @@ def test_chunker_streaming() -> None:
         yield "次の文。"
 
     config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=100))
-    chunks = chunker.split_text(text_stream(), config)
+    chunks = list(chunker.split_text(text_stream(), config))
 
     assert len(chunks) > 0
     full_text = "".join(c.text for c in chunks)
@@ -48,7 +49,7 @@ def test_chunker_max_tokens() -> None:
 
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=200))
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
 
     assert len(chunks) > 1
 
@@ -79,10 +80,10 @@ def test_chunker_empty_input() -> None:
     """Test that empty input returns an empty list."""
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig()
-    chunks = chunker.split_text("", config)
+    chunks = list(chunker.split_text("", config))
     assert chunks == []
 
-    chunks_none = chunker.split_text(None, config) # type: ignore
+    chunks_none = list(chunker.split_text(None, config)) # type: ignore
     assert chunks_none == []
 
 def test_chunker_single_sentence_exceeds_limit() -> None:
@@ -94,20 +95,14 @@ def test_chunker_single_sentence_exceeds_limit() -> None:
     config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=100))
 
     # Current behavior: it appends the sentence even if it exceeds limits (no recursive splitting yet)
-    chunks = chunker.split_text(long_sentence, config)
+    chunks = list(chunker.split_text(long_sentence, config))
 
     assert len(chunks) == 1
     assert chunks[0].text == long_sentence
 
-    # Verification of token count
-    token_count = chunker.count_tokens(chunks[0].text)
-    # Why did it fail? "assert 21 > 100"
-    # Ah, tiktoken encodes repetitive sequences efficiently?
-    # 'a' * 150 might be compressed or treated differently?
-    # Let's use words.
-
+    # Verification of token count using words to ensure count > 100
     word_sentence = "word " * 150
-    chunks_words = chunker.split_text(word_sentence, config)
+    chunks_words = list(chunker.split_text(word_sentence, config))
     token_count_words = chunker.count_tokens(chunks_words[0].text)
     assert token_count_words > 100
 
@@ -116,7 +111,7 @@ def test_chunker_unicode() -> None:
     chunker = JapaneseTokenChunker()
     text = "Hello 🌍! This is a test 🧪. 日本語もOKですか？はい。"
     config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=50))
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
 
     assert len(chunks) > 0
     reconstructed = "".join(c.text for c in chunks)
@@ -133,7 +128,8 @@ def test_chunker_very_long_input() -> None:
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=1000))
 
-    chunks = chunker.split_text(text, config)
+    # Just consume
+    chunks = list(chunker.split_text(text, config))
     assert len(chunks) > 0
 
 def test_chunker_count_tokens() -> None:

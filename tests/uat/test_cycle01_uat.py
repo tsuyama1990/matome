@@ -1,4 +1,4 @@
-from domain_models.config import ChunkingConfig, ProcessingConfig
+from domain_models.config import ProcessingConfig, ChunkingConfig
 from matome.engines.chunker import JapaneseTokenChunker
 from matome.utils.text import normalize_text, split_sentences
 
@@ -30,6 +30,6 @@ def test_uat_scenario_04_chunk_size() -> None:
 
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=50)) # Small limit to force chunking
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
 
     assert len(chunks) > 1

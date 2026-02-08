@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterable, Iterator
 
 from sentence_transformers import SentenceTransformer
 
@@ -23,47 +24,54 @@ class EmbeddingService:
         logger.info(f"Loading embedding model: {self.model_name}")
         self.model = SentenceTransformer(self.model_name)
 
-    def embed_chunks(self, chunks: list[Chunk]) -> list[Chunk]:
+    def embed_chunks(self, chunks: Iterable[Chunk]) -> Iterator[Chunk]:
         """
-        Embeds a list of chunks in-place and returns them.
+        Embeds a stream of chunks and returns them as an iterator.
 
         This method processes chunks in batches to avoid high memory usage.
-        It assigns embeddings to chunks immediately after processing each batch
-        to avoid accumulating a massive embeddings array in memory.
+        It yields chunks immediately after processing each batch.
 
         Args:
-            chunks: List of Chunk objects to embed.
+            chunks: Iterable of Chunk objects to embed.
 
         Returns:
-            The input list of Chunk objects with 'embedding' field populated.
+            Iterator of Chunk objects with 'embedding' field populated.
         """
-        if not chunks:
-            return []
-
-        texts = [chunk.text for chunk in chunks]
         batch_size = self.config.embedding.batch_size
+        current_batch: list[Chunk] = []
 
-        logger.debug(f"Generating embeddings for {len(chunks)} chunks with batch_size={batch_size}")
+        logger.debug(f"Generating embeddings with batch_size={batch_size}")
 
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i : i + batch_size]
-            batch_chunks = chunks[i : i + batch_size]
+        for chunk in chunks:
+            current_batch.append(chunk)
 
-            try:
-                # encode returns a numpy array or list of numpy arrays
-                batch_embeddings = self.model.encode(
-                    batch_texts,
-                    batch_size=batch_size,
-                    convert_to_numpy=True,
-                    show_progress_bar=False
-                )
+            if len(current_batch) >= batch_size:
+                yield from self._process_batch(current_batch)
+                current_batch = []
 
-                # Assign immediately to chunks in this batch
-                for chunk, embedding in zip(batch_chunks, batch_embeddings, strict=True):
-                    chunk.embedding = embedding.tolist()
+        # Process remaining chunks
+        if current_batch:
+            yield from self._process_batch(current_batch)
 
-            except Exception:
-                logger.exception(f"Failed to encode batch starting at index {i}")
-                raise
+    def _process_batch(self, batch: list[Chunk]) -> Iterator[Chunk]:
+        """Helper to embed a single batch of chunks."""
+        texts = [chunk.text for chunk in batch]
 
-        return chunks
+        try:
+            # encode returns a numpy array or list of numpy arrays
+            batch_embeddings = self.model.encode(
+                texts,
+                batch_size=len(batch), # We already batched it
+                convert_to_numpy=True,
+                show_progress_bar=False
+            )
+
+            # Assign immediately to chunks in this batch
+            for chunk, embedding in zip(batch, batch_embeddings, strict=True):
+                chunk.embedding = embedding.tolist()
+                yield chunk
+
+        except Exception:
+            # We could log more specific details here
+            logger.exception("Failed to encode batch")
+            raise
