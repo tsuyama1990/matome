@@ -1,11 +1,11 @@
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
-from matome.engines.chunker import JapaneseSemanticChunker
+from matome.engines.token_chunker import JapaneseTokenChunker
 
 
 def test_chunker_basic() -> None:
     """Test basic chunking functionality."""
-    chunker = JapaneseSemanticChunker()
+    chunker = JapaneseTokenChunker()
     text = "文１。文２。文３。"
     config = ProcessingConfig(max_tokens=100)
     chunks = chunker.split_text(text, config)
@@ -26,7 +26,7 @@ def test_chunker_max_tokens() -> None:
     sentence = "あ" * 100 + "。"
     text = sentence * 20 # 2000+ chars
 
-    chunker = JapaneseSemanticChunker()
+    chunker = JapaneseTokenChunker()
     config = ProcessingConfig(max_tokens=200)
     chunks = chunker.split_text(text, config)
 
@@ -43,12 +43,12 @@ def test_chunker_max_tokens() -> None:
 
 def test_chunker_invalid_model_fallback() -> None:
     """Test fallback to cl100k_base when invalid model is provided."""
-    chunker = JapaneseSemanticChunker(model_name="invalid_model_name")
+    chunker = JapaneseTokenChunker(model_name="invalid_model_name")
     assert chunker.tokenizer.name == "cl100k_base"
 
 def test_chunker_empty_input() -> None:
     """Test that empty input returns an empty list."""
-    chunker = JapaneseSemanticChunker()
+    chunker = JapaneseTokenChunker()
     config = ProcessingConfig()
     chunks = chunker.split_text("", config)
     assert chunks == []
@@ -58,7 +58,7 @@ def test_chunker_empty_input() -> None:
 
 def test_chunker_single_sentence_exceeds_limit() -> None:
     """Test behavior when a single sentence exceeds max_tokens."""
-    chunker = JapaneseSemanticChunker()
+    chunker = JapaneseTokenChunker()
     # Create a sentence longer than limit
     # 'a' is 1 token in cl100k_base.
     long_sentence = "a" * 150 + "。"
@@ -73,7 +73,7 @@ def test_chunker_single_sentence_exceeds_limit() -> None:
 
 def test_chunker_unicode() -> None:
     """Test handling of emojis and special unicode characters."""
-    chunker = JapaneseSemanticChunker()
+    chunker = JapaneseTokenChunker()
     text = "Hello 🌍! This is a test 🧪. 日本語もOKですか？はい。"
     config = ProcessingConfig(max_tokens=50)
     chunks = chunker.split_text(text, config)

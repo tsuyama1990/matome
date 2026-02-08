@@ -11,10 +11,12 @@ from matome.utils.text import normalize_text, split_sentences
 logger = logging.getLogger(__name__)
 
 
-class JapaneseSemanticChunker:
+class JapaneseTokenChunker:
     """
     Chunking engine optimized for Japanese text.
     Uses regex-based sentence splitting and token-based merging.
+
+    This implements the Chunker protocol.
     """
 
     def __init__(self, model_name: str | None = None) -> None:

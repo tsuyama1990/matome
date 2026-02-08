@@ -13,6 +13,22 @@ class ProcessingConfig(BaseModel):
         default=0, ge=0, description="Number of overlapping tokens between chunks."
     )
 
+    # Clustering Configuration
+    clustering_algorithm: str = Field(
+        default="gmm", description="Algorithm to use (e.g., 'gmm', 'agglomerative')."
+    )
+    n_clusters: int | None = Field(
+        default=None, description="Fixed number of clusters (if applicable)."
+    )
+
+    # Summarization Configuration
+    summarization_model: str = Field(
+        default="gpt-4o", description="Model to use for summarization."
+    )
+    max_summary_tokens: int = Field(
+        default=200, ge=1, description="Target token count for summaries."
+    )
+
     @classmethod
     def default(cls) -> Self:
         """
@@ -21,6 +37,8 @@ class ProcessingConfig(BaseModel):
         Defaults:
             max_tokens: 500
             overlap: 0
+            clustering: gmm
+            summarization: gpt-4o
         """
         return cls(max_tokens=500, overlap=0)
 
