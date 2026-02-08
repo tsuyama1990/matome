@@ -15,9 +15,9 @@ Files related to embedding and clustering are added/modified.
 │   └── matome/
 │       ├── __init__.py
 │       ├── config.py
-│       ├── domain/
+│       ├── domain_models/
 │       │   ├── __init__.py
-│       │   └── **models.py**   # Updated Chunk with vector field
+│       │   └── **manifest.py**   # Updated Chunk with vector field
 │       ├── engines/
 │       │   ├── __init__.py
 │       │   ├── chunker.py
@@ -33,13 +33,13 @@ Files related to embedding and clustering are added/modified.
 
 ## 3. Design Architecture
 
-### 3.1. Updated Domain Models (`src/matome/domain/models.py`)
+### 3.1. Updated Domain Models (`src/domain_models/manifest.py`)
 
 *   **`Chunk`**:
-    *   Add `embedding`: `List[float]` (The vector representation).
+    *   Add `embedding`: `list[float] | None` (The vector representation).
 *   **`Cluster`**:
     *   `id`: `int` (Cluster Label)
-    *   `chunk_indices`: `List[int]` (Indices of chunks belonging to this cluster)
+    *   `node_indices`: `list[int | str]` (Indices of chunks/nodes belonging to this cluster)
     *   `level`: `int` (Hierarchy level in RAPTOR tree)
 
 ### 3.2. Embedding Service (`src/matome/engines/embedder.py`)

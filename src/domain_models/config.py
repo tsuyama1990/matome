@@ -16,6 +16,11 @@ class ProcessingConfig(BaseModel):
         default="cl100k_base", description="Tokenizer model/encoding name to use."
     )
 
+    # Embedding Configuration
+    embedding_model: str = Field(
+        default="intfloat/multilingual-e5-large", description="HuggingFace model name for embeddings."
+    )
+
     # Clustering Configuration
     clustering_algorithm: str = Field(
         default="gmm", description="Algorithm to use (e.g., 'gmm', 'agglomerative')."

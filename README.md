@@ -13,6 +13,8 @@ Traditional RAG systems often split text arbitrarily, breaking sentences and los
 ## Features
 
 *   **Japanese-Optimized Semantic Chunking**: Intelligently splits text at sentence boundaries (using punctuation like `。`, `！`, `？`) and merges them into semantically coherent chunks based on token limits.
+*   **Semantic Vectorization**: Generates high-quality vector embeddings using `multilingual-e5-large`.
+*   **Intelligent Clustering**: Groups semantically similar chunks using UMAP dimensionality reduction and GMM (Gaussian Mixture Models) for hierarchical summarization.
 *   **Text Normalization**: Automatically handles full-width/half-width character normalization (NFKC) for consistent processing.
 *   **Type-Safe Architecture**: Built with strict Pydantic models for reliable data handling.
 
@@ -41,10 +43,12 @@ Traditional RAG systems often split text arbitrarily, breaking sentences and los
 
 ## Usage
 
-Currently, Matome provides a Python API for text chunking.
+Matome provides a Python API for text chunking, embedding, and clustering.
+
+### Basic Chunking
 
 ```python
-from matome.engines.chunker import JapaneseSemanticChunker
+from matome.engines import JapaneseSemanticChunker
 from domain_models.config import ProcessingConfig
 
 # 1. Initialize the chunker
@@ -62,6 +66,35 @@ for chunk in chunks:
     print(f"Chunk {chunk.index}: {chunk.text}")
 ```
 
+### Embedding and Clustering
+
+```python
+import numpy as np
+from matome.engines import JapaneseSemanticChunker, EmbeddingService, ClusterEngine
+from domain_models.config import ProcessingConfig
+
+# 1. Config
+config = ProcessingConfig()
+
+# 2. Chunking
+chunker = JapaneseSemanticChunker()
+text = "This is a sample text for clustering. It will be split into chunks."
+chunks = chunker.split_text(text, config)
+
+# 3. Embedding
+embedder = EmbeddingService()
+chunks_with_embeddings = embedder.embed_chunks(chunks)
+
+# 4. Clustering
+cluster_engine = ClusterEngine(config)
+# Extract embeddings as numpy array
+embeddings = np.array([c.embedding for c in chunks_with_embeddings])
+clusters = cluster_engine.perform_clustering(chunks_with_embeddings, embeddings)
+
+for cluster in clusters:
+    print(f"Cluster {cluster.id}: {cluster.node_indices}")
+```
+
 ## Architecture/Structure
 
 The project uses a clean architecture with separate domain models and processing engines.
@@ -76,7 +109,6 @@ src/
 
 ## Roadmap
 
-*   **Embedding & Clustering**: Grouping chunks by semantic similarity.
 *   **Summarization Agent**: Generating recursive summaries using LLMs.
 *   **Obsidian Export**: Visualizing the knowledge tree.
 *   **CLI**: Command-line interface for easy file processing.

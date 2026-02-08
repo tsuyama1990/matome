@@ -32,6 +32,9 @@ class Chunk(BaseModel):
     end_char_idx: int = Field(
         ..., ge=0, description="Ending character position in the original text."
     )
+    embedding: list[float] | None = Field(
+        default=None, description="The vector representation of the chunk text."
+    )
     metadata: Metadata = Field(
         default_factory=dict, description="Optional extra info about the chunk."
     )
