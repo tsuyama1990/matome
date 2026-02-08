@@ -38,7 +38,6 @@ def test_chunking_pipeline_integration() -> None:
 
     # Verify without loading everything to list if possible, or just consume linearly
 
-    reconstructed_len = 0
     current_idx = 0
     found_phrases = {
         "Lost-in-the-Middle": False,
@@ -59,7 +58,6 @@ def test_chunking_pipeline_integration() -> None:
         expected_end = current_idx + len(chunk.text)
         assert chunk.end_char_idx == expected_end
 
-        reconstructed_len += len(chunk.text)
         current_idx = expected_end
 
         # 3. Token Limit Check (Approximate)

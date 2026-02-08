@@ -7,6 +7,7 @@ from domain_models.manifest import Chunk
 from matome.engines.cluster import ClusterEngine
 from matome.engines.embedder import EmbeddingService
 
+TEST_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 # Scenario 05: Embedding Vector Generation
 def test_scenario_05_embedding_vector_generation() -> None:

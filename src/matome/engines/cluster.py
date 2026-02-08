@@ -69,7 +69,7 @@ class ClusterEngine:
         # Edge case: Very small dataset (< 3 samples).
         if n_samples < 3:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
-            return [Cluster(id="0", level=0, node_indices=node_ids)]
+            return [Cluster(id="0", level=0, node_indices=list(node_ids))]
 
         # Adjust n_neighbors for small datasets
         effective_n_neighbors = min(n_neighbors, n_samples - 1)

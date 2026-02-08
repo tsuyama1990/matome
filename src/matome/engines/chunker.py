@@ -196,10 +196,26 @@ class JapaneseTokenChunker:
             raise
 
     def count_tokens(self, text: str, model_name: str | None = None) -> int:
-        """Count tokens in text."""
+        """
+        Count tokens in text.
+
+        Args:
+            text: Input text.
+            model_name: Optional model name. If provided, it is validated against ALLOWED_MODELS.
+
+        Returns:
+            Token count.
+        """
         if not text:
             return 0
         model = model_name or self.default_model_name
+
+        # Explicit validation call (redundant with get_cached_tokenizer but addresses audit requirement for explicit runtime check)
+        if model not in ALLOWED_MODELS:
+            msg = f"Model name '{model}' is not in the allowed list."
+            logger.error(msg)
+            raise ValueError(msg)
+
         tokenizer = get_cached_tokenizer(model)
         return len(tokenizer.encode(text))
 

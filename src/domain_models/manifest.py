@@ -70,6 +70,12 @@ class Chunk(BaseModel):
         # (e.g., full-width to half-width).
         # We only check that if indices claim non-empty, text is not empty (already checked above).
 
+        # Verify that text is not empty after potential normalization/strip
+        if not self.text.strip():
+            msg = "Chunk text cannot be empty or just whitespace."
+            logger.error(msg)
+            raise ValueError(msg)
+
         if self.embedding is not None and len(self.embedding) == 0:
             msg = "Embedding vector cannot be empty if provided."
             logger.error(msg)
