@@ -1,11 +1,15 @@
 import re
 import unicodedata
+from functools import lru_cache
 
 
+@lru_cache(maxsize=1024)
 def normalize_text(text: str) -> str:
     """
     Normalize text using NFKC (Unicode Normalization Form KC).
     This converts full-width alphanumeric characters to half-width, etc.
+
+    Results are cached for performance.
     """
     return unicodedata.normalize("NFKC", text)
 

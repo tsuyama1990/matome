@@ -1,4 +1,5 @@
 import logging
+import os
 
 import tiktoken
 
@@ -16,13 +17,17 @@ class JapaneseSemanticChunker:
     Uses regex-based sentence splitting and token-based merging.
     """
 
-    def __init__(self, model_name: str = "cl100k_base") -> None:
+    def __init__(self, model_name: str | None = None) -> None:
         """
         Initialize the chunker with a specific tokenizer model.
 
         Args:
-            model_name: The name of the encoding to use (default: "cl100k_base").
+            model_name: The name of the encoding to use.
+                        Defaults to TIKTOKEN_MODEL_NAME env var or "cl100k_base".
         """
+        if model_name is None:
+            model_name = os.getenv("TIKTOKEN_MODEL_NAME", "cl100k_base")
+
         try:
             self.tokenizer = tiktoken.get_encoding(model_name)
         except (ValueError, ImportError) as e:
