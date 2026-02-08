@@ -11,21 +11,10 @@ from langchain_openai import ChatOpenAI
 
 from domain_models.config import ProcessingConfig
 from matome.config import get_openrouter_api_key
+from matome.exceptions import SummarizationError
+from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
-
-# Chain of Density Prompt Template
-COD_TEMPLATE = """
-The following are chunks of text from a larger document, grouped by topic:
-{context}
-
-Please generate a high-density summary following these steps:
-1. Create an initial summary (~400 chars).
-2. Identify missing entities (names, numbers, terms) from the source.
-3. Rewrite the summary to include these entities without increasing length.
-4. Repeat 3 times.
-Output ONLY the final, densest summary.
-"""
 
 
 class SummarizationAgent:
@@ -66,6 +55,9 @@ class SummarizationAgent:
 
         Returns:
             The generated summary.
+
+        Raises:
+            SummarizationError: If summarization fails or API key is missing.
         """
         request_id = str(uuid.uuid4())
 
@@ -81,24 +73,19 @@ class SummarizationAgent:
         if not self.llm:
             msg = f"[{request_id}] OpenRouter API Key is missing. Cannot perform summarization."
             logger.error(msg)
-            raise ValueError(msg)
+            raise SummarizationError(msg)
 
         prompt = COD_TEMPLATE.format(context=text)
         logger.debug(f"[{request_id}] Prompt constructed. Starting LLM invocation for text length {len(text)}")
 
         try:
             # We use invoke directly. ChatOpenAI handles retries if configured.
-            # But we can also wrap it in tenacity if we want more control or if
-            # ChatOpenAI's internal retry isn't enough for some errors.
-            # Given spec asks for retry logic, and we configured max_retries=3 in init,
-            # that satisfies the requirement for "transient API failures".
-
             messages = [HumanMessage(content=prompt)]
             logger.debug(f"[{request_id}] Sending {len(messages)} messages to LLM.")
 
             response = self.llm.invoke(messages)
 
-            # Add debug logging for successful response (Auditor suggestion)
+            # Add debug logging for successful response
             logger.debug(f"[{request_id}] Received response from LLM. Processing content.")
 
             # response.content is usually str or list of blocks. For ChatOpenAI it's str.
@@ -115,7 +102,8 @@ class SummarizationAgent:
             logger.warning(f"[{request_id}] Received unexpected content type from LLM: {type(content)}")
             return str(content)
 
-        except Exception:
-            # Enhanced error logging (Auditor suggestion)
+        except Exception as e:
+            # Enhanced error logging with custom exception
             logger.exception(f"[{request_id}] Summarization failed for text length {len(text)}")
-            raise
+            msg = f"Summarization failed: {e}"
+            raise SummarizationError(msg) from e

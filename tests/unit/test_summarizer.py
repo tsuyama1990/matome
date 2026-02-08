@@ -9,6 +9,8 @@ from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
 from matome.agents.summarizer import SummarizationAgent
+from matome.utils.prompts import COD_TEMPLATE
+from matome.exceptions import SummarizationError
 
 
 @pytest.fixture
@@ -88,7 +90,7 @@ def test_mock_mode() -> None:
         assert "some context" in result
 
 def test_summarize_missing_key() -> None:
-    """Test that ValueError is raised if API key is missing and not in mock mode."""
+    """Test that ValueError (or SummarizationError) is raised if API key is missing and not in mock mode."""
     # Default get_openrouter_api_key returns None
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value=None):
         agent = SummarizationAgent()
@@ -96,7 +98,7 @@ def test_summarize_missing_key() -> None:
         assert agent.llm is None
 
         config = ProcessingConfig()
-        with pytest.raises(ValueError, match="OpenRouter API Key is missing"):
+        with pytest.raises(SummarizationError, match="OpenRouter API Key is missing"):
             agent.summarize("some context", config)
 
 def test_summarize_list_response(agent: SummarizationAgent) -> None:
@@ -121,10 +123,27 @@ def test_summarize_int_response(agent: SummarizationAgent) -> None:
     assert result == "123"
 
 def test_summarize_exception(agent: SummarizationAgent) -> None:
-    """Test that exceptions are re-raised."""
+    """Test that exceptions are wrapped in SummarizationError."""
     config = ProcessingConfig()
     llm_mock = cast(MagicMock, agent.llm)
     llm_mock.invoke.side_effect = Exception("API Fail")
 
-    with pytest.raises(Exception, match="API Fail"):
+    with pytest.raises(SummarizationError, match="Summarization failed"):
         agent.summarize("context", config)
+
+def test_summarize_long_input(agent: SummarizationAgent) -> None:
+    """Test behavior with extremely long input text."""
+    config = ProcessingConfig()
+    long_text = "word " * 10000  # Simulate 10k words
+    expected_summary = "Long summary."
+
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content=expected_summary)
+
+    result = agent.summarize(long_text, config)
+    assert result == expected_summary
+
+    # Verify the prompt was constructed correctly despite length
+    args, _ = llm_mock.invoke.call_args
+    prompt_content = args[0][0].content
+    assert len(prompt_content) > len(long_text)
