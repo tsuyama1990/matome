@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import EmbeddingConfig, ProcessingConfig
 from domain_models.manifest import Chunk, Cluster
 
 
@@ -26,41 +26,41 @@ def test_chunk_embedding_optional() -> None:
 
 def test_config_embedding_model() -> None:
     config = ProcessingConfig()
-    assert config.embedding_model == "intfloat/multilingual-e5-large"
+    assert config.embedding.model_name == "intfloat/multilingual-e5-large"
 
-    config = ProcessingConfig(embedding_model="other/model")
-    assert config.embedding_model == "other/model"
+    config = ProcessingConfig(embedding=EmbeddingConfig(model_name="other/model"))
+    assert config.embedding.model_name == "other/model"
 
 def test_cluster_node_indices() -> None:
     cluster = Cluster(
-        id=1,
+        id="1",
         level=0,
         node_indices=[1, 2, 3]
     )
     assert cluster.node_indices == [1, 2, 3]
-    assert cluster.id == 1
+    assert cluster.id == "1"
     assert cluster.level == 0
 
 def test_invalid_config_parameters() -> None:
     # Test invalid embedding_batch_size (must be >= 1)
     with pytest.raises(ValidationError):
-        ProcessingConfig(embedding_batch_size=0)
+        EmbeddingConfig(batch_size=0)
 
     # Test valid embedding_batch_size
-    config = ProcessingConfig(embedding_batch_size=1)
-    assert config.embedding_batch_size == 1
+    config = ProcessingConfig(embedding=EmbeddingConfig(batch_size=1))
+    assert config.embedding.batch_size == 1
 
 def test_config_factory_methods() -> None:
     # Test default()
     default_config = ProcessingConfig.default()
-    assert default_config.max_tokens == 500
-    assert default_config.overlap == 0
-    assert default_config.embedding_model == "intfloat/multilingual-e5-large"
-    assert default_config.clustering_algorithm == "gmm"
+    assert default_config.chunking.max_tokens == 500
+    assert default_config.chunking.overlap == 0
+    assert default_config.embedding.model_name == "intfloat/multilingual-e5-large"
+    assert default_config.clustering.algorithm == "gmm"
 
     # Test high_precision()
     hp_config = ProcessingConfig.high_precision()
-    assert hp_config.max_tokens == 200
-    assert hp_config.overlap == 20
+    assert hp_config.chunking.max_tokens == 200
+    assert hp_config.chunking.overlap == 20
     # Ensure defaults are preserved for others
-    assert hp_config.embedding_model == "intfloat/multilingual-e5-large"
+    assert hp_config.embedding.model_name == "intfloat/multilingual-e5-large"

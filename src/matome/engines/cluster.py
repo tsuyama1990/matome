@@ -1,11 +1,12 @@
 import logging
+from collections.abc import Sequence
 
 import numpy as np
 from sklearn.mixture import GaussianMixture
 from umap import UMAP
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster
+from domain_models.manifest import Cluster
 
 logger = logging.getLogger(__name__)
 
@@ -18,36 +19,36 @@ class ClusterEngine:
 
         Args:
             config: Processing configuration containing clustering parameters.
-                    Currently, only 'gmm' is supported for `clustering_algorithm`.
+                    Currently, only 'gmm' is supported for `clustering.algorithm`.
         """
         self.config = config
 
         # Validate algorithm
-        if config.clustering_algorithm != "gmm":
-            msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
+        if config.clustering.algorithm != "gmm":
+            msg = f"Unsupported clustering algorithm: {config.clustering.algorithm}. Only 'gmm' is supported."
             raise ValueError(msg)
 
     def perform_clustering(
         self,
-        chunks: list[Chunk],
+        node_ids: Sequence[int | str],
         embeddings: np.ndarray,
         n_neighbors: int = 15,
         min_dist: float = 0.1,
     ) -> list[Cluster]:
         """
-        Clusters the chunks based on their embeddings.
+        Clusters the nodes (chunks or summaries) based on their embeddings.
 
         Args:
-            chunks: The list of chunks (used for indices).
-            embeddings: The numpy array of embeddings corresponding to chunks.
+            node_ids: The list of node IDs (int or str) corresponding to the embeddings.
+            embeddings: The numpy array of embeddings.
             n_neighbors: UMAP parameter for local neighborhood size.
                          Will be automatically adjusted if larger than dataset size.
             min_dist: UMAP parameter for minimum distance between points.
 
         Returns:
-            A list of Cluster objects containing indices of grouped chunks.
+            A list of Cluster objects containing indices of grouped nodes.
         """
-        if not chunks:
+        if not node_ids:
             return []
 
         # Input Validation
@@ -59,16 +60,16 @@ class ClusterEngine:
             msg = "Embeddings contain NaN or Infinity values."
             raise ValueError(msg)
 
-        n_samples = len(chunks)
+        n_samples = len(node_ids)
 
-        # Edge case: Single chunk
+        # Edge case: Single node
         if n_samples == 1:
-            return [Cluster(id=0, level=0, node_indices=[chunks[0].index])]
+            return [Cluster(id="0", level=0, node_indices=[node_ids[0]])]
 
         # Edge case: Very small dataset (< 3 samples).
         if n_samples < 3:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
-            return [Cluster(id=0, level=0, node_indices=[c.index for c in chunks])]
+            return [Cluster(id="0", level=0, node_indices=list(node_ids))]
 
         # Adjust n_neighbors for small datasets
         effective_n_neighbors = min(n_neighbors, n_samples - 1)
@@ -83,7 +84,7 @@ class ClusterEngine:
         logger.debug(
             f"Starting clustering with {n_samples} samples. "
             f"UMAP: n_neighbors={effective_n_neighbors}, min_dist={min_dist}. "
-            f"GMM: n_clusters={self.config.n_clusters or 'auto'}."
+            f"GMM: n_clusters={self.config.clustering.n_clusters or 'auto'}."
         )
 
         # 1. Dimensionality Reduction (UMAP)
@@ -91,17 +92,17 @@ class ClusterEngine:
             n_neighbors=effective_n_neighbors,
             min_dist=min_dist,
             n_components=2,
-            random_state=self.config.random_state,
+            random_state=self.config.clustering.random_state,
         )
         reduced_embeddings = reducer.fit_transform(embeddings)
 
         # 2. GMM Clustering
-        if self.config.n_clusters:
-            n_components = self.config.n_clusters
+        if self.config.clustering.n_clusters:
+            n_components = self.config.clustering.n_clusters
         else:
             n_components = self._calculate_optimal_clusters(reduced_embeddings)
 
-        gmm = GaussianMixture(n_components=n_components, random_state=self.config.random_state)
+        gmm = GaussianMixture(n_components=n_components, random_state=self.config.clustering.random_state)
         gmm.fit(reduced_embeddings)
         labels = gmm.predict(reduced_embeddings)
 
@@ -110,13 +111,16 @@ class ClusterEngine:
         unique_labels = np.unique(labels)
         for label in unique_labels:
             indices = np.where(labels == label)[0]
-            # Robust type conversion using .item()
-            node_indices: list[int | str] = [int(indices[i].item()) for i in range(len(indices))]
+            # Map indices back to original node IDs
+            cluster_node_ids: list[int | str] = [node_ids[int(idx)] for idx in indices]
+
+            # Use string ID for cluster
+            cluster_id = str(int(label.item()) if hasattr(label, "item") else int(label))
 
             cluster = Cluster(
-                id=int(label.item()) if hasattr(label, "item") else int(label),
+                id=cluster_id,
                 level=0,
-                node_indices=node_indices,
+                node_indices=cluster_node_ids,
             )
             clusters.append(cluster)
 
@@ -139,7 +143,7 @@ class ClusterEngine:
         bics = []
         n_range = range(2, max_clusters + 1)
         for n in n_range:
-            gmm = GaussianMixture(n_components=n, random_state=self.config.random_state)
+            gmm = GaussianMixture(n_components=n, random_state=self.config.clustering.random_state)
             gmm.fit(embeddings)
             bics.append(gmm.bic(embeddings))
 

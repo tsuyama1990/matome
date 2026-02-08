@@ -1,7 +1,10 @@
 import pytest
 from pydantic import ValidationError
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import (
+    ChunkingConfig,
+    ProcessingConfig,
+)
 from domain_models.manifest import Chunk, Cluster, Document, SummaryNode, Tree
 
 
@@ -14,7 +17,7 @@ def test_document_validation() -> None:
 
     # Invalid case: missing content
     with pytest.raises(ValidationError):
-        Document(metadata={})  # type: ignore
+        Document(metadata={})
 
 
 def test_chunk_validation() -> None:
@@ -37,6 +40,26 @@ def test_chunk_validation() -> None:
     # Invalid case: start > end
     with pytest.raises(ValidationError):
         Chunk(index=0, text="text", start_char_idx=10, end_char_idx=5)
+
+    # Valid case: length mismatch allowed (due to normalization)
+    # text length 4, indices imply 10. Should pass now.
+    c_mismatch = Chunk(index=0, text="text", start_char_idx=0, end_char_idx=10)
+    assert c_mismatch.text == "text"
+
+    # Invalid case: embedding integrity
+    with pytest.raises(ValidationError):
+        Chunk(
+            index=0,
+            text="text",
+            start_char_idx=0,
+            end_char_idx=4,
+            embedding=[] # Empty embedding not allowed
+        )
+
+    # Helper method
+    c = Chunk(index=0, text="A", start_char_idx=0, end_char_idx=1)
+    with pytest.raises(ValueError, match="requires an embedding"):
+        c.require_embedding()
 
 
 def test_summary_node_validation() -> None:
@@ -82,6 +105,14 @@ def test_cluster_validation() -> None:
             node_indices=[0]
         )
 
+    # Invalid case: id must be string
+    with pytest.raises(ValidationError):
+        Cluster(
+            id=123,
+            level=0,
+            node_indices=[0]
+        )
+
 
 def test_tree_validation() -> None:
     """Test Tree structure validation."""
@@ -107,14 +138,14 @@ def test_tree_validation() -> None:
 def test_config_validation() -> None:
     """Test ProcessingConfig validation."""
     # Valid
-    config = ProcessingConfig(max_tokens=100, overlap=10)
-    assert config.max_tokens == 100
+    config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=100, overlap=10))
+    assert config.chunking.max_tokens == 100
 
-    # Test new fields
+    # Test defaults
     config_default = ProcessingConfig.default()
-    assert config_default.clustering_algorithm == "gmm"
-    assert config_default.summarization_model == "gpt-4o"
+    assert config_default.clustering.algorithm == "gmm"
+    assert config_default.summarization.model_name == "gpt-4o"
 
     # Invalid case: zero max_tokens (ge=1)
     with pytest.raises(ValidationError):
-        ProcessingConfig(max_tokens=0)
+        ChunkingConfig(max_tokens=0)

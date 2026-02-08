@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Add src to python path so that domain_models can be imported
+sys.path.append(str(Path(__file__).parent.parent / "src"))
+
 import pytest
 
 from domain_models.manifest import Document

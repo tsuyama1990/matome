@@ -1,10 +1,10 @@
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class ProcessingConfig(BaseModel):
-    """Configuration for text processing and chunking."""
+class ChunkingConfig(BaseModel):
+    """Configuration for text chunking."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -15,17 +15,44 @@ class ProcessingConfig(BaseModel):
     tokenizer_model: str = Field(
         default="cl100k_base", description="Tokenizer model/encoding name to use."
     )
+    semantic_chunking_mode: str = Field(
+        default="percentile", description="Mode for semantic chunking: 'percentile' or 'fixed'."
+    )
+    semantic_chunking_threshold: float = Field(
+        default=0.95, ge=0.0, le=1.0, description="Similarity threshold for fixed mode."
+    )
+    semantic_chunking_percentile: int = Field(
+        default=90, ge=0, le=100, description="Percentile threshold for percentile mode."
+    )
 
-    # Embedding Configuration
-    embedding_model: str = Field(
+    @field_validator("semantic_chunking_mode")
+    @classmethod
+    def validate_mode(cls, v: str) -> str:
+        if v not in ("percentile", "fixed"):
+            msg = "semantic_chunking_mode must be 'percentile' or 'fixed'."
+            raise ValueError(msg)
+        return v
+
+
+class EmbeddingConfig(BaseModel):
+    """Configuration for embedding generation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_name: str = Field(
         default="intfloat/multilingual-e5-large", description="HuggingFace model name for embeddings."
     )
-    embedding_batch_size: int = Field(
+    batch_size: int = Field(
         default=32, ge=1, description="Batch size for embedding generation."
     )
 
-    # Clustering Configuration
-    clustering_algorithm: str = Field(
+
+class ClusteringConfig(BaseModel):
+    """Configuration for clustering (UMAP + GMM)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    algorithm: str = Field(
         default="gmm", description="Algorithm to use (e.g., 'gmm'). Currently only 'gmm' is supported."
     )
     n_clusters: int | None = Field(
@@ -35,18 +62,59 @@ class ProcessingConfig(BaseModel):
         default=42, description="Random seed for reproducibility."
     )
 
-    # Summarization Configuration
-    summarization_model: str = Field(
+    # UMAP Configuration
+    umap_n_components: int = Field(
+        default=5, ge=2, description="Number of dimensions for UMAP reduction."
+    )
+    umap_n_neighbors: int = Field(
+        default=15, ge=2, description="Number of neighbors for UMAP."
+    )
+    umap_metric: str = Field(
+        default="cosine", description="Distance metric for UMAP."
+    )
+
+    # GMM Configuration
+    gmm_n_components_min: int = Field(
+        default=2, ge=2, description="Minimum number of clusters for GMM BIC search."
+    )
+    gmm_n_components_max: int = Field(
+        default=20, ge=2, description="Maximum number of clusters for GMM BIC search."
+    )
+    gmm_covariance_type: str = Field(
+        default="full", description="Covariance type for GMM."
+    )
+
+
+class SummarizationConfig(BaseModel):
+    """Configuration for summarization."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_name: str = Field(
         default="gpt-4o", description="Model to use for summarization."
     )
     max_summary_tokens: int = Field(
         default=200, ge=1, description="Target token count for summaries."
     )
 
+
+class ProcessingConfig(BaseModel):
+    """
+    Main configuration aggregating all sub-configurations.
+    This acts as the single source of truth for pipeline settings.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
+    embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    clustering: ClusteringConfig = Field(default_factory=ClusteringConfig)
+    summarization: SummarizationConfig = Field(default_factory=SummarizationConfig)
+
     @classmethod
     def default(cls) -> Self:
         """
-        Returns the default configuration using Pydantic defaults.
+        Returns the default configuration.
         """
         return cls()
 
@@ -55,4 +123,6 @@ class ProcessingConfig(BaseModel):
         """
         Returns a configuration optimized for higher precision (smaller chunks).
         """
-        return cls(max_tokens=200, overlap=20)
+        return cls(
+            chunking=ChunkingConfig(max_tokens=200, overlap=20)
+        )
