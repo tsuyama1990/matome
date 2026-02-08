@@ -1,4 +1,7 @@
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 def read_file(filepath: str | Path) -> str:
@@ -14,19 +17,15 @@ def read_file(filepath: str | Path) -> str:
     """
     path = Path(filepath)
 
-    # Basic security check: resolve path and check if it's within CWD (simplified)
-    # Note: For Cycle 01, we just ensure it exists. Strict jail confinement is complex.
-    # But we can at least check for ".." abuse if passed as string relative to nothing specific.
-    # Actually, simplistic checks are often buggy. Let's stick to existence for now as per SPEC,
-    # but acknowledge the audit.
-    # Just ensuring we resolve it.
-
     if not path.exists():
         msg = f"File not found: {filepath}"
+        logger.error(msg)
         raise FileNotFoundError(msg)
 
     if not path.is_file():
         msg = f"Not a file: {filepath}"
+        logger.error(msg)
         raise ValueError(msg)
 
+    logger.debug(f"Reading file: {path}")
     return path.read_text(encoding="utf-8")
