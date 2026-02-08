@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from sklearn.mixture import GaussianMixture
 from umap import UMAP
@@ -5,6 +7,7 @@ from umap import UMAP
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster
 
+logger = logging.getLogger(__name__)
 
 class ClusterEngine:
     """Engine for clustering text chunks using UMAP and GMM."""
@@ -15,14 +18,12 @@ class ClusterEngine:
 
         Args:
             config: Processing configuration containing clustering parameters.
+                    Currently, only 'gmm' is supported for `clustering_algorithm`.
         """
         self.config = config
 
         # Validate algorithm
         if config.clustering_algorithm != "gmm":
-            # Just log warning or raise error? Spec says "gmm" default.
-            # Feedback says "Validation".
-            # If someone sets something else, we should probably fail if we don't support it.
             # But spec mentioned 'agglomerative' as future possibility.
             # For now, strict validation:
             msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
@@ -42,6 +43,7 @@ class ClusterEngine:
             chunks: The list of chunks (used for indices).
             embeddings: The numpy array of embeddings corresponding to chunks.
             n_neighbors: UMAP parameter for local neighborhood size.
+                         Will be automatically adjusted if larger than dataset size.
             min_dist: UMAP parameter for minimum distance between points.
 
         Returns:
@@ -59,6 +61,12 @@ class ClusterEngine:
         # Adjust n_neighbors for small datasets
         effective_n_neighbors = min(n_neighbors, n_samples - 1)
         effective_n_neighbors = max(effective_n_neighbors, 2) # Minimum viable for UMAP?
+
+        if effective_n_neighbors != n_neighbors:
+            logger.warning(
+                f"Adjusted UMAP n_neighbors from {n_neighbors} to {effective_n_neighbors} "
+                f"due to small dataset size ({n_samples} samples)."
+            )
 
         # 1. Dimensionality Reduction (UMAP)
         # Reduce to 2 dimensions for GMM as per spec

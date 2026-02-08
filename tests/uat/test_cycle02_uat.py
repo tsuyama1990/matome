@@ -69,8 +69,15 @@ def test_scenario_06_clustering_logic() -> None:
         cluster_0 = next(c for c in clusters if c.id == 0)
         cluster_1 = next(c for c in clusters if c.id == 1)
 
-        assert set(cluster_0.node_indices) == {0, 1, 2}
-        assert set(cluster_1.node_indices) == {3, 4, 5}
+        # Assuming cluster 0 and 1 are distinct, but their IDs might be swapped
+        # Check that we have two sets of indices: {0,1,2} and {3,4,5}
+        indices_set_0 = set(cluster_0.node_indices)
+        indices_set_1 = set(cluster_1.node_indices)
+
+        expected_sets = [{0, 1, 2}, {3, 4, 5}]
+        assert indices_set_0 in expected_sets
+        assert indices_set_1 in expected_sets
+        assert indices_set_0 != indices_set_1
 
 # Scenario 07: Single Cluster Edge Case
 def test_scenario_07_single_cluster() -> None:

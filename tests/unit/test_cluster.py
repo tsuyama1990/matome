@@ -96,3 +96,25 @@ def test_fixed_n_clusters(mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sam
 
     # Should create GMM with n_components=3
     mock_gmm_cls.assert_called_with(n_components=3, random_state=42)
+
+def test_single_cluster_forced(sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
+    # Test that we handle n_clusters=1 gracefully if needed
+    config = ProcessingConfig(n_clusters=1)
+    engine = ClusterEngine(config)
+
+    # We don't need extensive mocks since we are just checking param passing logic mostly
+    # But we need UMAP/GMM to not crash
+    with patch("matome.engines.cluster.UMAP") as mock_umap, \
+         patch("matome.engines.cluster.GaussianMixture") as mock_gmm:
+
+        mock_umap.return_value.fit_transform.return_value = sample_embeddings
+        mock_gmm.return_value.predict.return_value = np.zeros(len(sample_chunks))
+
+        clusters = engine.perform_clustering(sample_chunks, sample_embeddings)
+
+        assert len(clusters) == 1
+        assert clusters[0].id == 0
+        assert len(clusters[0].node_indices) == 4
+
+        # Verify GMM called with 1 component
+        mock_gmm.assert_called_with(n_components=1, random_state=42)
