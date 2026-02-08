@@ -42,28 +42,9 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
     # Security check: Validate input model name against allowed list
     # This prevents arbitrary string injection or unexpected model loading
     if model_name not in ALLOWED_MODELS:
-        # Enforce whitelist for strict security as requested
-        # Check if it's a known encoding name first (simple validation)
-        # But to be safe, we just reject if not in whitelist for now.
-        pass
-
-    # Basic validation: ensure it's not empty or too long
-    if not model_name or len(model_name) > 50:
-        msg = f"Invalid model name: {model_name}"
+        msg = f"Model name '{model_name}' is not in the allowed list."
+        logger.error(msg)
         raise ValueError(msg)
-
-    # If not in whitelist, we log a warning but proceed with caution if it looks safe?
-    # Actually, the requirement was "prevent injection".
-    # tiktoken handles most of this safely, but let's be strict.
-    if model_name not in ALLOWED_MODELS:
-         # Check if it is a valid encoding string known to tiktoken (e.g. o200k_base which might be new)
-         # We allow it if it succeeds, but warn.
-         # OR we fail. Let's fail for now to be "Secure".
-         # But wait, unit tests might use "cl100k_base" which IS in the list.
-         # What if a new model comes out?
-         # Let's log a warning and try anyway, but relying on tiktoken's internal checks.
-         # The "security" concern is mainly about huge strings or weird paths (though tiktoken doesn't load paths).
-         logger.warning(f"Model name '{model_name}' not in strict whitelist. Attempting to load.")
 
     try:
         # tiktoken.get_encoding expects an encoding name (e.g., cl100k_base).
@@ -134,15 +115,18 @@ class JapaneseTokenChunker:
         sentences = split_sentences(normalized_text)
         logger.debug(f"Split text into {len(sentences)} sentences.")
 
+        # Precompute token counts for performance
+        # This avoids repeated calls to self.tokenizer.encode inside the loop if we were doing more complex logic,
+        # but even for linear scan, it separates token counting from accumulation logic cleanly.
+        sentence_infos = [(s, self.count_tokens(s)) for s in sentences]
+
         chunks: list[Chunk] = []
         current_chunk_sentences: list[str] = []
         current_tokens = 0
         chunk_index = 0
         start_char_idx = 0
 
-        for sentence in sentences:
-            sentence_tokens = self.count_tokens(sentence)
-
+        for sentence, sentence_tokens in sentence_infos:
             if current_tokens + sentence_tokens > config.max_tokens and current_chunk_sentences:
                 # Finalize current chunk
                 chunk_text = "".join(current_chunk_sentences)
