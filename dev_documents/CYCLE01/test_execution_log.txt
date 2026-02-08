@@ -1,16 +1,31 @@
 ============================= test session starts ==============================
-platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0 -- /app/.venv/bin/python3
+cachedir: .pytest_cache
 rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, langsmith-0.6.9, anyio-4.12.1
-collected 18 items
+collecting ... collected 19 items
 
-tests/uat/test_cycle01_uat.py ...                                        [ 16%]
-tests/unit/test_chunker.py ......                                        [ 50%]
-tests/unit/test_domain_models.py ...                                     [ 66%]
-tests/unit/test_io.py ..                                                 [ 77%]
-tests/unit/test_text_utils.py ....                                       [100%]
+tests/integration/test_chunking_pipeline.py::test_chunking_pipeline_integration PASSED [  5%]
+tests/uat/test_cycle01_uat.py::test_uat_scenario_02_ingestion_cleaning PASSED [ 10%]
+tests/uat/test_cycle01_uat.py::test_uat_scenario_03_sentence_splitting PASSED [ 15%]
+tests/uat/test_cycle01_uat.py::test_uat_scenario_04_chunk_size PASSED    [ 21%]
+tests/unit/test_chunker.py::test_chunker_basic PASSED                    [ 26%]
+tests/unit/test_chunker.py::test_chunker_max_tokens PASSED               [ 31%]
+tests/unit/test_chunker.py::test_chunker_invalid_model_fallback PASSED   [ 36%]
+tests/unit/test_chunker.py::test_chunker_empty_input PASSED              [ 42%]
+tests/unit/test_chunker.py::test_chunker_single_sentence_exceeds_limit PASSED [ 47%]
+tests/unit/test_chunker.py::test_chunker_unicode PASSED                  [ 52%]
+tests/unit/test_domain_models.py::test_document_validation PASSED        [ 57%]
+tests/unit/test_domain_models.py::test_chunk_validation PASSED           [ 63%]
+tests/unit/test_domain_models.py::test_config_validation PASSED          [ 68%]
+tests/unit/test_io.py::test_read_file_success PASSED                     [ 73%]
+tests/unit/test_io.py::test_read_file_not_found PASSED                   [ 78%]
+tests/unit/test_text_utils.py::test_normalize_text PASSED                [ 84%]
+tests/unit/test_text_utils.py::test_split_sentences_basic PASSED         [ 89%]
+tests/unit/test_text_utils.py::test_split_sentences_newlines PASSED      [ 94%]
+tests/unit/test_text_utils.py::test_split_sentences_brackets_behavior PASSED [100%]
 
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.12-final-0 _______________
@@ -18,17 +33,16 @@ _______________ coverage: platform linux, python 3.12.12-final-0 _______________
 Name                             Stmts   Miss  Cover   Missing
 --------------------------------------------------------------
 src/domain_models/__init__.py        3      0   100%
-src/domain_models/config.py          5      0   100%
+src/domain_models/config.py         12      1    92%   17
 src/domain_models/manifest.py       14      0   100%
 src/matome/__init__.py               0      0   100%
-src/matome/domain/__init__.py        0      0   100%
 src/matome/engines/__init__.py       0      0   100%
 src/matome/engines/chunker.py       47      0   100%
 src/matome/utils/__init__.py         0      0   100%
 src/matome/utils/io.py               7      0   100%
 src/matome/utils/text.py             8      0   100%
 --------------------------------------------------------------
-TOTAL                               84      0   100%
-============================== 18 passed in 0.82s ==============================
+TOTAL                               91      1    99%
+============================== 19 passed in 0.81s ==============================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

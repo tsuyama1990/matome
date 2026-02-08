@@ -47,3 +47,6 @@ dev_documents/project_state_local.json
 
 # Allow test execution log
 !dev_documents/CYCLE01/test_execution_log.txt
+
+# Allow test data
+!tests/data/*.txt
