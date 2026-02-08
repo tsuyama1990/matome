@@ -1,8 +1,8 @@
 import sys
-import os
+from pathlib import Path
 
 # Add src to python path so that domain_models can be imported
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(__file__)), "src"))
+sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 import pytest
 

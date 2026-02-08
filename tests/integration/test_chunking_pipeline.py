@@ -1,9 +1,8 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from domain_models.config import ProcessingConfig, ChunkingConfig
+from domain_models.config import ProcessingConfig
 from matome.engines.chunker import JapaneseTokenChunker
-from matome.utils.text import normalize_text
 
 
 def stream_file(filepath: Path) -> Iterator[str]:

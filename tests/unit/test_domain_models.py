@@ -17,7 +17,7 @@ def test_document_validation() -> None:
 
     # Invalid case: missing content
     with pytest.raises(ValidationError):
-        Document(metadata={}) # type: ignore[call-arg]
+        Document(metadata={})
 
 
 def test_chunk_validation() -> None:
@@ -108,7 +108,7 @@ def test_cluster_validation() -> None:
     # Invalid case: id must be string
     with pytest.raises(ValidationError):
         Cluster(
-            id=123, # type: ignore[arg-type]
+            id=123,
             level=0,
             node_indices=[0]
         )

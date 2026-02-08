@@ -2,11 +2,10 @@ import logging
 import os
 from collections.abc import Iterable, Iterator
 from functools import lru_cache
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 import tiktoken
-from sklearn.metrics.pairwise import cosine_similarity
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
@@ -20,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 # List of allowed tiktoken model names for security validation.
 # Only tokenization/embedding models are allowed. LLM models (e.g., gpt-4) are excluded.
+# To add a new model, ensure it is a tokenizer or embedding model and not a generative model endpoint.
 ALLOWED_MODELS = {
     "cl100k_base",
     "p50k_base",
@@ -215,12 +215,12 @@ class JapaneseTokenChunker:
             Iterator of Chunk objects.
         """
         if text is None:
-            return iter([])
+            return
 
         # Check for emptiness only if it's falsy (empty str or empty list)
         # If generator, we can't know without consuming.
         if not text and isinstance(text, (str, list)):
-             return iter([])
+             return
 
         # Use model from config
         model_name = config.chunking.tokenizer_model
@@ -272,7 +272,7 @@ class JapaneseSemanticChunker:
         # For simplicity in this iteration, we process the whole document.
         sentences = list(_iter_sentences_from_stream(text_iter))
         if not sentences:
-            return iter([])
+            return
 
         # 2. Embed sentences
         try:
@@ -280,10 +280,10 @@ class JapaneseSemanticChunker:
             embeddings = self.embedder.embed_strings(sentences)
         except Exception:
             logger.exception("Failed to embed sentences for semantic chunking.")
-            return iter([])
+            return
 
         if not embeddings:
-            return iter([])
+            return
 
         # 3. Calculate similarities
         embeddings_np = np.array(embeddings)
@@ -300,7 +300,7 @@ class JapaneseSemanticChunker:
             return
 
         # Calculate cosine similarity between adjacent sentences
-        # shape: (n_sentences-1, )
+        # Output shape: (n_sentences-1, )
         # Normalize for cosine similarity
         norms = np.linalg.norm(embeddings_np, axis=1, keepdims=True)
         norms[norms == 0] = 1e-10  # Avoid division by zero

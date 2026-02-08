@@ -120,6 +120,7 @@ testpaths = ["tests"]
 strict = true
 mypy_path = "src"
 ignore_missing_imports = true
+disable_error_code = ["misc", "untyped-decorator"]
 
 [dependency-groups]
 dev = [

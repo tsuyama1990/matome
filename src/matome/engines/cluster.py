@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Sequence
 
 import numpy as np
 from sklearn.mixture import GaussianMixture
@@ -29,7 +30,7 @@ class ClusterEngine:
 
     def perform_clustering(
         self,
-        node_ids: list[int | str],
+        node_ids: Sequence[int | str],
         embeddings: np.ndarray,
         n_neighbors: int = 15,
         min_dist: float = 0.1,
