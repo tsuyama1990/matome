@@ -84,7 +84,7 @@ class SummarizationAgent:
             raise ValueError(msg)
 
         prompt = COD_TEMPLATE.format(context=text)
-        logger.debug(f"[{request_id}] Starting summarization for text length {len(text)}")
+        logger.debug(f"[{request_id}] Prompt constructed. Starting LLM invocation for text length {len(text)}")
 
         try:
             # We use invoke directly. ChatOpenAI handles retries if configured.
@@ -93,10 +93,13 @@ class SummarizationAgent:
             # Given spec asks for retry logic, and we configured max_retries=3 in init,
             # that satisfies the requirement for "transient API failures".
 
-            response = self.llm.invoke([HumanMessage(content=prompt)])
+            messages = [HumanMessage(content=prompt)]
+            logger.debug(f"[{request_id}] Sending {len(messages)} messages to LLM.")
+
+            response = self.llm.invoke(messages)
 
             # Add debug logging for successful response (Auditor suggestion)
-            logger.debug(f"[{request_id}] Received response from LLM.")
+            logger.debug(f"[{request_id}] Received response from LLM. Processing content.")
 
             # response.content is usually str or list of blocks. For ChatOpenAI it's str.
             content: str | list[str | dict[str, Any]] = response.content
