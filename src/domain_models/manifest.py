@@ -7,8 +7,6 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 logger = logging.getLogger(__name__)
 
 # Define a type alias for Metadata to improve readability and consistency.
-# Metadata is a flexible dictionary used to store arbitrary context (e.g., source file path,
-# timestamps, author info, or processing metrics) that doesn't fit into the core schema.
 Metadata: TypeAlias = dict[str, Any]
 
 
@@ -31,10 +29,10 @@ class Chunk(BaseModel):
     index: int = Field(..., ge=0, description="Sequential ID of the chunk.")
     text: str = Field(..., description="The actual text content of the chunk.")
     start_char_idx: int = Field(
-        ..., ge=0, description="Starting character position in the original text."
+        ..., ge=0, description="Starting character position in the (processed) text."
     )
     end_char_idx: int = Field(
-        ..., ge=0, description="Ending character position in the original text."
+        ..., ge=0, description="Ending character position in the (processed) text."
     )
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the chunk text."
@@ -44,40 +42,35 @@ class Chunk(BaseModel):
     )
 
     @model_validator(mode="after")
-    def check_indices(self) -> "Chunk":
+    def check_integrity(self) -> "Chunk":
         """
-        Validate that start_char_idx is less than or equal to end_char_idx.
-
-        Strictly, if text is non-empty, start < end.
-        If text is empty (unlikely but possible), start == end.
-        But generally chunks should have content.
+        Validate chunk integrity.
+        Ensures text is not empty and indices align with text length.
         """
-        if self.start_char_idx > self.end_char_idx:
-            msg = (
-                f"start_char_idx ({self.start_char_idx}) cannot be greater than "
-                f"end_char_idx ({self.end_char_idx})"
-            )
-            logger.error(msg)
-            raise ValueError(msg)
-
-        # Check for zero length if strictly required
-        if self.start_char_idx == self.end_char_idx and self.text:
-            # If text has content but indices are same -> error
-             msg = f"Zero-length range ({self.start_char_idx}-{self.end_char_idx}) but text is not empty."
-             logger.error(msg)
-             raise ValueError(msg)
-
-        if not self.text and self.start_char_idx != self.end_char_idx:
-             # If text is empty but range is not -> error
-             msg = f"Empty text but range is not zero-length ({self.start_char_idx}-{self.end_char_idx})."
-             logger.error(msg)
-             raise ValueError(msg)
-
-        # Disallow empty chunks entirely?
         if not self.text:
             msg = "Chunk text cannot be empty."
             logger.error(msg)
             raise ValueError(msg)
+
+        if self.start_char_idx >= self.end_char_idx:
+            msg = (
+                f"Invalid indices: start_char_idx ({self.start_char_idx}) must be less than "
+                f"end_char_idx ({self.end_char_idx}) for non-empty text."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
+
+        expected_len = self.end_char_idx - self.start_char_idx
+        if len(self.text) != expected_len:
+             # This might be too strict if there's complex whitespace handling,
+             # but generally for consistent systems it should hold.
+             # Given JapaneseTokenChunker logic, it holds.
+             msg = (
+                 f"Text length ({len(self.text)}) does not match index range "
+                 f"({expected_len} = {self.end_char_idx} - {self.start_char_idx})."
+             )
+             logger.error(msg)
+             raise ValueError(msg)
 
         return self
 
@@ -99,12 +92,16 @@ class SummaryNode(BaseModel):
 
 
 class Cluster(BaseModel):
-    """Represents a cluster of nodes identified for summarization."""
+    """
+    Represents a cluster of nodes identified for summarization.
+
+    A cluster groups nodes (Chunks or SummaryNodes) that are semantically similar.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     id: int | str = Field(..., description="Cluster identifier.")
-    level: int = Field(..., ge=0, description="Level of the nodes in this cluster.")
+    level: int = Field(..., ge=0, description="Level of the nodes in this cluster (0 for chunks).")
     node_indices: list[int | str] = Field(
         ..., description="Indices of nodes (Chunks or SummaryNodes) in this cluster."
     )

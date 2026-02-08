@@ -1,15 +1,18 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from domain_models.manifest import Chunk, Cluster
-from domain_models.config import ProcessingConfig
-from matome.engines.cluster import ClusterEngine
+
 import numpy as np
+import pytest
+
+from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk
+from matome.engines.cluster import ClusterEngine
+
 
 @pytest.fixture
 def sample_chunks() -> list[Chunk]:
     # Return 4 chunks
     return [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=5)
+        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=len(f"Chunk {i}"))
         for i in range(4)
     ]
 

@@ -1,5 +1,5 @@
 from domain_models.config import ProcessingConfig
-from matome.engines.token_chunker import JapaneseTokenChunker
+from matome.engines.chunker import JapaneseTokenChunker
 from matome.utils.text import normalize_text, split_sentences
 
 

@@ -35,7 +35,7 @@ def test_scenario_05_embedding_vector_generation() -> None:
 # Scenario 06: Clustering Logic Verification
 def test_scenario_06_clustering_logic() -> None:
     # 3 Apple Pie, 3 Python
-    chunks = [Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(6)]
+    chunks = [Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=len(f"Chunk {i}")) for i in range(6)]
 
     # Use 10-dim vectors for simplicity
     group_a = [np.random.normal(0, 0.1, 10).tolist() for _ in range(3)]
@@ -80,7 +80,7 @@ def test_scenario_06_clustering_logic() -> None:
 
 # Scenario 07: Single Cluster Edge Case
 def test_scenario_07_single_cluster() -> None:
-    chunks = [Chunk(index=0, text="Single", start_char_idx=0, end_char_idx=5)]
+    chunks = [Chunk(index=0, text="Single", start_char_idx=0, end_char_idx=6)]
     embeddings = np.array([[0.5]*10])
 
     config = ProcessingConfig()

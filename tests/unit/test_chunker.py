@@ -2,7 +2,7 @@ import pytest
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
-from matome.engines.token_chunker import JapaneseTokenChunker
+from matome.engines.chunker import JapaneseTokenChunker
 
 
 def test_chunker_basic() -> None:

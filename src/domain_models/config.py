@@ -35,6 +35,28 @@ class ProcessingConfig(BaseModel):
         default=42, description="Random seed for reproducibility."
     )
 
+    # UMAP Configuration (Dimensionality Reduction)
+    umap_n_components: int = Field(
+        default=5, ge=2, description="Number of dimensions for UMAP reduction."
+    )
+    umap_n_neighbors: int = Field(
+        default=15, ge=2, description="Number of neighbors for UMAP."
+    )
+    umap_metric: str = Field(
+        default="cosine", description="Distance metric for UMAP."
+    )
+
+    # GMM Configuration (Clustering)
+    gmm_n_components_min: int = Field(
+        default=2, ge=2, description="Minimum number of clusters for GMM BIC search."
+    )
+    gmm_n_components_max: int = Field(
+        default=20, ge=2, description="Maximum number of clusters for GMM BIC search."
+    )
+    gmm_covariance_type: str = Field(
+        default="full", description="Covariance type for GMM."
+    )
+
     # Summarization Configuration
     summarization_model: str = Field(
         default="gpt-4o", description="Model to use for summarization."

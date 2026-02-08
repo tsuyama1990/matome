@@ -1,5 +1,172 @@
-from matome.engines.token_chunker import JapaneseTokenChunker
+import logging
+import os
+from functools import lru_cache
 
+import tiktoken
+
+from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk
+from matome.utils.text import iter_sentences, normalize_text
+
+# Configure logger
+logger = logging.getLogger(__name__)
+
+# List of allowed tiktoken model names for security validation.
+ALLOWED_MODELS = {
+    "cl100k_base",
+    "p50k_base",
+    "r50k_base",
+    "gpt2",
+    "gpt-3.5-turbo",
+    "gpt-4",
+    "gpt-4o",
+    "text-embedding-ada-002",
+    "text-embedding-3-small",
+    "text-embedding-3-large",
+}
+
+
+@lru_cache(maxsize=4)
+def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
+    """
+    Get a cached tokenizer instance.
+
+    Args:
+        model_name: The name of the encoding/model to load.
+
+    Returns:
+        The tiktoken Encoding object.
+
+    Raises:
+        ValueError: If the model name is not allowed or invalid.
+    """
+    # Security check: Validate input model name against allowed list
+    if model_name not in ALLOWED_MODELS:
+        msg = (
+            f"Model name '{model_name}' is not in the allowed list. "
+            f"Allowed models: {sorted(ALLOWED_MODELS)}"
+        )
+        logger.error(msg)
+        raise ValueError(msg)
+
+    try:
+        try:
+            return tiktoken.encoding_for_model(model_name)
+        except KeyError:
+            return tiktoken.get_encoding(model_name)
+    except Exception as e:
+        logger.exception(f"Failed to load tokenizer for '{model_name}'")
+        msg = f"Could not load tokenizer for '{model_name}'. Check internet connection or model name validity."
+        raise ValueError(msg) from e
+
+
+def _perform_chunking(text: str, max_tokens: int, model_name: str) -> list[Chunk]:
+    """
+    Core chunking logic.
+    """
+    # 1. Normalize
+    normalized_text = normalize_text(text)
+
+    # Retrieve tokenizer
+    tokenizer = get_cached_tokenizer(model_name)
+
+    chunks: list[Chunk] = []
+    current_chunk_sentences: list[str] = []
+    current_tokens = 0
+    chunk_index = 0
+    start_char_idx = 0
+
+    def create_chunk(idx: int, content: str, start: int) -> Chunk:
+        return Chunk(
+            index=idx,
+            text=content,
+            start_char_idx=start,
+            end_char_idx=start + len(content),
+            metadata={},
+        )
+
+    # Use iterator for sentences
+    for sentence in iter_sentences(normalized_text):
+        sentence_tokens = len(tokenizer.encode(sentence))
+
+        if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:
+            chunk_text = "".join(current_chunk_sentences)
+            chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
+
+            chunk_index += 1
+            start_char_idx += len(chunk_text)
+
+            current_chunk_sentences = []
+            current_tokens = 0
+
+        current_chunk_sentences.append(sentence)
+        current_tokens += sentence_tokens
+
+    # Final chunk
+    if current_chunk_sentences:
+        chunk_text = "".join(current_chunk_sentences)
+        chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
+
+    return chunks
+
+
+class JapaneseTokenChunker:
+    """
+    Chunking engine optimized for Japanese text.
+    Uses regex-based sentence splitting and token-based merging.
+
+    This implements the Chunker protocol.
+    """
+
+    def __init__(self, model_name: str | None = None) -> None:
+        """
+        Initialize the chunker with a specific tokenizer model.
+
+        Args:
+            model_name: The name of the encoding to use.
+                        Defaults to TIKTOKEN_MODEL_NAME env var or "cl100k_base".
+        """
+        # If model_name is not provided, use env var or default "cl100k_base"
+        if model_name is None:
+            model_name = os.getenv("TIKTOKEN_MODEL_NAME", "cl100k_base")
+
+        # Strict validation: This will raise ValueError if invalid.
+        # No fallback here - caller must handle or ensure config is correct.
+        self.tokenizer = get_cached_tokenizer(model_name)
+
+    def count_tokens(self, text: str) -> int:
+        """Count tokens in text."""
+        if not text:
+            return 0
+        return len(self.tokenizer.encode(text))
+
+    def split_text(self, text: str, config: ProcessingConfig) -> list[Chunk]:
+        """
+        Split text into chunks.
+
+        Args:
+            text: Raw input text.
+            config: Configuration including max_tokens and tokenizer_model.
+
+        Returns:
+            List of Chunk objects.
+        """
+        if not text:
+            logger.warning("Empty input text provided to split_text. Returning empty list.")
+            return []
+
+        logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
+
+        chunking_model_name = self.tokenizer.name # e.g. "cl100k_base"
+
+        chunks = _perform_chunking(text, config.max_tokens, chunking_model_name)
+
+        logger.info(f"Successfully split text into {len(chunks)} chunks.")
+        return chunks
+
+
+# Alias for backward compatibility.
+# Note: The original spec called for "Semantic Chunking", but the implementation
+# evolved to use Token Chunking for efficiency. This alias is maintained for
+# code that expects the old name.
 JapaneseSemanticChunker = JapaneseTokenChunker
-
-__all__ = ["JapaneseTokenChunker", "JapaneseSemanticChunker"]
