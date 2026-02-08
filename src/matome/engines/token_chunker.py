@@ -43,7 +43,10 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
     """
     # Security check: Validate input model name against allowed list
     if model_name not in ALLOWED_MODELS:
-        msg = f"Model name '{model_name}' is not in the allowed list."
+        msg = (
+            f"Model name '{model_name}' is not in the allowed list. "
+            f"Allowed models: {sorted(ALLOWED_MODELS)}"
+        )
         logger.error(msg)
         raise ValueError(msg)
 
@@ -54,7 +57,7 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
             return tiktoken.get_encoding(model_name)
     except Exception as e:
         logger.exception(f"Failed to load tokenizer for '{model_name}'")
-        msg = f"Could not load tokenizer for '{model_name}'"
+        msg = f"Could not load tokenizer for '{model_name}'. Check internet connection or model name validity."
         raise ValueError(msg) from e
 
 
@@ -154,9 +157,6 @@ class JapaneseTokenChunker:
             return []
 
         logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
-
-        # We assume the initialized tokenizer is correct for this session.
-        # If config.tokenizer_model is different, we might warn, but let's stick to initialized one for consistency.
 
         chunking_model_name = self.tokenizer.name # e.g. "cl100k_base"
 

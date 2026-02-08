@@ -19,12 +19,39 @@ def test_iter_sentences_empty() -> None:
     assert list(iter_sentences("")) == []
     assert list(iter_sentences("   \n  ")) == []
 
+def test_iter_sentences_edge_cases() -> None:
+    """Test iter_sentences with edge cases."""
+    # Ends with punctuation
+    text = "文１。文２。"
+    sentences = list(iter_sentences(text))
+    assert len(sentences) == 2
+    assert sentences[0] == "文１。"
+    assert sentences[1] == "文２。"
+
+    # Consecutive delimiters
+    text_consecutive = "文１。！？\n\n文２"
+    # The regex `(?<=[。！？])\s*|\n+` splits after *each* delimiter.
+    # 1. Match after `。`. Remainder `！？\n\n文２`. Sentence `文１。`.
+    # 2. Match after `！`. Remainder `？\n\n文２`. Sentence `！`.
+    # 3. Match after `？`. Remainder `\n\n文２`. Sentence `？`.
+    # 4. Match `\n+`. Sentence `文２`.
+    sentences = list(iter_sentences(text_consecutive))
+
+    # We expect 4 items because the naive regex treats consecutive punctuation as separate chunks.
+    assert len(sentences) == 4
+    assert sentences[0] == "文１。"
+    assert sentences[1] == "！"
+    assert sentences[2] == "？"
+    assert sentences[3] == "文２"
+
+    # No punctuation
+    text_none = "文１文２"
+    sentences = list(iter_sentences(text_none))
+    assert len(sentences) == 1
+    assert sentences[0] == "文１文２"
+
 def test_split_sentences_compatibility() -> None:
     """Ensure split_sentences still works and returns list."""
-    # Our regex splits on Japanese punctuation. "A. B." won't split on period unless we update regex or input.
-    # Wait, regex is `(?<=[。！？])`. English period is not included.
-    # The original implementation didn't split English periods either.
-    # Let's use Japanese punctuation.
     text_jp = "文A。文B。"
     sentences = split_sentences(text_jp)
     assert isinstance(sentences, list)

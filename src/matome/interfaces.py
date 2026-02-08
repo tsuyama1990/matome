@@ -6,7 +6,12 @@ from domain_models.manifest import Chunk, Cluster
 
 @runtime_checkable
 class Chunker(Protocol):
-    """Protocol for text chunking engines."""
+    """
+    Protocol for text chunking engines.
+
+    Implementations are responsible for dividing large text documents into smaller,
+    manageable segments (chunks) while preserving semantic meaning as much as possible.
+    """
 
     def split_text(self, text: str, config: ProcessingConfig) -> list[Chunk]:
         """
@@ -28,7 +33,12 @@ class Chunker(Protocol):
 
 @runtime_checkable
 class Clusterer(Protocol):
-    """Protocol for clustering engines."""
+    """
+    Protocol for clustering engines.
+
+    Implementations should group similar text chunks or nodes based on their vector embeddings
+    to facilitate hierarchical summarization (RAPTOR).
+    """
 
     def cluster_nodes(self, embeddings: list[list[float]], config: ProcessingConfig) -> list[Cluster]:
         """
@@ -51,7 +61,12 @@ class Clusterer(Protocol):
 
 @runtime_checkable
 class Summarizer(Protocol):
-    """Protocol for summarization engines."""
+    """
+    Protocol for summarization engines.
+
+    Implementations should generate concise summaries of the provided text, respecting
+    token limits and other configuration parameters.
+    """
 
     def summarize(self, text: str, config: ProcessingConfig) -> str:
         """
