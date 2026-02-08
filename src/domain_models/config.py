@@ -16,12 +16,23 @@ class ProcessingConfig(BaseModel):
         default="cl100k_base", description="Tokenizer model/encoding name to use."
     )
 
+    # Embedding Configuration
+    embedding_model: str = Field(
+        default="intfloat/multilingual-e5-large", description="HuggingFace model name for embeddings."
+    )
+    embedding_batch_size: int = Field(
+        default=32, ge=1, description="Batch size for embedding generation."
+    )
+
     # Clustering Configuration
     clustering_algorithm: str = Field(
-        default="gmm", description="Algorithm to use (e.g., 'gmm', 'agglomerative')."
+        default="gmm", description="Algorithm to use (e.g., 'gmm'). Currently only 'gmm' is supported."
     )
     n_clusters: int | None = Field(
         default=None, description="Fixed number of clusters (if applicable)."
+    )
+    random_state: int = Field(
+        default=42, description="Random seed for reproducibility."
     )
 
     # Summarization Configuration
@@ -35,24 +46,13 @@ class ProcessingConfig(BaseModel):
     @classmethod
     def default(cls) -> Self:
         """
-        Returns the default configuration.
-
-        Defaults:
-            max_tokens: 500
-            overlap: 0
-            tokenizer_model: cl100k_base
-            clustering: gmm
-            summarization: gpt-4o
+        Returns the default configuration using Pydantic defaults.
         """
-        return cls(max_tokens=500, overlap=0, tokenizer_model="cl100k_base")
+        return cls()
 
     @classmethod
     def high_precision(cls) -> Self:
         """
         Returns a configuration optimized for higher precision (smaller chunks).
-
-        Defaults:
-            max_tokens: 200
-            overlap: 20
         """
         return cls(max_tokens=200, overlap=20)

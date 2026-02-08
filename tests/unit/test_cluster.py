@@ -1,0 +1,138 @@
+import pytest
+from unittest.mock import MagicMock, patch
+from domain_models.manifest import Chunk, Cluster
+from domain_models.config import ProcessingConfig
+from matome.engines.cluster import ClusterEngine
+import numpy as np
+
+@pytest.fixture
+def sample_chunks() -> list[Chunk]:
+    # Return 4 chunks
+    return [
+        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=5)
+        for i in range(4)
+    ]
+
+@pytest.fixture
+def sample_embeddings() -> np.ndarray:
+    # 4 embeddings with 2 groups
+    # Group 1: indices 0, 1 (all ones)
+    # Group 2: indices 2, 3 (all twos)
+    return np.array([
+        [1.0, 1.0], [1.0, 1.0],
+        [2.0, 2.0], [2.0, 2.0]
+    ])
+
+@patch("matome.engines.cluster.UMAP")
+@patch("matome.engines.cluster.GaussianMixture")
+def test_clustering_with_gmm(mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
+    # Setup mocks
+    mock_umap_instance = MagicMock()
+    mock_umap_cls.return_value = mock_umap_instance
+    # Reduce to 2 dimensions for GMM
+    reduced_embeddings = np.array([
+        [0.1, 0.1], [0.1, 0.1],
+        [0.9, 0.9], [0.9, 0.9]
+    ])
+    mock_umap_instance.fit_transform.return_value = reduced_embeddings
+
+    mock_gmm_instance = MagicMock()
+    mock_gmm_cls.return_value = mock_gmm_instance
+    # Predict returns cluster labels: [0, 0, 1, 1]
+    mock_gmm_instance.predict.return_value = np.array([0, 0, 1, 1])
+    # n_components_ is needed if we use it, but predict is key
+    mock_gmm_instance.n_components = 2
+    # Mock BIC scores: lowest for n=2 (first call)
+    mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]
+
+    # Instantiate engine
+    config = ProcessingConfig(clustering_algorithm="gmm")
+    engine = ClusterEngine(config)
+
+    # Perform clustering
+    clusters = engine.perform_clustering(sample_chunks, sample_embeddings)
+
+    # We expect 2 clusters
+    assert len(clusters) == 2
+
+    # Check cluster 0
+    c0 = next(c for c in clusters if c.id == 0)
+    assert set(c0.node_indices) == {0, 1}
+
+    # Check cluster 1
+    c1 = next(c for c in clusters if c.id == 1)
+    assert set(c1.node_indices) == {2, 3}
+
+    # Verify calls
+    mock_umap_cls.assert_called_once()
+    mock_gmm_cls.assert_called() # Could be called multiple times for BIC search
+    mock_umap_instance.fit_transform.assert_called_with(sample_embeddings)
+
+def test_empty_chunks(sample_chunks: list[Chunk]) -> None:
+    config = ProcessingConfig()
+    engine = ClusterEngine(config)
+    assert engine.perform_clustering([], np.array([])) == []
+
+@patch("matome.engines.cluster.UMAP")
+@patch("matome.engines.cluster.GaussianMixture")
+def test_fixed_n_clusters(mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
+    # Setup mocks
+    mock_umap_instance = MagicMock()
+    mock_umap_cls.return_value = mock_umap_instance
+    mock_umap_instance.fit_transform.return_value = sample_embeddings
+
+    mock_gmm_instance = MagicMock()
+    mock_gmm_cls.return_value = mock_gmm_instance
+    mock_gmm_instance.predict.return_value = np.zeros(len(sample_chunks))
+
+    # Config with fixed clusters
+    config = ProcessingConfig(n_clusters=3)
+    engine = ClusterEngine(config)
+
+    engine.perform_clustering(sample_chunks, sample_embeddings)
+
+    # Should create GMM with n_components=3
+    mock_gmm_cls.assert_called_with(n_components=3, random_state=42)
+
+def test_single_cluster_forced(sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
+    # Test that we handle n_clusters=1 gracefully if needed
+    config = ProcessingConfig(n_clusters=1)
+    engine = ClusterEngine(config)
+
+    # We don't need extensive mocks since we are just checking param passing logic mostly
+    # But we need UMAP/GMM to not crash
+    with patch("matome.engines.cluster.UMAP") as mock_umap, \
+         patch("matome.engines.cluster.GaussianMixture") as mock_gmm:
+
+        mock_umap.return_value.fit_transform.return_value = sample_embeddings
+        mock_gmm.return_value.predict.return_value = np.zeros(len(sample_chunks))
+
+        clusters = engine.perform_clustering(sample_chunks, sample_embeddings)
+
+        assert len(clusters) == 1
+        assert clusters[0].id == 0
+        assert len(clusters[0].node_indices) == 4
+
+        # Verify GMM called with 1 component
+        mock_gmm.assert_called_with(n_components=1, random_state=42)
+
+def test_very_small_dataset_skip(sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
+    # Test skipping UMAP/GMM for < 3 samples
+    small_chunks = sample_chunks[:2]
+    small_embeddings = sample_embeddings[:2]
+
+    config = ProcessingConfig()
+    engine = ClusterEngine(config)
+
+    with patch("matome.engines.cluster.UMAP") as mock_umap, \
+         patch("matome.engines.cluster.GaussianMixture") as mock_gmm:
+
+         clusters = engine.perform_clustering(small_chunks, small_embeddings)
+
+         assert len(clusters) == 1
+         assert clusters[0].id == 0
+         assert len(clusters[0].node_indices) == 2
+
+         # Verify engines NOT called
+         mock_umap.assert_not_called()
+         mock_gmm.assert_not_called()
