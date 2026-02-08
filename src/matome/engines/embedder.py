@@ -62,8 +62,8 @@ class EmbeddingService:
                     show_progress_bar=False
                 )
                 all_embeddings.append(batch_embeddings)
-            except Exception as e:
-                logger.exception(f"Failed to encode batch starting at index {i}: {e}")
+            except Exception:
+                logger.exception(f"Failed to encode batch starting at index {i}")
                 raise
 
         # Concatenate all batches
