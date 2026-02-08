@@ -9,7 +9,7 @@ from matome.engines.cluster import ClusterEngine
 
 
 @pytest.fixture
-def sample_chunks():
+def sample_chunks() -> list[Chunk]:
     # Return 4 chunks
     return [
         Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=5)
@@ -17,7 +17,7 @@ def sample_chunks():
     ]
 
 @pytest.fixture
-def sample_embeddings():
+def sample_embeddings() -> np.ndarray:
     # 4 embeddings with 2 groups
     # Group 1: indices 0, 1 (all ones)
     # Group 2: indices 2, 3 (all twos)
@@ -28,7 +28,7 @@ def sample_embeddings():
 
 @patch("matome.engines.cluster.UMAP")
 @patch("matome.engines.cluster.GaussianMixture")
-def test_clustering_with_gmm(mock_gmm_cls, mock_umap_cls, sample_chunks, sample_embeddings) -> None:
+def test_clustering_with_gmm(mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
     # Setup mocks
     mock_umap_instance = MagicMock()
     mock_umap_cls.return_value = mock_umap_instance
@@ -71,14 +71,14 @@ def test_clustering_with_gmm(mock_gmm_cls, mock_umap_cls, sample_chunks, sample_
     mock_gmm_cls.assert_called() # Could be called multiple times for BIC search
     mock_umap_instance.fit_transform.assert_called_with(sample_embeddings)
 
-def test_empty_chunks(sample_chunks) -> None:
+def test_empty_chunks(sample_chunks: list[Chunk]) -> None:
     config = ProcessingConfig()
     engine = ClusterEngine(config)
     assert engine.perform_clustering([], np.array([])) == []
 
 @patch("matome.engines.cluster.UMAP")
 @patch("matome.engines.cluster.GaussianMixture")
-def test_fixed_n_clusters(mock_gmm_cls, mock_umap_cls, sample_chunks, sample_embeddings) -> None:
+def test_fixed_n_clusters(mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
     # Setup mocks
     mock_umap_instance = MagicMock()
     mock_umap_cls.return_value = mock_umap_instance

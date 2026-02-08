@@ -2,19 +2,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.embedder import EmbeddingService
 
 
 @pytest.fixture
-def sample_chunks():
+def sample_chunks() -> list[Chunk]:
     return [
         Chunk(index=0, text="Hello world", start_char_idx=0, end_char_idx=11),
         Chunk(index=1, text="Test sentence", start_char_idx=12, end_char_idx=25)
     ]
 
 @patch("matome.engines.embedder.SentenceTransformer")
-def test_embed_chunks(mock_st_cls, sample_chunks) -> None:
+def test_embed_chunks(mock_st_cls: MagicMock, sample_chunks: list[Chunk]) -> None:
     # Mock the instance returned by SentenceTransformer()
     mock_instance = MagicMock()
     mock_st_cls.return_value = mock_instance
@@ -26,7 +27,8 @@ def test_embed_chunks(mock_st_cls, sample_chunks) -> None:
         [0.2] * 1024
     ])
 
-    service = EmbeddingService(model_name="test-model")
+    config = ProcessingConfig(embedding_model="test-model", embedding_batch_size=2)
+    service = EmbeddingService(config)
     chunks = service.embed_chunks(sample_chunks)
 
     # Check if chunks have embeddings
@@ -37,6 +39,9 @@ def test_embed_chunks(mock_st_cls, sample_chunks) -> None:
     # Verify calls
     mock_st_cls.assert_called_with("test-model")
     mock_instance.encode.assert_called_once()
+
+    # Check arguments: should have batch_size
     args, kwargs = mock_instance.encode.call_args
     assert args[0] == ["Hello world", "Test sentence"]
+    assert kwargs.get('batch_size') == 2
     assert kwargs.get('convert_to_numpy') is True

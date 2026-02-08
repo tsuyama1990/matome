@@ -20,13 +20,19 @@ class ProcessingConfig(BaseModel):
     embedding_model: str = Field(
         default="intfloat/multilingual-e5-large", description="HuggingFace model name for embeddings."
     )
+    embedding_batch_size: int = Field(
+        default=32, ge=1, description="Batch size for embedding generation."
+    )
 
     # Clustering Configuration
     clustering_algorithm: str = Field(
-        default="gmm", description="Algorithm to use (e.g., 'gmm', 'agglomerative')."
+        default="gmm", description="Algorithm to use (e.g., 'gmm'). Currently only 'gmm' is supported."
     )
     n_clusters: int | None = Field(
         default=None, description="Fixed number of clusters (if applicable)."
+    )
+    random_state: int = Field(
+        default=42, description="Random seed for reproducibility."
     )
 
     # Summarization Configuration

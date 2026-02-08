@@ -24,7 +24,8 @@ def test_scenario_05_embedding_vector_generation() -> None:
             list(np.random.rand(1024))
         ])
 
-        service = EmbeddingService()
+        config = ProcessingConfig()
+        service = EmbeddingService(config)
         embedded_chunks = service.embed_chunks(chunks)
 
         for chunk in embedded_chunks:

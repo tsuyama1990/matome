@@ -18,6 +18,16 @@ class ClusterEngine:
         """
         self.config = config
 
+        # Validate algorithm
+        if config.clustering_algorithm != "gmm":
+            # Just log warning or raise error? Spec says "gmm" default.
+            # Feedback says "Validation".
+            # If someone sets something else, we should probably fail if we don't support it.
+            # But spec mentioned 'agglomerative' as future possibility.
+            # For now, strict validation:
+            msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
+            raise ValueError(msg)
+
     def perform_clustering(
         self,
         chunks: list[Chunk],
@@ -47,25 +57,17 @@ class ClusterEngine:
             return [Cluster(id=0, level=0, node_indices=[0])]
 
         # Adjust n_neighbors for small datasets
-        # UMAP requires n_neighbors < n_samples ideally, but definitely n_neighbors <= n_samples - 1 if using precomputed?
-        # Actually standard UMAP needs n_neighbors to be small enough.
         effective_n_neighbors = min(n_neighbors, n_samples - 1)
         effective_n_neighbors = max(effective_n_neighbors, 2) # Minimum viable for UMAP?
 
-        # If still too small for UMAP (e.g. 2 samples), UMAP might complain if n_neighbors >= n_samples
-        if n_samples <= 3:
-             # Just return one cluster for extremely small sets if UMAP is risky,
-             # or proceed with careful params.
-             # Let's try to proceed but force n_components=1 for GMM if needed.
-             pass
-
         # 1. Dimensionality Reduction (UMAP)
         # Reduce to 2 dimensions for GMM as per spec
+        # UMAP is generally batch-oriented.
         reducer = UMAP(
             n_neighbors=effective_n_neighbors,
             min_dist=min_dist,
             n_components=2,
-            random_state=42,  # Deterministic results
+            random_state=self.config.random_state,  # Use config
         )
         reduced_embeddings = reducer.fit_transform(embeddings)
 
@@ -76,7 +78,7 @@ class ClusterEngine:
         else:
             n_components = self._calculate_optimal_clusters(reduced_embeddings)
 
-        gmm = GaussianMixture(n_components=n_components, random_state=42)
+        gmm = GaussianMixture(n_components=n_components, random_state=self.config.random_state)
         gmm.fit(reduced_embeddings)
         labels = gmm.predict(reduced_embeddings)
 
@@ -114,7 +116,7 @@ class ClusterEngine:
         bics = []
         n_range = range(2, max_clusters + 1)
         for n in n_range:
-            gmm = GaussianMixture(n_components=n, random_state=42)
+            gmm = GaussianMixture(n_components=n, random_state=self.config.random_state)
             gmm.fit(embeddings)
             bics.append(gmm.bic(embeddings))
 

@@ -3,7 +3,7 @@ from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster
 
 
-def test_chunk_embedding_field():
+def test_chunk_embedding_field() -> None:
     chunk = Chunk(
         index=0,
         text="test",
@@ -13,7 +13,7 @@ def test_chunk_embedding_field():
     )
     assert chunk.embedding == [0.1, 0.2, 0.3]
 
-def test_chunk_embedding_optional():
+def test_chunk_embedding_optional() -> None:
     chunk = Chunk(
         index=0,
         text="test",
@@ -22,14 +22,14 @@ def test_chunk_embedding_optional():
     )
     assert chunk.embedding is None
 
-def test_config_embedding_model():
+def test_config_embedding_model() -> None:
     config = ProcessingConfig()
     assert config.embedding_model == "intfloat/multilingual-e5-large"
 
     config = ProcessingConfig(embedding_model="other/model")
     assert config.embedding_model == "other/model"
 
-def test_cluster_node_indices():
+def test_cluster_node_indices() -> None:
     cluster = Cluster(
         id=1,
         level=0,

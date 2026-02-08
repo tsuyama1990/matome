@@ -1,25 +1,30 @@
+import numpy as np
 from sentence_transformers import SentenceTransformer
 
+from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 
 
 class EmbeddingService:
     """Service for generating vector embeddings for chunks."""
 
-    def __init__(self, model_name: str = "intfloat/multilingual-e5-large") -> None:
+    def __init__(self, config: ProcessingConfig) -> None:
         """
         Initialize the embedding service.
 
         Args:
-            model_name: The name of the HuggingFace model to use.
+            config: Processing configuration.
         """
-        self.model_name = model_name
+        self.config = config
+        self.model_name = config.embedding_model
         # Initialize the model immediately (load weights)
-        self.model = SentenceTransformer(model_name)
+        self.model = SentenceTransformer(self.model_name)
 
     def embed_chunks(self, chunks: list[Chunk]) -> list[Chunk]:
         """
         Embeds a list of chunks in-place and returns them.
+
+        This method processes chunks in batches to avoid high memory usage.
 
         Args:
             chunks: List of Chunk objects to embed.
@@ -31,12 +36,31 @@ class EmbeddingService:
             return []
 
         texts = [chunk.text for chunk in chunks]
-        # Calculate embeddings for all texts in batch
-        # convert_to_numpy=True returns ndarray, we want list[float]
-        embeddings = self.model.encode(texts, convert_to_numpy=True)
+        batch_size = self.config.embedding_batch_size
+
+        # Calculate embeddings in batches
+        all_embeddings = []
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i : i + batch_size]
+            # model.encode supports batch_size too, but explicit loop gives more control if needed
+            # sentence-transformers encode handles batching internally if we pass batch_size parameter,
+            # but slicing here ensures we control the input list size too.
+            # Actually, encode takes full list and `batch_size` param.
+            # However, providing a massive list to `encode` still creates a massive tokenized input.
+            # So explicit slicing is safer for extremely large inputs.
+            batch_embeddings = self.model.encode(
+                batch_texts,
+                batch_size=batch_size,
+                convert_to_numpy=True,
+                show_progress_bar=False
+            )
+            all_embeddings.append(batch_embeddings)
+
+        # Concatenate all batches
+        final_embeddings = np.vstack(all_embeddings) if all_embeddings else np.array([])
 
         # Assign embeddings back to chunks
-        for chunk, embedding in zip(chunks, embeddings, strict=True):
+        for chunk, embedding in zip(chunks, final_embeddings, strict=True):
             chunk.embedding = embedding.tolist()
 
         return chunks
