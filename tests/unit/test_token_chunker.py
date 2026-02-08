@@ -120,8 +120,16 @@ def test_chunker_very_long_input() -> None:
 def test_chunker_count_tokens() -> None:
     """Test the count_tokens method."""
     chunker = JapaneseTokenChunker()
+
+    # Normal case
     text = "hello world"
     count = chunker.count_tokens(text)
     assert count > 0
-    # "hello world" is usually 2 tokens in cl100k_base
     assert count == 2
+
+    # Empty case
+    assert chunker.count_tokens("") == 0
+
+    # Very long string case
+    long_text = "word " * 1000
+    assert chunker.count_tokens(long_text) > 0

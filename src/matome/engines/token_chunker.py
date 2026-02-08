@@ -11,7 +11,9 @@ from matome.utils.text import normalize_text, split_sentences
 # Configure logger
 logger = logging.getLogger(__name__)
 
-# List of allowed tiktoken model names for security validation
+# List of allowed tiktoken model names for security validation.
+# We whitelist specific models to prevent arbitrary string injection or unexpected resource usage
+# (e.g., loading a model that requires downloading large files or behaving unexpectedly).
 ALLOWED_MODELS = {
     "cl100k_base",
     "p50k_base",
