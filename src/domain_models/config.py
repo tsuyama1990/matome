@@ -42,6 +42,9 @@ class ProcessingConfig(BaseModel):
     max_summary_tokens: int = Field(
         default=200, ge=1, description="Target token count for summaries."
     )
+    max_retries: int = Field(
+        default=3, ge=0, description="Maximum number of retries for LLM calls."
+    )
 
     @classmethod
     def default(cls) -> Self:
