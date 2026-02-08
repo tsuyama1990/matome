@@ -16,3 +16,9 @@ def test_read_file_not_found() -> None:
     """Test reading a non-existent file raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         read_file("non_existent_file.txt")
+
+def test_read_file_is_directory(tmp_path: Path) -> None:
+    """Test reading a directory raises ValueError."""
+    # tmp_path is a directory
+    with pytest.raises(ValueError, match="Not a file"):
+        read_file(tmp_path)

@@ -1,5 +1,5 @@
 from domain_models.config import ProcessingConfig
-from matome.engines.chunker import JapaneseSemanticChunker
+from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.utils.text import normalize_text, split_sentences
 
 
@@ -28,7 +28,7 @@ def test_uat_scenario_04_chunk_size() -> None:
     sentence = "これは長い文章のテストです。" * 10
     text = sentence * 10
 
-    chunker = JapaneseSemanticChunker()
+    chunker = JapaneseTokenChunker()
     config = ProcessingConfig(max_tokens=50) # Small limit to force chunking
     chunks = chunker.split_text(text, config)
 
