@@ -1,6 +1,10 @@
+import logging
 from typing import Any, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 # Define a type alias for Metadata to improve readability and consistency.
 # Metadata is a flexible dictionary used to store arbitrary context (e.g., source file path,
@@ -47,32 +51,32 @@ class Chunk(BaseModel):
         Strictly, if text is non-empty, start < end.
         If text is empty (unlikely but possible), start == end.
         But generally chunks should have content.
-
-        Let's enforce start <= end generally, and maybe warn or fail on empty content?
-        The feedback requested: "Disallow zero-length chunks".
-        So: start < end AND text not empty.
         """
         if self.start_char_idx > self.end_char_idx:
             msg = (
                 f"start_char_idx ({self.start_char_idx}) cannot be greater than "
                 f"end_char_idx ({self.end_char_idx})"
             )
+            logger.error(msg)
             raise ValueError(msg)
 
         # Check for zero length if strictly required
         if self.start_char_idx == self.end_char_idx and self.text:
             # If text has content but indices are same -> error
              msg = f"Zero-length range ({self.start_char_idx}-{self.end_char_idx}) but text is not empty."
+             logger.error(msg)
              raise ValueError(msg)
 
         if not self.text and self.start_char_idx != self.end_char_idx:
              # If text is empty but range is not -> error
              msg = f"Empty text but range is not zero-length ({self.start_char_idx}-{self.end_char_idx})."
+             logger.error(msg)
              raise ValueError(msg)
 
         # Disallow empty chunks entirely?
         if not self.text:
             msg = "Chunk text cannot be empty."
+            logger.error(msg)
             raise ValueError(msg)
 
         return self

@@ -118,3 +118,24 @@ def test_single_cluster_forced(sample_chunks: list[Chunk], sample_embeddings: np
 
         # Verify GMM called with 1 component
         mock_gmm.assert_called_with(n_components=1, random_state=42)
+
+def test_very_small_dataset_skip(sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
+    # Test skipping UMAP/GMM for < 3 samples
+    small_chunks = sample_chunks[:2]
+    small_embeddings = sample_embeddings[:2]
+
+    config = ProcessingConfig()
+    engine = ClusterEngine(config)
+
+    with patch("matome.engines.cluster.UMAP") as mock_umap, \
+         patch("matome.engines.cluster.GaussianMixture") as mock_gmm:
+
+         clusters = engine.perform_clustering(small_chunks, small_embeddings)
+
+         assert len(clusters) == 1
+         assert clusters[0].id == 0
+         assert len(clusters[0].node_indices) == 2
+
+         # Verify engines NOT called
+         mock_umap.assert_not_called()
+         mock_gmm.assert_not_called()

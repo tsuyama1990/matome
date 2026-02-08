@@ -54,9 +54,16 @@ class ClusterEngine:
 
         n_samples = len(chunks)
 
-        # Edge case: Single chunk or very few chunks
+        # Edge case: Single chunk
         if n_samples == 1:
             return [Cluster(id=0, level=0, node_indices=[0])]
+
+        # Edge case: Very small dataset (< 3 samples).
+        # UMAP/GMM is unreliable or overkill. Just create one cluster for all.
+        # Alternatively, could create 1 cluster per chunk, but grouping is safer for summarization context.
+        if n_samples < 3:
+            logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
+            return [Cluster(id=0, level=0, node_indices=[c.index for c in chunks])]
 
         # Adjust n_neighbors for small datasets
         effective_n_neighbors = min(n_neighbors, n_samples - 1)
@@ -70,7 +77,6 @@ class ClusterEngine:
 
         # 1. Dimensionality Reduction (UMAP)
         # Reduce to 2 dimensions for GMM as per spec
-        # UMAP is generally batch-oriented.
         reducer = UMAP(
             n_neighbors=effective_n_neighbors,
             min_dist=min_dist,

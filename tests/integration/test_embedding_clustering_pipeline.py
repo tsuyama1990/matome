@@ -8,12 +8,15 @@ from domain_models.manifest import Chunk
 from matome.engines.cluster import ClusterEngine
 from matome.engines.embedder import EmbeddingService
 
+TEST_SMALL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 @pytest.fixture
 def sample_chunks() -> list[Chunk]:
     return [
         Chunk(index=0, text="Chunk 0", start_char_idx=0, end_char_idx=7),
         Chunk(index=1, text="Chunk 1", start_char_idx=8, end_char_idx=15),
+        Chunk(index=2, text="Chunk 2", start_char_idx=16, end_char_idx=23),
+        Chunk(index=3, text="Chunk 3", start_char_idx=24, end_char_idx=31),
     ]
 
 @patch("matome.engines.embedder.SentenceTransformer")
@@ -23,15 +26,21 @@ def test_full_pipeline_mocked(mock_gmm: MagicMock, mock_umap: MagicMock, mock_st
     # Setup mocks
     mock_st_instance = MagicMock()
     mock_st.return_value = mock_st_instance
-    mock_st_instance.encode.return_value = np.array([[0.1]*10]*2) # 2 chunks, 10 dim
+    # 4 chunks, 10 dim
+    mock_st_instance.encode.return_value = np.array([[0.1]*10]*4)
 
     mock_umap_instance = MagicMock()
     mock_umap.return_value = mock_umap_instance
-    mock_umap_instance.fit_transform.return_value = np.array([[0.1, 0.1], [0.9, 0.9]])
+    # 4 samples reduced to 2 dim
+    mock_umap_instance.fit_transform.return_value = np.array([
+        [0.1, 0.1], [0.1, 0.1],
+        [0.9, 0.9], [0.9, 0.9]
+    ])
 
     mock_gmm_instance = MagicMock()
     mock_gmm.return_value = mock_gmm_instance
-    mock_gmm_instance.predict.return_value = np.array([0, 1])
+    # Predict returns cluster labels: [0, 0, 1, 1]
+    mock_gmm_instance.predict.return_value = np.array([0, 0, 1, 1])
     mock_gmm_instance.n_components = 2
     mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0]
 
@@ -51,14 +60,16 @@ def test_full_pipeline_mocked(mock_gmm: MagicMock, mock_umap: MagicMock, mock_st
 
     assert len(clusters) == 2
     assert clusters[0].id == 0
-    assert clusters[0].node_indices == [0]
+    # Cluster 0 should contain indices 0 and 1
+    assert set(clusters[0].node_indices) == {0, 1}
     assert clusters[1].id == 1
-    assert clusters[1].node_indices == [1]
+    # Cluster 1 should contain indices 2 and 3
+    assert set(clusters[1].node_indices) == {2, 3}
 
 @pytest.mark.skip(reason="Requires external model download, potentially slow")
 def test_real_pipeline_small() -> None:
     # This test runs without mocks using a small model
-    # Use 'paraphrase-MiniLM-L3-v2' which is very small
+    # Use a small model defined in constant
 
     chunks = [
         Chunk(index=0, text="Apple pie recipe", start_char_idx=0, end_char_idx=16),
@@ -68,7 +79,8 @@ def test_real_pipeline_small() -> None:
     ]
 
     config = ProcessingConfig(
-        embedding_model="sentence-transformers/all-MiniLM-L6-v2", # Small model
+        embedding_model=TEST_SMALL_MODEL, # Small model
+        embedding_batch_size=2, # Force batching (4 chunks / 2 = 2 batches)
         n_clusters=2 # Force 2 clusters
     )
 

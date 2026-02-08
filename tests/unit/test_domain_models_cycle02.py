@@ -1,3 +1,5 @@
+import pytest
+from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster
@@ -38,3 +40,12 @@ def test_cluster_node_indices() -> None:
     assert cluster.node_indices == [1, 2, 3]
     assert cluster.id == 1
     assert cluster.level == 0
+
+def test_invalid_config_parameters() -> None:
+    # Test invalid embedding_batch_size (must be >= 1)
+    with pytest.raises(ValidationError):
+        ProcessingConfig(embedding_batch_size=0)
+
+    # Test valid embedding_batch_size
+    config = ProcessingConfig(embedding_batch_size=1)
+    assert config.embedding_batch_size == 1
