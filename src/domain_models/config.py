@@ -3,8 +3,8 @@ from typing import Self
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class ProcessingConfig(BaseModel):
-    """Configuration for text processing and chunking."""
+class ChunkingConfig(BaseModel):
+    """Configuration for text chunking."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -16,16 +16,26 @@ class ProcessingConfig(BaseModel):
         default="cl100k_base", description="Tokenizer model/encoding name to use."
     )
 
-    # Embedding Configuration
-    embedding_model: str = Field(
+
+class EmbeddingConfig(BaseModel):
+    """Configuration for embedding generation."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_name: str = Field(
         default="intfloat/multilingual-e5-large", description="HuggingFace model name for embeddings."
     )
-    embedding_batch_size: int = Field(
+    batch_size: int = Field(
         default=32, ge=1, description="Batch size for embedding generation."
     )
 
-    # Clustering Configuration
-    clustering_algorithm: str = Field(
+
+class ClusteringConfig(BaseModel):
+    """Configuration for clustering (UMAP + GMM)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    algorithm: str = Field(
         default="gmm", description="Algorithm to use (e.g., 'gmm'). Currently only 'gmm' is supported."
     )
     n_clusters: int | None = Field(
@@ -35,7 +45,7 @@ class ProcessingConfig(BaseModel):
         default=42, description="Random seed for reproducibility."
     )
 
-    # UMAP Configuration (Dimensionality Reduction)
+    # UMAP Configuration
     umap_n_components: int = Field(
         default=5, ge=2, description="Number of dimensions for UMAP reduction."
     )
@@ -46,7 +56,7 @@ class ProcessingConfig(BaseModel):
         default="cosine", description="Distance metric for UMAP."
     )
 
-    # GMM Configuration (Clustering)
+    # GMM Configuration
     gmm_n_components_min: int = Field(
         default=2, ge=2, description="Minimum number of clusters for GMM BIC search."
     )
@@ -57,18 +67,37 @@ class ProcessingConfig(BaseModel):
         default="full", description="Covariance type for GMM."
     )
 
-    # Summarization Configuration
-    summarization_model: str = Field(
+
+class SummarizationConfig(BaseModel):
+    """Configuration for summarization."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    model_name: str = Field(
         default="gpt-4o", description="Model to use for summarization."
     )
     max_summary_tokens: int = Field(
         default=200, ge=1, description="Target token count for summaries."
     )
 
+
+class ProcessingConfig(BaseModel):
+    """
+    Main configuration aggregating all sub-configurations.
+    This acts as the single source of truth for pipeline settings.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    chunking: ChunkingConfig = Field(default_factory=ChunkingConfig)
+    embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
+    clustering: ClusteringConfig = Field(default_factory=ClusteringConfig)
+    summarization: SummarizationConfig = Field(default_factory=SummarizationConfig)
+
     @classmethod
     def default(cls) -> Self:
         """
-        Returns the default configuration using Pydantic defaults.
+        Returns the default configuration.
         """
         return cls()
 
@@ -77,4 +106,6 @@ class ProcessingConfig(BaseModel):
         """
         Returns a configuration optimized for higher precision (smaller chunks).
         """
-        return cls(max_tokens=200, overlap=20)
+        return cls(
+            chunking=ChunkingConfig(max_tokens=200, overlap=20)
+        )

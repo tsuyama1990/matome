@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Protocol, runtime_checkable
 
 from domain_models.config import ProcessingConfig
@@ -13,7 +14,7 @@ class Chunker(Protocol):
     manageable segments (chunks) while preserving semantic meaning as much as possible.
     """
 
-    def split_text(self, text: str, config: ProcessingConfig) -> list[Chunk]:
+    def split_text(self, text: str | Iterable[str], config: ProcessingConfig) -> list[Chunk]:
         """
         Split text into chunks.
 
@@ -21,7 +22,8 @@ class Chunker(Protocol):
         the configuration provided (e.g., max_tokens).
 
         Args:
-            text: The full input text to be processed. If empty, should return an empty list.
+            text: The full input text or an iterable of text segments (for streaming).
+                  If empty, should return an empty list.
             config: Configuration parameters including `max_tokens` and `overlap`.
 
         Returns:

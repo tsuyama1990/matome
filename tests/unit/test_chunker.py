@@ -1,6 +1,8 @@
+from collections.abc import Iterator
+
 import pytest
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ChunkingConfig, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.chunker import JapaneseTokenChunker
 
@@ -9,7 +11,7 @@ def test_chunker_basic() -> None:
     """Test basic chunking functionality."""
     chunker = JapaneseTokenChunker()
     text = "文１。文２。文３。"
-    config = ProcessingConfig(max_tokens=100)
+    config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=100))
     chunks = chunker.split_text(text, config)
 
     assert isinstance(chunks, list)
@@ -22,6 +24,23 @@ def test_chunker_basic() -> None:
     # Note: '１' (full-width) becomes '1' (half-width) after normalization
     assert "文1" in reconstructed
 
+def test_chunker_streaming() -> None:
+    """Test chunking with an iterable stream."""
+    chunker = JapaneseTokenChunker()
+
+    def text_stream() -> Iterator[str]:
+        yield "これは"
+        yield "テストです。"
+        yield "次の文。"
+
+    config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=100))
+    chunks = chunker.split_text(text_stream(), config)
+
+    assert len(chunks) > 0
+    full_text = "".join(c.text for c in chunks)
+    assert "これはテストです。" in full_text
+    assert "次の文。" in full_text
+
 def test_chunker_max_tokens() -> None:
     """Test that chunks respect max_tokens."""
     # Create a long text
@@ -29,7 +48,7 @@ def test_chunker_max_tokens() -> None:
     text = sentence * 20 # 2000+ chars
 
     chunker = JapaneseTokenChunker()
-    config = ProcessingConfig(max_tokens=200)
+    config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=200))
     chunks = chunker.split_text(text, config)
 
     assert len(chunks) > 1
@@ -46,13 +65,16 @@ def test_chunker_max_tokens() -> None:
 def test_chunker_invalid_model_security() -> None:
     """
     Test that invalid model names (not in whitelist) raise ValueError immediately,
-    with no fallback to default.
+    and verify the error message content.
     """
+    # Test initialization (if provided)
     with pytest.raises(ValueError, match="not in the allowed list"):
-        JapaneseTokenChunker(model_name="invalid_model_name_that_does_not_exist")
+        JapaneseTokenChunker(model_name="gpt-4-turbo-malicious")
 
+    # Test count_tokens
+    chunker = JapaneseTokenChunker()
     with pytest.raises(ValueError, match="not in the allowed list"):
-        JapaneseTokenChunker(model_name="a" * 100) # Long name check
+        chunker.count_tokens("test", model_name="malicious_model")
 
 def test_chunker_empty_input() -> None:
     """Test that empty input returns an empty list."""
@@ -70,7 +92,7 @@ def test_chunker_single_sentence_exceeds_limit() -> None:
     # Create a sentence longer than limit
     # 'a' is 1 token in cl100k_base.
     long_sentence = "a" * 150 + "。"
-    config = ProcessingConfig(max_tokens=100)
+    config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=100))
 
     # Current behavior: it appends the sentence even if it exceeds limits (no recursive splitting yet)
     chunks = chunker.split_text(long_sentence, config)
@@ -83,7 +105,7 @@ def test_chunker_unicode() -> None:
     """Test handling of emojis and special unicode characters."""
     chunker = JapaneseTokenChunker()
     text = "Hello 🌍! This is a test 🧪. 日本語もOKですか？はい。"
-    config = ProcessingConfig(max_tokens=50)
+    config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=50))
     chunks = chunker.split_text(text, config)
 
     assert len(chunks) > 0
@@ -99,7 +121,7 @@ def test_chunker_very_long_input() -> None:
     # 10,000 sentences * ~10 chars = 100,000 chars
     text = "これはテストです。" * 10000
     chunker = JapaneseTokenChunker()
-    config = ProcessingConfig(max_tokens=1000)
+    config = ProcessingConfig(chunking=ChunkingConfig(max_tokens=1000))
 
     chunks = chunker.split_text(text, config)
     assert len(chunks) > 0

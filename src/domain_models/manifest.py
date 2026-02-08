@@ -1,5 +1,5 @@
-from typing import Any, TypeAlias
 import logging
+from typing import Any, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -46,6 +46,7 @@ class Chunk(BaseModel):
         """
         Validate chunk integrity.
         Ensures text is not empty and indices align with text length.
+        Also validates embedding integrity if present.
         """
         if not self.text:
             msg = "Chunk text cannot be empty."
@@ -72,7 +73,23 @@ class Chunk(BaseModel):
              logger.error(msg)
              raise ValueError(msg)
 
+        if self.embedding is not None and len(self.embedding) == 0:
+            msg = "Embedding vector cannot be empty if provided."
+            logger.error(msg)
+            raise ValueError(msg)
+
         return self
+
+    def require_embedding(self) -> list[float]:
+        """
+        Returns the embedding if present, otherwise raises ValueError.
+        Use this when processing requires embeddings.
+        """
+        if self.embedding is None:
+            msg = f"Chunk {self.index} requires an embedding but none is set."
+            logger.error(msg)
+            raise ValueError(msg)
+        return self.embedding
 
 
 class SummaryNode(BaseModel):

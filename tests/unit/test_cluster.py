@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ClusteringConfig, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.cluster import ClusterEngine
 
@@ -49,7 +49,7 @@ def test_clustering_with_gmm(mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, 
     mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]
 
     # Instantiate engine
-    config = ProcessingConfig(clustering_algorithm="gmm")
+    config = ProcessingConfig(clustering=ClusteringConfig(algorithm="gmm"))
     engine = ClusterEngine(config)
 
     # Perform clustering
@@ -89,7 +89,7 @@ def test_fixed_n_clusters(mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sam
     mock_gmm_instance.predict.return_value = np.zeros(len(sample_chunks))
 
     # Config with fixed clusters
-    config = ProcessingConfig(n_clusters=3)
+    config = ProcessingConfig(clustering=ClusteringConfig(n_clusters=3))
     engine = ClusterEngine(config)
 
     engine.perform_clustering(sample_chunks, sample_embeddings)
@@ -99,7 +99,7 @@ def test_fixed_n_clusters(mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sam
 
 def test_single_cluster_forced(sample_chunks: list[Chunk], sample_embeddings: np.ndarray) -> None:
     # Test that we handle n_clusters=1 gracefully if needed
-    config = ProcessingConfig(n_clusters=1)
+    config = ProcessingConfig(clustering=ClusteringConfig(n_clusters=1))
     engine = ClusterEngine(config)
 
     # We don't need extensive mocks since we are just checking param passing logic mostly

@@ -1,25 +1,23 @@
 import logging
 import os
+from collections.abc import Iterable, Iterator
 from functools import lru_cache
 
 import tiktoken
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
-from matome.utils.text import iter_sentences, normalize_text
+from matome.utils.text import SENTENCE_SPLIT_PATTERN, normalize_text
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
 # List of allowed tiktoken model names for security validation.
+# Only tokenization/embedding models are allowed. LLM models (e.g., gpt-4) are excluded.
 ALLOWED_MODELS = {
     "cl100k_base",
     "p50k_base",
     "r50k_base",
-    "gpt2",
-    "gpt-3.5-turbo",
-    "gpt-4",
-    "gpt-4o",
     "text-embedding-ada-002",
     "text-embedding-3-small",
     "text-embedding-3-large",
@@ -60,13 +58,66 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
         raise ValueError(msg) from e
 
 
-def _perform_chunking(text: str, max_tokens: int, model_name: str) -> list[Chunk]:
+def _extract_sentences(buffer: str, is_final: bool) -> tuple[list[str], int]:
     """
-    Core chunking logic.
+    Helper to extract complete sentences from buffer.
+    Returns a list of sentences and the index where processing stopped.
     """
-    # 1. Normalize
-    normalized_text = normalize_text(text)
+    sentences = []
+    last_idx = 0
+    matches = list(SENTENCE_SPLIT_PATTERN.finditer(buffer))
 
+    for match in matches:
+        sep_start = match.start()
+        sep_end = match.end()
+
+        # If not final, avoid splitting at the very end (incomplete separator)
+        if not is_final and sep_end == len(buffer):
+            break
+
+        sentence = buffer[last_idx:sep_start].strip()
+        if sentence:
+            sentences.append(sentence)
+        last_idx = sep_end
+
+    return sentences, last_idx
+
+
+def _iter_sentences_from_stream(text_iter: Iterable[str]) -> Iterator[str]:
+    """
+    Yield sentences from a stream of text chunks.
+    Handles buffering to ensure regex splitting works across chunk boundaries.
+    """
+    buffer = ""
+
+    for block in text_iter:
+        if not block:
+            continue
+
+        buffer += normalize_text(block)
+
+        sentences, processed_idx = _extract_sentences(buffer, is_final=False)
+        yield from sentences
+
+        if processed_idx > 0:
+            buffer = buffer[processed_idx:]
+
+    # Process remaining buffer
+    if buffer:
+        sentences, processed_idx = _extract_sentences(buffer, is_final=True)
+        yield from sentences
+
+        # Remaining text after last separator
+        if processed_idx < len(buffer):
+            remaining = buffer[processed_idx:].strip()
+            if remaining:
+                yield remaining
+
+
+def _perform_chunking(text_iter: Iterable[str], max_tokens: int, model_name: str) -> list[Chunk]:
+    """
+    Core chunking logic with streaming support.
+    """
     # Retrieve tokenizer
     tokenizer = get_cached_tokenizer(model_name)
 
@@ -85,10 +136,11 @@ def _perform_chunking(text: str, max_tokens: int, model_name: str) -> list[Chunk
             metadata={},
         )
 
-    # Use iterator for sentences
-    for sentence in iter_sentences(normalized_text):
+    # Use iterator for sentences from stream
+    for sentence in _iter_sentences_from_stream(text_iter):
         sentence_tokens = len(tokenizer.encode(sentence))
 
+        # Check if adding this sentence exceeds the limit
         if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:
             chunk_text = "".join(current_chunk_sentences)
             chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
@@ -114,59 +166,65 @@ class JapaneseTokenChunker:
     """
     Chunking engine optimized for Japanese text.
     Uses regex-based sentence splitting and token-based merging.
+    Supports streaming input.
 
     This implements the Chunker protocol.
     """
 
     def __init__(self, model_name: str | None = None) -> None:
         """
-        Initialize the chunker with a specific tokenizer model.
+        Initialize the chunker.
 
         Args:
-            model_name: The name of the encoding to use.
-                        Defaults to TIKTOKEN_MODEL_NAME env var or "cl100k_base".
+            model_name: Optional default model name for count_tokens.
+                        If not provided, falls back to env var or cl100k_base.
+                        Validates the model name against allowed list.
         """
-        # If model_name is not provided, use env var or default "cl100k_base"
-        if model_name is None:
-            model_name = os.getenv("TIKTOKEN_MODEL_NAME", "cl100k_base")
+        self.default_model_name = model_name or os.getenv("TIKTOKEN_MODEL_NAME") or "cl100k_base"
 
-        # Strict validation: This will raise ValueError if invalid.
-        # No fallback here - caller must handle or ensure config is correct.
-        self.tokenizer = get_cached_tokenizer(model_name)
+        # Validate immediately if it's going to be used as default
+        # This catches security issues early if user passes an invalid model
+        get_cached_tokenizer(self.default_model_name)
 
-    def count_tokens(self, text: str) -> int:
+    def count_tokens(self, text: str, model_name: str | None = None) -> int:
         """Count tokens in text."""
         if not text:
             return 0
-        return len(self.tokenizer.encode(text))
+        model = model_name or self.default_model_name
+        tokenizer = get_cached_tokenizer(model)
+        return len(tokenizer.encode(text))
 
-    def split_text(self, text: str, config: ProcessingConfig) -> list[Chunk]:
+    def split_text(self, text: str | Iterable[str], config: ProcessingConfig) -> list[Chunk]:
         """
         Split text into chunks.
 
         Args:
-            text: Raw input text.
-            config: Configuration including max_tokens and tokenizer_model.
+            text: Raw input text (str) or iterable of text segments.
+            config: Configuration including chunking settings.
 
         Returns:
             List of Chunk objects.
         """
         if not text:
-            logger.warning("Empty input text provided to split_text. Returning empty list.")
+            # Return empty list for None, empty string, or empty containers
             return []
 
-        logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
+        # Use model from config
+        model_name = config.chunking.tokenizer_model
 
-        chunking_model_name = self.tokenizer.name # e.g. "cl100k_base"
+        # If text is string, wrap in list for uniform processing
+        if isinstance(text, str):
+             text_iter: Iterable[str] = [text]
+        else:
+             text_iter = text
 
-        chunks = _perform_chunking(text, config.max_tokens, chunking_model_name)
+        logger.debug(f"Splitting text with max_tokens={config.chunking.max_tokens}, model={model_name}")
+
+        chunks = _perform_chunking(text_iter, config.chunking.max_tokens, model_name)
 
         logger.info(f"Successfully split text into {len(chunks)} chunks.")
         return chunks
 
 
 # Alias for backward compatibility.
-# Note: The original spec called for "Semantic Chunking", but the implementation
-# evolved to use Token Chunking for efficiency. This alias is maintained for
-# code that expects the old name.
 JapaneseSemanticChunker = JapaneseTokenChunker

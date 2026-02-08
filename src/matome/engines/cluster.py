@@ -18,13 +18,13 @@ class ClusterEngine:
 
         Args:
             config: Processing configuration containing clustering parameters.
-                    Currently, only 'gmm' is supported for `clustering_algorithm`.
+                    Currently, only 'gmm' is supported for `clustering.algorithm`.
         """
         self.config = config
 
         # Validate algorithm
-        if config.clustering_algorithm != "gmm":
-            msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
+        if config.clustering.algorithm != "gmm":
+            msg = f"Unsupported clustering algorithm: {config.clustering.algorithm}. Only 'gmm' is supported."
             raise ValueError(msg)
 
     def perform_clustering(
@@ -83,7 +83,7 @@ class ClusterEngine:
         logger.debug(
             f"Starting clustering with {n_samples} samples. "
             f"UMAP: n_neighbors={effective_n_neighbors}, min_dist={min_dist}. "
-            f"GMM: n_clusters={self.config.n_clusters or 'auto'}."
+            f"GMM: n_clusters={self.config.clustering.n_clusters or 'auto'}."
         )
 
         # 1. Dimensionality Reduction (UMAP)
@@ -91,17 +91,17 @@ class ClusterEngine:
             n_neighbors=effective_n_neighbors,
             min_dist=min_dist,
             n_components=2,
-            random_state=self.config.random_state,
+            random_state=self.config.clustering.random_state,
         )
         reduced_embeddings = reducer.fit_transform(embeddings)
 
         # 2. GMM Clustering
-        if self.config.n_clusters:
-            n_components = self.config.n_clusters
+        if self.config.clustering.n_clusters:
+            n_components = self.config.clustering.n_clusters
         else:
             n_components = self._calculate_optimal_clusters(reduced_embeddings)
 
-        gmm = GaussianMixture(n_components=n_components, random_state=self.config.random_state)
+        gmm = GaussianMixture(n_components=n_components, random_state=self.config.clustering.random_state)
         gmm.fit(reduced_embeddings)
         labels = gmm.predict(reduced_embeddings)
 
@@ -139,7 +139,7 @@ class ClusterEngine:
         bics = []
         n_range = range(2, max_clusters + 1)
         for n in n_range:
-            gmm = GaussianMixture(n_components=n, random_state=self.config.random_state)
+            gmm = GaussianMixture(n_components=n, random_state=self.config.clustering.random_state)
             gmm.fit(embeddings)
             bics.append(gmm.bic(embeddings))
 

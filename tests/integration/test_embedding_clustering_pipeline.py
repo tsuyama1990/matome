@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ClusteringConfig, EmbeddingConfig, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.cluster import ClusterEngine
 from matome.engines.embedder import EmbeddingService
@@ -66,7 +66,8 @@ def test_full_pipeline_mocked(mock_gmm: MagicMock, mock_umap: MagicMock, mock_st
     # Cluster 1 should contain indices 2 and 3
     assert set(clusters[1].node_indices) == {2, 3}
 
-@pytest.mark.skip(reason="Requires external model download, potentially slow")
+# Removed @pytest.mark.skip to meet requirements.
+# The test will skip internally if models cannot be downloaded.
 def test_real_pipeline_small() -> None:
     # This test runs without mocks using a small model
     # Use a small model defined in constant
@@ -79,9 +80,8 @@ def test_real_pipeline_small() -> None:
     ]
 
     config = ProcessingConfig(
-        embedding_model=TEST_SMALL_MODEL, # Small model
-        embedding_batch_size=2, # Force batching (4 chunks / 2 = 2 batches)
-        n_clusters=2 # Force 2 clusters
+        embedding=EmbeddingConfig(model_name=TEST_SMALL_MODEL, batch_size=2),
+        clustering=ClusteringConfig(n_clusters=2)
     )
 
     # 1. Real Embedding

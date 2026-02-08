@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import EmbeddingConfig, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.embedder import EmbeddingService
 
@@ -27,7 +27,7 @@ def test_embed_chunks(mock_st_cls: MagicMock, sample_chunks: list[Chunk]) -> Non
         [0.2] * 1024
     ])
 
-    config = ProcessingConfig(embedding_model="test-model", embedding_batch_size=2)
+    config = ProcessingConfig(embedding=EmbeddingConfig(model_name="test-model", batch_size=2))
     service = EmbeddingService(config)
     chunks = service.embed_chunks(sample_chunks)
 

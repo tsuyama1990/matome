@@ -15,10 +15,10 @@ class EmbeddingService:
         Initialize the embedding service.
 
         Args:
-            config: Processing configuration containing `embedding_model` and `embedding_batch_size`.
+            config: Processing configuration containing `embedding` settings.
         """
         self.config = config
-        self.model_name = config.embedding_model
+        self.model_name = config.embedding.model_name
         # Initialize the model immediately (load weights)
         logger.info(f"Loading embedding model: {self.model_name}")
         self.model = SentenceTransformer(self.model_name)
@@ -41,7 +41,7 @@ class EmbeddingService:
             return []
 
         texts = [chunk.text for chunk in chunks]
-        batch_size = self.config.embedding_batch_size
+        batch_size = self.config.embedding.batch_size
 
         logger.debug(f"Generating embeddings for {len(chunks)} chunks with batch_size={batch_size}")
 
