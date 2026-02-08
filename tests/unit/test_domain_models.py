@@ -41,6 +41,11 @@ def test_chunk_validation() -> None:
     with pytest.raises(ValidationError):
         Chunk(index=0, text="text", start_char_idx=10, end_char_idx=5)
 
+    # Valid case: length mismatch allowed (due to normalization)
+    # text length 4, indices imply 10. Should pass now.
+    c_mismatch = Chunk(index=0, text="text", start_char_idx=0, end_char_idx=10)
+    assert c_mismatch.text == "text"
+
     # Invalid case: embedding integrity
     with pytest.raises(ValidationError):
         Chunk(
@@ -97,6 +102,14 @@ def test_cluster_validation() -> None:
         Cluster(
             id="c1",
             level=-1,
+            node_indices=[0]
+        )
+
+    # Invalid case: id must be string
+    with pytest.raises(ValidationError):
+        Cluster(
+            id=123, # type: ignore[arg-type]
+            level=0,
             node_indices=[0]
         )
 

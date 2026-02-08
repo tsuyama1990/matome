@@ -14,17 +14,16 @@ def test_cluster_engine_validation_nan() -> None:
     embeddings = np.array([[np.nan, 0.1]])
 
     with pytest.raises(ValueError, match="Embeddings contain NaN or Infinity values"):
-        engine.perform_clustering(chunks, embeddings)
+        engine.perform_clustering([0], embeddings)
 
 def test_cluster_engine_validation_inf() -> None:
     config = ProcessingConfig()
     engine = ClusterEngine(config)
-    chunks = [Chunk(index=0, text="a", start_char_idx=0, end_char_idx=1)]
     # Inf embedding
     embeddings = np.array([[np.inf, 0.1]])
 
     with pytest.raises(ValueError, match="Embeddings contain NaN or Infinity values"):
-        engine.perform_clustering(chunks, embeddings)
+        engine.perform_clustering([0], embeddings)
 
 def test_cluster_engine_empty_input() -> None:
     config = ProcessingConfig()
@@ -37,5 +36,5 @@ def test_cluster_engine_empty_input() -> None:
     chunks = [Chunk(index=0, text="a", start_char_idx=0, end_char_idx=1)]
     # Should perform clustering, but if embeddings is empty, logic might fail if not handled.
     # Added validation check for this.
-    clusters = engine.perform_clustering(chunks, np.array([]))
+    clusters = engine.perform_clustering([0], np.array([]))
     assert clusters == []

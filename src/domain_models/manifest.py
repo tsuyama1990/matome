@@ -66,17 +66,9 @@ class Chunk(BaseModel):
             logger.error(msg)
             raise ValueError(msg)
 
-        expected_len = self.end_char_idx - self.start_char_idx
-        if len(self.text) != expected_len:
-             # This might be too strict if there's complex whitespace handling,
-             # but generally for consistent systems it should hold.
-             # Given JapaneseTokenChunker logic, it holds.
-             msg = (
-                 f"Text length ({len(self.text)}) does not match index range "
-                 f"({expected_len} = {self.end_char_idx} - {self.start_char_idx})."
-             )
-             logger.error(msg)
-             raise ValueError(msg)
+        # We relax the strict length check because normalization (NFKC) can change length
+        # (e.g., full-width to half-width).
+        # We only check that if indices claim non-empty, text is not empty (already checked above).
 
         if self.embedding is not None and len(self.embedding) == 0:
             msg = "Embedding vector cannot be empty if provided."
@@ -122,7 +114,7 @@ class Cluster(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: int | str = Field(..., description="Cluster identifier.")
+    id: str = Field(..., description="Cluster identifier.")
     level: int = Field(..., ge=0, description="Level of the nodes in this cluster (0 for chunks).")
     node_indices: list[int | str] = Field(
         ..., description="Indices of nodes (Chunks or SummaryNodes) in this cluster."

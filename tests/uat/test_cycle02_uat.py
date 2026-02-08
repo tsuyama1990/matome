@@ -63,13 +63,14 @@ def test_scenario_06_clustering_logic() -> None:
         mock_gmm_instance.n_components = 2 # Simulate BIC finding 2
         mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]
 
-        clusters = engine.perform_clustering(chunks, embeddings, n_neighbors=2)
+        node_ids = [c.index for c in chunks]
+        clusters = engine.perform_clustering(node_ids, embeddings, n_neighbors=2)
 
         assert len(clusters) == 2
 
         # Verify grouping
-        cluster_0 = next(c for c in clusters if c.id == 0)
-        cluster_1 = next(c for c in clusters if c.id == 1)
+        cluster_0 = next(c for c in clusters if c.id == "0")
+        cluster_1 = next(c for c in clusters if c.id == "1")
 
         # Assuming cluster 0 and 1 are distinct, but their IDs might be swapped
         # Check that we have two sets of indices: {0,1,2} and {3,4,5}
@@ -92,8 +93,9 @@ def test_scenario_07_single_cluster() -> None:
     # With 1 sample, UMAP/GMM might fail if not handled.
     # I'll rely on the implementation to handle it (e.g. check len < 2).
 
-    clusters = engine.perform_clustering(chunks, embeddings)
+    node_ids = [c.index for c in chunks]
+    clusters = engine.perform_clustering(node_ids, embeddings)
 
     assert len(clusters) == 1
-    assert clusters[0].id == 0
+    assert clusters[0].id == "0"
     assert clusters[0].node_indices == [0]
