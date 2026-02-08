@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ProcessingConfig(BaseModel):
     """Configuration for text processing and chunking."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
     max_tokens: int = Field(default=500, ge=1, description="Maximum number of tokens per chunk.")
     overlap: int = Field(

@@ -62,15 +62,6 @@ def test_chunker_security_strict_validation() -> None:
     However, the constructor wraps it.
     So we verify that even a 'valid' tiktoken model that is NOT in our whitelist triggers fallback.
     """
-    # "gpt2" is in whitelist. "p50k_base" is in whitelist.
-    # Let's try a fake model name that tiktoken doesn't know -> constructor catches ValueError -> fallback.
-    # What about a model that tiktoken might know but we didn't whitelist?
-    # e.g. "gpt-4-0314" is not in our explicit set (though "gpt-4" is).
-    # Wait, "gpt-4-0314" maps to "cl100k_base".
-    # If we pass "gpt-4-0314", get_cached_tokenizer raises ValueError (not in whitelist).
-    # Constructor catches -> falls back to "cl100k_base" (which happens to be the same encoding).
-    # So the end result is correct behavior (safe fallback).
-
     # Let's verify that a very long model name triggers fallback (and thus was rejected by validation)
     long_name = "a" * 100
     chunker = JapaneseTokenChunker(model_name=long_name)
@@ -125,5 +116,12 @@ def test_chunker_very_long_input() -> None:
 
     chunks = chunker.split_text(text, config)
     assert len(chunks) > 0
-    # Should be roughly 100k chars / (1000 tokens * ~2 chars/token) = ~50 chunks?
-    # Exact number doesn't matter as much as completion without error.
+
+def test_chunker_count_tokens() -> None:
+    """Test the count_tokens method."""
+    chunker = JapaneseTokenChunker()
+    text = "hello world"
+    count = chunker.count_tokens(text)
+    assert count > 0
+    # "hello world" is usually 2 tokens in cl100k_base
+    assert count == 2

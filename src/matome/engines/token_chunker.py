@@ -61,6 +61,70 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
         raise ValueError(msg) from e
 
 
+@lru_cache(maxsize=16)
+def _perform_chunking(text: str, max_tokens: int, model_name: str) -> list[Chunk]:
+    """
+    Core chunking logic, cached for performance.
+
+    Args:
+        text: The full text to chunk.
+        max_tokens: Maximum tokens per chunk.
+        model_name: The tokenizer model name to use.
+
+    Returns:
+        A list of Chunk objects.
+    """
+    # 1. Normalize
+    normalized_text = normalize_text(text)
+
+    # 2. Split into sentences
+    sentences = split_sentences(normalized_text)
+
+    # Retrieve tokenizer
+    tokenizer = get_cached_tokenizer(model_name)
+
+    # Precompute token counts
+    sentence_infos = [(s, len(tokenizer.encode(s))) for s in sentences]
+
+    chunks: list[Chunk] = []
+    current_chunk_sentences: list[str] = []
+    current_tokens = 0
+    chunk_index = 0
+    start_char_idx = 0
+
+    def create_chunk(idx: int, content: str, start: int) -> Chunk:
+        return Chunk(
+            index=idx,
+            text=content,
+            start_char_idx=start,
+            end_char_idx=start + len(content),
+            metadata={},
+        )
+
+    for sentence, sentence_tokens in sentence_infos:
+        if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:
+            # Finalize current chunk
+            chunk_text = "".join(current_chunk_sentences)
+            chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
+
+            chunk_index += 1
+            start_char_idx += len(chunk_text)
+
+            # Reset
+            current_chunk_sentences = []
+            current_tokens = 0
+
+        current_chunk_sentences.append(sentence)
+        current_tokens += sentence_tokens
+
+    # Final chunk
+    if current_chunk_sentences:
+        chunk_text = "".join(current_chunk_sentences)
+        chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
+
+    return chunks
+
+
 class JapaneseTokenChunker:
     """
     Chunking engine optimized for Japanese text.
@@ -108,66 +172,16 @@ class JapaneseTokenChunker:
             logger.warning("Empty input text provided to split_text. Returning empty list.")
             return []
 
-        # 1. Normalize
-        normalized_text = normalize_text(text)
+        logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
 
-        # 2. Split into sentences
-        sentences = split_sentences(normalized_text)
-        logger.debug(f"Split text into {len(sentences)} sentences.")
+        # Delegate to cached function
+        # Note: self.tokenizer.name is the encoding name (e.g. "cl100k_base")
+        # However, get_cached_tokenizer takes a model name or encoding name.
+        # self.tokenizer.name is reliably an encoding name which is in ALLOWED_MODELS if it came from there.
+        # But wait, self.tokenizer is a tiktoken.Encoding object. Does it have a 'name' attribute?
+        # Yes: encoding.name returns 'cl100k_base' etc.
 
-        # Precompute token counts for performance
-        # This avoids repeated calls to self.tokenizer.encode inside the loop if we were doing more complex logic,
-        # but even for linear scan, it separates token counting from accumulation logic cleanly.
-        sentence_infos = [(s, self.count_tokens(s)) for s in sentences]
-
-        chunks: list[Chunk] = []
-        current_chunk_sentences: list[str] = []
-        current_tokens = 0
-        chunk_index = 0
-        start_char_idx = 0
-
-        for sentence, sentence_tokens in sentence_infos:
-            if current_tokens + sentence_tokens > config.max_tokens and current_chunk_sentences:
-                # Finalize current chunk
-                chunk_text = "".join(current_chunk_sentences)
-                chunks.append(self._create_chunk(chunk_index, chunk_text, start_char_idx))
-                logger.debug(f"Created chunk {chunk_index} with {current_tokens} tokens.")
-
-                chunk_index += 1
-                start_char_idx += len(chunk_text)
-
-                # Reset
-                current_chunk_sentences = []
-                current_tokens = 0
-
-            current_chunk_sentences.append(sentence)
-            current_tokens += sentence_tokens
-
-        # Final chunk
-        if current_chunk_sentences:
-            chunk_text = "".join(current_chunk_sentences)
-            chunks.append(self._create_chunk(chunk_index, chunk_text, start_char_idx))
-            logger.debug(f"Created final chunk {chunk_index} with {current_tokens} tokens.")
+        chunks = _perform_chunking(text, config.max_tokens, self.tokenizer.name)
 
         logger.info(f"Successfully split text into {len(chunks)} chunks.")
         return chunks
-
-    def _create_chunk(self, index: int, text: str, start_char_idx: int) -> Chunk:
-        """
-        Helper method to instantiate a Chunk object.
-
-        Args:
-            index: The sequential index of the chunk.
-            text: The content of the chunk.
-            start_char_idx: The starting character index in the processed stream.
-
-        Returns:
-            A populated Chunk model.
-        """
-        return Chunk(
-            index=index,
-            text=text,
-            start_char_idx=start_char_idx,
-            end_char_idx=start_char_idx + len(text),
-            metadata={},
-        )
