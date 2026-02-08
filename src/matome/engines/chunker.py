@@ -180,11 +180,17 @@ class JapaneseTokenChunker:
                         If not provided, falls back to env var or cl100k_base.
                         Validates the model name against allowed list.
         """
+        # If model_name is passed or read from env, it MUST be validated
         self.default_model_name = model_name or os.getenv("TIKTOKEN_MODEL_NAME") or "cl100k_base"
 
-        # Validate immediately if it's going to be used as default
-        # This catches security issues early if user passes an invalid model
-        get_cached_tokenizer(self.default_model_name)
+        # Validate immediately
+        # get_cached_tokenizer performs the check against ALLOWED_MODELS
+        # This prevents starting with an unsafe configuration
+        try:
+            get_cached_tokenizer(self.default_model_name)
+        except ValueError:
+            logger.exception(f"Invalid default model configuration: {self.default_model_name}")
+            raise
 
     def count_tokens(self, text: str, model_name: str | None = None) -> int:
         """Count tokens in text."""
@@ -205,9 +211,13 @@ class JapaneseTokenChunker:
         Returns:
             List of Chunk objects.
         """
-        if not text:
-            # Return empty list for None, empty string, or empty containers
+        if text is None:
             return []
+
+        # Check for emptiness only if it's falsy (empty str or empty list)
+        # If generator, we can't know without consuming.
+        if not text and isinstance(text, (str, list)):
+             return []
 
         # Use model from config
         model_name = config.chunking.tokenizer_model

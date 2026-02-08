@@ -19,9 +19,11 @@ def test_scenario_05_embedding_vector_generation() -> None:
         mock_instance = MagicMock()
         mock_st.return_value = mock_instance
         # Use small vector dimension (32) to save memory in tests
+        # Deterministic random state or fixed values
+        rng = np.random.RandomState(42)
         mock_instance.encode.return_value = np.array([
-            list(np.random.rand(32)),
-            list(np.random.rand(32))
+            list(rng.rand(32)),
+            list(rng.rand(32))
         ])
 
         config = ProcessingConfig()
@@ -37,9 +39,10 @@ def test_scenario_06_clustering_logic() -> None:
     # 3 Apple Pie, 3 Python
     chunks = [Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=len(f"Chunk {i}")) for i in range(6)]
 
-    # Use 10-dim vectors for simplicity
-    group_a = [np.random.normal(0, 0.1, 10).tolist() for _ in range(3)]
-    group_b = [np.random.normal(5, 0.1, 10).tolist() for _ in range(3)]
+    # Use 10-dim vectors for simplicity, using fixed seed
+    rng = np.random.RandomState(42)
+    group_a = [rng.normal(0, 0.1, 10).tolist() for _ in range(3)]
+    group_b = [rng.normal(5, 0.1, 10).tolist() for _ in range(3)]
     embeddings = np.array(group_a + group_b)
 
     config = ProcessingConfig(clustering=ClusteringConfig(algorithm="gmm"))

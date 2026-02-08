@@ -53,6 +53,11 @@ class Chunk(BaseModel):
             logger.error(msg)
             raise ValueError(msg)
 
+        if not self.text.strip():
+            msg = "Chunk text cannot be just whitespace (post-normalization check)."
+            logger.error(msg)
+            raise ValueError(msg)
+
         if self.start_char_idx >= self.end_char_idx:
             msg = (
                 f"Invalid indices: start_char_idx ({self.start_char_idx}) must be less than "
