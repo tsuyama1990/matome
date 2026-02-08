@@ -1,6 +1,6 @@
 from typing import Any, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Define a type alias for Metadata to improve readability and consistency.
 # Using Any allows for flexibility (strings, ints, lists of tags, etc.)
@@ -34,3 +34,14 @@ class Chunk(BaseModel):
     metadata: Metadata = Field(
         default_factory=dict, description="Optional extra info about the chunk."
     )
+
+    @model_validator(mode="after")
+    def check_indices(self) -> "Chunk":
+        """Validate that start_char_idx is less than or equal to end_char_idx."""
+        if self.start_char_idx > self.end_char_idx:
+            msg = (
+                f"start_char_idx ({self.start_char_idx}) cannot be greater than "
+                f"end_char_idx ({self.end_char_idx})"
+            )
+            raise ValueError(msg)
+        return self
