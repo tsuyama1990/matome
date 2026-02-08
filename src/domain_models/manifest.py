@@ -3,6 +3,8 @@ from typing import Any, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Define a type alias for Metadata to improve readability and consistency.
+# Metadata is a flexible dictionary used to store arbitrary context (e.g., source file path,
+# timestamps, author info, or processing metrics) that doesn't fit into the core schema.
 Metadata: TypeAlias = dict[str, Any]
 
 

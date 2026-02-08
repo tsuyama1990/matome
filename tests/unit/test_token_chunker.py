@@ -1,3 +1,5 @@
+import pytest
+
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.token_chunker import JapaneseTokenChunker
@@ -41,9 +43,17 @@ def test_chunker_max_tokens() -> None:
     # Assuming normalization doesn't change 'あ' and '。' width (it doesn't)
     assert len(full_text) == len(text)
 
-def test_chunker_invalid_model_fallback() -> None:
+def test_chunker_invalid_model_fallback(caplog: pytest.LogCaptureFixture) -> None:
     """Test fallback to cl100k_base when invalid model is provided."""
-    chunker = JapaneseTokenChunker(model_name="invalid_model_name")
+    # This should trigger a warning log and fallback
+    chunker = JapaneseTokenChunker(model_name="invalid_model_name_that_does_not_exist")
+    assert chunker.tokenizer.name == "cl100k_base"
+    assert "Tokenizer loading failed" in caplog.text
+
+def test_chunker_security_long_model_name() -> None:
+    """Test that extremely long model names trigger validation error (fallback)."""
+    long_name = "a" * 100
+    chunker = JapaneseTokenChunker(model_name=long_name)
     assert chunker.tokenizer.name == "cl100k_base"
 
 def test_chunker_empty_input() -> None:
@@ -84,3 +94,16 @@ def test_chunker_unicode() -> None:
     assert "🌍" in reconstructed
     assert "🧪" in reconstructed
     assert "日本語" in reconstructed
+
+def test_chunker_very_long_input() -> None:
+    """Test performance/recursion on very long input."""
+    # Create a massive string of repeated sentences
+    # 10,000 sentences * ~10 chars = 100,000 chars
+    text = "これはテストです。" * 10000
+    chunker = JapaneseTokenChunker()
+    config = ProcessingConfig(max_tokens=1000)
+
+    chunks = chunker.split_text(text, config)
+    assert len(chunks) > 0
+    # Should be roughly 100k chars / (1000 tokens * ~2 chars/token) = ~50 chunks?
+    # Exact number doesn't matter as much as completion without error.
