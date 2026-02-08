@@ -18,10 +18,10 @@ def test_scenario_05_embedding_vector_generation() -> None:
     with patch("matome.engines.embedder.SentenceTransformer") as mock_st:
         mock_instance = MagicMock()
         mock_st.return_value = mock_instance
-        # Return random 1024-dim vectors
+        # Use small vector dimension (32) to save memory in tests
         mock_instance.encode.return_value = np.array([
-            list(np.random.rand(1024)),
-            list(np.random.rand(1024))
+            list(np.random.rand(32)),
+            list(np.random.rand(32))
         ])
 
         config = ProcessingConfig()
@@ -30,14 +30,13 @@ def test_scenario_05_embedding_vector_generation() -> None:
 
         for chunk in embedded_chunks:
             assert chunk.embedding is not None
-            assert len(chunk.embedding) == 1024
+            assert len(chunk.embedding) == 32
 
 # Scenario 06: Clustering Logic Verification
 def test_scenario_06_clustering_logic() -> None:
     # 3 Apple Pie, 3 Python
     chunks = [Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(6)]
 
-    # Mock embeddings: first 3 are close, last 3 are close
     # Use 10-dim vectors for simplicity
     group_a = [np.random.normal(0, 0.1, 10).tolist() for _ in range(3)]
     group_b = [np.random.normal(5, 0.1, 10).tolist() for _ in range(3)]

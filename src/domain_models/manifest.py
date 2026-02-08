@@ -1,5 +1,5 @@
-import logging
 from typing import Any, TypeAlias
+import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 

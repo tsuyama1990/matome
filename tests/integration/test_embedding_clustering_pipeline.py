@@ -1,12 +1,11 @@
-from unittest.mock import MagicMock, patch
-
-import numpy as np
 import pytest
+from unittest.mock import MagicMock, patch
+import numpy as np
 
-from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
-from matome.engines.cluster import ClusterEngine
+from domain_models.config import ProcessingConfig
 from matome.engines.embedder import EmbeddingService
+from matome.engines.cluster import ClusterEngine
 
 TEST_SMALL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 

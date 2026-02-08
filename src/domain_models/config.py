@@ -46,24 +46,13 @@ class ProcessingConfig(BaseModel):
     @classmethod
     def default(cls) -> Self:
         """
-        Returns the default configuration.
-
-        Defaults:
-            max_tokens: 500
-            overlap: 0
-            tokenizer_model: cl100k_base
-            clustering: gmm
-            summarization: gpt-4o
+        Returns the default configuration using Pydantic defaults.
         """
-        return cls(max_tokens=500, overlap=0, tokenizer_model="cl100k_base")
+        return cls()
 
     @classmethod
     def high_precision(cls) -> Self:
         """
         Returns a configuration optimized for higher precision (smaller chunks).
-
-        Defaults:
-            max_tokens: 200
-            overlap: 20
         """
         return cls(max_tokens=200, overlap=20)

@@ -19,7 +19,6 @@ dependencies = [
     "tiktoken>=0.7.0",
     "numba>=0.59.0",
     "sentence-transformers>=2.7.0",
-    "umap-learn>=0.5.5",
 ]
 
 [project.optional-dependencies]
@@ -121,9 +120,3 @@ testpaths = ["tests"]
 strict = true
 mypy_path = "src"
 ignore_missing_imports = true
-
-[dependency-groups]
-dev = [
-    "mypy>=1.19.1",
-    "ruff>=0.15.0",
-]

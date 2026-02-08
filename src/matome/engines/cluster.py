@@ -24,8 +24,6 @@ class ClusterEngine:
 
         # Validate algorithm
         if config.clustering_algorithm != "gmm":
-            # But spec mentioned 'agglomerative' as future possibility.
-            # For now, strict validation:
             msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
             raise ValueError(msg)
 
@@ -52,15 +50,22 @@ class ClusterEngine:
         if not chunks:
             return []
 
+        # Input Validation
+        if embeddings.size == 0:
+            logger.warning("Empty embeddings array provided to clustering.")
+            return []
+
+        if np.isnan(embeddings).any() or np.isinf(embeddings).any():
+            msg = "Embeddings contain NaN or Infinity values."
+            raise ValueError(msg)
+
         n_samples = len(chunks)
 
         # Edge case: Single chunk
         if n_samples == 1:
-            return [Cluster(id=0, level=0, node_indices=[0])]
+            return [Cluster(id=0, level=0, node_indices=[chunks[0].index])]
 
         # Edge case: Very small dataset (< 3 samples).
-        # UMAP/GMM is unreliable or overkill. Just create one cluster for all.
-        # Alternatively, could create 1 cluster per chunk, but grouping is safer for summarization context.
         if n_samples < 3:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
             return [Cluster(id=0, level=0, node_indices=[c.index for c in chunks])]
@@ -82,17 +87,15 @@ class ClusterEngine:
         )
 
         # 1. Dimensionality Reduction (UMAP)
-        # Reduce to 2 dimensions for GMM as per spec
         reducer = UMAP(
             n_neighbors=effective_n_neighbors,
             min_dist=min_dist,
             n_components=2,
-            random_state=self.config.random_state,  # Use config
+            random_state=self.config.random_state,
         )
         reduced_embeddings = reducer.fit_transform(embeddings)
 
         # 2. GMM Clustering
-        # Find optimal clusters if n_clusters not set in config
         if self.config.n_clusters:
             n_components = self.config.n_clusters
         else:
@@ -107,12 +110,12 @@ class ClusterEngine:
         unique_labels = np.unique(labels)
         for label in unique_labels:
             indices = np.where(labels == label)[0]
-            # Convert numpy int64 to python int
-            node_indices: list[int | str] = [int(i) for i in indices]
+            # Robust type conversion using .item()
+            node_indices: list[int | str] = [int(indices[i].item()) for i in range(len(indices))]
 
             cluster = Cluster(
-                id=int(label),
-                level=0,  # Assuming level 0 for initial chunks
+                id=int(label.item()) if hasattr(label, "item") else int(label),
+                level=0,
                 node_indices=node_indices,
             )
             clusters.append(cluster)

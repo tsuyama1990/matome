@@ -1,6 +1,5 @@
 import logging
 
-import numpy as np
 from sentence_transformers import SentenceTransformer
 
 from domain_models.config import ProcessingConfig
@@ -29,6 +28,8 @@ class EmbeddingService:
         Embeds a list of chunks in-place and returns them.
 
         This method processes chunks in batches to avoid high memory usage.
+        It assigns embeddings to chunks immediately after processing each batch
+        to avoid accumulating a massive embeddings array in memory.
 
         Args:
             chunks: List of Chunk objects to embed.
@@ -44,33 +45,25 @@ class EmbeddingService:
 
         logger.debug(f"Generating embeddings for {len(chunks)} chunks with batch_size={batch_size}")
 
-        # Calculate embeddings in batches
-        all_embeddings = []
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i : i + batch_size]
-            # model.encode supports batch_size too, but explicit loop gives more control if needed
-            # sentence-transformers encode handles batching internally if we pass batch_size parameter,
-            # but slicing here ensures we control the input list size too.
-            # Actually, encode takes full list and `batch_size` param.
-            # However, providing a massive list to `encode` still creates a massive tokenized input.
-            # So explicit slicing is safer for extremely large inputs.
+            batch_chunks = chunks[i : i + batch_size]
+
             try:
+                # encode returns a numpy array or list of numpy arrays
                 batch_embeddings = self.model.encode(
                     batch_texts,
                     batch_size=batch_size,
                     convert_to_numpy=True,
                     show_progress_bar=False
                 )
-                all_embeddings.append(batch_embeddings)
+
+                # Assign immediately to chunks in this batch
+                for chunk, embedding in zip(batch_chunks, batch_embeddings, strict=True):
+                    chunk.embedding = embedding.tolist()
+
             except Exception:
                 logger.exception(f"Failed to encode batch starting at index {i}")
                 raise
-
-        # Concatenate all batches
-        final_embeddings = np.vstack(all_embeddings) if all_embeddings else np.array([])
-
-        # Assign embeddings back to chunks
-        for chunk, embedding in zip(chunks, final_embeddings, strict=True):
-            chunk.embedding = embedding.tolist()
 
         return chunks
