@@ -43,29 +43,16 @@ def test_chunker_max_tokens() -> None:
     # Assuming normalization doesn't change 'あ' and '。' width (it doesn't)
     assert len(full_text) == len(text)
 
-def test_chunker_invalid_model_fallback(caplog: pytest.LogCaptureFixture) -> None:
+def test_chunker_invalid_model_security() -> None:
     """
-    Test fallback to cl100k_base when invalid model is provided via constructor.
+    Test that invalid model names (not in whitelist) raise ValueError immediately,
+    with no fallback to default.
+    """
+    with pytest.raises(ValueError, match="not in the allowed list"):
+        JapaneseTokenChunker(model_name="invalid_model_name_that_does_not_exist")
 
-    The constructor catches ValueError from get_cached_tokenizer and falls back.
-    """
-    chunker = JapaneseTokenChunker(model_name="invalid_model_name_that_does_not_exist")
-    assert chunker.tokenizer.name == "cl100k_base"
-    assert "Tokenizer loading failed" in caplog.text
-
-def test_chunker_security_strict_validation() -> None:
-    """
-    Test that get_cached_tokenizer strictly raises ValueError for unknown models.
-
-    We need to access get_cached_tokenizer directly or check constructor behavior for unknown models
-    that are NOT in the whitelist but valid for tiktoken (e.g. if we used a new model name).
-    However, the constructor wraps it.
-    So we verify that even a 'valid' tiktoken model that is NOT in our whitelist triggers fallback.
-    """
-    # Let's verify that a very long model name triggers fallback (and thus was rejected by validation)
-    long_name = "a" * 100
-    chunker = JapaneseTokenChunker(model_name=long_name)
-    assert chunker.tokenizer.name == "cl100k_base"
+    with pytest.raises(ValueError, match="not in the allowed list"):
+        JapaneseTokenChunker(model_name="a" * 100) # Long name check
 
 def test_chunker_empty_input() -> None:
     """Test that empty input returns an empty list."""

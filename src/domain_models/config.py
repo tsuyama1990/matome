@@ -12,6 +12,9 @@ class ProcessingConfig(BaseModel):
     overlap: int = Field(
         default=0, ge=0, description="Number of overlapping tokens between chunks."
     )
+    tokenizer_model: str = Field(
+        default="cl100k_base", description="Tokenizer model/encoding name to use."
+    )
 
     # Clustering Configuration
     clustering_algorithm: str = Field(
@@ -37,10 +40,11 @@ class ProcessingConfig(BaseModel):
         Defaults:
             max_tokens: 500
             overlap: 0
+            tokenizer_model: cl100k_base
             clustering: gmm
             summarization: gpt-4o
         """
-        return cls(max_tokens=500, overlap=0)
+        return cls(max_tokens=500, overlap=0, tokenizer_model="cl100k_base")
 
     @classmethod
     def high_precision(cls) -> Self:
