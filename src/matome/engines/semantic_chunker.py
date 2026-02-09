@@ -56,13 +56,43 @@ class JapaneseSemanticChunker:
         if not sentences:
             return
 
-        # 2. Stream Embeddings and Calculate Distances
-        # We store distances, not embeddings, to be memory efficient.
+        # Handle single sentence case immediately
+        if len(sentences) == 1:
+            yield Chunk(
+                index=0,
+                text=sentences[0],
+                start_char_idx=0,
+                end_char_idx=len(sentences[0]),
+                embedding=None,
+            )
+            return
+
+        # 2. Calculate Distances
+        distances = self._calculate_semantic_distances(sentences)
+        if not distances:
+            # Should not happen given len > 1, but safety fallback
+            yield Chunk(
+                index=0,
+                text=sentences[0],
+                start_char_idx=0,
+                end_char_idx=len(sentences[0]),
+                embedding=None,
+            )
+            return
+
+        # 3. Create Chunks
+        yield from self._create_chunks(sentences, distances, config)
+
+    def _calculate_semantic_distances(self, sentences: list[str]) -> list[float]:
+        """
+        Stream embeddings and calculate cosine distances between adjacent sentences.
+        Returns a list of distances.
+        """
         distances: list[float] = []
         prev_embedding: np.ndarray | None = None
 
         try:
-            # embed_strings streams embeddings (batch by batch internally)
+            # embed_strings streams embeddings
             for embedding_list in self.embedder.embed_strings(sentences):
                 current_embedding = np.array(embedding_list)
 
@@ -76,7 +106,7 @@ class JapaneseSemanticChunker:
                     else:
                         sim = float(np.dot(prev_embedding, current_embedding) / (norm_a * norm_b))
 
-                    # Clamp sim to [-1, 1] to avoid float errors causing distance < 0 or > 2
+                    # Clamp sim to [-1, 1]
                     sim = max(-1.0, min(1.0, sim))
                     distances.append(1.0 - sim)
 
@@ -86,19 +116,14 @@ class JapaneseSemanticChunker:
             logger.exception("Failed to generate embeddings for sentences.")
             raise
 
-        if not distances:
-            # Only one sentence or empty
-            if len(sentences) == 1:
-                yield Chunk(
-                    index=0,
-                    text=sentences[0],
-                    start_char_idx=0,
-                    end_char_idx=len(sentences[0]),
-                    embedding=None,
-                )
-            return
+        return distances
 
-        # 3. Calculate Threshold
+    def _create_chunks(
+        self, sentences: list[str], distances: list[float], config: ProcessingConfig
+    ) -> Iterator[Chunk]:
+        """
+        Merge sentences into chunks based on semantic distance threshold.
+        """
         percentile_val = config.semantic_chunking_percentile
         threshold = np.percentile(distances, percentile_val)
 
@@ -106,7 +131,6 @@ class JapaneseSemanticChunker:
             f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile."
         )
 
-        # 4. Merge Sentences
         current_chunk_sentences: list[str] = [sentences[0]]
         current_chunk_len = len(sentences[0])
         current_start_idx = 0
