@@ -65,7 +65,8 @@ class JapaneseSemanticChunker:
         # 2. Embed sentences
         # Note: This might be expensive for very large documents.
         # Ideally, we should batch this or stream. But for now, we embed all.
-        embeddings = self.embedder.embed_strings(sentences)
+        # Convert iterator to list for indexing
+        embeddings = list(self.embedder.embed_strings(sentences))
 
         # 3. Merge sentences
         chunks: list[Chunk] = []

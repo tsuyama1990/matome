@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterable, Iterator
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -24,44 +25,60 @@ class EmbeddingService:
         logger.info(f"Loading embedding model: {self.model_name}")
         self.model = SentenceTransformer(self.model_name)
 
-    def embed_strings(self, texts: list[str]) -> list[list[float]]:
+    def embed_strings(self, texts: Iterable[str]) -> Iterator[list[float]]:
         """
-        Embeds a list of strings and returns their vectors.
+        Embeds an iterable of strings and yields their vectors.
+
+        This method processes inputs in batches to avoid loading all texts or embeddings into memory.
 
         Args:
-            texts: List of strings to embed.
+            texts: Iterable of strings to embed.
 
-        Returns:
-            List of embedding vectors (lists of floats).
+        Yields:
+            Embedding vectors (lists of floats).
         """
         if not texts:
-            return []
+            return
 
         batch_size = self.config.embedding_batch_size
-        all_embeddings: list[list[float]] = []
+        batch_texts: list[str] = []
 
-        logger.debug(f"Generating embeddings for {len(texts)} strings with batch_size={batch_size}")
+        # We use an explicit counter to log progress if needed,
+        # but mostly we just want to fill the batch.
 
-        for i in range(0, len(texts), batch_size):
-            batch_texts = texts[i : i + batch_size]
-            try:
-                batch_embeddings = self.model.encode(
-                    batch_texts,
-                    batch_size=batch_size,
-                    convert_to_numpy=True,
-                    show_progress_bar=False
-                )
-                if isinstance(batch_embeddings, np.ndarray):
-                     all_embeddings.extend(batch_embeddings.tolist())
-                else:
-                     # Fallback if list returned (rare with convert_to_numpy=True)
-                     all_embeddings.extend([e.tolist() for e in batch_embeddings])
+        for text in texts:
+            batch_texts.append(text)
 
-            except Exception:
-                logger.exception(f"Failed to encode batch starting at index {i}")
-                raise
+            if len(batch_texts) >= batch_size:
+                yield from self._process_batch(batch_texts)
+                batch_texts = []
 
-        return all_embeddings
+        # Process remaining
+        if batch_texts:
+            yield from self._process_batch(batch_texts)
+
+    def _process_batch(self, batch_texts: list[str]) -> Iterator[list[float]]:
+        """Helper to process a single batch."""
+        try:
+            batch_embeddings = self.model.encode(
+                batch_texts,
+                batch_size=len(batch_texts), # We already batched it manually
+                convert_to_numpy=True,
+                show_progress_bar=False
+            )
+
+            if isinstance(batch_embeddings, np.ndarray):
+                # Iterate over rows
+                for i in range(batch_embeddings.shape[0]):
+                    yield batch_embeddings[i].tolist()
+            else:
+                # List of tensors or arrays
+                for emb in batch_embeddings:
+                     yield emb.tolist()
+
+        except Exception:
+            logger.exception("Failed to encode batch.")
+            raise
 
     def embed_chunks(self, chunks: list[Chunk]) -> list[Chunk]:
         """
@@ -70,10 +87,13 @@ class EmbeddingService:
         if not chunks:
             return []
 
-        texts = [chunk.text for chunk in chunks]
-        embeddings = self.embed_strings(texts)
+        # Create a generator for texts
+        texts_gen = (chunk.text for chunk in chunks)
 
-        for chunk, embedding in zip(chunks, embeddings, strict=True):
+        # consume the generator
+        embeddings_gen = self.embed_strings(texts_gen)
+
+        for chunk, embedding in zip(chunks, embeddings_gen, strict=True):
             chunk.embedding = embedding
 
         return chunks

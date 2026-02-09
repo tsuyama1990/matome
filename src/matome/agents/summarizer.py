@@ -30,16 +30,18 @@ class SummarizationAgent:
         Args:
             model_name: The name of the model to use (default: google/gemini-flash-1.5).
         """
+        # Retrieve API key securely from environment via config utility
         api_key = get_openrouter_api_key()
         self.model_name = model_name
         self.api_key = api_key
         self.llm: ChatOpenAI | None = None
 
         # Initialize LLM only if API key is present (or if we want to allow failure later)
+        # Check for 'mock' value explicitly to enable testing mode without real calls
         if api_key and api_key != "mock":
             self.llm = ChatOpenAI(
                 model=model_name,
-                api_key=api_key,  # type: ignore[arg-type]
+                api_key=api_key,
                 base_url="https://openrouter.ai/api/v1",
                 temperature=0,
                 # We handle retries via tenacity wrapper now, but keeping internal retry low

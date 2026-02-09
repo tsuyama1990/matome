@@ -58,9 +58,9 @@ class GMMClusterer:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
 
-        # UMAP Parameters (could be moved to config if needed)
-        n_neighbors = 15
-        min_dist = 0.1
+        # UMAP Parameters from Config
+        n_neighbors = config.umap_n_neighbors
+        min_dist = config.umap_min_dist
 
         # Adjust n_neighbors for small datasets
         effective_n_neighbors = min(n_neighbors, n_samples - 1)

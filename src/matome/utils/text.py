@@ -36,17 +36,6 @@ def iter_sentences(text: str) -> Iterator[str]:
         sep_start = match.start()
         sep_end = match.end()
 
-        # The sentence is strictly before the separator start?
-        # No, because the lookbehind `(?<=X)` matches AFTER X.
-        # But wait, `sep_start` is the index where the MATCH starts.
-        # If pattern is `(?<=X)`, the match is technically zero-width if nothing follows.
-        # But `match.start()` returns the position.
-        # If `A。`, match is at 2. `text[0:2]` is `A。`.
-        # `sep_start` is 2.
-
-        # If pattern is `\n+`. `A\nB`. Match at 1. `sep_start` is 1.
-        # `text[0:1]` is `A`.
-
         sentence = text[last_idx:sep_start].strip()
         if sentence:
             yield sentence

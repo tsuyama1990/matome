@@ -61,6 +61,12 @@ class ProcessingConfig(BaseModel):
     random_state: int = Field(
         default=42, description="Random seed for reproducibility."
     )
+    umap_n_neighbors: int = Field(
+        default=15, ge=2, description="UMAP parameter: Number of neighbors for dimensionality reduction."
+    )
+    umap_min_dist: float = Field(
+        default=0.1, ge=0.0, description="UMAP parameter: Minimum distance between points."
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(

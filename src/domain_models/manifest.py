@@ -43,7 +43,9 @@ class Chunk(BaseModel):
     def check_indices(self) -> "Chunk":
         """
         Validate that start_char_idx is less than or equal to end_char_idx.
+        Also check embedding validity if present.
         """
+        # Index Validation
         if self.start_char_idx > self.end_char_idx:
             msg = (
                 f"start_char_idx ({self.start_char_idx}) cannot be greater than "
@@ -66,6 +68,17 @@ class Chunk(BaseModel):
             msg = "Chunk text cannot be empty."
             logger.error(msg)
             raise ValueError(msg)
+
+        # Embedding Validation
+        if self.embedding is not None:
+            if not self.embedding:
+                msg = "Embedding cannot be an empty list."
+                logger.error(msg)
+                raise ValueError(msg)
+            if any(not isinstance(x, (float, int)) for x in self.embedding):
+                 msg = "Embedding must contain only numeric values."
+                 logger.error(msg)
+                 raise ValueError(msg)
 
         return self
 
