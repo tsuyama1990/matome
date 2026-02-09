@@ -21,11 +21,11 @@ def test_semantic_chunker_merging(mock_embedder: MagicMock) -> None:
 
     # embed_strings will be called with ["文1。", "文2。", "文3。"]
     # Return vectors: S1=[1,0], S2=[1,0], S3=[0,1]
-    mock_embedder.embed_strings.return_value = [
+    mock_embedder.embed_strings.return_value = iter([
         [1.0, 0.0],
         [1.0, 0.0],
         [0.0, 1.0]
-    ]
+    ])
 
     chunker = JapaneseSemanticChunker(mock_embedder)
     config = ProcessingConfig(semantic_chunking_threshold=0.9, max_tokens=100)
@@ -42,10 +42,10 @@ def test_semantic_chunker_max_tokens(mock_embedder: MagicMock) -> None:
     # Setup: 2 sentences, similar, but max_tokens limits merging.
     text = "長い文1。長い文2。"
 
-    mock_embedder.embed_strings.return_value = [
+    mock_embedder.embed_strings.return_value = iter([
         [1.0, 0.0],
         [1.0, 0.0]
-    ]
+    ])
 
     chunker = JapaneseSemanticChunker(mock_embedder)
     # Set max_tokens very low to force split even if similar
@@ -81,3 +81,29 @@ def test_split_text_edge_cases(
     # Invalid input type
     with pytest.raises(TypeError, match="Input text must be a string"):
         chunker.split_text(123, config)  # type: ignore[arg-type]
+
+def test_split_text_special_characters(mock_embedder: MagicMock) -> None:
+    """Test handling of special characters and very short sentences."""
+    chunker = JapaneseSemanticChunker(mock_embedder)
+    config = ProcessingConfig()
+
+    # Special characters that might confuse regex or normalization
+    text = "Test! @#$%^&*()_+ 123.\nAnother line."
+
+    mock_embedder.embed_strings.return_value = iter([
+        [1.0, 0.0], # Test! ...
+        [0.0, 1.0]  # Another line.
+    ])
+
+    chunks = chunker.split_text(text, config)
+    assert len(chunks) > 0
+    assert "Test!" in chunks[0].text
+
+    # Very short sentence
+    text_short = "A. B."
+    mock_embedder.embed_strings.return_value = iter([
+        [1.0], [1.0]
+    ])
+    chunks_short = chunker.split_text(text_short, config)
+    assert len(chunks_short) > 0
+    assert "A." in chunks_short[0].text

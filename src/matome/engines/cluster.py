@@ -82,7 +82,14 @@ class GMMClusterer:
     ) -> tuple[int, int]:
         """
         Stream embeddings to disk in batches.
-        Returns (n_samples, dim).
+
+        Args:
+            embeddings: Iterator of vectors.
+            path_obj: Path to the temporary binary file.
+            batch_size: Number of vectors to write at once.
+
+        Returns:
+            Tuple containing (n_samples, dim).
         """
         n_samples = 0
         dim = 0
@@ -101,10 +108,6 @@ class GMMClusterer:
                         raise ValueError(msg)
 
                 # Check dimensions and content for the batch
-                # We can do this efficiently with numpy if we trust the input structure,
-                # or loop if we need detailed error messages.
-                # For strict correctness per spec, we should validate.
-                # Converting to numpy first allows faster checking.
                 try:
                     np_batch = np.array(batch_list, dtype='float32')
                 except ValueError as e:
@@ -127,6 +130,7 @@ class GMMClusterer:
         return n_samples, dim
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
+        """Validate that the configured algorithm is supported."""
         algo = config.clustering_algorithm
         # Handle case where it's an Enum (normal) or a raw string (testing/bypassing validation)
         algo_value = algo.value if hasattr(algo, "value") else algo
@@ -141,6 +145,9 @@ class GMMClusterer:
     def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
         """
         Handle cases where the dataset is too small for meaningful clustering.
+
+        Returns:
+            List of Clusters if handled, None otherwise (proceed to normal clustering).
         """
         if n_samples == 1:
             return [Cluster(id=0, level=0, node_indices=[0])]
@@ -155,7 +162,17 @@ class GMMClusterer:
         return None
 
     def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
-        """Helper to run UMAP and GMM on the data (memmap or array)."""
+        """
+        Execute UMAP reduction and GMM clustering on the data.
+
+        Args:
+            data: The dataset (numpy array or memmap).
+            n_samples: Number of samples.
+            config: Configuration object.
+
+        Returns:
+            List of resulting Cluster objects.
+        """
         # UMAP Parameters
         n_neighbors = config.umap_n_neighbors
         min_dist = config.umap_min_dist
@@ -202,11 +219,13 @@ class GMMClusterer:
             # 3. Form Clusters
             return self._form_clusters(labels)
 
-        except Exception:
-            logger.exception("Clustering failed.")
-            raise
+        except Exception as e:
+            logger.exception("Clustering process failed during UMAP/GMM execution.")
+            msg = f"Clustering failed: {e}"
+            raise RuntimeError(msg) from e
 
     def _form_clusters(self, labels: np.ndarray) -> list[Cluster]:
+        """Convert clustering labels into Cluster objects."""
         clusters: list[Cluster] = []
         unique_labels = np.unique(labels)
         for label in unique_labels:
