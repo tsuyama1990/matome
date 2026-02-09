@@ -1,4 +1,5 @@
 import logging
+import tempfile
 
 import numpy as np
 from sklearn.mixture import GaussianMixture
@@ -39,15 +40,31 @@ class GMMClusterer:
         if not embeddings:
             return []
 
-        # Convert to numpy for processing
-        emb_array = np.array(embeddings)
-
-        # Input Validation
-        if np.isnan(emb_array).any() or np.isinf(emb_array).any():
-            msg = "Embeddings contain NaN or Infinity values."
-            raise ValueError(msg)
+        # Validate data integrity (no None embeddings)
+        # Note: Iterating to check integrity is fast enough
+        if any(e is None for e in embeddings):
+             msg = "Embeddings list contains None values."
+             raise ValueError(msg)
 
         n_samples = len(embeddings)
+        if n_samples == 0:
+            return []
+
+        dim = len(embeddings[0])
+
+        # Edge case: Single node or small dataset
+        # We must check for NaNs/Infs even in these cases if we want strict validation.
+        # Since n is small, we can convert to array/memmap and check, or check manually.
+        # Let's rely on _perform_clustering validation logic, BUT _perform_clustering
+        # is only called for n >= 3 usually.
+        # To ensure consistency, we should validate content before returning early results
+        # if the test demands it.
+        # For n < 3, checking explicitly:
+        if n_samples < 3:
+             for vec in embeddings:
+                 if any(np.isnan(x) or np.isinf(x) for x in vec):
+                      msg = "Embeddings contain NaN or Infinity values."
+                      raise ValueError(msg)
 
         # Edge case: Single node
         if n_samples == 1:
@@ -57,6 +74,39 @@ class GMMClusterer:
         if n_samples < 3:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
+
+        # Use memory-mapped file to avoid in-memory numpy array copy
+        # limiting OOM risk for large datasets
+
+        with tempfile.NamedTemporaryFile(delete=True) as tf:
+            # We need a filename for memmap
+            # NamedTemporaryFile is deleted on close. We keep it open or use name.
+            # On Linux/Unix, we can use the name while open.
+
+            # Create a memmap array matching the shape
+            # We use 'w+' to read/write
+            mm_array = np.memmap(tf, dtype='float32', mode='w+', shape=(n_samples, dim))
+
+            # Copy data to memmap chunk by chunk or row by row
+            # Since input is a list, we iterate.
+            for i, emb in enumerate(embeddings):
+                mm_array[i] = emb
+
+            # Flush changes to disk
+            mm_array.flush()
+
+            # Now perform clustering using the memmap array
+            # Cleanup is handled by NamedTemporaryFile context exit
+            return self._perform_clustering(mm_array, n_samples, config)
+
+    def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
+        """Helper to run UMAP and GMM on the data (numpy array or memmap)."""
+
+        # Input Validation (checking nan/inf on the array/memmap)
+        # This might be expensive on memmap, but necessary.
+        if np.isnan(data).any() or np.isinf(data).any():
+             msg = "Embeddings contain NaN or Infinity values."
+             raise ValueError(msg)
 
         # UMAP Parameters from Config
         n_neighbors = config.umap_n_neighbors
@@ -85,7 +135,7 @@ class GMMClusterer:
             n_components=2,
             random_state=config.random_state,
         )
-        reduced_embeddings = reducer.fit_transform(emb_array)
+        reduced_embeddings = reducer.fit_transform(data)
 
         # 2. GMM Clustering
         if config.n_clusters:
@@ -103,17 +153,11 @@ class GMMClusterer:
         for label in unique_labels:
             indices = np.where(labels == label)[0]
             # Convert numpy indices to standard python ints for JSON serializability
-            # Note: Protocol defines node_indices as relative to the input list
             node_indices: list[NodeID] = [int(indices[i].item()) for i in range(len(indices))]
 
             cluster = Cluster(
                 id=int(label.item()) if hasattr(label, "item") else int(label),
-                level=0, # This level is relative to the current operation?
-                         # Actually Cluster object has 'level' field.
-                         # Usually clustering happens at a specific level.
-                         # The Clusterer doesn't know the level of input nodes.
-                         # We default to 0 or leave it to caller?
-                         # The field is required. Let's set to 0. Caller can update.
+                level=0,
                 node_indices=node_indices,
             )
             clusters.append(cluster)

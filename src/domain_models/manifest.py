@@ -22,7 +22,7 @@ class Document(BaseModel):
 class Chunk(BaseModel):
     """Represents a segment of text (Leaf Node in RAPTOR tree)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     index: int = Field(..., ge=0, description="Sequential ID of the chunk.")
     text: str = Field(..., description="The actual text content of the chunk.")

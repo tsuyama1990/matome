@@ -22,9 +22,16 @@ class EmbeddingService:
         """
         self.config = config
         self.model_name = config.embedding_model
-        # Initialize the model immediately (load weights)
-        logger.info(f"Loading embedding model: {self.model_name}")
-        self.model = SentenceTransformer(self.model_name)
+        # Lazy loading: Do not initialize model here.
+        self._model: SentenceTransformer | None = None
+
+    @property
+    def model(self) -> SentenceTransformer:
+        """Lazy loader for the SentenceTransformer model."""
+        if self._model is None:
+            logger.info(f"Loading embedding model: {self.model_name}")
+            self._model = SentenceTransformer(self.model_name)
+        return self._model
 
     def embed_strings(self, texts: Iterable[str]) -> Iterator[list[float]]:
         """
@@ -52,6 +59,7 @@ class EmbeddingService:
             return
 
         try:
+            # Access self.model (property) to trigger lazy load if needed
             batch_embeddings = self.model.encode(
                 batch_texts,
                 batch_size=len(batch_texts), # We already batched it manually

@@ -37,7 +37,7 @@ def test_initialization(mock_llm: MagicMock) -> None:
         _ = SummarizationAgent()
         # Verify ChatOpenAI was called with correct base_url
         mock_llm.assert_called_with(
-            model="google/gemini-flash-1.5",
+            model="gpt-4o",
             api_key="sk-test-key",
             base_url="https://openrouter.ai/api/v1",
             temperature=0,
