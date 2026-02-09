@@ -129,15 +129,27 @@ class RaptorEngine:
 
                 # Summarization
                 level += 1
-                new_nodes, new_summaries = self._summarize_clusters(
+                new_nodes_iter = self._summarize_clusters(
                     clusters, current_level_ids, active_store, level
                 )
 
                 current_level_ids = []
-                active_store.add_summaries(new_nodes)
-                for node in new_nodes:
+
+                # Process summary nodes in batches
+                summary_buffer: list[SummaryNode] = []
+                BATCH_SIZE = self.config.chunk_buffer_size
+
+                for node in new_nodes_iter:
                     all_summaries[node.id] = node
                     current_level_ids.append(node.id)
+                    summary_buffer.append(node)
+
+                    if len(summary_buffer) >= BATCH_SIZE:
+                        active_store.add_summaries(summary_buffer)
+                        summary_buffer.clear()
+
+                if summary_buffer:
+                    active_store.add_summaries(summary_buffer)
 
                 if len(current_level_ids) > 1:
                     clusters = self._next_level_clustering(current_level_ids, active_store)
@@ -152,32 +164,30 @@ class RaptorEngine:
         """Perform embedding and clustering for the next level (summaries)."""
 
         def lx_embedding_generator() -> Iterator[list[float]]:
-            # We need to coordinate embedding generation with updating the store.
-            # We iterate current_level_ids, fetch text, generate embedding, update store, and yield embedding.
+            # Generator that yields (id, text) tuples
+            def node_text_generator() -> Iterator[tuple[NodeID, str]]:
+                for nid in current_level_ids:
+                    node = store.get_node(nid)
+                    if node:
+                        yield nid, node.text
+                    else:
+                        logger.warning(f"Node {nid} not found in store during next level clustering.")
 
-            # 1. Fetch texts and keep track of IDs
-            # Note: We must ensure 1-to-1 mapping. If a node is missing, we skip it in both list and embedding?
-            # But current_level_ids drives the process.
-            # Let's assume nodes exist in store.
+            # Strategy: Batched processing manually
+            from matome.utils.compat import batched
 
-            valid_ids = []
-            texts = []
-            for nid in current_level_ids:
-                node = store.get_node(nid)
-                if node:
-                    valid_ids.append(nid)
-                    texts.append(node.text)
-                else:
-                    logger.warning(f"Node {nid} not found in store during next level clustering.")
+            # We process in batches to avoid loading all texts
+            for batch in batched(node_text_generator(), self.config.embedding_batch_size):
+                # batch is a tuple of (nid, text)
+                ids = [item[0] for item in batch]
+                texts = [item[1] for item in batch]
 
-            if not valid_ids:
-                return
+                # Embed batch (returns iterator)
+                embeddings = self.embedder.embed_strings(texts)
 
-            # 2. Embed and Update
-            # embed_strings is a generator. We zip it with valid_ids.
-            for nid, embedding in zip(valid_ids, self.embedder.embed_strings(texts), strict=True):
-                store.update_node_embedding(nid, embedding)
-                yield embedding
+                for nid, embedding in zip(ids, embeddings, strict=True):
+                    store.update_node_embedding(nid, embedding)
+                    yield embedding
 
         return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
 
@@ -191,6 +201,12 @@ class RaptorEngine:
         """Construct the final DocumentTree."""
         if not current_level_ids:
             # If input was empty?
+            if not l0_ids:
+                 # Should return empty tree if no chunks at all
+                 # But we need a dummy root? Or empty tree?
+                 # Returning minimal dummy tree for safety if logic requires return
+                 pass
+            # If current_level_ids empty but l0_ids not empty (unlikely unless summarization failed completely)
             msg = "No nodes remaining."
             raise ValueError(msg)
 
@@ -237,11 +253,8 @@ class RaptorEngine:
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
         level: int,
-    ) -> tuple[list[SummaryNode], dict[str, SummaryNode]]:
-        """Process clusters to generate summaries."""
-        new_nodes: list[SummaryNode] = []
-        new_summaries: dict[str, SummaryNode] = {}
-
+    ) -> Iterator[SummaryNode]:
+        """Process clusters to generate summaries (streaming)."""
         for cluster in clusters:
             children_indices: list[NodeID] = []
             cluster_texts: list[str] = []
@@ -256,6 +269,8 @@ class RaptorEngine:
                 children_indices.append(node_id)
                 cluster_texts.append(node.text)
 
+            # Note: For very large clusters, joining texts might still be memory intensive.
+            # But the summarizer typically takes a string.
             combined_text = "\n\n".join(cluster_texts)
             summary_text = self.summarizer.summarize(combined_text, self.config)
 
@@ -268,7 +283,4 @@ class RaptorEngine:
                 metadata={"cluster_id": cluster.id},
             )
 
-            new_nodes.append(summary_node)
-            new_summaries[node_id_str] = summary_node
-
-        return new_nodes, new_summaries
+            yield summary_node

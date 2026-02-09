@@ -1,19 +1,21 @@
 from collections.abc import Iterator
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree
+from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
+from matome.interfaces import Chunker, Clusterer, Summarizer
 
 
 @pytest.fixture
 def mock_dependencies() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
-    chunker = MagicMock()
-    embedder = MagicMock()
-    clusterer = MagicMock()
-    summarizer = MagicMock()
+    chunker = create_autospec(Chunker, instance=True)
+    embedder = create_autospec(EmbeddingService, instance=True)
+    clusterer = create_autospec(Clusterer, instance=True)
+    summarizer = create_autospec(Summarizer, instance=True)
     return chunker, embedder, clusterer, summarizer
 
 
