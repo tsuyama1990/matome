@@ -103,11 +103,12 @@ class Cluster(BaseModel):
     )
 
 
-class Tree(BaseModel):
+class DocumentTree(BaseModel):
     """Represents the full RAPTOR tree structure."""
 
     model_config = ConfigDict(extra="forbid")
 
-    chunks: list[Chunk] = Field(..., description="Original text chunks (Level 0).")
-    summaries: list[SummaryNode] = Field(..., description="Generated summary nodes (Level 1+).")
+    root_node: SummaryNode = Field(..., description="The root summary node.")
+    all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
+    leaf_chunks: list[Chunk] = Field(..., description="The original leaf chunks (Level 0).")
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")

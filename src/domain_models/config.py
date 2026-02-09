@@ -3,7 +3,7 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from matome.utils.constants import (
+from domain_models.constants import (
     DEFAULT_CLUSTERING_ALGORITHM,
     DEFAULT_EMBEDDING_BATCH_SIZE,
     DEFAULT_EMBEDDING_MODEL,

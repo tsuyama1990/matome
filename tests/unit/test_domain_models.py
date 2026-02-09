@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, Document, SummaryNode, Tree
+from domain_models.manifest import Chunk, Cluster, Document, DocumentTree, SummaryNode
 
 
 def test_document_validation() -> None:
@@ -83,8 +83,8 @@ def test_cluster_validation() -> None:
         )
 
 
-def test_tree_validation() -> None:
-    """Test Tree structure validation."""
+def test_document_tree_validation() -> None:
+    """Test DocumentTree structure validation."""
     # Setup components
     chunk1 = Chunk(index=0, text="A", start_char_idx=0, end_char_idx=1)
     chunk2 = Chunk(index=1, text="B", start_char_idx=1, end_char_idx=2)
@@ -95,13 +95,17 @@ def test_tree_validation() -> None:
         children_indices=[0, 1]
     )
 
-    # Valid Tree
-    tree = Tree(
-        chunks=[chunk1, chunk2],
-        summaries=[summary]
+    # Valid DocumentTree
+    tree = DocumentTree(
+        root_node=summary,
+        all_nodes={"s1": summary},
+        leaf_chunks=[chunk1, chunk2],
+        metadata={}
     )
-    assert len(tree.chunks) == 2
-    assert len(tree.summaries) == 1
+    assert tree.root_node.id == "s1"
+    assert len(tree.leaf_chunks) == 2
+    assert len(tree.all_nodes) == 1
+    assert tree.all_nodes["s1"] == summary
 
 
 def test_config_validation() -> None:

@@ -72,7 +72,7 @@ class GMMClusterer:
         if n_samples == 1:
             return [Cluster(id=0, level=0, node_indices=[0])]
 
-        if n_samples < 3:
+        if n_samples <= 5:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
 
