@@ -4,9 +4,11 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk
 
 if TYPE_CHECKING:
-    from domain_models.manifest import Chunk, DocumentTree
+    from domain_models.manifest import DocumentTree
+    from matome.utils.store import DiskChunkStore
 
 
 class CanvasNode(BaseModel):
@@ -65,12 +67,28 @@ class ObsidianCanvasExporter:
         self.NODE_WIDTH = self.config.canvas_node_width
         self.NODE_HEIGHT = self.config.canvas_node_height
 
-    def generate_canvas_data(self, tree: "DocumentTree") -> CanvasFile:
-        """Generates the canvas data structure from the document tree."""
+    def generate_canvas_data(
+        self, tree: "DocumentTree", store: "DiskChunkStore | None" = None
+    ) -> CanvasFile:
+        """
+        Generates the canvas data structure from the document tree.
+
+        Args:
+            tree: The DocumentTree to export.
+            store: Optional DiskChunkStore to retrieve leaf chunk text.
+                   If None, leaf chunks will be missing text.
+        """
         self.nodes = []
         self.edges = []
         self._subtree_widths = {}
-        self._chunk_map = {c.index: c for c in tree.leaf_chunks}
+        self._chunk_map = {}
+
+        # Populate chunk map from store if available
+        if store and tree.leaf_chunk_ids:
+            for chunk_id in tree.leaf_chunk_ids:
+                node = store.get_node(chunk_id)
+                if isinstance(node, Chunk):
+                    self._chunk_map[node.index] = node
 
         if not tree.root_node:
              return CanvasFile(nodes=[], edges=[])
@@ -84,9 +102,18 @@ class ObsidianCanvasExporter:
 
         return CanvasFile(nodes=self.nodes, edges=self.edges)
 
-    def export(self, tree: "DocumentTree", output_path: Path) -> None:
-        """Exports the canvas to a file."""
-        canvas_file = self.generate_canvas_data(tree)
+    def export(
+        self, tree: "DocumentTree", output_path: Path, store: "DiskChunkStore | None" = None
+    ) -> None:
+        """
+        Exports the canvas to a file.
+
+        Args:
+            tree: The DocumentTree to export.
+            output_path: Destination path for the .canvas file.
+            store: Optional DiskChunkStore to retrieve leaf chunk text.
+        """
+        canvas_file = self.generate_canvas_data(tree, store)
 
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)

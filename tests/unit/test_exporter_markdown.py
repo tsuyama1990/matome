@@ -1,4 +1,5 @@
-# This will fail until implementation
+from unittest.mock import MagicMock
+
 from domain_models.manifest import Chunk, DocumentTree, SummaryNode
 from matome.exporters.markdown import export_to_markdown
 
@@ -19,11 +20,21 @@ def test_export_to_markdown() -> None:
     root = SummaryNode(id="root", text="Root text", level=2, children_indices=["s1"])
 
     tree = DocumentTree(
-        root_node=root, all_nodes={"s1": summary_l1, "root": root}, leaf_chunks=[chunk0, chunk1]
+        root_node=root,
+        all_nodes={"s1": summary_l1, "root": root},
+        leaf_chunk_ids=[0, 1]
     )
 
+    # Mock store
+    store = MagicMock()
+
+    def get_node_side_effect(idx: int) -> Chunk | None:
+        return {0: chunk0, 1: chunk1}.get(idx)
+
+    store.get_node.side_effect = get_node_side_effect
+
     # Export
-    md = export_to_markdown(tree)
+    md = export_to_markdown(tree, store)
 
     # Verify basics
     assert isinstance(md, str)

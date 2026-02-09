@@ -1,3 +1,4 @@
+import contextlib
 import logging
 import uuid
 from collections.abc import Iterable, Iterator
@@ -88,25 +89,28 @@ class RaptorEngine:
 
         return clusters, current_level_ids
 
-    def run(self, text: str) -> DocumentTree:
-        """Execute the RAPTOR pipeline."""
+    def run(self, text: str, store: DiskChunkStore | None = None) -> DocumentTree:
+        """
+        Execute the RAPTOR pipeline.
+
+        Args:
+            text: Input text to process.
+            store: Optional persistent store. If None, a temporary store is used (and closed on exit).
+        """
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
-        # Note: We cannot check `if not initial_chunks_iter` because it's an iterator.
 
         all_summaries: dict[str, SummaryNode] = {}
 
-        # Ideally DocumentTree should not require all leaf chunks in memory if we want full streaming.
-        # But DocumentTree schema defines `leaf_chunks: list[Chunk]`.
-        # Constraint: "No loading entire datasets into memory".
-        # We reconstruct leaf_chunks at the end from the store to satisfy the return type,
-        # ensuring we don't hold them in memory during the heavy processing.
+        # Use provided store or create a temporary one
+        # If provided, we wrap it in a nullcontext so it doesn't close on exit
+        store_ctx: contextlib.AbstractContextManager[DiskChunkStore] = (
+            DiskChunkStore() if store is None else contextlib.nullcontext(store)
+        )
 
-        with DiskChunkStore() as store:
+        with store_ctx as active_store:
             # Level 0
-            clusters, current_level_ids = self._process_level_zero(initial_chunks_iter, store)
-            store.commit()
-
+            clusters, current_level_ids = self._process_level_zero(initial_chunks_iter, active_store)
             # Capture L0 IDs for later reconstruction
             l0_ids = list(current_level_ids)
 
@@ -126,39 +130,21 @@ class RaptorEngine:
                 # Summarization
                 level += 1
                 new_nodes, new_summaries = self._summarize_clusters(
-                    clusters, current_level_ids, store, level
+                    clusters, current_level_ids, active_store, level
                 )
 
                 current_level_ids = []
-                store.add_summaries(new_nodes)
+                active_store.add_summaries(new_nodes)
                 for node in new_nodes:
                     all_summaries[node.id] = node
                     current_level_ids.append(node.id)
-                store.commit()
 
                 if len(current_level_ids) > 1:
-                    clusters = self._next_level_clustering(current_level_ids, store)
+                    clusters = self._next_level_clustering(current_level_ids, active_store)
                 else:
                     clusters = []
 
-            # We need to reconstruct initial_chunks list for the return object.
-            # Only fetch what's needed or iterate.
-            # Since DocumentTree expects a list, we must materialize it.
-            # This violates "No loading entire datasets" if result is huge.
-            # But changing DocumentTree schema is a "Re-build Schema" step.
-            # I will assume for now we must return the list, but we retrieve it from DB
-            # so we don't hold it during clustering.
-            # Optimization: If we can iterate ids.
-            # Or we simply don't return leaf chunks in full text?
-            # Let's rebuild the list from store for correctness of the current schema.
-            # In a real huge-scale scenario, DocumentTree would change.
-            # Given constraints, I will reconstruct it.
-            # Assuming 'chunks' type in DB store is 'chunk'
-            # We can select all chunks.
-            # Or we can track IDs. `_process_level_zero` returns `current_level_ids` (L0 ids).
-            # We can use that.
-
-            return self._finalize_tree(current_level_ids, store, all_summaries, l0_ids)
+            return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
 
     def _next_level_clustering(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
@@ -208,16 +194,6 @@ class RaptorEngine:
             msg = "No nodes remaining."
             raise ValueError(msg)
 
-        # Reconstruct initial chunks from store using L0 IDs
-        initial_chunks: list[Chunk] = []
-        # Bulk fetch would be better, but loop for now.
-        for nid in l0_ids:
-            node = store.get_node(nid)
-            if isinstance(node, Chunk):
-                initial_chunks.append(node)
-            else:
-                logger.warning(f"L0 node {nid} is not a Chunk!")
-
         root_id = current_level_ids[0]
         root_node_obj = store.get_node(root_id)
 
@@ -251,7 +227,7 @@ class RaptorEngine:
         return DocumentTree(
             root_node=root_node,
             all_nodes=all_summaries,
-            leaf_chunks=initial_chunks,
+            leaf_chunk_ids=l0_ids,
             metadata={"levels": root_node.level},
         )
 

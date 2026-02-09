@@ -50,10 +50,12 @@ class Chunk(BaseModel):
             logger.error(msg)
             raise ValueError(msg)
 
-        if self.start_char_idx >= self.end_char_idx:
+        # Simplified validation as requested by feedback
+        # Empty text is already rejected above, so we can be strict about range
+        if self.start_char_idx > self.end_char_idx:
             msg = (
-                f"Invalid character range: start ({self.start_char_idx}) must be less than "
-                f"end ({self.end_char_idx}) for non-empty text."
+                f"Invalid character range: start ({self.start_char_idx}) cannot be greater than "
+                f"end ({self.end_char_idx})."
             )
             logger.error(msg)
             raise ValueError(msg)
@@ -122,5 +124,5 @@ class DocumentTree(BaseModel):
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
     all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
-    leaf_chunks: list[Chunk] = Field(..., description="List of the original leaf chunks (Level 0).")
+    leaf_chunk_ids: list[NodeID] = Field(..., description="IDs of the original leaf chunks (Level 0).")
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")

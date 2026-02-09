@@ -6,7 +6,18 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Column, MetaData, String, Table, Text, create_engine, text
+from sqlalchemy import (
+    Column,
+    MetaData,
+    String,
+    Table,
+    Text,
+    create_engine,
+    insert,
+    select,
+    text,
+    update,
+)
 
 from domain_models.manifest import Chunk, SummaryNode
 
@@ -93,41 +104,39 @@ class DiskChunkStore:
         BATCH_SIZE = 1000
         buffer: list[dict[str, Any]] = []
 
-        # Construct query string (safe because using internal constants)
-        query = f"INSERT OR REPLACE INTO {TABLE_NODES} ({COL_ID}, {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING}) VALUES (:id, :type, :content, :embedding)"  # noqa: S608
-        stmt = text(query)
+        # Use Core Insert statement (Insert or Replace is SQLite specific)
+        # SQLAlchemy generic insert doesn't replace.
+        # But SQLite supports `INSERT OR REPLACE`.
+        # We can construct it manually or use `prefix_with`.
+        stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
-        with self.engine.begin() as conn:
-            for node in nodes:
-                # Prepare data
-                # We strip embedding from content to save space/redundancy if desired,
-                # but Pydantic's model_dump_json includes it.
-                # To efficiently separate, we can dump, load, pop, dump? Too slow.
-                # Or just duplicate? Duplication wastes space but is simpler.
-                # BETTER: Use 'exclude' in model_dump_json if possible, or just accept duplication.
-                # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
+        # Streaming loop: Only keep BATCH_SIZE items in memory
+        for node in nodes:
+            # Prepare data
+            # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
+            content_json = node.model_dump_json(exclude={"embedding"})
 
-                content_json = node.model_dump_json(exclude={"embedding"})
+            # Embedding JSON
+            embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
 
-                # Embedding JSON
-                embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+            node_id = str(node.index) if isinstance(node, Chunk) else node.id
 
-                node_id = str(node.index) if isinstance(node, Chunk) else node.id
+            buffer.append(
+                {
+                    "id": node_id,
+                    "type": node_type,
+                    "content": content_json,
+                    "embedding": embedding_json,
+                }
+            )
 
-                buffer.append(
-                    {
-                        "id": node_id,
-                        "type": node_type,
-                        "content": content_json,
-                        "embedding": embedding_json,
-                    }
-                )
-
-                if len(buffer) >= BATCH_SIZE:
+            if len(buffer) >= BATCH_SIZE:
+                with self.engine.begin() as conn:
                     conn.execute(stmt, buffer)
-                    buffer.clear()
+                buffer.clear()
 
-            if buffer:
+        if buffer:
+            with self.engine.begin() as conn:
                 conn.execute(stmt, buffer)
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
@@ -138,20 +147,26 @@ class DiskChunkStore:
         if embedding is None:
             return
 
-        stmt = text(f"UPDATE {TABLE_NODES} SET {COL_EMBEDDING} = :embedding WHERE {COL_ID} = :id")  # noqa: S608
         embedding_json = json.dumps(embedding)
 
+        stmt = (
+            update(self.nodes_table)
+            .where(self.nodes_table.c.id == str(node_id))
+            .values(embedding=embedding_json)
+        )
+
         with self.engine.begin() as conn:
-            conn.execute(stmt, {"embedding": embedding_json, "id": str(node_id)})
+            conn.execute(stmt)
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
-        # Construct query string (safe because using internal constants)
-        query = f"SELECT {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING} FROM {TABLE_NODES} WHERE {COL_ID} = :id"  # noqa: S608
-        stmt = text(query)
+        stmt = (
+            select(self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding)
+            .where(self.nodes_table.c.id == str(node_id))
+        )
 
         with self.engine.connect() as conn:
-            result = conn.execute(stmt, {"id": str(node_id)})
+            result = conn.execute(stmt)
             row = result.fetchone()
 
             if not row:

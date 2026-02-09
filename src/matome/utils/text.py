@@ -54,3 +54,12 @@ def split_sentences(text: str) -> list[str]:
     Split text into sentences based on Japanese punctuation and newlines.
     """
     return list(iter_sentences(text))
+
+
+def iter_normalized_sentences(text: str) -> Iterator[str]:
+    """
+    Lazily yield normalized (NFKC) sentences from raw text.
+    This avoids normalizing the entire text at once.
+    """
+    for sentence in iter_sentences(text):
+        yield normalize_text(sentence)

@@ -7,7 +7,7 @@ from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.embedder import EmbeddingService
 from matome.utils.compat import batched
-from matome.utils.text import iter_sentences, normalize_text
+from matome.utils.text import iter_normalized_sentences
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -68,19 +68,11 @@ class JapaneseSemanticChunker:
         if not text:
             return
 
-        # 1. Normalize
-        normalized_text = normalize_text(text)
+        # 1. Streaming Normalization & Processing
+        # We iterate raw sentences and normalize them one by one.
+        # This avoids creating a huge normalized string in memory.
 
-        if not normalized_text.strip():
-            # If text was just whitespace, return empty list
-            return
-
-        # 2. Manual Batch Processing
-        # Instead of zip() on parallel generators, we iterate sentences,
-        # batch them, embed the batch, and then process the results.
-        # This gives us strict control over memory usage and avoids magic buffering.
-
-        sentences_gen = iter_sentences(normalized_text)
+        sentences_gen = iter_normalized_sentences(text)
 
         # State for chunk accumulation
         current_chunk_sentences: list[str] = []

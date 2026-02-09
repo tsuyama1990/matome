@@ -77,7 +77,7 @@ def test_raptor_run_short_text(
     summarizer.summarize.assert_not_called()
 
     assert isinstance(tree, DocumentTree)
-    assert len(tree.leaf_chunks) == 1
+    assert len(tree.leaf_chunk_ids) == 1
     assert tree.root_node.level == 1
     assert tree.root_node.text == "Short text"
     assert tree.root_node.children_indices == [0]

@@ -7,7 +7,7 @@ import tiktoken
 from domain_models.config import ProcessingConfig
 from domain_models.constants import ALLOWED_TOKENIZER_MODELS
 from domain_models.manifest import Chunk
-from matome.utils.text import iter_sentences, normalize_text
+from matome.utils.text import iter_normalized_sentences
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -51,12 +51,6 @@ def _perform_chunking(text: str, max_tokens: int, model_name: str) -> Iterator[C
     """
     Core chunking logic using streaming.
     """
-    # 1. Normalize (note: this still processes the whole text in memory if huge,
-    # but normalize_text is fast and returns a string.
-    # To be truly streaming from input, input should be iterator.
-    # But for now, we assume text fits in memory, but chunks shouldn't accumulate.)
-    normalized_text = normalize_text(text)
-
     # Retrieve tokenizer
     tokenizer = get_cached_tokenizer(model_name)
 
@@ -74,8 +68,8 @@ def _perform_chunking(text: str, max_tokens: int, model_name: str) -> Iterator[C
             metadata={},
         )
 
-    # Use iterator for sentences
-    for sentence in iter_sentences(normalized_text):
+    # Use iterator for normalized sentences to allow streaming
+    for sentence in iter_normalized_sentences(text):
         sentence_tokens = len(tokenizer.encode(sentence))
 
         if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:

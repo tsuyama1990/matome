@@ -1,4 +1,9 @@
+from typing import TYPE_CHECKING
+
 from domain_models.manifest import Chunk, DocumentTree, SummaryNode
+
+if TYPE_CHECKING:
+    from matome.utils.store import DiskChunkStore
 
 
 def _format_chunk(chunk: Chunk, depth: int) -> str:
@@ -52,7 +57,7 @@ def _process_node(
                 _process_node(child_idx, True, depth + 1, tree, chunk_map, lines)
 
 
-def export_to_markdown(tree: DocumentTree) -> str:
+def export_to_markdown(tree: DocumentTree, store: "DiskChunkStore | None" = None) -> str:
     """
     Exports the DocumentTree to a Markdown string.
 
@@ -61,12 +66,19 @@ def export_to_markdown(tree: DocumentTree) -> str:
 
     Args:
         tree: The DocumentTree to export.
+        store: Optional DiskChunkStore to retrieve leaf chunk text.
 
     Returns:
         A formatted Markdown string.
     """
     lines: list[str] = []
-    chunk_map: dict[int, Chunk] = {c.index: c for c in tree.leaf_chunks}
+    chunk_map: dict[int, Chunk] = {}
+
+    if store and tree.leaf_chunk_ids:
+        for chunk_id in tree.leaf_chunk_ids:
+            node = store.get_node(chunk_id)
+            if isinstance(node, Chunk):
+                chunk_map[node.index] = node
 
     if tree.root_node:
         _process_node(tree.root_node.id, False, 0, tree, chunk_map, lines)
