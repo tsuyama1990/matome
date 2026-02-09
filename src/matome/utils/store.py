@@ -1,4 +1,5 @@
 import logging
+import pickle
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -10,7 +11,7 @@ logger = logging.getLogger(__name__)
 class DiskChunkStore:
     """
     A temporary disk-based store for Chunks and SummaryNodes to avoid O(N) RAM usage.
-    Uses SQLite.
+    Uses SQLite with binary serialization (pickle) for efficiency.
     """
 
     def __init__(self) -> None:
@@ -21,23 +22,21 @@ class DiskChunkStore:
 
     def _setup_db(self) -> None:
         cursor = self._conn.cursor()
-        # Store serialized JSON. Separate tables for Chunk and SummaryNode?
-        # Or unified 'Node' table.
-        # We need to retrieve by ID (str or int).
-        # Chunk index is int. SummaryNode ID is str.
-        # Let's use a unified table: id (text), type (text), data (text)
+        # Enable WAL mode for performance
+        cursor.execute("PRAGMA journal_mode=WAL;")
+        # Store serialized objects as BLOB
         cursor.execute("""
             CREATE TABLE nodes (
                 id TEXT PRIMARY KEY,
                 type TEXT,
-                data TEXT
+                data BLOB
             )
         """)
         self._conn.commit()
 
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
-        data = chunk.model_dump_json()
+        data = pickle.dumps(chunk, protocol=pickle.HIGHEST_PROTOCOL)
         self._conn.execute(
             "INSERT OR REPLACE INTO nodes (id, type, data) VALUES (?, ?, ?)",
             (str(chunk.index), "chunk", data)
@@ -45,7 +44,7 @@ class DiskChunkStore:
 
     def add_summary(self, node: SummaryNode) -> None:
         """Store a summary node."""
-        data = node.model_dump_json()
+        data = pickle.dumps(node, protocol=pickle.HIGHEST_PROTOCOL)
         self._conn.execute(
             "INSERT OR REPLACE INTO nodes (id, type, data) VALUES (?, ?, ?)",
             (node.id, "summary", data)
@@ -62,10 +61,18 @@ class DiskChunkStore:
             return None
 
         node_type, data = row
+        obj = pickle.loads(data)  # noqa: S301
+
         if node_type == "chunk":
-            return Chunk.model_validate_json(data)
+            if not isinstance(obj, Chunk):
+                 logger.error(f"Retrieved object for {node_id} is not a Chunk.")
+                 return None
+            return obj
         if node_type == "summary":
-            return SummaryNode.model_validate_json(data)
+            if not isinstance(obj, SummaryNode):
+                 logger.error(f"Retrieved object for {node_id} is not a SummaryNode.")
+                 return None
+            return obj
         return None
 
     def commit(self) -> None:

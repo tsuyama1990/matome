@@ -80,6 +80,7 @@ class SummaryNode(BaseModel):
     id: str = Field(..., description="Unique identifier for the node.")
     text: str = Field(..., description="The summary text.")
     level: int = Field(..., ge=1, description="Hierarchical level (1 = above chunks).")
+    # Union[int, str] is already implied by NodeID (int | str) in types.py
     children_indices: list[NodeID] = Field(
         ..., description="List of child indices (Chunk index or SummaryNode ID)."
     )

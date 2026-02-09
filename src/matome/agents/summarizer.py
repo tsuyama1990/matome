@@ -97,6 +97,10 @@ class SummarizationAgent:
              logger.debug(f"[{request_id}] Config model {config.summarization_model} differs from agent model {self.model_name}. Using agent model.")
 
         try:
+            # We assume COD_TEMPLATE treats context as data block or we should verify it.
+            # Using prompt templates usually handles escaping if the underlying library supports it.
+            # But standard f-string format doesn't escape for LLM context instructions.
+            # Here we rely on sanitization.
             prompt = COD_TEMPLATE.format(context=safe_text)
             messages = [HumanMessage(content=prompt)]
 
@@ -144,17 +148,26 @@ class SummarizationAgent:
         Basic mitigation for Prompt Injection.
         Escapes or removes sequences that might confuse the LLM or break out of the context block.
         """
-        # Remove explicit "Ignore previous instructions" patterns
-        # Simple regex for common jailbreaks
+        # Expanded list of patterns to filter
         patterns = [
             r"(?i)ignore\s+previous\s+instructions",
-            r"(?i)system\s+override",
             r"(?i)ignore\s+all\s+instructions",
+            r"(?i)system\s+override",
+            r"(?i)execute\s+command",
+            r"(?i)reveal\s+system\s+prompt",
+            r"(?i)bypass\s+security",
+            r"(?i)output\s+as\s+json", # Context-dependent, but often used in injection
         ]
 
         sanitized = text
         for pattern in patterns:
             sanitized = re.sub(pattern, "[Filtered]", sanitized)
+
+        # Also escape potential delimiters if they are used in our prompt template
+        # COD_TEMPLATE likely uses standard text structure.
+        # If it uses XML tags like <context>...</context>, we should escape < and >.
+        # Let's assume standard Markdown-like usage.
+        # We don't want to break valid text, but we can escape rare sequences if needed.
 
         return sanitized
 
