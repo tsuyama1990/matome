@@ -16,25 +16,32 @@ def mock_dependencies() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
     summarizer = MagicMock()
     return chunker, embedder, clusterer, summarizer
 
+
 @pytest.fixture
 def config() -> ProcessingConfig:
     return ProcessingConfig()
 
-def test_raptor_initialization(mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig) -> None:
+
+def test_raptor_initialization(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
     chunker, embedder, clusterer, summarizer = mock_dependencies
     engine = RaptorEngine(
         chunker=chunker,
         embedder=embedder,
         clusterer=clusterer,
         summarizer=summarizer,
-        config=config
+        config=config,
     )
     assert engine.chunker == chunker
     assert engine.embedder == embedder
     assert engine.clusterer == clusterer
     assert engine.summarizer == summarizer
 
-def test_raptor_run_short_text(mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig) -> None:
+
+def test_raptor_run_short_text(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
     """Test processing a short text that results in a single level of summarization."""
     chunker, embedder, clusterer, summarizer = mock_dependencies
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
@@ -61,14 +68,17 @@ def test_raptor_run_short_text(mock_dependencies: tuple[MagicMock, ...], config:
     assert tree.root_node.children_indices == [0]
     assert len(tree.all_nodes) == 1
 
-def test_raptor_run_recursive(mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig) -> None:
+
+def test_raptor_run_recursive(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
     """Test processing text that requires multiple levels of summarization."""
     chunker, embedder, clusterer, summarizer = mock_dependencies
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
     # Level 0: 3 Chunks
     chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=i*10, end_char_idx=(i+1)*10)
+        Chunk(index=i, text=f"Chunk {i}", start_char_idx=i * 10, end_char_idx=(i + 1) * 10)
         for i in range(3)
     ]
     chunker.split_text.return_value = chunks
@@ -78,10 +88,11 @@ def test_raptor_run_recursive(mock_dependencies: tuple[MagicMock, ...], config: 
         for c in chunks:
             c.embedding = [0.1] * 768
             yield c
+
     embedder.embed_chunks.side_effect = side_effect_embed_chunks
 
     # Mock embedding for summary nodes (strings)
-    embedder.embed_strings.return_value = [[0.2] * 768] # For any summary
+    embedder.embed_strings.return_value = [[0.2] * 768]  # For any summary
 
     # Clustering Logic
     # Call 1 (Level 0 Chunks): Returns 2 clusters (needs reducing)
@@ -91,18 +102,18 @@ def test_raptor_run_recursive(mock_dependencies: tuple[MagicMock, ...], config: 
 
     # Call 2 (Level 1 Summaries): Returns 1 cluster (Root)
     # Cluster 0: [0, 1] (Indices into the list of summaries from L0 clusters)
-    cluster_l1_0 = Cluster(id=0, level=1, node_indices=[0, 1]) # Summaries of c0 and c1
+    cluster_l1_0 = Cluster(id=0, level=1, node_indices=[0, 1])  # Summaries of c0 and c1
 
     clusterer.cluster_nodes.side_effect = [
-        [cluster_l0_0, cluster_l0_1], # First pass
-        [cluster_l1_0]                # Second pass
+        [cluster_l0_0, cluster_l0_1],  # First pass
+        [cluster_l1_0],  # Second pass
     ]
 
     # Summarization
     summarizer.summarize.side_effect = [
-        "Summary L1-0", # Summary of Cluster L0-0
-        "Summary L1-1", # Summary of Cluster L0-1
-        "Root Summary"  # Summary of Cluster L1-0
+        "Summary L1-0",  # Summary of Cluster L0-0
+        "Summary L1-1",  # Summary of Cluster L0-1
+        "Root Summary",  # Summary of Cluster L1-0
     ]
 
     # Run
@@ -110,13 +121,16 @@ def test_raptor_run_recursive(mock_dependencies: tuple[MagicMock, ...], config: 
     # to trigger the side effect that populates leaf_chunks.
 
     original_side_effect = [
-        [cluster_l0_0, cluster_l0_1], # First pass
-        [cluster_l1_0]                # Second pass
+        [cluster_l0_0, cluster_l0_1],  # First pass
+        [cluster_l1_0],  # Second pass
     ]
 
     # Use closure for stateful side effect
     iter_count = 0
-    def consuming_side_effect(embeddings: Iterator[list[float]] | list[list[float]], config: ProcessingConfig) -> list[Cluster]:
+
+    def consuming_side_effect(
+        embeddings: Iterator[list[float]] | list[list[float]], config: ProcessingConfig
+    ) -> list[Cluster]:
         nonlocal iter_count
         # Iterate over embeddings if it's an iterator
         if isinstance(embeddings, Iterator):
@@ -133,7 +147,7 @@ def test_raptor_run_recursive(mock_dependencies: tuple[MagicMock, ...], config: 
     # Verify
     assert isinstance(tree, DocumentTree)
     assert tree.root_node.text == "Root Summary"
-    assert tree.root_node.level == 2 # L0 -> L1 -> L2 (Root)
+    assert tree.root_node.level == 2  # L0 -> L1 -> L2 (Root)
 
     # Check L1 nodes
     root_children_ids = tree.root_node.children_indices

@@ -14,6 +14,7 @@ def test_cluster_engine_validation_nan() -> None:
     with pytest.raises(ValueError, match="Embeddings contain NaN or Infinity values"):
         engine.cluster_nodes(embeddings, config)
 
+
 def test_cluster_engine_validation_inf() -> None:
     config = ProcessingConfig()
     engine = GMMClusterer()
@@ -22,6 +23,7 @@ def test_cluster_engine_validation_inf() -> None:
 
     with pytest.raises(ValueError, match="Embeddings contain NaN or Infinity values"):
         engine.cluster_nodes(embeddings, config)
+
 
 def test_cluster_engine_empty_input() -> None:
     config = ProcessingConfig()

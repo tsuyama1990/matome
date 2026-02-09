@@ -31,12 +31,14 @@ class DummyEmbedder:
             vec[2] = 1.0
             yield vec
 
+
 @pytest.fixture
 def config() -> ProcessingConfig:
     return ProcessingConfig(
         umap_n_neighbors=2,
         umap_min_dist=0.0,
     )
+
 
 def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     """
@@ -49,8 +51,7 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     # Mock Chunker (Protocol)
     chunker = MagicMock(spec=Chunker)
     chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
-        for i in range(10)
+        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(10)
     ]
     chunker.split_text.return_value = chunks
 
@@ -66,7 +67,7 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
 
     # Instantiate Engine with strictly typed mocks/objects
     # We cast embedder because it's a dummy class satisfying implicit interface used by Raptor
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config) # type: ignore
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)  # type: ignore
 
     tree = engine.run("Dummy text")
 

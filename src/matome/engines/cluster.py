@@ -28,9 +28,7 @@ class GMMClusterer:
     """
 
     def cluster_nodes(
-        self,
-        embeddings: Iterable[list[float]],
-        config: ProcessingConfig
+        self, embeddings: Iterable[list[float]], config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Clusters the nodes based on their embeddings.
@@ -67,7 +65,7 @@ class GMMClusterer:
 
             # Open as memmap
             # This allows us to access the data as if it were in memory, backed by disk
-            mm_array = np.memmap(tf_name, dtype='float32', mode='r', shape=(n_samples, dim))
+            mm_array = np.memmap(tf_name, dtype="float32", mode="r", shape=(n_samples, dim))
 
             try:
                 return self._perform_clustering(mm_array, n_samples, config)
@@ -76,15 +74,12 @@ class GMMClusterer:
                 del mm_array
 
         finally:
-             if path_obj.exists():
-                 with contextlib.suppress(OSError):
-                     path_obj.unlink()
+            if path_obj.exists():
+                with contextlib.suppress(OSError):
+                    path_obj.unlink()
 
     def _stream_write_embeddings(
-        self,
-        embeddings: Iterable[list[float]],
-        path_obj: Path,
-        batch_size: int
+        self, embeddings: Iterable[list[float]], path_obj: Path, batch_size: int
     ) -> tuple[int, int]:
         """
         Stream embeddings to disk in batches.
@@ -93,7 +88,7 @@ class GMMClusterer:
         n_samples = 0
         dim = 0
 
-        with path_obj.open('wb') as f:
+        with path_obj.open("wb") as f:
             # Use batched utility to iterate in chunks
             # batched() consumes the iterator lazily, ensuring we only hold 'batch_size' items in RAM.
             for batch_tuple in batched(embeddings, batch_size):
@@ -109,19 +104,19 @@ class GMMClusterer:
 
                 # Check dimensions and content for the batch
                 try:
-                    np_batch = np.array(batch_list, dtype='float32')
+                    np_batch = np.array(batch_list, dtype="float32")
                 except ValueError as e:
                     # Likely inhomogeneous shape if lengths differ
                     msg = f"Failed to create batch array: {e}"
                     raise ValueError(msg) from e
 
                 if np_batch.shape[1] != dim:
-                     msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
-                     raise ValueError(msg)
+                    msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
+                    raise ValueError(msg)
 
                 if not np.isfinite(np_batch).all():
-                     msg = "Embeddings contain NaN or Infinity values."
-                     raise ValueError(msg)
+                    msg = "Embeddings contain NaN or Infinity values."
+                    raise ValueError(msg)
 
                 # Write to disk
                 np_batch.tofile(f)
@@ -156,12 +151,16 @@ class GMMClusterer:
         # Standard UMAP/GMM can fail or be unstable with very few samples.
         # 5 is a reasonable heuristic.
         if n_samples <= 5:
-            logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
+            logger.info(
+                f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster."
+            )
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
 
         return None
 
-    def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
+    def _perform_clustering(
+        self, data: np.ndarray, n_samples: int, config: ProcessingConfig
+    ) -> list[Cluster]:
         """
         Execute UMAP reduction and GMM clustering on the data.
 
@@ -209,7 +208,9 @@ class GMMClusterer:
                 gmm_n_components = config.n_clusters
             else:
                 logger.debug("Calculating optimal cluster count using BIC...")
-                gmm_n_components = self._calculate_optimal_clusters(reduced_embeddings, config.random_state)
+                gmm_n_components = self._calculate_optimal_clusters(
+                    reduced_embeddings, config.random_state
+                )
 
             logger.info(f"Clustering into {gmm_n_components} components.")
             gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
@@ -235,7 +236,7 @@ class GMMClusterer:
 
             cluster = Cluster(
                 id=int(label),
-                level=0, # Default to 0, caller handles level logic
+                level=0,  # Default to 0, caller handles level logic
                 node_indices=node_indices,
             )
             clusters.append(cluster)
@@ -274,6 +275,6 @@ class GMMClusterer:
             logger.warning(f"Error during BIC calculation: {e!s}. Defaulting to 1 cluster.")
             return 1
         except Exception:
-             # Catch import errors or other unexpected issues
+            # Catch import errors or other unexpected issues
             logger.exception("Unexpected error during BIC calculation. Defaulting to 1 cluster.")
             return 1

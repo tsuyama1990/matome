@@ -14,24 +14,12 @@ def test_export_to_markdown() -> None:
     chunk0 = Chunk(index=0, text="Chunk 0 text", start_char_idx=0, end_char_idx=10)
     chunk1 = Chunk(index=1, text="Chunk 1 text", start_char_idx=10, end_char_idx=20)
 
-    summary_l1 = SummaryNode(
-        id="s1",
-        text="Summary L1 text",
-        level=1,
-        children_indices=[0, 1]
-    )
+    summary_l1 = SummaryNode(id="s1", text="Summary L1 text", level=1, children_indices=[0, 1])
 
-    root = SummaryNode(
-        id="root",
-        text="Root text",
-        level=2,
-        children_indices=["s1"]
-    )
+    root = SummaryNode(id="root", text="Root text", level=2, children_indices=["s1"])
 
     tree = DocumentTree(
-        root_node=root,
-        all_nodes={"s1": summary_l1, "root": root},
-        leaf_chunks=[chunk0, chunk1]
+        root_node=root, all_nodes={"s1": summary_l1, "root": root}, leaf_chunks=[chunk0, chunk1]
     )
 
     # Export

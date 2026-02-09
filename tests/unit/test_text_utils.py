@@ -14,10 +14,12 @@ def test_iter_sentences_basic() -> None:
     assert sentences[3] == "文４"
     assert sentences[4] == "文５"
 
+
 def test_iter_sentences_empty() -> None:
     """Test empty input."""
     assert list(iter_sentences("")) == []
     assert list(iter_sentences("   \n  ")) == []
+
 
 def test_iter_sentences_edge_cases() -> None:
     """Test iter_sentences with edge cases."""
@@ -50,6 +52,7 @@ def test_iter_sentences_edge_cases() -> None:
     assert len(sentences) == 1
     assert sentences[0] == "文１文２"
 
+
 def test_split_sentences_compatibility() -> None:
     """Ensure split_sentences still works and returns list."""
     text_jp = "文A。文B。"
@@ -58,6 +61,7 @@ def test_split_sentences_compatibility() -> None:
     assert len(sentences) == 2
     assert sentences[0] == "文A。"
     assert sentences[1] == "文B。"
+
 
 def test_normalize_text() -> None:
     """Test NFKC normalization."""

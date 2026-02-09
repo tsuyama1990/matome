@@ -29,6 +29,7 @@ def test_interface_compliance() -> None:
     summarizer = SummarizationAgent(config, llm=mock_llm)
     assert isinstance(summarizer, Summarizer)
 
+
 def test_configuration_flow() -> None:
     """Verify configuration object validation and default values."""
     # Test config inheritance and defaults
@@ -37,18 +38,21 @@ def test_configuration_flow() -> None:
     assert config.overlap == 0  # Default value
     assert config.clustering_algorithm.value == "gmm"  # Default
 
+
 def test_full_pipeline_flow() -> None:
     """
     End-to-End verification of the data flow:
     Text -> Chunker -> EmbeddingService -> Clusterer -> Summarizer
     """
     # Arrange
-    text = "これはテストです。文書を分割し、クラスタリングし、要約します。" * 5  # Make it long enough for multiple chunks
+    text = (
+        "これはテストです。文書を分割し、クラスタリングし、要約します。" * 5
+    )  # Make it long enough for multiple chunks
     config = ProcessingConfig(
         max_tokens=20,  # Small token limit to force multiple chunks
-        umap_n_neighbors=2, # Small neighbors for small dataset
-        umap_min_dist=0.0, # Default
-        write_batch_size=5 # Small batch size for testing streaming
+        umap_n_neighbors=2,  # Small neighbors for small dataset
+        umap_min_dist=0.0,  # Default
+        write_batch_size=5,  # Small batch size for testing streaming
     )
 
     chunker = JapaneseTokenChunker()
@@ -64,11 +68,11 @@ def test_full_pipeline_flow() -> None:
         # Patching np.random.default_rng is hard, so we use a deterministic side_effect
 
         def side_effect(texts: Iterable[str], **kwargs: Any) -> np.ndarray:
-             text_list = list(texts)
-             # Use a fixed seed for every call to ensure consistent output
-             rng = np.random.default_rng(42)
-             count = len(text_list)
-             return rng.random((count, 10))
+            text_list = list(texts)
+            # Use a fixed seed for every call to ensure consistent output
+            rng = np.random.default_rng(42)
+            count = len(text_list)
+            return rng.random((count, 10))
 
         mock_model.encode.side_effect = side_effect
 
@@ -109,6 +113,7 @@ def test_full_pipeline_flow() -> None:
         summary = summarizer.summarize(cluster_text, config)
         assert summary == "Summary of the cluster."
 
+
 def test_pipeline_streaming_logic() -> None:
     """
     Explicit test to verify that large datasets (simulated by small batch size)
@@ -118,11 +123,7 @@ def test_pipeline_streaming_logic() -> None:
     # 20 items, batch size 5 => 4 batches
     embeddings = [[0.1 * i] * 10 for i in range(20)]
 
-    config = ProcessingConfig(
-        write_batch_size=5,
-        umap_n_neighbors=2,
-        umap_n_components=2
-    )
+    config = ProcessingConfig(write_batch_size=5, umap_n_neighbors=2, umap_n_components=2)
 
     clusterer = GMMClusterer()
 

@@ -22,11 +22,12 @@ def test_chunker_basic() -> None:
     # Note: '１' (full-width) becomes '1' (half-width) after normalization
     assert "文1" in reconstructed
 
+
 def test_chunker_max_tokens() -> None:
     """Test that chunks respect max_tokens."""
     # Create a long text
     sentence = "あ" * 100 + "。"
-    text = sentence * 20 # 2000+ chars
+    text = sentence * 20  # 2000+ chars
 
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig(max_tokens=200)
@@ -43,6 +44,7 @@ def test_chunker_max_tokens() -> None:
     # Assuming normalization doesn't change 'あ' and '。' width (it doesn't)
     assert len(full_text) == len(text)
 
+
 def test_chunker_invalid_model_security() -> None:
     """
     Test that invalid model names (not in whitelist) raise ValueError immediately,
@@ -52,7 +54,8 @@ def test_chunker_invalid_model_security() -> None:
         JapaneseTokenChunker(model_name="invalid_model_name_that_does_not_exist")
 
     with pytest.raises(ValueError, match="not in the allowed list"):
-        JapaneseTokenChunker(model_name="a" * 100) # Long name check
+        JapaneseTokenChunker(model_name="a" * 100)  # Long name check
+
 
 def test_chunker_empty_input() -> None:
     """Test that empty input returns an empty list."""
@@ -61,8 +64,9 @@ def test_chunker_empty_input() -> None:
     chunks = chunker.split_text("", config)
     assert chunks == []
 
-    chunks_none = chunker.split_text(None, config) # type: ignore
+    chunks_none = chunker.split_text(None, config)  # type: ignore
     assert chunks_none == []
+
 
 def test_chunker_single_sentence_exceeds_limit() -> None:
     """Test behavior when a single sentence exceeds max_tokens."""
@@ -79,6 +83,7 @@ def test_chunker_single_sentence_exceeds_limit() -> None:
     assert chunks[0].text == long_sentence
     # Ensure it didn't crash
 
+
 def test_chunker_unicode() -> None:
     """Test handling of emojis and special unicode characters."""
     chunker = JapaneseTokenChunker()
@@ -93,6 +98,7 @@ def test_chunker_unicode() -> None:
     assert "🧪" in reconstructed
     assert "日本語" in reconstructed
 
+
 def test_chunker_very_long_input() -> None:
     """Test performance/recursion on very long input."""
     # Create a massive string of repeated sentences
@@ -103,6 +109,7 @@ def test_chunker_very_long_input() -> None:
 
     chunks = chunker.split_text(text, config)
     assert len(chunks) > 0
+
 
 def test_chunker_count_tokens() -> None:
     """Test the count_tokens method."""

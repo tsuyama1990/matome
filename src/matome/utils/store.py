@@ -7,6 +7,7 @@ from domain_models.manifest import Chunk, SummaryNode
 
 logger = logging.getLogger(__name__)
 
+
 class DiskChunkStore:
     """
     A temporary disk-based store for Chunks and SummaryNodes to avoid O(N) RAM usage.
@@ -38,7 +39,7 @@ class DiskChunkStore:
         data = chunk.model_dump_json()
         self._conn.execute(
             "INSERT OR REPLACE INTO nodes (id, type, data) VALUES (?, ?, ?)",
-            (str(chunk.index), "chunk", data)
+            (str(chunk.index), "chunk", data),
         )
 
     def add_summary(self, node: SummaryNode) -> None:
@@ -46,15 +47,12 @@ class DiskChunkStore:
         data = node.model_dump_json()
         self._conn.execute(
             "INSERT OR REPLACE INTO nodes (id, type, data) VALUES (?, ?, ?)",
-            (node.id, "summary", data)
+            (node.id, "summary", data),
         )
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
-        cursor = self._conn.execute(
-            "SELECT type, data FROM nodes WHERE id = ?",
-            (str(node_id),)
-        )
+        cursor = self._conn.execute("SELECT type, data FROM nodes WHERE id = ?", (str(node_id),))
         row = cursor.fetchone()
         if not row:
             return None
@@ -78,6 +76,7 @@ class DiskChunkStore:
     def close(self) -> None:
         self._conn.close()
         import shutil
+
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def __enter__(self) -> "DiskChunkStore":

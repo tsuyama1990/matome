@@ -1,6 +1,7 @@
 """
 UAT tests for Cycle 03: Summarization Engine.
 """
+
 import os
 from unittest.mock import patch
 
@@ -56,7 +57,9 @@ def test_scenario_09_cod_behavior_mocked() -> None:
     with patch("matome.agents.summarizer.ChatOpenAI") as MockLLM:
         mock_instance = MockLLM.return_value
         # Mock a "dense" response
-        mock_instance.invoke.return_value = AIMessage(content="iPhone (2007, Steve Jobs) revolutionized phones.")
+        mock_instance.invoke.return_value = AIMessage(
+            content="iPhone (2007, Steve Jobs) revolutionized phones."
+        )
 
         config = ProcessingConfig()
         agent = SummarizationAgent(config)
@@ -102,4 +105,4 @@ def test_scenario_10_error_handling() -> None:
         # If it raises, we catch it.
 
         with pytest.raises(Exception, match="API Error 503"):
-             agent.summarize("test", config)
+            agent.summarize("test", config)

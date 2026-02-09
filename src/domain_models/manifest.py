@@ -68,9 +68,9 @@ class Chunk(BaseModel):
                 logger.error(msg)
                 raise ValueError(msg)
             if any(not isinstance(x, (float, int)) for x in self.embedding):
-                 msg = "Embedding must contain only numeric values."
-                 logger.error(msg)
-                 raise ValueError(msg)
+                msg = "Embedding must contain only numeric values."
+                logger.error(msg)
+                raise ValueError(msg)
 
         return self
 

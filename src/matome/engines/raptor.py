@@ -34,15 +34,17 @@ class RaptorEngine:
         self.summarizer = summarizer
         self.config = config
 
-    def _process_level_zero(self, initial_chunks: list[Chunk], store: DiskChunkStore) -> tuple[list[Cluster], list[NodeID]]:
+    def _process_level_zero(
+        self, initial_chunks: list[Chunk], store: DiskChunkStore
+    ) -> tuple[list[Cluster], list[NodeID]]:
         """Handle Level 0: Embedding, Storage, and Clustering."""
         current_level_ids: list[NodeID] = []
 
         def l0_embedding_generator() -> Iterator[list[float]]:
             for chunk in self.embedder.embed_chunks(initial_chunks):
                 if chunk.embedding is None:
-                        msg = f"Chunk {chunk.index} missing embedding."
-                        raise ValueError(msg)
+                    msg = f"Chunk {chunk.index} missing embedding."
+                    raise ValueError(msg)
 
                 yield chunk.embedding
 
@@ -86,13 +88,15 @@ class RaptorEngine:
                     break
 
                 if len(clusters) == node_count:
-                     clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
 
                 logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
                 # Summarization
                 level += 1
-                new_nodes, new_summaries = self._summarize_clusters(clusters, current_level_ids, store, level)
+                new_nodes, new_summaries = self._summarize_clusters(
+                    clusters, current_level_ids, store, level
+                )
 
                 current_level_ids = []
                 for node in new_nodes:
@@ -108,30 +112,40 @@ class RaptorEngine:
 
             return self._finalize_tree(current_level_ids, store, all_summaries, initial_chunks)
 
-    def _next_level_clustering(self, current_level_ids: list[NodeID], store: DiskChunkStore) -> list[Cluster]:
+    def _next_level_clustering(
+        self, current_level_ids: list[NodeID], store: DiskChunkStore
+    ) -> list[Cluster]:
         """Perform embedding and clustering for the next level (summaries)."""
+
         def lx_embedding_generator() -> Iterator[list[float]]:
             def text_gen() -> Iterator[str]:
                 for nid in current_level_ids:
                     node = store.get_node(nid)
                     if node:
                         yield node.text
+
             yield from self.embedder.embed_strings(text_gen())
 
         return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
 
-    def _finalize_tree(self, current_level_ids: list[NodeID], store: DiskChunkStore, all_summaries: dict[str, SummaryNode], initial_chunks: list[Chunk]) -> DocumentTree:
+    def _finalize_tree(
+        self,
+        current_level_ids: list[NodeID],
+        store: DiskChunkStore,
+        all_summaries: dict[str, SummaryNode],
+        initial_chunks: list[Chunk],
+    ) -> DocumentTree:
         """Construct the final DocumentTree."""
         if not current_level_ids:
-             msg = "No nodes remaining."
-             raise ValueError(msg)
+            msg = "No nodes remaining."
+            raise ValueError(msg)
 
         root_id = current_level_ids[0]
         root_node_obj = store.get_node(root_id)
 
         if not root_node_obj:
-             msg = "Root node not found in store."
-             raise ValueError(msg)
+            msg = "Root node not found in store."
+            raise ValueError(msg)
 
         if isinstance(root_node_obj, Chunk):
             root_node = SummaryNode(

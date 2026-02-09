@@ -15,6 +15,7 @@ Traditional RAG systems often split text arbitrarily, breaking sentences and los
 *   **Recursive Summarization (RAPTOR)**: Builds a hierarchical tree of summaries from leaf chunks to a root node, capturing both high-level themes and granular details.
 *   **Intelligent Clustering**: Uses **UMAP** and **Gaussian Mixture Models (GMM)** to group semantically similar chunks for coherent summarization.
 *   **Summarization Agent**: Intelligent summarization using **Chain of Density (CoD)** prompting to create high-density, entity-rich summaries via OpenRouter (supporting **Gemini 1.5 Flash**, **GPT-4o**).
+*   **Obsidian Canvas Export**: Exports the generated knowledge tree to an **Obsidian Canvas** (`.canvas`) file, allowing for visual inspection and reorganization (KJ Method) of the summaries.
 *   **Japanese-Optimized Semantic Chunking**: Intelligently splits text at sentence boundaries (using punctuation like `。`, `！`, `？`) and merges them into semantically coherent chunks based on token limits.
 *   **Markdown Export**: Exports the generated knowledge tree to a hierarchical Markdown format for easy reading and navigation.
 *   **Type-Safe Architecture**: Built with strict Pydantic models for reliable data handling.
@@ -72,11 +73,13 @@ for chunk in chunks:
 ### 2. Full RAPTOR Pipeline (Recursive Summarization)
 
 ```python
-from matome import RaptorEngine, export_to_markdown
+from pathlib import Path
+from matome import RaptorEngine
 from matome.engines.chunker import JapaneseSemanticChunker
 from matome.engines.embedder import EmbeddingService
 from matome.engines.cluster import GMMClusterer
 from matome.agents.summarizer import SummarizationAgent
+from matome.exporters import export_to_markdown, ObsidianCanvasExporter
 from domain_models.config import ProcessingConfig
 
 # 1. Initialize Components
@@ -93,9 +96,15 @@ engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 text = "Your long document here..."
 tree = engine.run(text)
 
-# 4. Export Result
+# 4. Export Result (Markdown)
 markdown_output = export_to_markdown(tree)
 print(markdown_output)
+
+# 5. Export Result (Obsidian Canvas)
+exporter = ObsidianCanvasExporter()
+output_path = Path("output/summary.canvas")
+exporter.export(tree, output_path)
+print(f"Canvas saved to {output_path}")
 ```
 
 ## Architecture/Structure
@@ -108,12 +117,11 @@ src/
 └── matome/             # Core logic
     ├── agents/         # AI Agents (Summarizer)
     ├── engines/        # Processing engines (Chunker, Clusterer, RAPTOR)
-    ├── exporters/      # Output formatters (Markdown)
+    ├── exporters/      # Output formatters (Markdown, Obsidian Canvas)
     └── utils/          # Text processing utilities
 ```
 
 ## Roadmap
 
-*   **Obsidian Export**: Visualizing the knowledge tree.
 *   **CLI**: Command-line interface for easy file processing.
 *   **Verification Module**: Chain of Verification (CoVe) for hallucination detection.

@@ -27,6 +27,7 @@ ALLOWED_MODELS = {
     "text-embedding-3-large",
 }
 
+
 @lru_cache(maxsize=4)
 def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
     """
@@ -158,7 +159,7 @@ class JapaneseTokenChunker:
 
         logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
 
-        chunking_model_name = self.tokenizer.name # e.g. "cl100k_base"
+        chunking_model_name = self.tokenizer.name  # e.g. "cl100k_base"
 
         chunks = _perform_chunking(text, config.max_tokens, chunking_model_name)
 

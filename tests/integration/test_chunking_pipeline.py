@@ -18,7 +18,10 @@ def test_chunking_pipeline_integration() -> None:
     if not sample_file.exists():
         # Create a dummy file if it doesn't exist for testing purposes
         sample_file.parent.mkdir(parents=True, exist_ok=True)
-        sample_file.write_text("これはテストです。日本語の文章です。RAPTORシステムをテストします。Lost-in-the-Middle問題を解決します。", encoding="utf-8")
+        sample_file.write_text(
+            "これはテストです。日本語の文章です。RAPTORシステムをテストします。Lost-in-the-Middle問題を解決します。",
+            encoding="utf-8",
+        )
 
     text = read_file(sample_file)
     normalized_input = normalize_text(text)

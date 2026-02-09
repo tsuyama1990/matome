@@ -19,10 +19,9 @@ def test_scenario_05_embedding_vector_generation() -> None:
         mock_instance = MagicMock()
         mock_st.return_value = mock_instance
         # Use small vector dimension (32) to save memory in tests
-        mock_instance.encode.return_value = np.array([
-            list(np.random.rand(32)),
-            list(np.random.rand(32))
-        ])
+        mock_instance.encode.return_value = np.array(
+            [list(np.random.rand(32)), list(np.random.rand(32))]
+        )
 
         config = ProcessingConfig()
         service = EmbeddingService(config)
@@ -31,6 +30,7 @@ def test_scenario_05_embedding_vector_generation() -> None:
         for chunk in embedded_chunks:
             assert chunk.embedding is not None
             assert len(chunk.embedding) == 32
+
 
 # Scenario 06: Clustering Logic Verification
 def test_scenario_06_clustering_logic() -> None:
@@ -43,9 +43,10 @@ def test_scenario_06_clustering_logic() -> None:
     config = ProcessingConfig(clustering_algorithm="gmm")
     engine = GMMClusterer()
 
-    with patch("matome.engines.cluster.UMAP") as mock_umap, \
-         patch("matome.engines.cluster.GaussianMixture") as mock_gmm:
-
+    with (
+        patch("matome.engines.cluster.UMAP") as mock_umap,
+        patch("matome.engines.cluster.GaussianMixture") as mock_gmm,
+    ):
         # Mock UMAP to return 2D linearly separable data
         reduced_a = [[0.0, 0.0], [0.1, 0.1], [0.0, 0.1]]
         reduced_b = [[10.0, 10.0], [10.1, 10.1], [10.0, 10.1]]
@@ -55,7 +56,7 @@ def test_scenario_06_clustering_logic() -> None:
         mock_gmm_instance = MagicMock()
         mock_gmm.return_value = mock_gmm_instance
         mock_gmm_instance.predict.return_value = np.array([0, 0, 0, 1, 1, 1])
-        mock_gmm_instance.n_components = 2 # Simulate BIC finding 2
+        mock_gmm_instance.n_components = 2  # Simulate BIC finding 2
         mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]
 
         clusters = engine.cluster_nodes(embeddings, config)
@@ -76,9 +77,10 @@ def test_scenario_06_clustering_logic() -> None:
         assert indices_set_1 in expected_sets
         assert indices_set_0 != indices_set_1
 
+
 # Scenario 07: Single Cluster Edge Case
 def test_scenario_07_single_cluster() -> None:
-    embeddings = [[0.5]*10]
+    embeddings = [[0.5] * 10]
 
     config = ProcessingConfig()
     engine = GMMClusterer()

@@ -10,6 +10,7 @@ from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
+
 class EmbeddingService:
     """Service for generating vector embeddings for text and chunks."""
 
@@ -62,9 +63,9 @@ class EmbeddingService:
             # Access self.model (property) to trigger lazy load if needed
             batch_embeddings = self.model.encode(
                 batch_texts,
-                batch_size=len(batch_texts), # We already batched it manually
+                batch_size=len(batch_texts),  # We already batched it manually
                 convert_to_numpy=True,
-                show_progress_bar=False
+                show_progress_bar=False,
             )
 
             if isinstance(batch_embeddings, np.ndarray):
@@ -74,7 +75,7 @@ class EmbeddingService:
             else:
                 # List of tensors or arrays
                 for emb in batch_embeddings:
-                     yield emb.tolist()
+                    yield emb.tolist()
 
         except Exception:
             logger.exception("Failed to encode batch.")

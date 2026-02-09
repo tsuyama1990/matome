@@ -1,6 +1,7 @@
 """
 Unit tests for the SummarizationAgent.
 """
+
 from collections.abc import Generator
 from typing import cast
 from unittest.mock import MagicMock, patch
@@ -17,6 +18,7 @@ from matome.utils.prompts import COD_TEMPLATE
 @pytest.fixture
 def config() -> ProcessingConfig:
     return ProcessingConfig()
+
 
 @pytest.fixture
 def mock_llm() -> Generator[MagicMock, None, None]:
@@ -91,6 +93,7 @@ def test_mock_mode(config: ProcessingConfig) -> None:
         assert result.startswith("Summary of")
         assert "some context" in result
 
+
 def test_summarize_missing_key(config: ProcessingConfig) -> None:
     """Test that ValueError (or SummarizationError) is raised if API key is missing and not in mock mode."""
     # Default get_openrouter_api_key returns None
@@ -102,6 +105,7 @@ def test_summarize_missing_key(config: ProcessingConfig) -> None:
         with pytest.raises(SummarizationError, match="LLM not initialized"):
             agent.summarize("some context", config)
 
+
 def test_summarize_list_response(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test handling of list content in LLM response."""
     llm_mock = cast(MagicMock, agent.llm)
@@ -110,6 +114,7 @@ def test_summarize_list_response(agent: SummarizationAgent, config: ProcessingCo
     result = agent.summarize("context", config)
     assert "Part 1" in result
     assert "Part 2" in result
+
 
 def test_summarize_int_response(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test handling of unexpected content type (e.g. int)."""
@@ -121,6 +126,7 @@ def test_summarize_int_response(agent: SummarizationAgent, config: ProcessingCon
     result = agent.summarize("context", config)
     assert result == "123"
 
+
 def test_summarize_exception(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test that exceptions are wrapped in SummarizationError."""
     llm_mock = cast(MagicMock, agent.llm)
@@ -129,13 +135,17 @@ def test_summarize_exception(agent: SummarizationAgent, config: ProcessingConfig
     with pytest.raises(SummarizationError, match="Summarization failed"):
         agent.summarize("context", config)
 
-def test_summarize_long_input_dos_prevention(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+
+def test_summarize_long_input_dos_prevention(
+    agent: SummarizationAgent, config: ProcessingConfig
+) -> None:
     """Test behavior with input containing potential DoS vectors (extremely long words)."""
     # config.max_word_length default is 1000
     long_word = "a" * 1001
 
     with pytest.raises(ValueError, match="potential DoS vector"):
         agent.summarize(long_word, config)
+
 
 # We removed test_summarize_retry_behavior as mocking tenacity is complex
 # and integration test covers error handling (test_pipeline_errors.py)
