@@ -94,6 +94,9 @@ class JapaneseSemanticChunker:
                 current_embedding = np.array(embedding_list)
 
                 if prev_embedding is not None:
+                    # Validate Dimension Consistency
+                    self._validate_dimensions(prev_embedding, current_embedding)
+
                     # Calculate Cosine Distance = 1 - Cosine Similarity
                     norm_a = np.linalg.norm(prev_embedding)
                     norm_b = np.linalg.norm(current_embedding)
@@ -187,3 +190,12 @@ class JapaneseSemanticChunker:
         if not isinstance(text, str):
             msg = f"Input text must be a string, got {type(text)}."
             raise TypeError(msg)
+
+    def _validate_dimensions(self, prev: np.ndarray, current: np.ndarray) -> None:
+        if current.shape != prev.shape:
+            msg = (
+                f"Embedding dimension mismatch: prev {prev.shape}, "
+                f"current {current.shape}"
+            )
+            logger.error(msg)
+            raise ValueError(msg)

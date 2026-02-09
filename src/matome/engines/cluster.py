@@ -4,6 +4,7 @@ import os
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from sklearn.cluster import MiniBatchKMeans
@@ -90,7 +91,7 @@ class GMMClusterer:
 
         Iterates over the input embeddings and writes them to a binary file
         (to be used with np.memmap). Validates dimensions and values.
-        Optimized to write row-by-row to avoid large intermediate buffers.
+        Optimized to write using a small buffer to avoid I/O bottlenecks.
 
         Args:
             embeddings: Iterable of embedding vectors.
@@ -103,14 +104,12 @@ class GMMClusterer:
         """
         n_samples = 0
         dim = 0
+        buffer: list[list[float]] = []
+        BUFFER_SIZE = 1000 # Hardcoded sensible default for I/O buffer
 
         with path_obj.open("wb") as f:
-            # Process one by one (or very small chunks) to avoid memory spikes
-            # batch_size arg is kept for interface compatibility but we minimize buffering
-            # We iterate directly to avoid `batched` loading N items into a tuple
-
             for i, vec in enumerate(embeddings):
-                if n_samples == 0:
+                if n_samples == 0 and len(buffer) == 0:
                     dim = len(vec)
                     if dim == 0:
                         msg = "Embedding dimension cannot be zero."
@@ -120,24 +119,35 @@ class GMMClusterer:
                     msg = f"Embedding dimension mismatch at index {i}."
                     raise ValueError(msg)
 
-                # Convert single vector to array and write
-                # overhead of single write is high, but ensures strictly O(1) memory
-                # Compromise: Buffer a small number of rows manually?
-                # For strict compliance, writing row by row is safest.
-                try:
-                    np_row = np.array(vec, dtype="float32")
-                except ValueError as e:
-                    msg = f"Failed to create array at index {i}: {e}"
-                    raise ValueError(msg) from e
+                buffer.append(vec)
 
-                if not np.isfinite(np_row).all():
-                    msg = f"Embeddings contain NaN or Infinity values at index {i}."
-                    raise ValueError(msg)
+                if len(buffer) >= BUFFER_SIZE:
+                    self._flush_buffer(f, buffer)
+                    n_samples += len(buffer)
+                    buffer.clear()
 
-                np_row.tofile(f)
-                n_samples += 1
+            # Final flush
+            if buffer:
+                self._flush_buffer(f, buffer)
+                n_samples += len(buffer)
+                buffer.clear()
 
         return n_samples, dim
+
+    def _flush_buffer(self, f: Any, buffer: list[list[float]]) -> None:
+        """Helper to write a buffer of vectors to disk."""
+        try:
+            # Convert whole buffer to array at once - fast
+            np_batch = np.array(buffer, dtype="float32")
+        except ValueError as e:
+            msg = f"Failed to create array from buffer: {e}"
+            raise ValueError(msg) from e
+
+        if not np.isfinite(np_batch).all():
+            msg = "Embeddings contain NaN or Infinity values."
+            raise ValueError(msg)
+
+        np_batch.tofile(f)
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
         """Validate that the configured algorithm is supported."""
@@ -398,4 +408,7 @@ class GMMClusterer:
         except Exception:
             # Catch import errors or other unexpected issues
             logger.exception("Unexpected error during BIC calculation. Defaulting to 1 cluster.")
-            return 1
+            # Critical fix: Re-raise unexpected exceptions to ensure data integrity/awareness
+            # unless we explicitly want fallback.
+            # Given requirement "Catch specific exceptions and propagate errors appropriately", re-raising is safer.
+            raise

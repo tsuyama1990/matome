@@ -8,6 +8,10 @@ from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
     ALLOWED_SUMMARIZATION_MODELS,
     ALLOWED_TOKENIZER_MODELS,
+    DEFAULT_CANVAS_GAP_X,
+    DEFAULT_CANVAS_GAP_Y,
+    DEFAULT_CANVAS_NODE_HEIGHT,
+    DEFAULT_CANVAS_NODE_WIDTH,
     DEFAULT_EMBEDDING,
     DEFAULT_SUMMARIZER,
     DEFAULT_TOKENIZER,
@@ -115,25 +119,25 @@ class ProcessingConfig(BaseModel):
         description="Buffer size for batch database writes in Raptor engine.",
     )
     canvas_node_width: int = Field(
-        default=400,
+        default=DEFAULT_CANVAS_NODE_WIDTH,
         ge=10,
         le=5000,
         description="Width of nodes in Obsidian Canvas export.",
     )
     canvas_node_height: int = Field(
-        default=200,
+        default=DEFAULT_CANVAS_NODE_HEIGHT,
         ge=10,
         le=5000,
         description="Height of nodes in Obsidian Canvas export.",
     )
     canvas_gap_x: int = Field(
-        default=50,
+        default=DEFAULT_CANVAS_GAP_X,
         ge=0,
         le=2000,
         description="Horizontal gap between nodes in Obsidian Canvas export.",
     )
     canvas_gap_y: int = Field(
-        default=300,
+        default=DEFAULT_CANVAS_GAP_Y,
         ge=0,
         le=2000,
         description="Vertical gap between nodes in Obsidian Canvas export.",

@@ -19,6 +19,12 @@ DEFAULT_SUMMARIZER = "gpt-4o"
 # Configuration Defaults
 LARGE_SCALE_THRESHOLD = 20000
 
+# Canvas Defaults
+DEFAULT_CANVAS_NODE_WIDTH = 400
+DEFAULT_CANVAS_NODE_HEIGHT = 200
+DEFAULT_CANVAS_GAP_X = 50
+DEFAULT_CANVAS_GAP_Y = 300
+
 # Security Whitelists
 ALLOWED_TOKENIZER_MODELS = {
     "cl100k_base",
@@ -58,3 +64,6 @@ ALLOWED_SUMMARIZATION_MODELS = {
     "openai/gpt-4o-mini",
     "mock-model",
 }
+
+# Regex Patterns
+SENTENCE_SPLIT_PATTERN = r"(?<=[。！？])\s*|\n+"

@@ -66,6 +66,7 @@ class RaptorEngine:
             # But we need to yield embeddings to clusterer *after* (or during) storage.
             # We can't consume generator twice.
             # So we must drive the loop manually.
+            yield from chunks
 
         def l0_embedding_generator() -> Iterator[list[float]]:
             # We must yield embeddings for the clusterer.
