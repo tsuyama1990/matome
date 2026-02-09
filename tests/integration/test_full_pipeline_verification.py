@@ -3,7 +3,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 from domain_models.config import ProcessingConfig
 from matome.agents.summarizer import SummarizationAgent
@@ -24,11 +23,11 @@ def test_interface_compliance() -> None:
     assert isinstance(clusterer, Clusterer)
 
     # Summarizer
-    # Patch to avoid API key check
+    # Use dependency injection to avoid API key requirement
     config = ProcessingConfig()
-    with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
-        summarizer = SummarizationAgent(config)
-        assert isinstance(summarizer, Summarizer)
+    mock_llm = MagicMock()
+    summarizer = SummarizationAgent(config, llm=mock_llm)
+    assert isinstance(summarizer, Summarizer)
 
 def test_configuration_flow() -> None:
     """Verify configuration object validation and default values."""
@@ -48,7 +47,8 @@ def test_full_pipeline_flow() -> None:
     config = ProcessingConfig(
         max_tokens=20,  # Small token limit to force multiple chunks
         umap_n_neighbors=2, # Small neighbors for small dataset
-        umap_min_dist=0.0 # Default
+        umap_min_dist=0.0, # Default
+        write_batch_size=5 # Small batch size for testing streaming
     )
 
     chunker = JapaneseTokenChunker()
@@ -60,53 +60,77 @@ def test_full_pipeline_flow() -> None:
         mock_st_cls.return_value = mock_model
 
         # Mock encode to return deterministic vectors
-        # Using fixed seed for determinism
-        rng = np.random.default_rng(42)
+        # Using a fixed RNG to ensure determinism across test runs
+        # Patching np.random.default_rng is hard, so we use a deterministic side_effect
 
         def side_effect(texts: Iterable[str], **kwargs: Any) -> np.ndarray:
              text_list = list(texts)
-             return rng.random((len(text_list), 10))
+             # Use a fixed seed for every call to ensure consistent output
+             rng = np.random.default_rng(42)
+             count = len(text_list)
+             return rng.random((count, 10))
 
         mock_model.encode.side_effect = side_effect
 
         embedder = EmbeddingService(config)
 
-        # Mock SummarizationAgent
-        with (
-            patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-fake-key"),
-            patch("matome.agents.summarizer.ChatOpenAI") as MockChatOpenAI
-        ):
-            mock_llm_instance = MagicMock()
-            MockChatOpenAI.return_value = mock_llm_instance
+        # Mock LLM for SummarizationAgent
+        mock_llm_instance = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = "Summary of the cluster."
+        mock_llm_instance.invoke.return_value = mock_response
 
-            mock_response = MagicMock()
-            mock_response.content = "Summary of the cluster."
-            mock_llm_instance.invoke.return_value = mock_response
+        # Use dependency injection
+        summarizer = SummarizationAgent(config, llm=mock_llm_instance)
 
-            summarizer = SummarizationAgent(config)
+        # Act & Assert (Logic same as before, but with deterministic RNG)
+        chunks = chunker.split_text(text, config)
+        assert len(chunks) > 1
 
-            # Act & Assert (Logic same as before, but with deterministic RNG)
-            chunks = chunker.split_text(text, config)
-            assert len(chunks) > 1
+        chunks_with_embeddings = list(embedder.embed_chunks(chunks))
+        assert all(c.embedding is not None for c in chunks_with_embeddings)
 
-            chunks_with_embeddings = list(embedder.embed_chunks(chunks))
-            assert all(c.embedding is not None for c in chunks_with_embeddings)
+        valid_embeddings: list[list[float]] = []
+        for c in chunks_with_embeddings:
+            assert c.embedding is not None, "Embedding should not be None"
+            valid_embeddings.append(c.embedding)
 
-            valid_embeddings: list[list[float]] = []
-            for c in chunks_with_embeddings:
-                if c.embedding is None:
-                    pytest.fail("Embedding should not be None")
-                valid_embeddings.append(c.embedding)
+        # Ensure we patch GMM/UMAP randomness if needed, but config.random_state handles it
+        clusters = clusterer.cluster_nodes(valid_embeddings, config)
+        assert isinstance(clusters, list)
+        assert len(clusters) > 0
 
-            clusters = clusterer.cluster_nodes(valid_embeddings, config)
-            assert isinstance(clusters, list)
-            assert len(clusters) > 0
+        cluster = clusters[0]
+        cluster_text_parts = []
+        for idx in cluster.node_indices:
+            cluster_text_parts.append(chunks_with_embeddings[int(idx)].text)
 
-            cluster = clusters[0]
-            cluster_text_parts = []
-            for idx in cluster.node_indices:
-                cluster_text_parts.append(chunks_with_embeddings[int(idx)].text)
+        cluster_text = " ".join(cluster_text_parts)
+        summary = summarizer.summarize(cluster_text, config)
+        assert summary == "Summary of the cluster."
 
-            cluster_text = " ".join(cluster_text_parts)
-            summary = summarizer.summarize(cluster_text, config)
-            assert summary == "Summary of the cluster."
+def test_pipeline_streaming_logic() -> None:
+    """
+    Explicit test to verify that large datasets (simulated by small batch size)
+    are processed correctly without errors, implying streaming logic works.
+    """
+    # Create a large enough list of dummy embeddings
+    # 20 items, batch size 5 => 4 batches
+    embeddings = [[0.1 * i] * 10 for i in range(20)]
+
+    config = ProcessingConfig(
+        write_batch_size=5,
+        umap_n_neighbors=2,
+        umap_n_components=2
+    )
+
+    clusterer = GMMClusterer()
+
+    # We just want to ensure it runs without crashing and returns clusters
+    # This exercises the _stream_write_embeddings loop
+    clusters = clusterer.cluster_nodes(embeddings, config)
+
+    assert len(clusters) > 0
+    # Check total nodes clustered equals input
+    total_nodes = sum(len(c.node_indices) for c in clusters)
+    assert total_nodes == 20

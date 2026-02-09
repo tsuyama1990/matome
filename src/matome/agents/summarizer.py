@@ -10,11 +10,12 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
-from tenacity import stop_after_attempt, wait_exponential
+from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
+from matome.utils.constants import PROMPT_INJECTION_PATTERNS
 from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
@@ -25,21 +26,35 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(self, config: ProcessingConfig) -> None:
+    def __init__(
+        self,
+        config: ProcessingConfig,
+        llm: ChatOpenAI | None = None
+    ) -> None:
         """
         Initialize the SummarizationAgent.
 
         Args:
             config: Processing configuration containing model name, retries, etc.
+            llm: Optional pre-configured LLM instance. If None, it will be initialized from config.
         """
+        self.config = config
+        self.model_name = config.summarization_model
+
+        # Determine API key and Base URL
         api_key = get_openrouter_api_key()
         base_url = get_openrouter_base_url()
 
-        self.model_name = config.summarization_model
-        self.api_key = api_key
+        self.mock_mode = (api_key == "mock")
+
         self.llm: ChatOpenAI | None = None
 
-        if api_key and api_key != "mock":
+        if llm:
+            self.llm = llm
+            # If LLM is injected, we disable internal mock mode unless explicitly set via api_key="mock"
+            # But the caller provided an LLM, so they probably want to use it.
+            # If api_key is "mock", we might still want to short-circuit.
+        elif api_key and not self.mock_mode:
             self.llm = ChatOpenAI(
                 model=self.model_name,
                 api_key=api_key,
@@ -47,11 +62,18 @@ class SummarizationAgent:
                 temperature=config.llm_temperature,
                 max_retries=config.max_retries,
             )
+        else:
+            self.llm = None
 
-    def summarize(self, text: str, config: ProcessingConfig) -> str:
+    def summarize(self, text: str, config: ProcessingConfig | None = None) -> str:
         """
         Summarize the provided text using the Chain of Density strategy.
+
+        Args:
+            text: The text to summarize.
+            config: Optional config override. Uses self.config if None.
         """
+        effective_config = config or self.config
         request_id = str(uuid.uuid4())
 
         if not text:
@@ -59,28 +81,28 @@ class SummarizationAgent:
             return ""
 
         # Validate input for security
-        self._validate_input(text, config.max_word_length)
+        self._validate_input(text, effective_config.max_input_length, effective_config.max_word_length)
 
         # Sanitize prompt injection
         safe_text = self._sanitize_prompt_injection(text)
 
-        if self.api_key == "mock":
+        if self.mock_mode:
             logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
             return f"Summary of {safe_text[:20]}..."
 
         if not self.llm:
-            msg = f"[{request_id}] OpenRouter API Key is missing. Cannot perform summarization."
+            msg = f"[{request_id}] LLM not initialized (missing API Key?). Cannot perform summarization."
             logger.error(msg)
             raise SummarizationError(msg)
 
-        if config.summarization_model != self.model_name:
-             logger.debug(f"[{request_id}] Config model {config.summarization_model} differs from agent model {self.model_name}. Using agent model.")
+        if effective_config.summarization_model != self.model_name:
+             logger.debug(f"[{request_id}] Config model {effective_config.summarization_model} differs from agent model {self.model_name}. Using agent model.")
 
         try:
             prompt = COD_TEMPLATE.format(context=safe_text)
             messages = [HumanMessage(content=prompt)]
 
-            response = self._invoke_llm(messages, config, request_id)
+            response = self._invoke_llm(messages, effective_config, request_id)
             return self._process_response(response, request_id)
 
         except Exception as e:
@@ -88,20 +110,36 @@ class SummarizationAgent:
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 
-    def _validate_input(self, text: str, max_word_length: int) -> None:
+    def _validate_input(self, text: str, max_input_length: int, max_word_length: int) -> None:
         """
         Sanitize and validate input text.
+
+        Checks:
+        1. Maximum overall length to prevent processing extremely large inputs.
+        2. Control characters (Unicode 'C' category).
+           We strictly disallow control characters that are not standard whitespace.
+           While Newline (\\n) and Tab (\\t) are often used for formatting, they can be used for injection.
+           However, blocking them makes summarizing documents impossible.
+           Therefore, we strictly validate that ONLY \\n and \\t are present among control chars.
+           Other control characters (like \\r, null bytes, backspaces) are rejected.
+        3. Word length to prevent tokenizer Denial of Service (DoS) attacks.
+
+        Args:
+            text: The input text to validate.
+            max_input_length: Maximum allowed total characters.
+            max_word_length: The maximum allowed length for a single word.
+
+        Raises:
+            ValueError: If any validation check fails.
         """
         # 1. Length Check (Document)
-        MAX_INPUT_LENGTH = 500_000
-        if len(text) > MAX_INPUT_LENGTH:
-             msg = f"Input text exceeds maximum allowed length ({MAX_INPUT_LENGTH} characters)."
+        if len(text) > max_input_length:
+             msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
              raise ValueError(msg)
 
         # 2. Control Character Check (Unicode)
         # We strictly disallow control characters that are not standard whitespace.
         # \n (0x0A), \t (0x09) are allowed for formatting.
-        # \r (0x0D) is NOT allowed to prevent CRLF injection issues in logs/prompts if careless.
         allowed_controls = {"\n", "\t"}
 
         for char in text:
@@ -110,7 +148,12 @@ class SummarizationAgent:
                  raise ValueError(msg)
 
         # 3. Tokenizer DoS Protection
-        longest_word_len = max((len(w) for w in text.split()), default=0)
+        # Split by whitespace to check word length
+        words = text.split()
+        if not words:
+            return
+
+        longest_word_len = max((len(w) for w in words), default=0)
         if longest_word_len > max_word_length:
              msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
              raise ValueError(msg)
@@ -118,32 +161,48 @@ class SummarizationAgent:
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
         Basic mitigation for Prompt Injection.
-        """
-        patterns = [
-            r"(?i)ignore\s+previous\s+instructions",
-            r"(?i)ignore\s+all\s+instructions",
-            r"(?i)system\s+override",
-            r"(?i)execute\s+command",
-            r"(?i)reveal\s+system\s+prompt",
-            r"(?i)bypass\s+security",
-            r"(?i)output\s+as\s+json",
-        ]
 
+        Iterates through a list of known injection patterns (e.g., 'ignore previous instructions')
+        and replaces them with a placeholder '[Filtered]'.
+
+        Using literal string matching (if pattern is simple) or careful regex matching
+        is handled by PROMPT_INJECTION_PATTERNS definitions.
+
+        Args:
+            text: The input text to sanitize.
+
+        Returns:
+            The sanitized text string.
+        """
         sanitized = text
-        for pattern in patterns:
+        for pattern in PROMPT_INJECTION_PATTERNS:
+            # We use re.sub for flexible matching (case insensitive, whitespace variations)
+            # which are defined in the patterns themselves.
             sanitized = re.sub(pattern, "[Filtered]", sanitized)
 
         return sanitized
 
     def _invoke_llm(self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str) -> BaseMessage:
-        """Helper to invoke LLM with retry logic."""
+        """
+        Invoke the LLM with exponential backoff retry logic.
+
+        Args:
+            messages: List of LangChain messages to send.
+            config: Configuration containing retry settings.
+            request_id: Unique ID for logging purposes.
+
+        Returns:
+            The response message from the LLM.
+
+        Raises:
+            SummarizationError: If the LLM call fails after all retries or returns no response.
+        """
         if not self.llm:
              msg = "LLM not initialized"
              raise SummarizationError(msg)
 
-        from tenacity import Retrying
-
         response = None
+        # Use Tenacity for retries based on config
         for attempt in Retrying(
             stop=stop_after_attempt(config.max_retries),
             wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -152,7 +211,13 @@ class SummarizationAgent:
             with attempt:
                 if attempt.retry_state.attempt_number > 1:
                     logger.warning(f"[{request_id}] Retrying LLM call (Attempt {attempt.retry_state.attempt_number}/{config.max_retries})")
-                response = self.llm.invoke(messages)
+
+                # Check if LLM is chat model or simple LLM (though typed as ChatOpenAI)
+                if hasattr(self.llm, "invoke"):
+                     response = self.llm.invoke(messages)
+                else:
+                     # Fallback for mock objects that might not have invoke
+                     response = self.llm(messages) # type: ignore[operator]
 
         if not response:
              msg = f"[{request_id}] No response received from LLM."
@@ -161,7 +226,18 @@ class SummarizationAgent:
         return response
 
     def _process_response(self, response: BaseMessage, request_id: str) -> str:
-        """Helper to process LLM response content."""
+        """
+        Process and extract content from the LLM response.
+
+        Handles different response types (string, list, etc.) and ensures a string return.
+
+        Args:
+            response: The raw response message from the LLM.
+            request_id: Unique ID for logging.
+
+        Returns:
+            The extracted summary text.
+        """
         content: str | list[str | dict[str, Any]] = response.content
 
         if isinstance(content, str):

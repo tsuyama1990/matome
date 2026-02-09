@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage
 from domain_models.config import ProcessingConfig
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import SummarizationError
+from matome.utils.prompts import COD_TEMPLATE
 
 
 @pytest.fixture
@@ -68,9 +69,9 @@ def test_summarize_happy_path(agent: SummarizationAgent, config: ProcessingConfi
     assert len(messages) == 1
     prompt_content = messages[0].content
 
-    # Check if prompt is formatted correctly (simplified check)
-    assert context in prompt_content
-    assert "High-Density Summary" in prompt_content or "high-density summary" in prompt_content
+    # Check if prompt matches the template structure
+    expected_prompt_start = COD_TEMPLATE.format(context=context)
+    assert prompt_content == expected_prompt_start
 
 
 def test_summarize_empty_context(agent: SummarizationAgent, config: ProcessingConfig) -> None:
@@ -98,7 +99,7 @@ def test_summarize_missing_key(config: ProcessingConfig) -> None:
         # agent.llm should be None
         assert agent.llm is None
 
-        with pytest.raises(SummarizationError, match="OpenRouter API Key is missing"):
+        with pytest.raises(SummarizationError, match="LLM not initialized"):
             agent.summarize("some context", config)
 
 def test_summarize_list_response(agent: SummarizationAgent, config: ProcessingConfig) -> None:

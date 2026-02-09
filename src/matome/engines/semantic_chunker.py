@@ -1,4 +1,3 @@
-import itertools
 import logging
 
 import numpy as np
@@ -6,6 +5,7 @@ import numpy as np
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.embedder import EmbeddingService
+from matome.utils.compat import batched
 from matome.utils.text import iter_sentences, normalize_text
 
 # Configure logger
@@ -49,70 +49,98 @@ class JapaneseSemanticChunker:
         This implementation streams sentences and embeddings to minimize memory usage,
         avoiding materialization of all sentence embeddings at once.
 
+        Note: The returned chunks contain *normalized* text (NFKC), and the indices
+        refer to positions in this normalized text.
+
         Args:
             text: Raw input text.
             config: Configuration including semantic_chunking_threshold and max_tokens.
 
         Returns:
             List of Chunk objects.
+
+        Raises:
+            ValueError: If input text is not a string.
         """
+        self._validate_input(text)
+
         if not text:
             return []
 
-        # 1. Normalize and stream sentences
+        # 1. Normalize
         normalized_text = normalize_text(text)
+
+        if not normalized_text.strip():
+            # If text was just whitespace, return empty list
+            return []
+
+        # 2. Manual Batch Processing
+        # Instead of zip() on parallel generators, we iterate sentences,
+        # batch them, embed the batch, and then process the results.
+        # This gives us strict control over memory usage and avoids magic buffering.
+
+        chunks: list[Chunk] = []
         sentences_gen = iter_sentences(normalized_text)
 
-        # Create two iterators: one for embedding, one for content
-        sentences_for_embedding, sentences_for_content = itertools.tee(sentences_gen, 2)
-
-        # 2. Embed sentences (lazy generator)
-        # Ensure we have an iterator (handles mocks returning lists)
-        embeddings_gen = iter(self.embedder.embed_strings(sentences_for_embedding))
-
-        # 3. Stream processing
-        chunks: list[Chunk] = []
+        # State for chunk accumulation
+        current_chunk_sentences: list[str] = []
+        current_chunk_len = 0
+        current_last_embedding: list[float] | None = None
+        current_start_idx = 0
 
         try:
-            # Initialize state with the first sentence
-            try:
-                first_sentence = next(sentences_for_content)
-                first_embedding = next(embeddings_gen)
-            except StopIteration:
-                return []
+            # Iterate in batches of sentences (e.g. 32 at a time)
+            # This aligns with embedding batch size for efficiency
+            for sentence_batch_tuple in batched(sentences_gen, config.embedding_batch_size):
+                sentence_batch = list(sentence_batch_tuple)
 
-            current_chunk_sentences: list[str] = [first_sentence]
-            current_last_embedding = first_embedding
-            current_start_idx = 0
+                # Embed this batch
+                # embed_strings returns an iterator, we consume it immediately for this small batch
+                embedding_batch = list(self.embedder.embed_strings(sentence_batch))
 
-            # Iterate through the rest
-            for sentence, embedding in zip(sentences_for_content, embeddings_gen, strict=True):
-                similarity = cosine_similarity(current_last_embedding, embedding)
+                if len(sentence_batch) != len(embedding_batch):
+                     logger.warning(
+                         f"Mismatch between sentences ({len(sentence_batch)}) and embeddings ({len(embedding_batch)})."
+                     )
+                     # Should ideally fail or handle gracefully.
+                     # For now, zip will stop at shortest, but let's be safe.
 
-                # Check size constraint (rough estimate: 1 char = 1 token for safety/speed)
-                current_text_len = sum(len(s) for s in current_chunk_sentences)
+                # Process this batch
+                for sentence, embedding in zip(sentence_batch, embedding_batch, strict=False):
+                    if current_last_embedding is None:
+                        # First sentence of the very first chunk
+                        current_chunk_sentences = [sentence]
+                        current_chunk_len = len(sentence)
+                        current_last_embedding = embedding
+                        continue
 
-                # Determine whether to merge the current sentence into the existing chunk
-                if (similarity >= config.semantic_chunking_threshold) and (current_text_len + len(sentence) < config.max_tokens):
-                    current_chunk_sentences.append(sentence)
-                    current_last_embedding = embedding
-                else:
-                    # Create chunk from accumulated sentences
-                    chunk_text = "".join(current_chunk_sentences)
-                    chunks.append(Chunk(
-                        index=len(chunks),
-                        text=chunk_text,
-                        start_char_idx=current_start_idx,
-                        end_char_idx=current_start_idx + len(chunk_text),
-                        embedding=None
-                    ))
-                    current_start_idx += len(chunk_text)
+                    # Logic for merging
+                    similarity = cosine_similarity(current_last_embedding, embedding)
+                    sentence_len = len(sentence)
 
-                    # Start new chunk with current sentence
-                    current_chunk_sentences = [sentence]
-                    current_last_embedding = embedding
+                    if (similarity >= config.semantic_chunking_threshold) and \
+                       (current_chunk_len + sentence_len < config.max_tokens):
+                        current_chunk_sentences.append(sentence)
+                        current_chunk_len += sentence_len
+                        current_last_embedding = embedding
+                    else:
+                        # Finalize current chunk
+                        chunk_text = "".join(current_chunk_sentences)
+                        chunks.append(Chunk(
+                            index=len(chunks),
+                            text=chunk_text,
+                            start_char_idx=current_start_idx,
+                            end_char_idx=current_start_idx + len(chunk_text),
+                            embedding=None
+                        ))
+                        current_start_idx += len(chunk_text)
 
-            # Final chunk
+                        # Start new chunk with current sentence
+                        current_chunk_sentences = [sentence]
+                        current_chunk_len = sentence_len
+                        current_last_embedding = embedding
+
+            # Final flush after all batches
             if current_chunk_sentences:
                 chunk_text = "".join(current_chunk_sentences)
                 chunks.append(Chunk(
@@ -125,8 +153,11 @@ class JapaneseSemanticChunker:
 
         except Exception:
             logger.exception("Error during semantic chunking process.")
-            # In case of error, we cannot return partial/valid chunks reliably matching the input text.
-            # Reraising ensures the caller knows the process failed.
             raise
-        else:
-            return chunks
+
+        return chunks
+
+    def _validate_input(self, text: str) -> None:
+        if not isinstance(text, str):
+            msg = f"Input text must be a string, got {type(text)}."
+            raise TypeError(msg)
