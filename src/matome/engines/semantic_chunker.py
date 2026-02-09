@@ -6,32 +6,21 @@ import numpy as np
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.embedder import EmbeddingService
-from matome.utils.compat import batched
 from matome.utils.text import iter_normalized_sentences
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
 
-def cosine_similarity(v1: list[float], v2: list[float]) -> float:
-    """Calculate cosine similarity between two vectors."""
-    a = np.array(v1)
-    b = np.array(v2)
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return float(np.dot(a, b) / (norm_a * norm_b))
-
-
 class JapaneseSemanticChunker:
     """
-    Chunking engine that splits text based on semantic similarity.
+    Chunking engine that splits text based on semantic similarity using a global percentile threshold.
 
-    1. Splits text into sentences using Japanese heuristics.
-    2. Embeds sentences (streaming).
-    3. Merges sentences into chunks if their similarity is high,
-       respecting the max_tokens limit.
+    1. Splits text into sentences using Japanese heuristics (constants.SENTENCE_SPLIT_PATTERN).
+    2. Embeds ALL sentences to capture global context distribution.
+    3. Calculates cosine similarity between adjacent sentences.
+    4. Determines a split threshold based on the configured percentile of distances.
+    5. Merges sentences into chunks until the threshold is met or max_tokens is reached.
     """
 
     def __init__(self, embedder: EmbeddingService) -> None:
@@ -45,17 +34,11 @@ class JapaneseSemanticChunker:
 
     def split_text(self, text: str, config: ProcessingConfig) -> Iterator[Chunk]:
         """
-        Split text into semantic chunks (streaming).
-
-        This implementation streams sentences and embeddings to minimize memory usage,
-        avoiding materialization of all sentence embeddings at once.
-
-        Note: The returned chunks contain *normalized* text (NFKC), and the indices
-        refer to positions in this normalized text.
+        Split text into semantic chunks.
 
         Args:
             text: Raw input text.
-            config: Configuration including semantic_chunking_threshold and max_tokens.
+            config: Configuration including semantic_chunking_percentile and max_tokens.
 
         Yields:
             Chunk objects.
@@ -68,89 +51,130 @@ class JapaneseSemanticChunker:
         if not text:
             return
 
-        # 1. Streaming Normalization & Processing
-        # We iterate raw sentences and normalize them one by one.
-        # This avoids creating a huge normalized string in memory.
+        # 1. Get all normalized sentences
+        # We need the full list to calculate global percentile
+        sentences = list(iter_normalized_sentences(text))
+        if not sentences:
+            return
 
-        sentences_gen = iter_normalized_sentences(text)
+        n_sentences = len(sentences)
 
-        # State for chunk accumulation
+        # Edge Case: Single sentence -> Single chunk
+        if n_sentences == 1:
+            yield self._create_chunk(0, sentences[0], 0)
+            return
+
+        # 2. Generate embeddings for all sentences
+        # embed_strings returns an iterator, consume it all
+        try:
+            embeddings_iter = self.embedder.embed_strings(sentences)
+            embeddings = list(embeddings_iter)
+        except Exception:
+            logger.exception("Failed to generate embeddings for sentences.")
+            raise
+
+        if len(embeddings) != n_sentences:
+            msg = f"Mismatch: {n_sentences} sentences but {len(embeddings)} embeddings."
+            logger.error(msg)
+            # Proceed carefully or raise? Raising is safer.
+            raise ValueError(msg)
+
+        # 3. Calculate Similarities & Threshold
+        distances = self._calculate_distances(embeddings)
+
+        # Calculate threshold based on percentile
+        # config.semantic_chunking_percentile (e.g., 90)
+        # We split if distance > threshold
+        percentile = float(config.semantic_chunking_percentile)
+        threshold = np.percentile(distances, percentile)
+
+        logger.info(
+            f"Semantic Chunking: {n_sentences} sentences. "
+            f"Percentile={percentile}, Threshold (Dist)={threshold:.4f}"
+        )
+
+        # 4. Merge Sentences
         current_chunk_sentences: list[str] = []
         current_chunk_len = 0
-        current_last_embedding: list[float] | None = None
         current_start_idx = 0
-        current_chunk_index = 0
+        chunk_index = 0
 
-        try:
-            # Iterate in batches of sentences (e.g. 32 at a time)
-            # This aligns with embedding batch size for efficiency
-            for sentence_batch_tuple in batched(sentences_gen, config.embedding_batch_size):
-                sentence_batch = list(sentence_batch_tuple)
+        # We iterate through sentences. The i-th distance corresponds to gap between sentence i and i+1.
+        # distances[i] is distance between sentences[i] and sentences[i+1]
 
-                # Embed this batch
-                # embed_strings returns an iterator. We consume it into a list for this batch
-                # because we need to zip with the sentence batch.
-                # Since batch size is small (e.g. 32), this is safe and does not violate streaming.
-                embedding_batch = list(self.embedder.embed_strings(sentence_batch))
+        for i, sentence in enumerate(sentences):
+            current_chunk_sentences.append(sentence)
+            current_chunk_len += len(sentence)
 
-                if len(sentence_batch) != len(embedding_batch):
-                    logger.warning(
-                        f"Mismatch between sentences ({len(sentence_batch)}) and embeddings ({len(embedding_batch)})."
-                    )
-                    # Should ideally fail or handle gracefully.
-                    # For now, zip will stop at shortest, but let's be safe.
+            # Determine if we should split AFTER this sentence
+            # We can only split if there is a next sentence (i < n_sentences - 1)
+            if i < n_sentences - 1:
+                dist = distances[i]
+                should_split = dist > threshold
 
-                # Process this batch
-                for sentence, embedding in zip(sentence_batch, embedding_batch, strict=False):
-                    if current_last_embedding is None:
-                        # First sentence of the very first chunk
-                        current_chunk_sentences = [sentence]
-                        current_chunk_len = len(sentence)
-                        current_last_embedding = embedding
-                        continue
+                # Also check max_tokens limit (hard limit)
+                # If adding the NEXT sentence would exceed max_tokens, we MUST split now?
+                # Or we check if current is already too big?
+                # Usually we check before adding, or check if accumulating.
+                # Here we check: If we DON'T split, the chunk grows.
+                # Let's check if the *current* chunk is getting too big relative to max_tokens?
+                # Or better: check if adding next sentence would overflow.
 
-                    # Logic for merging
-                    similarity = cosine_similarity(current_last_embedding, embedding)
-                    sentence_len = len(sentence)
+                next_len = len(sentences[i+1])
+                will_overflow = (current_chunk_len + next_len) > config.max_tokens
 
-                    if (similarity >= config.semantic_chunking_threshold) and (
-                        current_chunk_len + sentence_len < config.max_tokens
-                    ):
-                        current_chunk_sentences.append(sentence)
-                        current_chunk_len += sentence_len
-                        current_last_embedding = embedding
-                    else:
-                        # Finalize current chunk
-                        chunk_text = "".join(current_chunk_sentences)
-                        yield Chunk(
-                            index=current_chunk_index,
-                            text=chunk_text,
-                            start_char_idx=current_start_idx,
-                            end_char_idx=current_start_idx + len(chunk_text),
-                            embedding=None,
-                        )
-                        current_chunk_index += 1
-                        current_start_idx += len(chunk_text)
+                if should_split or will_overflow:
+                    # Commit current chunk
+                    chunk_text = "".join(current_chunk_sentences)
+                    yield self._create_chunk(chunk_index, chunk_text, current_start_idx)
 
-                        # Start new chunk with current sentence
-                        current_chunk_sentences = [sentence]
-                        current_chunk_len = sentence_len
-                        current_last_embedding = embedding
+                    chunk_index += 1
+                    current_start_idx += len(chunk_text)
+                    current_chunk_sentences = []
+                    current_chunk_len = 0
+            else:
+                # Last sentence. Always commit what we have.
+                pass
 
-            # Final flush after all batches
-            if current_chunk_sentences:
-                chunk_text = "".join(current_chunk_sentences)
-                yield Chunk(
-                    index=current_chunk_index,
-                    text=chunk_text,
-                    start_char_idx=current_start_idx,
-                    end_char_idx=current_start_idx + len(chunk_text),
-                    embedding=None,
-                )
+        # Final flush
+        if current_chunk_sentences:
+            chunk_text = "".join(current_chunk_sentences)
+            yield self._create_chunk(chunk_index, chunk_text, current_start_idx)
 
-        except Exception:
-            logger.exception("Error during semantic chunking process.")
-            raise
+    def _calculate_distances(self, embeddings: list[list[float]]) -> np.ndarray:
+        """
+        Calculate cosine distances (1 - similarity) between adjacent embeddings.
+        Returns array of shape (N-1,).
+        """
+        # Convert to numpy array
+        matrix = np.array(embeddings)
+
+        # Normalize rows
+        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        norms[norms == 0] = 1e-10  # Avoid division by zero
+        normalized = matrix / norms
+
+        # Calculate cosine similarity between adjacent vectors
+        # dot product of i and i+1
+        # normalized[:-1] is 0..N-2
+        # normalized[1:] is 1..N-1
+        similarities = np.sum(normalized[:-1] * normalized[1:], axis=1)
+
+        # Clip to [-1, 1] to avoid numerical errors
+        similarities = np.clip(similarities, -1.0, 1.0)
+
+        # Distance = 1 - Similarity
+        return 1.0 - similarities
+
+    def _create_chunk(self, index: int, text: str, start_char_idx: int) -> Chunk:
+        """Helper to create a Chunk object."""
+        return Chunk(
+            index=index,
+            text=text,
+            start_char_idx=start_char_idx,
+            end_char_idx=start_char_idx + len(text),
+            embedding=None,  # Embeddings for chunks will be generated later by RaptorEngine L0
+        )
 
     def _validate_input(self, text: str) -> None:
         if not isinstance(text, str):

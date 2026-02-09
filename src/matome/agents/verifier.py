@@ -117,7 +117,7 @@ class VerifierAgent:
             msg = "LLM not initialized"
             raise VerificationError(msg)
 
-        response = None
+        response: BaseMessage | None = None
         for attempt in Retrying(
             stop=stop_after_attempt(config.max_retries),
             wait=wait_exponential(multiplier=1, min=2, max=10),
@@ -129,13 +129,9 @@ class VerifierAgent:
                         f"[{request_id}] Retrying Verification LLM call (Attempt {attempt.retry_state.attempt_number})"
                     )
 
-                # Check invoke capability (standard ChatOpenAI has it)
-                if hasattr(self.llm, "invoke"):
-                    response = self.llm.invoke(messages)
-                else:
-                    response = self.llm(messages)  # type: ignore[operator]
+                response = self.llm.invoke(messages)
 
-        if not response:
+        if response is None:
             msg = f"[{request_id}] No response received from LLM."
             raise VerificationError(msg)
 

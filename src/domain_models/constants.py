@@ -16,6 +16,10 @@ DEFAULT_TOKENIZER = "cl100k_base"
 DEFAULT_EMBEDDING = "intfloat/multilingual-e5-large"
 DEFAULT_SUMMARIZER = "gpt-4o"
 
+# Text Processing
+# Splits AFTER '。', '！', '？' followed by optional whitespace, OR on one or more newlines.
+SENTENCE_SPLIT_PATTERN = r"(?<=[\u3002\uFF01\uFF1F])\s*|\n+"
+
 # Configuration Defaults
 LARGE_SCALE_THRESHOLD = 20000
 

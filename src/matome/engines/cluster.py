@@ -58,6 +58,7 @@ class GMMClusterer:
             n_samples, dim = self._stream_write_embeddings(embeddings, path_obj, WRITE_BATCH_SIZE)
 
             if n_samples == 0:
+                logger.info("No embeddings to cluster. Returning empty list.")
                 return []
 
             # Handle edge cases (small datasets)
@@ -115,7 +116,7 @@ class GMMClusterer:
                         np_batch = np.array(sub_batch, dtype="float32")
                     except ValueError as e:
                         msg = f"Failed to create batch array: {e}"
-                        raise ValueError(msg) from e
+                        raise ValueError(msg)
 
                     if np_batch.shape[1] != dim:
                         msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
@@ -150,16 +151,17 @@ class GMMClusterer:
         Returns:
             List of Clusters if handled, None otherwise (proceed to normal clustering).
         """
-        if n_samples == 1:
-            return [Cluster(id=0, level=0, node_indices=[0])]
-
         # Threshold for "too small to cluster"
         # Standard UMAP/GMM can fail or be unstable with very few samples.
         # 5 is a reasonable heuristic.
-        if n_samples <= 5:
+        MIN_SAMPLES_FOR_CLUSTERING = 5
+
+        if n_samples <= MIN_SAMPLES_FOR_CLUSTERING:
             logger.info(
                 f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster."
             )
+            # Create a single cluster containing all nodes (0 to n_samples-1)
+            # Note: We return Cluster with ID 0.
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
 
         return None

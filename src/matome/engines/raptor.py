@@ -9,6 +9,7 @@ from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
 from matome.utils.store import DiskChunkStore
+from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
@@ -35,52 +36,6 @@ class RaptorEngine:
         self.summarizer = summarizer
         self.config = config
 
-    def _process_level_zero(
-        self, initial_chunks: Iterable[Chunk], store: DiskChunkStore
-    ) -> tuple[list[Cluster], list[NodeID]]:
-        """
-        Handle Level 0: Embedding, Storage, and Clustering.
-
-        Consumes the initial chunks iterator, embeds them, stores them in the database
-        (batched), and then clusters the embeddings. All operations are strictly streaming.
-        """
-        current_level_ids: list[NodeID] = []
-        # Use mutable container to track count within generator
-        stats = {"node_count": 0}
-
-        def l0_embedding_generator() -> Iterator[list[float]]:
-            chunk_buffer: list[Chunk] = []
-
-            # Embed chunks (streaming from initial_chunks iterator)
-            for chunk in self.embedder.embed_chunks(initial_chunks):
-                if chunk.embedding is None:
-                    msg = f"Chunk {chunk.index} missing embedding."
-                    raise ValueError(msg)
-
-                stats["node_count"] += 1
-                if stats["node_count"] % 100 == 0:
-                    logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")
-
-                yield chunk.embedding
-
-                # Buffer chunks for storage to avoid N+1 DB transactions
-                chunk_buffer.append(chunk)
-                current_level_ids.append(chunk.index)
-
-                if len(chunk_buffer) >= self.config.chunk_buffer_size:
-                    store.add_chunks(chunk_buffer)
-                    chunk_buffer.clear()
-
-            # Flush remaining chunks
-            if chunk_buffer:
-                store.add_chunks(chunk_buffer)
-
-        # cluster_nodes consumes the generator.
-        # This will drive the loop above, which drives storage and counting.
-        clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
-
-        return clusters, current_level_ids
-
     def run(self, text: str, store: DiskChunkStore | None = None) -> DocumentTree:
         """
         Execute the RAPTOR pipeline.
@@ -95,7 +50,6 @@ class RaptorEngine:
         all_summaries: dict[str, SummaryNode] = {}
 
         # Use provided store or create a temporary one
-        # If provided, we wrap it in a nullcontext so it doesn't close on exit
         store_ctx: contextlib.AbstractContextManager[DiskChunkStore] = (
             DiskChunkStore() if store is None else contextlib.nullcontext(store)
         )
@@ -117,7 +71,12 @@ class RaptorEngine:
                     break
 
                 if len(clusters) == node_count:
-                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+                    # If clustering returned 1 cluster per node (or just one big cluster of all),
+                    # we might be done or need one last summary.
+                    # If 1 cluster total, we summarize it and we are done (next level has 1 node).
+                    # If N clusters (each node is a cluster), we stop?
+                    # GMMClusterer returns clusters.
+                    pass
 
                 logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
@@ -152,14 +111,63 @@ class RaptorEngine:
 
             return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
 
+    def _process_level_zero(
+        self, initial_chunks: Iterable[Chunk], store: DiskChunkStore
+    ) -> tuple[list[Cluster], list[NodeID]]:
+        """
+        Handle Level 0: Embedding, Storage, and Clustering.
+        """
+        current_level_ids: list[NodeID] = []
+
+        # Create a generator that yields embeddings AND populates current_level_ids/store
+        embedding_stream = self._embed_and_store_l0(initial_chunks, store, current_level_ids)
+
+        # cluster_nodes consumes the generator
+        clusters = self.clusterer.cluster_nodes(embedding_stream, self.config)
+
+        return clusters, current_level_ids
+
+    def _embed_and_store_l0(
+        self,
+        initial_chunks: Iterable[Chunk],
+        store: DiskChunkStore,
+        id_tracker: list[NodeID]
+    ) -> Iterator[list[float]]:
+        """
+        Generator that embeds chunks, stores them, tracks their IDs, and yields embeddings.
+        """
+        chunk_buffer: list[Chunk] = []
+        node_count = 0
+
+        # Embed chunks (streaming from initial_chunks iterator)
+        for chunk in self.embedder.embed_chunks(initial_chunks):
+            if chunk.embedding is None:
+                msg = f"Chunk {chunk.index} missing embedding."
+                raise ValueError(msg)
+
+            node_count += 1
+            if node_count % 100 == 0:
+                logger.info(f"Processed {node_count} chunks (Level 0)...")
+
+            yield chunk.embedding
+
+            # Buffer chunks for storage to avoid N+1 DB transactions
+            chunk_buffer.append(chunk)
+            id_tracker.append(chunk.index)
+
+            if len(chunk_buffer) >= self.config.chunk_buffer_size:
+                store.add_chunks(chunk_buffer)
+                chunk_buffer.clear()
+
+        # Flush remaining chunks
+        if chunk_buffer:
+            store.add_chunks(chunk_buffer)
+
     def _next_level_clustering(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
     ) -> list[Cluster]:
         """
         Perform embedding and clustering for the next level (summaries).
-
-        Retrieves text for the current level nodes from the store, generates embeddings,
-        updates the store with new embeddings, and clusters them.
         """
 
         def lx_embedding_generator() -> Iterator[list[float]]:
@@ -174,10 +182,7 @@ class RaptorEngine:
                             f"Node {nid} not found in store during next level clustering."
                         )
 
-            # Strategy: Batched processing manually
-            from matome.utils.compat import batched
-
-            # We process in batches to avoid loading all texts
+            # Process in batches
             for batch in batched(node_text_generator(), self.config.embedding_batch_size):
                 # batch is a tuple of (nid, text)
                 ids = [item[0] for item in batch]
@@ -192,66 +197,6 @@ class RaptorEngine:
 
         return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
 
-    def _finalize_tree(
-        self,
-        current_level_ids: list[NodeID],
-        store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
-        l0_ids: list[NodeID],
-    ) -> DocumentTree:
-        """
-        Construct the final DocumentTree.
-
-        Builds the tree structure from the final root node down to the leaf chunks.
-        """
-        if not current_level_ids:
-            # If input was empty?
-            if not l0_ids:
-                # Should return empty tree if no chunks at all
-                # But we need a dummy root? Or empty tree?
-                # Returning minimal dummy tree for safety if logic requires return
-                pass
-            # If current_level_ids empty but l0_ids not empty (unlikely unless summarization failed completely)
-            msg = "No nodes remaining."
-            raise ValueError(msg)
-
-        root_id = current_level_ids[0]
-        root_node_obj = store.get_node(root_id)
-
-        if not root_node_obj:
-            msg = "Root node not found in store."
-            raise ValueError(msg)
-
-        # Ensure root node has embedding (it might be skipped in loop if it was the only node)
-        if root_node_obj.embedding is None:
-            logger.info(f"Generating embedding for root node {root_id}")
-            # Generate single embedding
-            embeddings = list(self.embedder.embed_strings([root_node_obj.text]))
-            if embeddings:
-                root_node_obj.embedding = embeddings[0]
-                store.update_node_embedding(root_id, embeddings[0])
-                if isinstance(root_node_obj, SummaryNode):
-                    all_summaries[str(root_id)] = root_node_obj
-
-        if isinstance(root_node_obj, Chunk):
-            root_node = SummaryNode(
-                id=str(uuid.uuid4()),
-                text=root_node_obj.text,
-                level=1,
-                children_indices=[root_node_obj.index],
-                metadata={"type": "single_chunk_root"},
-            )
-            all_summaries[root_node.id] = root_node
-        else:
-            root_node = root_node_obj
-
-        return DocumentTree(
-            root_node=root_node,
-            all_nodes=all_summaries,
-            leaf_chunk_ids=l0_ids,
-            metadata={"levels": root_node.level},
-        )
-
     def _summarize_clusters(
         self,
         clusters: list[Cluster],
@@ -261,9 +206,6 @@ class RaptorEngine:
     ) -> Iterator[SummaryNode]:
         """
         Process clusters to generate summaries (streaming).
-
-        Iterates over clusters, retrieves member texts, and invokes the summarizer.
-        Yields SummaryNodes for the next level.
         """
         for cluster in clusters:
             children_indices: list[NodeID] = []
@@ -271,6 +213,11 @@ class RaptorEngine:
 
             for idx_raw in cluster.node_indices:
                 idx = int(idx_raw)
+                # Validation: ensure idx is within range
+                if idx < 0 or idx >= len(current_level_ids):
+                    logger.warning(f"Cluster node index {idx} out of range.")
+                    continue
+
                 node_id = current_level_ids[idx]
                 node = store.get_node(node_id)
                 if not node:
@@ -278,6 +225,9 @@ class RaptorEngine:
 
                 children_indices.append(node_id)
                 cluster_texts.append(node.text)
+
+            if not cluster_texts:
+                continue
 
             # Note: For very large clusters, joining texts might still be memory intensive.
             # But the summarizer typically takes a string.
@@ -294,3 +244,72 @@ class RaptorEngine:
             )
 
             yield summary_node
+
+    def _finalize_tree(
+        self,
+        current_level_ids: list[NodeID],
+        store: DiskChunkStore,
+        all_summaries: dict[str, SummaryNode],
+        l0_ids: list[NodeID],
+    ) -> DocumentTree:
+        """
+        Construct the final DocumentTree.
+        """
+        if not current_level_ids:
+            # If input was empty?
+            if not l0_ids:
+                # Returning minimal dummy tree for safety
+                dummy_root = SummaryNode(
+                    id=str(uuid.uuid4()),
+                    text="",
+                    level=1,
+                    children_indices=[],
+                    metadata={"type": "empty_root"},
+                )
+                return DocumentTree(
+                    root_node=dummy_root,
+                    all_nodes={},
+                    leaf_chunk_ids=[],
+                    metadata={"status": "empty"},
+                )
+
+            msg = "No nodes remaining but L0 chunks exist. Summarization error?"
+            raise ValueError(msg)
+
+        root_id = current_level_ids[0]
+        root_node_obj = store.get_node(root_id)
+
+        if not root_node_obj:
+            msg = "Root node not found in store."
+            raise ValueError(msg)
+
+        # Ensure root node has embedding
+        if root_node_obj.embedding is None:
+            logger.info(f"Generating embedding for root node {root_id}")
+            embeddings = list(self.embedder.embed_strings([root_node_obj.text]))
+            if embeddings:
+                root_node_obj.embedding = embeddings[0]
+                store.update_node_embedding(root_id, embeddings[0])
+                if isinstance(root_node_obj, SummaryNode):
+                    all_summaries[str(root_id)] = root_node_obj
+
+        if isinstance(root_node_obj, Chunk):
+            # Promote single chunk to SummaryNode root
+            root_node = SummaryNode(
+                id=str(uuid.uuid4()),
+                text=root_node_obj.text,
+                level=1,
+                children_indices=[root_node_obj.index],
+                embedding=root_node_obj.embedding,
+                metadata={"type": "single_chunk_root"},
+            )
+            all_summaries[root_node.id] = root_node
+        else:
+            root_node = root_node_obj
+
+        return DocumentTree(
+            root_node=root_node,
+            all_nodes=all_summaries,
+            leaf_chunk_ids=l0_ids,
+            metadata={"levels": root_node.level},
+        )
