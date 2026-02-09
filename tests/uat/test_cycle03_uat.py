@@ -28,13 +28,13 @@ def test_scenario_08_openrouter_connection_mocked(mock_env_key: None) -> None:
         mock_instance = MockLLM.return_value
         mock_instance.invoke.return_value = AIMessage(content="Hello! How can I help you?")
 
-        agent = SummarizationAgent()
+        config = ProcessingConfig()
+        agent = SummarizationAgent(config)
         # We manually trigger a simple call if the agent exposed one, but here we test summarize
         # The scenario asks for "Hello, world!" input.
         # We can reuse summarize for this or invoke llm directly if exposed.
         # But UAT should test the public API.
 
-        config = ProcessingConfig()
         # We override the template for this specific test if possible,
         # but the agent enforces CoD.
         # So we just check if it calls the LLM.
@@ -58,8 +58,8 @@ def test_scenario_09_cod_behavior_mocked() -> None:
         # Mock a "dense" response
         mock_instance.invoke.return_value = AIMessage(content="iPhone (2007, Steve Jobs) revolutionized phones.")
 
-        agent = SummarizationAgent()
         config = ProcessingConfig()
+        agent = SummarizationAgent(config)
 
         summary = agent.summarize(verbose_text, config)
 
@@ -93,8 +93,8 @@ def test_scenario_10_error_handling() -> None:
         # Let's simulate a crash
         mock_instance.invoke.side_effect = Exception("API Error 503")
 
-        agent = SummarizationAgent()
         config = ProcessingConfig()
+        agent = SummarizationAgent(config)
 
         # It should probably raise an exception or return an error string
         # purely depending on implementation. Spec says "eventually return a result or a structured error".

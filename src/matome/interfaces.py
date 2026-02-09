@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from typing import Protocol, runtime_checkable
 
 from domain_models.config import ProcessingConfig
@@ -40,14 +41,14 @@ class Clusterer(Protocol):
     to facilitate hierarchical summarization (RAPTOR).
     """
 
-    def cluster_nodes(self, embeddings: list[list[float]], config: ProcessingConfig) -> list[Cluster]:
+    def cluster_nodes(self, embeddings: Iterable[list[float]], config: ProcessingConfig) -> list[Cluster]:
         """
         Cluster nodes based on embeddings.
 
         This method identifies groups of similar nodes to be summarized together.
 
         Args:
-            embeddings: A list of vectors (list of floats), where each vector corresponds to a node.
+            embeddings: An iterable of vectors (list of floats), where each vector corresponds to a node.
                         The order of embeddings implies the index (0..N-1).
             config: Configuration parameters such as `n_clusters` or `clustering_algorithm`.
 

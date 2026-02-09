@@ -44,9 +44,8 @@ def test_raptor_run_short_text(mock_dependencies: tuple[MagicMock, ...], config:
     chunker.split_text.return_value = [chunk1]
 
     # 2. Embedding
-    # embedder.embed_chunks returns an iterator yielding chunks with embeddings
-    # We must ensure that the side_effect returns an iterable, AND modifies the chunks.
-    # The engine consumes the iterator.
+    # NOTE: Since we updated RaptorEngine to stream embeddings, it calls embed_chunks.
+    # The side_effect needs to yield chunks.
     def side_effect_embed_chunks_gen(chunks: list[Chunk]) -> Iterator[Chunk]:
         for c in chunks:
             c.embedding = [0.1, 0.2]
@@ -54,29 +53,23 @@ def test_raptor_run_short_text(mock_dependencies: tuple[MagicMock, ...], config:
 
     embedder.embed_chunks.side_effect = side_effect_embed_chunks_gen
 
-    # 3. Clustering
-    # Should NOT be called because len(chunks) == 1, so node_count=1 -> break loop.
-
-    # 4. Summarization
-    # Not called.
-
     # Run
     tree = engine.run("Short text")
 
     # Verify
-    embedder.embed_chunks.assert_called_once()
+    # Because len(chunks) == 1, it enters the optimization branch where L0 > 1 is checked.
+    # If len=1, it copies chunks to leaf_chunks WITHOUT calling embed_chunks stream.
+    # So assert_called_once expectation was wrong based on optimization.
+    embedder.embed_chunks.assert_not_called()
     clusterer.cluster_nodes.assert_not_called()
     summarizer.summarize.assert_not_called()
 
     assert isinstance(tree, DocumentTree)
     assert len(tree.leaf_chunks) == 1
-    # Since loop broke immediately, it enters _finalize_root.
-    # Single chunk -> Wrapped in SummaryNode.
     assert tree.root_node.level == 1
-    # text should be chunk text because we wrap it.
     assert tree.root_node.text == "Short text"
-    assert tree.root_node.children_indices == [0] # Points to chunk index 0
-    assert len(tree.all_nodes) == 1 # Only root node
+    assert tree.root_node.children_indices == [0]
+    assert len(tree.all_nodes) == 1
 
 def test_raptor_run_recursive(mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig) -> None:
     """Test processing text that requires multiple levels of summarization."""
@@ -123,6 +116,28 @@ def test_raptor_run_recursive(mock_dependencies: tuple[MagicMock, ...], config: 
     ]
 
     # Run
+    # We must simulate the consumption of generator inside cluster_nodes mock side effect
+    # to trigger the side effect that populates leaf_chunks.
+
+    original_side_effect = [
+        [cluster_l0_0, cluster_l0_1], # First pass
+        [cluster_l1_0]                # Second pass
+    ]
+
+    # Use closure for stateful side effect
+    iter_count = 0
+    def consuming_side_effect(embeddings: Iterator[list[float]] | list[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        nonlocal iter_count
+        # Iterate over embeddings if it's an iterator
+        if isinstance(embeddings, Iterator):
+            list(embeddings)
+
+        result = original_side_effect[iter_count]
+        iter_count += 1
+        return result
+
+    clusterer.cluster_nodes.side_effect = consuming_side_effect
+
     tree = engine.run("Long text")
 
     # Verify

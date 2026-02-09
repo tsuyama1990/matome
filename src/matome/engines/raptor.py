@@ -1,5 +1,6 @@
 import logging
 import uuid
+from collections.abc import Iterator
 from typing import cast
 
 from domain_models.config import ProcessingConfig
@@ -47,11 +48,10 @@ class RaptorEngine:
         clusters: list[Cluster],
         current_nodes: list[Chunk | SummaryNode],
         level: int,
-    ) -> tuple[list[SummaryNode], dict[str, SummaryNode], list[str]]:
+    ) -> tuple[list[SummaryNode], dict[str, SummaryNode]]:
         """Helper to create summary nodes from clusters."""
         new_nodes: list[SummaryNode] = []
         new_summaries: dict[str, SummaryNode] = {}
-        texts: list[str] = []
 
         for cluster in clusters:
             children_indices: list[NodeID] = []
@@ -81,9 +81,8 @@ class RaptorEngine:
 
             new_nodes.append(summary_node)
             new_summaries[node_id] = summary_node
-            texts.append(summary_text)
 
-        return new_nodes, new_summaries, texts
+        return new_nodes, new_summaries
 
     def run(self, text: str) -> DocumentTree:
         """
@@ -95,7 +94,7 @@ class RaptorEngine:
         Returns:
             A DocumentTree containing the hierarchical summary structure.
         """
-        # 1. Chunking (Level 0)
+        # 1. Chunking
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks = self.chunker.split_text(text, self.config)
         if not initial_chunks:
@@ -103,83 +102,58 @@ class RaptorEngine:
             msg = "Input text is too short or empty to process."
             raise ValueError(msg)
 
-        # 2. Embedding Level 0
-        logger.info(f"Embedding {len(initial_chunks)} chunks.")
+        leaf_chunks: list[Chunk] = []
+        current_embeddings_gen: Iterator[list[float]] | None = None
 
-        # embed_chunks is a generator that yields chunks with embeddings populated.
-        # However, for clustering (step 3), we need random access to embeddings/nodes
-        # because the clusterer returns indices, and we need to map those back to nodes.
-        # Also, UMAP/GMM clustering algorithms typically require the full dataset
-        # to find structure, so full streaming is not feasible for the clustering step itself.
-        # We limit memory usage in clustering via memmap, but here we hold objects in memory.
-        # For extremely large datasets, this list materialization is a bottleneck.
-        # TODO: Future optimization: Store chunks in DB/disk and only hold IDs/Embeddings in memory.
-        leaf_chunks = list(self.embedder.embed_chunks(initial_chunks))
+        if len(initial_chunks) > 1:
+            # Prepare streaming embedding for L0
+            def l0_embedding_generator() -> Iterator[list[float]]:
+                for chunk in self.embedder.embed_chunks(initial_chunks):
+                    if chunk.embedding is None:
+                         msg = f"Chunk {chunk.index} missing embedding."
+                         raise ValueError(msg)
+                    emb = chunk.embedding
+                    yield emb
 
-        # Prepare for recursion
+                    # Store chunk without embedding to save RAM
+                    chunk.embedding = None
+                    leaf_chunks.append(chunk)
+
+            current_embeddings_gen = l0_embedding_generator()
+        else:
+            leaf_chunks = initial_chunks
+
         current_nodes: list[Chunk | SummaryNode] = cast(list[Chunk | SummaryNode], leaf_chunks)
-
-        # Extract embeddings. Ensure they exist.
-        current_embeddings: list[list[float]] = []
-        for c in leaf_chunks:
-            if c.embedding is None:
-                msg = f"Chunk {c.index} missing embedding after embedding step."
-                raise ValueError(msg)
-            current_embeddings.append(c.embedding)
-
         all_summaries: dict[str, SummaryNode] = {}
         level = 0
 
-        # Recursion Loop
         while True:
-            node_count = len(current_nodes)
+            node_count = len(initial_chunks) if level == 0 else len(current_nodes)
             logger.info(f"Processing Level {level}. Node count: {node_count}")
 
-            # Check termination
             if node_count <= 1:
                 break
 
-            # 3. Clustering
-            clusters = self.clusterer.cluster_nodes(current_embeddings, self.config)
+            clusters = self._perform_clustering_step(level, current_nodes, current_embeddings_gen, node_count)
 
-            # Check for non-reduction
-            if len(clusters) == node_count:
-                logger.warning(
-                    f"Clustering at level {level} resulted in {len(clusters)} clusters "
-                    f"for {node_count} nodes (no reduction). Forcing merge into single cluster."
-                )
-                clusters = [
-                    Cluster(
-                        id=0,  # Temp ID
-                        level=level,
-                        node_indices=list(range(node_count)),
-                    )
-                ]
+            # Reset generator after use (it's one-off)
+            current_embeddings_gen = None
+            if level == 0:
+                current_nodes = cast(list[Chunk | SummaryNode], leaf_chunks)
 
             logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
-            # 4. Summarization
+            # Summarization
             level += 1
-            new_level_nodes, new_summaries, texts_to_embed = self._create_summary_nodes(
+            new_level_nodes, new_summaries = self._create_summary_nodes(
                 clusters, current_nodes, level
             )
             all_summaries.update(new_summaries)
-
-            # 5. Embed New Nodes
-            if texts_to_embed:
-                new_embeddings = list(self.embedder.embed_strings(texts_to_embed))
-            else:
-                new_embeddings = []
-
-            # Update State
             current_nodes = cast(list[Chunk | SummaryNode], new_level_nodes)
-            current_embeddings = new_embeddings
 
-        # Finalize Root
+        # Finalize
         root_node = self._finalize_root(current_nodes)
 
-        # If the finalized root wasn't in all_summaries (e.g. wrapped single chunk), add it.
-        # Check by ID.
         if isinstance(root_node, SummaryNode) and root_node.id not in all_summaries:
              all_summaries[root_node.id] = root_node
 
@@ -191,6 +165,42 @@ class RaptorEngine:
             leaf_chunks=leaf_chunks,
             metadata={"levels": root_node.level},
         )
+
+    def _perform_clustering_step(
+        self,
+        level: int,
+        current_nodes: list[Chunk | SummaryNode],
+        current_embeddings_gen: Iterator[list[float]] | None,
+        node_count: int
+    ) -> list[Cluster]:
+        """Execute clustering for the current level."""
+        clusters: list[Cluster]
+
+        if level == 0:
+            if current_embeddings_gen is None:
+                 # Should not happen if logic is correct
+                 msg = "Embedding generator missing for Level 0."
+                 raise RuntimeError(msg)
+            clusters = self.clusterer.cluster_nodes(current_embeddings_gen, self.config)
+        else:
+            summary_texts = [node.text for node in current_nodes]
+            embedding_iter = self.embedder.embed_strings(summary_texts)
+            clusters = self.clusterer.cluster_nodes(embedding_iter, self.config)
+
+        # Check for non-reduction
+        if len(clusters) == node_count:
+            logger.warning(
+                f"Clustering at level {level} resulted in {len(clusters)} clusters "
+                f"for {node_count} nodes (no reduction). Forcing merge into single cluster."
+            )
+            clusters = [
+                Cluster(
+                    id=0,
+                    level=level,
+                    node_indices=list(range(node_count)),
+                )
+            ]
+        return clusters
 
     def _finalize_root(self, current_nodes: list[Chunk | SummaryNode]) -> SummaryNode:
         """Handle final state to determine the root node."""
@@ -209,7 +219,6 @@ class RaptorEngine:
             )
 
         if len(current_nodes) > 1:
-            # Should be unreachable if loop works correctly
             msg = "Unexpected state: Multiple nodes remain after processing."
             raise ValueError(msg)
 

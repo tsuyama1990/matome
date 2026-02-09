@@ -60,6 +60,9 @@ class ProcessingConfig(BaseModel):
     umap_min_dist: float = Field(
         default=0.1, ge=0.0, description="UMAP parameter: Minimum distance between points."
     )
+    umap_n_components: int = Field(
+        default=2, ge=2, description="UMAP parameter: Number of dimensions to reduce to."
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(
@@ -71,6 +74,12 @@ class ProcessingConfig(BaseModel):
     )
     max_retries: int = Field(
         default=3, ge=0, description="Maximum number of retries for LLM calls."
+    )
+    llm_temperature: float = Field(
+        default=0.0, ge=0.0, le=1.0, description="Sampling temperature for LLM."
+    )
+    max_word_length: int = Field(
+        default=1000, ge=100, description="Maximum length of a single word for input validation."
     )
 
     @field_validator("embedding_model")

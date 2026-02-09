@@ -3,7 +3,6 @@ Summarization Agent module.
 This module implements the summarization logic using OpenRouter and Chain of Density prompting.
 """
 import logging
-import os
 import re
 import uuid
 from typing import Any
@@ -13,7 +12,6 @@ from langchain_openai import ChatOpenAI
 from tenacity import stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
-from domain_models.constants import DEFAULT_SUMMARIZATION_MODEL
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
 from matome.utils.prompts import COD_TEMPLATE
@@ -26,20 +24,19 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(self, model_name: str | None = None) -> None:
+    def __init__(self, config: ProcessingConfig) -> None:
         """
         Initialize the SummarizationAgent.
 
         Args:
-            model_name: The name of the model to use. If None, uses SUMMARIZATION_MODEL env var
-                        or defaults to DEFAULT_SUMMARIZATION_MODEL.
+            config: Processing configuration containing model name, retries, etc.
         """
         # Retrieve API key securely from environment via config utility
         api_key = get_openrouter_api_key()
         base_url = get_openrouter_base_url()
 
         # Determine model name
-        self.model_name = model_name or os.getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZATION_MODEL)
+        self.model_name = config.summarization_model
 
         self.api_key = api_key
         self.llm: ChatOpenAI | None = None
@@ -47,12 +44,16 @@ class SummarizationAgent:
         # Initialize LLM only if API key is present (or if we want to allow failure later)
         # Check for 'mock' value explicitly to enable testing mode without real calls
         if api_key and api_key != "mock":
+            # langchain_openai handles retries internally if max_retries > 0,
+            # but we also wrap calls with tenacity for more control if needed.
+            # Here we set max_retries to 0 in the client to let tenacity handle it,
+            # or we rely on the client. Let's use config.max_retries in client.
             self.llm = ChatOpenAI(
                 model=self.model_name,
                 api_key=api_key,
                 base_url=base_url,
-                temperature=0,
-                max_retries=1, # We handle retries via tenacity wrapper now
+                temperature=config.llm_temperature,
+                max_retries=config.max_retries,
             )
 
     def summarize(self, text: str, config: ProcessingConfig) -> str:
@@ -76,7 +77,7 @@ class SummarizationAgent:
             return ""
 
         # Validate input for security
-        self._validate_input(text)
+        self._validate_input(text, config.max_word_length)
 
         # Mock Mode Check
         if self.api_key == "mock":
@@ -104,7 +105,7 @@ class SummarizationAgent:
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 
-    def _validate_input(self, text: str) -> None:
+    def _validate_input(self, text: str, max_word_length: int) -> None:
         """
         Sanitize and validate input text to prevent injection attacks or excessive load.
         """
@@ -124,8 +125,8 @@ class SummarizationAgent:
         # Check for extremely long uninterrupted sequences which can cause tokenizer issues
         # Using a generator expression to be memory efficient
         longest_word_len = max((len(w) for w in text.split()), default=0)
-        if longest_word_len > 5000:
-             msg = "Input text contains extremely long words (potential DoS vector)."
+        if longest_word_len > max_word_length:
+             msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
              raise ValueError(msg)
 
     def _invoke_llm(self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str) -> BaseMessage:
@@ -135,6 +136,13 @@ class SummarizationAgent:
              raise SummarizationError(msg)
 
         from tenacity import Retrying
+
+        # If LLM client handles retries, we might double-retry here.
+        # But explicitly controlling it via tenacity allows logging and custom wait strategies.
+        # We initialized LLM with max_retries=config.max_retries.
+        # So maybe we don't need tenacity?
+        # But tenacity provides better logging "Retrying LLM call...".
+        # Let's keep tenacity for robustness.
 
         response = None
         for attempt in Retrying(

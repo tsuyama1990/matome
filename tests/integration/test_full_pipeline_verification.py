@@ -25,8 +25,9 @@ def test_interface_compliance() -> None:
 
     # Summarizer
     # Patch to avoid API key check
+    config = ProcessingConfig()
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
-        summarizer = SummarizationAgent()
+        summarizer = SummarizationAgent(config)
         assert isinstance(summarizer, Summarizer)
 
 def test_configuration_flow() -> None:
@@ -87,7 +88,7 @@ def test_full_pipeline_flow() -> None:
             mock_response.content = "Summary of the cluster."
             mock_llm_instance.invoke.return_value = mock_response
 
-            summarizer = SummarizationAgent()
+            summarizer = SummarizationAgent(config)
 
             # Act
 

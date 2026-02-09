@@ -14,6 +14,10 @@ from matome.exceptions import SummarizationError
 
 
 @pytest.fixture
+def config() -> ProcessingConfig:
+    return ProcessingConfig()
+
+@pytest.fixture
 def mock_llm() -> Generator[MagicMock, None, None]:
     """Mock the ChatOpenAI instance."""
     with patch("matome.agents.summarizer.ChatOpenAI") as mock:
@@ -21,10 +25,10 @@ def mock_llm() -> Generator[MagicMock, None, None]:
 
 
 @pytest.fixture
-def agent(mock_llm: MagicMock) -> SummarizationAgent:
+def agent(mock_llm: MagicMock, config: ProcessingConfig) -> SummarizationAgent:
     """Create a SummarizationAgent instance with a mocked LLM."""
     # We mock the internal llm attribute to avoid real API calls during init if any
-    agent = SummarizationAgent()
+    agent = SummarizationAgent(config)
     agent.llm = MagicMock()
     return agent
 
@@ -33,21 +37,20 @@ def test_initialization(mock_llm: MagicMock) -> None:
     """Test that the agent is initialized with the correct configuration."""
     # Patch get_openrouter_api_key to return a key, so initialization proceeds
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-test-key"):
-        # Set config to have specific model
-        _ = SummarizationAgent()
-        # Verify ChatOpenAI was called with correct base_url
+        config = ProcessingConfig(llm_temperature=0.5, max_retries=5)
+        _ = SummarizationAgent(config)
+        # Verify ChatOpenAI was called with correct base_url and config values
         mock_llm.assert_called_with(
             model="gpt-4o",
             api_key="sk-test-key",
             base_url="https://openrouter.ai/api/v1",
-            temperature=0,
-            max_retries=1, # Updated to 1 as per code change
+            temperature=0.5,
+            max_retries=5,
         )
 
 
-def test_summarize_happy_path(agent: SummarizationAgent) -> None:
+def test_summarize_happy_path(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test the summarize method with a valid response."""
-    config = ProcessingConfig()
     context = "This is a test context about AI."
     expected_summary = "AI is tested."
 
@@ -70,40 +73,36 @@ def test_summarize_happy_path(agent: SummarizationAgent) -> None:
     assert "High-Density Summary" in prompt_content or "high-density summary" in prompt_content
 
 
-def test_summarize_empty_context(agent: SummarizationAgent) -> None:
+def test_summarize_empty_context(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test behavior with empty context."""
-    config = ProcessingConfig()
     result = agent.summarize("", config)
     assert result == ""
     llm_mock = cast(MagicMock, agent.llm)
     llm_mock.invoke.assert_not_called()
 
 
-def test_mock_mode() -> None:
+def test_mock_mode(config: ProcessingConfig) -> None:
     """Test that the agent returns a static string in mock mode."""
     # Patch where it is imported in summarizer.py
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
-        agent = SummarizationAgent()
-        config = ProcessingConfig()
+        agent = SummarizationAgent(config)
         result = agent.summarize("some context", config)
         assert result.startswith("Summary of")
         assert "some context" in result
 
-def test_summarize_missing_key() -> None:
+def test_summarize_missing_key(config: ProcessingConfig) -> None:
     """Test that ValueError (or SummarizationError) is raised if API key is missing and not in mock mode."""
     # Default get_openrouter_api_key returns None
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value=None):
-        agent = SummarizationAgent()
+        agent = SummarizationAgent(config)
         # agent.llm should be None
         assert agent.llm is None
 
-        config = ProcessingConfig()
         with pytest.raises(SummarizationError, match="OpenRouter API Key is missing"):
             agent.summarize("some context", config)
 
-def test_summarize_list_response(agent: SummarizationAgent) -> None:
+def test_summarize_list_response(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test handling of list content in LLM response."""
-    config = ProcessingConfig()
     llm_mock = cast(MagicMock, agent.llm)
     llm_mock.invoke.return_value = AIMessage(content=["Part 1", "Part 2"])
 
@@ -111,9 +110,8 @@ def test_summarize_list_response(agent: SummarizationAgent) -> None:
     assert "Part 1" in result
     assert "Part 2" in result
 
-def test_summarize_int_response(agent: SummarizationAgent) -> None:
+def test_summarize_int_response(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test handling of unexpected content type (e.g. int)."""
-    config = ProcessingConfig()
     mock_msg = MagicMock()
     mock_msg.content = 123
     llm_mock = cast(MagicMock, agent.llm)
@@ -122,38 +120,26 @@ def test_summarize_int_response(agent: SummarizationAgent) -> None:
     result = agent.summarize("context", config)
     assert result == "123"
 
-def test_summarize_exception(agent: SummarizationAgent) -> None:
+def test_summarize_exception(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test that exceptions are wrapped in SummarizationError."""
-    config = ProcessingConfig()
     llm_mock = cast(MagicMock, agent.llm)
     llm_mock.invoke.side_effect = Exception("API Fail")
 
     with pytest.raises(SummarizationError, match="Summarization failed"):
         agent.summarize("context", config)
 
-def test_summarize_long_input(agent: SummarizationAgent) -> None:
-    """Test behavior with extremely long input text."""
-    config = ProcessingConfig()
-    long_text = "word " * 10000  # Simulate 10k words
-    expected_summary = "Long summary."
+def test_summarize_long_input_dos_prevention(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test behavior with input containing potential DoS vectors (extremely long words)."""
+    # config.max_word_length default is 1000
+    long_word = "a" * 1001
 
-    llm_mock = cast(MagicMock, agent.llm)
-    llm_mock.invoke.return_value = AIMessage(content=expected_summary)
-
-    result = agent.summarize(long_text, config)
-    assert result == expected_summary
-
-    # Verify the prompt was constructed correctly despite length
-    args, _ = llm_mock.invoke.call_args
-    # args[0] is the list of messages passed to invoke
-    messages = args[0]
-    prompt_content = messages[0].content
-    assert len(prompt_content) > len(long_text)
-
+    with pytest.raises(ValueError, match="potential DoS vector"):
+        agent.summarize(long_word, config)
 
 def test_summarize_retry_behavior(agent: SummarizationAgent) -> None:
     """Test that retry logic is invoked on failure."""
-    # We set a low wait time for testing
+    # We set a low wait time for testing via mocked time?
+    # Or just rely on tenacity being called.
     config = ProcessingConfig(max_retries=2)
     llm_mock = cast(MagicMock, agent.llm)
 
