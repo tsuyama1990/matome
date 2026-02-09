@@ -1,9 +1,17 @@
-"""
-Core domain models and configuration schemas for the Matome project.
-This package contains Pydantic definitions used throughout the system.
-"""
+from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk, Cluster, Document, DocumentTree, SummaryNode
+from domain_models.types import Metadata, NodeID
+from domain_models.verification import VerificationDetail, VerificationResult
 
-from .config import ProcessingConfig
-from .manifest import Chunk, Document
-
-__all__ = ["Chunk", "Document", "ProcessingConfig"]
+__all__ = [
+    "Chunk",
+    "Cluster",
+    "Document",
+    "DocumentTree",
+    "Metadata",
+    "NodeID",
+    "ProcessingConfig",
+    "SummaryNode",
+    "VerificationDetail",
+    "VerificationResult",
+]

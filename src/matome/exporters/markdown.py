@@ -1,9 +1,5 @@
-from typing import TYPE_CHECKING
-
 from domain_models.manifest import Chunk, DocumentTree, SummaryNode
-
-if TYPE_CHECKING:
-    from matome.utils.store import DiskChunkStore
+from matome.utils.store import DiskChunkStore
 
 
 def _format_chunk(chunk: Chunk, depth: int) -> str:
@@ -57,7 +53,7 @@ def _process_node(
                 _process_node(child_idx, True, depth + 1, tree, chunk_map, lines)
 
 
-def export_to_markdown(tree: DocumentTree, store: "DiskChunkStore | None" = None) -> str:
+def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) -> str:
     """
     Exports the DocumentTree to a Markdown string.
 

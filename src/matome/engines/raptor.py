@@ -38,13 +38,17 @@ class RaptorEngine:
     def _process_level_zero(
         self, initial_chunks: Iterable[Chunk], store: DiskChunkStore
     ) -> tuple[list[Cluster], list[NodeID]]:
-        """Handle Level 0: Embedding, Storage, and Clustering."""
-        current_level_ids: list[NodeID] = []
-        node_count = 0
+        """
+        Handle Level 0: Embedding, Storage, and Clustering.
 
-        # We wrap the generator to count nodes and handle single-node edge case
+        Consumes the initial chunks iterator, embeds them, stores them in the database
+        (batched), and then clusters the embeddings. All operations are strictly streaming.
+        """
+        current_level_ids: list[NodeID] = []
+        # Use mutable container to track count within generator
+        stats = {"node_count": 0}
+
         def l0_embedding_generator() -> Iterator[list[float]]:
-            nonlocal node_count
             chunk_buffer: list[Chunk] = []
 
             # Embed chunks (streaming from initial_chunks iterator)
@@ -53,10 +57,13 @@ class RaptorEngine:
                     msg = f"Chunk {chunk.index} missing embedding."
                     raise ValueError(msg)
 
-                node_count += 1
+                stats["node_count"] += 1
+                if stats["node_count"] % 100 == 0:
+                    logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")
+
                 yield chunk.embedding
 
-                # Store chunk (with embedding preserved)
+                # Buffer chunks for storage to avoid N+1 DB transactions
                 chunk_buffer.append(chunk)
                 current_level_ids.append(chunk.index)
 
@@ -64,28 +71,13 @@ class RaptorEngine:
                     store.add_chunks(chunk_buffer)
                     chunk_buffer.clear()
 
+            # Flush remaining chunks
             if chunk_buffer:
                 store.add_chunks(chunk_buffer)
 
-        # We must start consuming the generator to know if we have > 1 chunks.
-        # But clusterer.cluster_nodes expects an iterable.
-        # If we consume it to check length, we lose data (it's an iterator).
-        # Solution: Pass the generator to clusterer. If clusterer yields empty or handles it, fine.
-        # But our GMMClusterer needs to know n_samples or handle stream.
-        # GMMClusterer.cluster_nodes supports streaming (via stream_write_embeddings).
-        # It handles n_samples=0 or 1 edge cases internally (see _handle_edge_cases).
-
+        # cluster_nodes consumes the generator.
+        # This will drive the loop above, which drives storage and counting.
         clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
-
-        # If node_count was 1, GMMClusterer returns [Cluster(indices=[0])].
-        # If node_count was 0, it returns [].
-        # We need to ensure we don't crash if node_count=0 (handled by run check?)
-        # But run() calls split_text which yields. We don't know if empty until we consume.
-
-        if node_count == 0:
-             # This means initial_chunks yielded nothing.
-             # run() logic below should handle "no nodes remaining".
-             pass
 
         return clusters, current_level_ids
 
@@ -110,7 +102,9 @@ class RaptorEngine:
 
         with store_ctx as active_store:
             # Level 0
-            clusters, current_level_ids = self._process_level_zero(initial_chunks_iter, active_store)
+            clusters, current_level_ids = self._process_level_zero(
+                initial_chunks_iter, active_store
+            )
             # Capture L0 IDs for later reconstruction
             l0_ids = list(current_level_ids)
 
@@ -161,7 +155,12 @@ class RaptorEngine:
     def _next_level_clustering(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
     ) -> list[Cluster]:
-        """Perform embedding and clustering for the next level (summaries)."""
+        """
+        Perform embedding and clustering for the next level (summaries).
+
+        Retrieves text for the current level nodes from the store, generates embeddings,
+        updates the store with new embeddings, and clusters them.
+        """
 
         def lx_embedding_generator() -> Iterator[list[float]]:
             # Generator that yields (id, text) tuples
@@ -171,7 +170,9 @@ class RaptorEngine:
                     if node:
                         yield nid, node.text
                     else:
-                        logger.warning(f"Node {nid} not found in store during next level clustering.")
+                        logger.warning(
+                            f"Node {nid} not found in store during next level clustering."
+                        )
 
             # Strategy: Batched processing manually
             from matome.utils.compat import batched
@@ -198,14 +199,18 @@ class RaptorEngine:
         all_summaries: dict[str, SummaryNode],
         l0_ids: list[NodeID],
     ) -> DocumentTree:
-        """Construct the final DocumentTree."""
+        """
+        Construct the final DocumentTree.
+
+        Builds the tree structure from the final root node down to the leaf chunks.
+        """
         if not current_level_ids:
             # If input was empty?
             if not l0_ids:
-                 # Should return empty tree if no chunks at all
-                 # But we need a dummy root? Or empty tree?
-                 # Returning minimal dummy tree for safety if logic requires return
-                 pass
+                # Should return empty tree if no chunks at all
+                # But we need a dummy root? Or empty tree?
+                # Returning minimal dummy tree for safety if logic requires return
+                pass
             # If current_level_ids empty but l0_ids not empty (unlikely unless summarization failed completely)
             msg = "No nodes remaining."
             raise ValueError(msg)
@@ -254,7 +259,12 @@ class RaptorEngine:
         store: DiskChunkStore,
         level: int,
     ) -> Iterator[SummaryNode]:
-        """Process clusters to generate summaries (streaming)."""
+        """
+        Process clusters to generate summaries (streaming).
+
+        Iterates over clusters, retrieves member texts, and invokes the summarizer.
+        Yields SummaryNodes for the next level.
+        """
         for cluster in clusters:
             children_indices: list[NodeID] = []
             cluster_texts: list[str] = []

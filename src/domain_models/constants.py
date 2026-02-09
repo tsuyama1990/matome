@@ -16,6 +16,9 @@ DEFAULT_TOKENIZER = "cl100k_base"
 DEFAULT_EMBEDDING = "intfloat/multilingual-e5-large"
 DEFAULT_SUMMARIZER = "gpt-4o"
 
+# Configuration Defaults
+LARGE_SCALE_THRESHOLD = 20000
+
 # Security Whitelists
 ALLOWED_TOKENIZER_MODELS = {
     "cl100k_base",
@@ -38,4 +41,20 @@ ALLOWED_EMBEDDING_MODELS = {
     "openai/text-embedding-3-small",
     "openai/text-embedding-3-large",
     "mock-model",  # Allowed for testing
+}
+
+ALLOWED_SUMMARIZATION_MODELS = {
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4-turbo",
+    "gpt-3.5-turbo",
+    "google/gemini-1.5-flash",
+    "google/gemini-1.5-pro",
+    "anthropic/claude-3-opus",
+    "anthropic/claude-3-sonnet",
+    "anthropic/claude-3-haiku",
+    "meta-llama/llama-3-70b-instruct",
+    "openai/gpt-4o",  # OpenRouter format
+    "openai/gpt-4o-mini",
+    "mock-model",
 }

@@ -1,4 +1,3 @@
-
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -41,6 +40,7 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
             if c.embedding is None:
                 c.embedding = [0.1, 0.1]
             yield c
+
     embedder.embed_chunks.side_effect = embed_gen
 
     # Embedder string support for summaries (root node embedding)
@@ -53,12 +53,14 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     # We define a side effect for cluster_nodes that consumes the generator
 
     level_0_clusters = [Cluster(id=0, level=0, node_indices=[0, 1])]
-    level_1_clusters: list[Cluster] = [] # Stop condition
+    level_1_clusters: list[Cluster] = []  # Stop condition
 
     return_values = [level_0_clusters, level_1_clusters]
     call_count = 0
 
-    def cluster_side_effect(embeddings_iter: "Iterator[list[float]]", config: ProcessingConfig) -> list[Cluster]:
+    def cluster_side_effect(
+        embeddings_iter: "Iterator[list[float]]", config: ProcessingConfig
+    ) -> list[Cluster]:
         nonlocal call_count
         # Consume the generator!
         _ = list(embeddings_iter)
@@ -94,10 +96,11 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     # checking that children_indices contains 0 and 1
     assert set(tree.root_node.children_indices) == {0, 1}
 
+
 def test_raptor_empty_iterator_error() -> None:
     """Verify error handling when chunker yields nothing."""
     chunker = MagicMock()
-    chunker.split_text.return_value = iter([]) # Empty
+    chunker.split_text.return_value = iter([])  # Empty
 
     clusterer = MagicMock()
     # If empty, clusterer might be called with empty generator.
@@ -108,7 +111,7 @@ def test_raptor_empty_iterator_error() -> None:
         embedder=MagicMock(),
         clusterer=clusterer,
         summarizer=MagicMock(),
-        config=ProcessingConfig()
+        config=ProcessingConfig(),
     )
 
     # Should likely raise ValueError or return empty tree depending on implementation.

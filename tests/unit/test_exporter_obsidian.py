@@ -48,11 +48,17 @@ def test_canvas_schema_validation() -> None:
     # Valid
     data = {
         "nodes": [
-            {"id": "n1", "x": 0, "y": 0, "width": 100, "height": 100, "type": "text", "text": "Hello"}
+            {
+                "id": "n1",
+                "x": 0,
+                "y": 0,
+                "width": 100,
+                "height": 100,
+                "type": "text",
+                "text": "Hello",
+            }
         ],
-        "edges": [
-            {"id": "e1", "fromNode": "n1", "toNode": "n2"}
-        ]
+        "edges": [{"id": "e1", "fromNode": "n1", "toNode": "n2"}],
     }
     # We expect validation error on missing 'toNode' target if we were validating logic,
     # but here just schema. 'n2' doesn't exist in nodes but edge is valid schema-wise.

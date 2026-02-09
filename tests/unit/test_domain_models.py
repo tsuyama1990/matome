@@ -73,7 +73,10 @@ def test_document_tree_validation() -> None:
 
     # Valid DocumentTree
     tree = DocumentTree(
-        root_node=summary, all_nodes={"s1": summary}, leaf_chunk_ids=[chunk1.index, chunk2.index], metadata={}
+        root_node=summary,
+        all_nodes={"s1": summary},
+        leaf_chunk_ids=[chunk1.index, chunk2.index],
+        metadata={},
     )
     assert tree.root_node.id == "s1"
     assert len(tree.leaf_chunk_ids) == 2

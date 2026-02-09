@@ -21,7 +21,8 @@ def test_add_chunks_streaming(tmp_path: Path) -> None:
     # Verify storage
     with store.engine.connect() as conn:
         result = conn.execute(
-            text(f"SELECT COUNT(*) FROM {TABLE_NODES} WHERE type=:type"), {"type": "chunk"}  # noqa: S608
+            text(f"SELECT COUNT(*) FROM {TABLE_NODES} WHERE type=:type"),  # noqa: S608
+            {"type": "chunk"},
         )
         assert result.scalar() == 5
 
@@ -52,7 +53,8 @@ def test_update_node_embedding_direct(tmp_path: Path) -> None:
     # Check DB internals
     with store.engine.connect() as conn:
         row = conn.execute(
-            text(f"SELECT embedding FROM {TABLE_NODES} WHERE id=:id"), {"id": "0"}  # noqa: S608
+            text(f"SELECT embedding FROM {TABLE_NODES} WHERE id=:id"),  # noqa: S608
+            {"id": "0"},
         ).fetchone()
         assert row is not None
         assert "[0.1, 0.2, 0.3]" in row[0]  # Stored as JSON string
@@ -65,9 +67,7 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
     store_path = tmp_path / "rt_store.db"
     store = DiskChunkStore(store_path)
 
-    chunk = Chunk(
-        index=1, text="Test", start_char_idx=0, end_char_idx=4, embedding=[0.9, 0.9]
-    )
+    chunk = Chunk(index=1, text="Test", start_char_idx=0, end_char_idx=4, embedding=[0.9, 0.9])
     store.add_chunk(chunk)
 
     fetched = store.get_node(1)
@@ -77,7 +77,8 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
     # Verify separation in DB
     with store.engine.connect() as conn:
         row = conn.execute(
-            text(f"SELECT content, embedding FROM {TABLE_NODES} WHERE id=:id"), {"id": "1"}  # noqa: S608
+            text(f"SELECT content, embedding FROM {TABLE_NODES} WHERE id=:id"),  # noqa: S608
+            {"id": "1"},
         ).fetchone()
         assert row is not None
         content_json, embedding_json = row

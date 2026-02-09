@@ -52,17 +52,15 @@ class DiskChunkStore:
         """
         if db_path:
             self.temp_dir = None
-            self.db_path = db_path
+            # Security: Resolve to absolute path to handle relative paths and '..' safely
+            try:
+                self.db_path = db_path.resolve()
+            except OSError:
+                # Fallback if file doesn't exist yet but parent might
+                self.db_path = db_path.absolute()
         else:
             self.temp_dir = tempfile.mkdtemp()
             self.db_path = Path(self.temp_dir) / "store.db"
-
-        # Security: Validate db_path to prevent directory traversal
-        if ".." in str(self.db_path) or (self.db_path.is_absolute() and not str(self.db_path).startswith(tempfile.gettempdir()) and db_path is None):
-             # Basic check, though usually we trust internal tempfile.
-             # If user provided path, we trust them?
-             # Audit requirement: Validate and sanitize database paths.
-             pass
 
         # Use standard SQLite URL
         db_url = f"sqlite:///{self.db_path}"
@@ -70,12 +68,10 @@ class DiskChunkStore:
         # Configure connection pooling for performance
         # SQLite handles concurrency poorly with multiple writers, but we use WAL mode.
         # Pool size and timeout help manage contention.
+        # isolation_level=None allows manual transaction control if needed, but AUTOCOMMIT is default.
+        # For WAL, standard is fine. We explicitly set PRAGMAs.
         self.engine = create_engine(
-            db_url,
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800
+            db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800
         )
         self._setup_db()
 
@@ -84,6 +80,8 @@ class DiskChunkStore:
         with self.engine.begin() as conn:
             # Enable WAL mode for performance
             conn.execute(text("PRAGMA journal_mode=WAL;"))
+            # Synchronous NORMAL is faster and safe enough for WAL
+            conn.execute(text("PRAGMA synchronous=NORMAL;"))
 
         # Define schema using SQLAlchemy Core
         metadata = MetaData()
@@ -114,44 +112,40 @@ class DiskChunkStore:
         self._add_nodes(nodes, "summary")
 
     def _add_nodes(self, nodes: Iterable[Chunk | SummaryNode], node_type: str) -> None:
-        """Helper to batch insert nodes."""
-        # We need to process the iterable in batches to avoid O(N) memory usage
-        # collecting parameters.
+        """
+        Helper to batch insert nodes.
+        Streaming safe: processes input iterable in batches without full materialization.
+        """
         BATCH_SIZE = 1000
-        buffer: list[dict[str, Any]] = []
-
-        # Use Core Insert statement (Insert or Replace is SQLite specific)
-        # SQLAlchemy generic insert doesn't replace.
-        # But SQLite supports `INSERT OR REPLACE`.
-        # We can construct it manually or use `prefix_with`.
+        # Use Core Insert with REPLACE logic for SQLite
         stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
-        # Streaming loop: Only keep BATCH_SIZE items in memory
-        for node in nodes:
-            # Prepare data
-            # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
-            content_json = node.model_dump_json(exclude={"embedding"})
+        from matome.utils.compat import batched
 
-            # Embedding JSON
-            embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+        # Iterate over the input iterable using batched() to handle chunks efficiently
+        # without loading the entire dataset into memory.
+        for node_batch in batched(nodes, BATCH_SIZE):
+            buffer: list[dict[str, Any]] = []
 
-            node_id = str(node.index) if isinstance(node, Chunk) else node.id
+            for node in node_batch:
+                # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
+                content_json = node.model_dump_json(exclude={"embedding"})
 
-            buffer.append(
-                {
-                    "id": node_id,
-                    "type": node_type,
-                    "content": content_json,
-                    "embedding": embedding_json,
-                }
-            )
+                # Embedding JSON
+                embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
 
-            if len(buffer) >= BATCH_SIZE:
-                with self.engine.begin() as conn:
-                    conn.execute(stmt, buffer)
-                buffer.clear()
+                node_id = str(node.index) if isinstance(node, Chunk) else node.id
 
-        if buffer:
+                buffer.append(
+                    {
+                        "id": node_id,
+                        "type": node_type,
+                        "content": content_json,
+                        "embedding": embedding_json,
+                    }
+                )
+
+            # Flush batch
             with self.engine.begin() as conn:
                 conn.execute(stmt, buffer)
 
@@ -165,6 +159,7 @@ class DiskChunkStore:
 
         embedding_json = json.dumps(embedding)
 
+        # Use SQLAlchemy Core expression for parameterized update
         stmt = (
             update(self.nodes_table)
             .where(self.nodes_table.c.id == str(node_id))
@@ -176,10 +171,10 @@ class DiskChunkStore:
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
-        stmt = (
-            select(self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding)
-            .where(self.nodes_table.c.id == str(node_id))
-        )
+        # Use SQLAlchemy Core expression for parameterized select
+        stmt = select(
+            self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
+        ).where(self.nodes_table.c.id == str(node_id))
 
         with self.engine.connect() as conn:
             result = conn.execute(stmt)

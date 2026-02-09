@@ -20,9 +20,7 @@ def test_export_to_markdown() -> None:
     root = SummaryNode(id="root", text="Root text", level=2, children_indices=["s1"])
 
     tree = DocumentTree(
-        root_node=root,
-        all_nodes={"s1": summary_l1, "root": root},
-        leaf_chunk_ids=[0, 1]
+        root_node=root, all_nodes={"s1": summary_l1, "root": root}, leaf_chunk_ids=[0, 1]
     )
 
     # Mock store

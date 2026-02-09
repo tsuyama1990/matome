@@ -25,7 +25,7 @@ class Chunk(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     index: int = Field(..., ge=0, description="Sequential ID of the chunk.")
-    text: str = Field(..., description="The actual text content of the chunk.")
+    text: str = Field(..., min_length=1, description="The actual text content of the chunk.")
     start_char_idx: int = Field(
         ..., ge=0, description="Starting character position in the original text."
     )
@@ -68,7 +68,7 @@ class Chunk(BaseModel):
         # If the schema allows None, we accept None.
         # However, if it's NOT None, we strictly validate content.
         if self.embedding is not None:
-            if not self.embedding:
+            if len(self.embedding) == 0:
                 msg = "Embedding cannot be an empty list if provided."
                 logger.error(msg)
                 raise ValueError(msg)
@@ -127,5 +127,7 @@ class DocumentTree(BaseModel):
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
     all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
-    leaf_chunk_ids: list[NodeID] = Field(..., description="IDs of the original leaf chunks (Level 0).")
+    leaf_chunk_ids: list[NodeID] = Field(
+        ..., description="IDs of the original leaf chunks (Level 0)."
+    )
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")

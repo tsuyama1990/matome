@@ -1,22 +1,23 @@
-from collections.abc import Iterator
-from unittest.mock import MagicMock
+from collections.abc import Iterable, Iterator
+from unittest.mock import create_autospec
 
 import pytest
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, DocumentTree
 from matome.engines.cluster import GMMClusterer
+from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.interfaces import Chunker, Summarizer
 from matome.utils.store import DiskChunkStore
 
 
-class DummyEmbedder:
+class DummyEmbedder(EmbeddingService):
     def __init__(self, dim: int = 384) -> None:
         self.dim = dim
-        self.config = MagicMock()
+        self.config = create_autospec(ProcessingConfig)
 
-    def embed_chunks(self, chunks: Iterator[Chunk]) -> Iterator[Chunk]:
+    def embed_chunks(self, chunks: Iterable[Chunk]) -> Iterator[Chunk]:
         # Consume iterator
         chunk_list = list(chunks)
         for i, c in enumerate(chunk_list):
@@ -28,7 +29,7 @@ class DummyEmbedder:
             c.embedding = vec
             yield c
 
-    def embed_strings(self, texts: list[str]) -> Iterator[list[float]]:
+    def embed_strings(self, texts: Iterable[str]) -> Iterator[list[float]]:
         for _ in texts:
             vec = [0.0] * self.dim
             vec[2] = 1.0
@@ -46,13 +47,10 @@ def config() -> ProcessingConfig:
 def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     """
     Test the RAPTOR pipeline with real Clusterer and mocked other components.
-    Uses proper mock specifications.
+    Uses proper mock specifications via create_autospec.
     """
-    # Create mocks that adhere to specs if possible, but here we use MagicMock
-    # as strict typing is checked in unit tests.
-
     # Mock Chunker (Protocol)
-    chunker = MagicMock(spec=Chunker)
+    chunker = create_autospec(Chunker, instance=True)
     chunks = [
         Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(10)
     ]
@@ -62,15 +60,14 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     clusterer = GMMClusterer()
 
     # Mock Summarizer (Protocol)
-    summarizer = MagicMock(spec=Summarizer)
+    summarizer = create_autospec(Summarizer, instance=True)
     summarizer.summarize.return_value = "Summary Text"
 
-    # Dummy Embedder (Helper Class)
+    # Dummy Embedder (Subclass)
     embedder = DummyEmbedder()
 
     # Instantiate Engine with strictly typed mocks/objects
-    # We cast embedder because it's a dummy class satisfying implicit interface used by Raptor
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)  # type: ignore
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
     # Use a store to verify persistence
     with DiskChunkStore() as store:
@@ -93,7 +90,7 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         # But get_node works for both.
         root_fetched = store.get_node(tree.root_node.id)
         if root_fetched:
-             assert root_fetched.embedding is not None, "Root node must have an embedding in store."
+            assert root_fetched.embedding is not None, "Root node must have an embedding in store."
 
         assert tree.root_node.embedding is not None, "Root node object must have an embedding."
 

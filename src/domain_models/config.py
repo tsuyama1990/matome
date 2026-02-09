@@ -6,10 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
+    ALLOWED_SUMMARIZATION_MODELS,
     ALLOWED_TOKENIZER_MODELS,
     DEFAULT_EMBEDDING,
     DEFAULT_SUMMARIZER,
     DEFAULT_TOKENIZER,
+    LARGE_SCALE_THRESHOLD,
 )
 
 
@@ -88,7 +90,7 @@ class ProcessingConfig(BaseModel):
         description="Batch size for writing vectors to disk during clustering.",
     )
     large_scale_threshold: int = Field(
-        default=20000,
+        default=LARGE_SCALE_THRESHOLD,
         ge=1,
         description="Threshold for switching to approximate clustering.",
     )
@@ -143,7 +145,16 @@ class ProcessingConfig(BaseModel):
         default=500_000, ge=100, description="Maximum length of input text for summarization."
     )
 
-    @field_validator("embedding_model")
+    # Verification Configuration
+    verifier_enabled: bool = Field(
+        default=True, description="Whether to perform verification after summarization."
+    )
+    verification_model: str = Field(
+        default_factory=lambda: os.getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
+        description="Model to use for verification (defaults to summarization model).",
+    )
+
+    @field_validator("embedding_model", mode="after")
     @classmethod
     def validate_embedding_model(cls, v: str) -> str:
         """Validate embedding model name to prevent potential issues."""
@@ -158,14 +169,25 @@ class ProcessingConfig(BaseModel):
             raise ValueError(msg)
         return v
 
-    @field_validator("tokenizer_model")
+    @field_validator("summarization_model", "verification_model", mode="after")
+    @classmethod
+    def validate_llm_model(cls, v: str) -> str:
+        """Validate LLM model name against whitelist."""
+        if v not in ALLOWED_SUMMARIZATION_MODELS:
+            msg = (
+                f"LLM model '{v}' is not allowed. "
+                f"Allowed: {sorted(ALLOWED_SUMMARIZATION_MODELS)}"
+            )
+            raise ValueError(msg)
+        return v
+
+    @field_validator("tokenizer_model", mode="after")
     @classmethod
     def validate_tokenizer_model(cls, v: str) -> str:
         """Validate tokenizer model against whitelist."""
         if v not in ALLOWED_TOKENIZER_MODELS:
             msg = (
-                f"Tokenizer model '{v}' is not allowed. "
-                f"Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
+                f"Tokenizer model '{v}' is not allowed. Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
             )
             raise ValueError(msg)
         return v

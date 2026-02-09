@@ -12,10 +12,7 @@ def test_approximate_clustering_path() -> None:
     And verify it runs IncrementalPCA + MiniBatchKMeans.
     """
     config = ProcessingConfig(
-        n_clusters=2,
-        random_state=42,
-        write_batch_size=10,
-        umap_n_components=2
+        n_clusters=2, random_state=42, write_batch_size=10, umap_n_components=2
     )
 
     clusterer = GMMClusterer()
@@ -40,14 +37,15 @@ def test_approximate_clustering_path() -> None:
 
     data = np.random.rand(30, 10).astype("float32")
 
-    with patch("matome.engines.cluster.IncrementalPCA") as MockIPCA, \
-         patch("matome.engines.cluster.MiniBatchKMeans") as MockKMeans:
-
+    with (
+        patch("matome.engines.cluster.IncrementalPCA") as MockIPCA,
+        patch("matome.engines.cluster.MiniBatchKMeans") as MockKMeans,
+    ):
         mock_ipca = MockIPCA.return_value
         mock_kmeans = MockKMeans.return_value
 
         # Setup mocks
-        mock_ipca.transform.return_value = np.random.rand(10, 2) # reduced
+        mock_ipca.transform.return_value = np.random.rand(10, 2)  # reduced
         mock_kmeans.predict.return_value = np.array([0, 1] * 5)
 
         clusters = clusterer._perform_approximate_clustering(data, 30, config)
