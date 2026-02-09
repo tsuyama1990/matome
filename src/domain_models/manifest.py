@@ -45,8 +45,8 @@ class Chunk(BaseModel):
         Validate that text is present and indices form a valid range.
         Also check embedding validity if present.
         """
-        if not self.text:
-            msg = "Chunk text cannot be empty."
+        if not self.text or not self.text.strip():
+            msg = "Chunk text cannot be empty or whitespace only."
             logger.error(msg)
             raise ValueError(msg)
 
@@ -80,6 +80,7 @@ class SummaryNode(BaseModel):
     id: str = Field(..., description="Unique identifier for the node.")
     text: str = Field(..., description="The summary text.")
     level: int = Field(..., ge=1, description="Hierarchical level (1 = above chunks).")
+    # Union[int, str] is already implied by NodeID (int | str) in types.py
     children_indices: list[NodeID] = Field(
         ..., description="List of child indices (Chunk index or SummaryNode ID)."
     )
@@ -103,11 +104,12 @@ class Cluster(BaseModel):
     )
 
 
-class Tree(BaseModel):
+class DocumentTree(BaseModel):
     """Represents the full RAPTOR tree structure."""
 
     model_config = ConfigDict(extra="forbid")
 
-    chunks: list[Chunk] = Field(..., description="Original text chunks (Level 0).")
-    summaries: list[SummaryNode] = Field(..., description="Generated summary nodes (Level 1+).")
+    root_node: SummaryNode = Field(..., description="The root summary node.")
+    all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
+    leaf_chunks: list[Chunk] = Field(..., description="The original leaf chunks (Level 0).")
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")

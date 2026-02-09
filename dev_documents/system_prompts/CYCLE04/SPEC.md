@@ -34,8 +34,8 @@ The core orchestration logic resides in `raptor.py`.
     *   `id`: `str` (UUID)
     *   `text`: `str` (The summary content)
     *   `level`: `int` (0 = leaf summaries, 1 = parent summaries, etc.)
-    *   `children_indices`: `List[int]` (Indices of chunks if level 0)
-    *   `children_node_ids`: `List[str]` (IDs of child SummaryNodes if level > 0)
+    *   `children_indices`: `List[NodeID]` (Indices of chunks if level 0, IDs of child SummaryNodes if level > 0)
+    *   `metadata`: `Metadata` (Optional extra info)
 *   **`DocumentTree`**:
     *   `root_node`: `SummaryNode`
     *   `all_nodes`: `Dict[str, SummaryNode]`

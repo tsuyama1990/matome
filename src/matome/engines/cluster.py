@@ -1,5 +1,8 @@
+import contextlib
 import logging
+import os
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
@@ -20,107 +23,96 @@ class GMMClusterer:
 
     def cluster_nodes(
         self,
-        embeddings: list[list[float]],
+        embeddings: Iterable[list[float]],
         config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Clusters the nodes based on their embeddings.
 
         Args:
-            embeddings: A list of vectors (list of floats).
+            embeddings: An iterable of vectors (list of floats).
             config: Processing configuration.
 
         Returns:
             A list of Cluster objects containing indices of grouped nodes.
         """
-        if not embeddings:
-            return []
-
         self._validate_algorithm(config)
-        self._validate_embeddings(embeddings)
 
-        n_samples = len(embeddings)
-        if n_samples == 0:
-            return []
+        n_samples = 0
+        dim = 0
 
-        # Handle edge cases (n < 3) separately
-        edge_case_result = self._handle_edge_cases(n_samples)
-        if edge_case_result:
-            return edge_case_result
+        # Create temp file
+        fd, tf_name = tempfile.mkstemp()
+        os.close(fd)
 
-        # Use memory-mapped file for main processing
-        return self._process_with_memmap(embeddings, n_samples, config)
+        try:
+            # First pass: Write to binary file
+            path_obj = Path(tf_name)
+            # Use buffering to optimize I/O
+            with path_obj.open('wb') as f:
+                for i, emb in enumerate(embeddings):
+                    if i == 0:
+                        dim = len(emb)
+                        if dim == 0:
+                             msg = "Embedding dimension cannot be zero."
+                             raise ValueError(msg)
+                    elif len(emb) != dim:
+                         msg = f"Embedding dimension mismatch at index {i}."
+                         raise ValueError(msg)
+
+                    if any(np.isnan(x) or np.isinf(x) for x in emb):
+                         msg = "Embeddings contain NaN or Infinity values."
+                         raise ValueError(msg)
+
+                    # tofile writes C-order floats directly
+                    np.array(emb, dtype='float32').tofile(f)
+                    n_samples += 1
+
+            if n_samples == 0:
+                return []
+
+            # Handle edge cases
+            edge_case_result = self._handle_edge_cases(n_samples)
+            if edge_case_result:
+                return edge_case_result
+
+            # Open as memmap
+            mm_array = np.memmap(tf_name, dtype='float32', mode='r', shape=(n_samples, dim))
+
+            try:
+                return self._perform_clustering(mm_array, n_samples, config)
+            finally:
+                # Close memmap logic
+                del mm_array
+
+        finally:
+             # Cleanup
+             path = Path(tf_name)
+             if path.exists():
+                 with contextlib.suppress(OSError):
+                     path.unlink()
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
-        if config.clustering_algorithm != "gmm":
+        if config.clustering_algorithm.value != "gmm":
             msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
             raise ValueError(msg)
-
-    def _validate_embeddings(self, embeddings: list[list[float]]) -> None:
-        if any(e is None for e in embeddings):
-             msg = "Embeddings list contains None values."
-             raise ValueError(msg)
-
-        # Check for NaN/Inf in small datasets where memmap is skipped
-        if len(embeddings) < 3:
-             for vec in embeddings:
-                 if any(np.isnan(x) or np.isinf(x) for x in vec):
-                      msg = "Embeddings contain NaN or Infinity values."
-                      raise ValueError(msg)
 
     def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
         if n_samples == 1:
             return [Cluster(id=0, level=0, node_indices=[0])]
 
-        if n_samples < 3:
+        if n_samples <= 5:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
 
         return None
-
-    def _process_with_memmap(self, embeddings: list[list[float]], n_samples: int, config: ProcessingConfig) -> list[Cluster]:
-        dim = len(embeddings[0])
-
-        # Use context manager to satisfy SIM115
-        # delete=False ensures file persists after close for memmap usage
-        with tempfile.NamedTemporaryFile(delete=False) as tf:
-            tf_name = tf.name
-
-        try:
-            mm_array = np.memmap(tf_name, dtype='float32', mode='w+', shape=(n_samples, dim))
-
-            # Copy data
-            for i, emb in enumerate(embeddings):
-                mm_array[i] = emb
-
-            mm_array.flush()
-
-            # Validate content on memmap
-            if np.isnan(mm_array).any() or np.isinf(mm_array).any():
-                 msg = "Embeddings contain NaN or Infinity values."
-                 raise ValueError(msg)
-
-            # Perform clustering
-            clusters = self._perform_clustering(mm_array, n_samples, config)
-
-            # Ensure memmap is closed/deleted before unlinking file
-            del mm_array
-            return clusters
-
-        finally:
-            # Manual cleanup of temporary file using Path (PTH110, PTH108)
-            path = Path(tf_name)
-            if path.exists():
-                try:
-                    path.unlink()
-                except OSError:
-                    logger.warning(f"Failed to delete temporary file: {tf_name}")
 
     def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
         """Helper to run UMAP and GMM on the data (numpy array or memmap)."""
         # UMAP Parameters
         n_neighbors = config.umap_n_neighbors
         min_dist = config.umap_min_dist
+        n_components = config.umap_n_components
 
         effective_n_neighbors = max(min(n_neighbors, n_samples - 1), 2)
 
@@ -132,7 +124,7 @@ class GMMClusterer:
 
         logger.debug(
             f"Starting clustering with {n_samples} samples. "
-            f"UMAP: n_neighbors={effective_n_neighbors}, min_dist={min_dist}. "
+            f"UMAP: n_neighbors={effective_n_neighbors}, min_dist={min_dist}, n_components={n_components}. "
             f"GMM: n_clusters={config.n_clusters or 'auto'}."
         )
 
@@ -140,18 +132,18 @@ class GMMClusterer:
         reducer = UMAP(
             n_neighbors=effective_n_neighbors,
             min_dist=min_dist,
-            n_components=2,
+            n_components=n_components,
             random_state=config.random_state,
         )
         reduced_embeddings = reducer.fit_transform(data)
 
         # 2. GMM Clustering
         if config.n_clusters:
-            n_components = config.n_clusters
+            gmm_n_components = config.n_clusters
         else:
-            n_components = self._calculate_optimal_clusters(reduced_embeddings, config.random_state)
+            gmm_n_components = self._calculate_optimal_clusters(reduced_embeddings, config.random_state)
 
-        gmm = GaussianMixture(n_components=n_components, random_state=config.random_state)
+        gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
         gmm.fit(reduced_embeddings)
         labels = gmm.predict(reduced_embeddings)
 
@@ -191,13 +183,17 @@ class GMMClusterer:
                 bics.append(gmm.bic(embeddings))
 
             if not bics:
-                # Should not happen given logic above, but for safety
                 return 1
 
             # Find n with minimum BIC
             optimal_n = n_range[np.argmin(bics)]
             return int(optimal_n)
 
+        except (ValueError, RuntimeError) as e:
+            # Catch specific errors like convergence failure
+            logger.warning(f"Error during BIC calculation: {e!s}. Defaulting to 1 cluster.")
+            return 1
         except Exception:
-            logger.exception("Failed to calculate optimal clusters via BIC. Defaulting to 1.")
+             # Catch import errors or other unexpected issues
+            logger.exception("Unexpected error during BIC calculation. Defaulting to 1 cluster.")
             return 1

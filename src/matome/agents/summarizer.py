@@ -3,8 +3,8 @@ Summarization Agent module.
 This module implements the summarization logic using OpenRouter and Chain of Density prompting.
 """
 import logging
-import os
 import re
+import unicodedata
 import uuid
 from typing import Any
 
@@ -15,7 +15,6 @@ from tenacity import stop_after_attempt, wait_exponential
 from domain_models.config import ProcessingConfig
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.constants import DEFAULT_SUMMARIZATION_MODEL
 from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
@@ -26,48 +25,32 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(self, model_name: str | None = None) -> None:
+    def __init__(self, config: ProcessingConfig) -> None:
         """
         Initialize the SummarizationAgent.
 
         Args:
-            model_name: The name of the model to use. If None, uses SUMMARIZATION_MODEL env var
-                        or defaults to DEFAULT_SUMMARIZATION_MODEL.
+            config: Processing configuration containing model name, retries, etc.
         """
-        # Retrieve API key securely from environment via config utility
         api_key = get_openrouter_api_key()
         base_url = get_openrouter_base_url()
 
-        # Determine model name
-        self.model_name = model_name or os.getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZATION_MODEL)
-
+        self.model_name = config.summarization_model
         self.api_key = api_key
         self.llm: ChatOpenAI | None = None
 
-        # Initialize LLM only if API key is present (or if we want to allow failure later)
-        # Check for 'mock' value explicitly to enable testing mode without real calls
         if api_key and api_key != "mock":
             self.llm = ChatOpenAI(
                 model=self.model_name,
                 api_key=api_key,
                 base_url=base_url,
-                temperature=0,
-                max_retries=1, # We handle retries via tenacity wrapper now
+                temperature=config.llm_temperature,
+                max_retries=config.max_retries,
             )
 
     def summarize(self, text: str, config: ProcessingConfig) -> str:
         """
         Summarize the provided text using the Chain of Density strategy.
-
-        Args:
-            text: The text to summarize.
-            config: Configuration parameters.
-
-        Returns:
-            The generated summary.
-
-        Raises:
-            SummarizationError: If summarization fails or API key is missing.
         """
         request_id = str(uuid.uuid4())
 
@@ -76,12 +59,14 @@ class SummarizationAgent:
             return ""
 
         # Validate input for security
-        self._validate_input(text)
+        self._validate_input(text, config.max_word_length)
 
-        # Mock Mode Check
+        # Sanitize prompt injection
+        safe_text = self._sanitize_prompt_injection(text)
+
         if self.api_key == "mock":
             logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
-            return f"Summary of {text[:20]}..."
+            return f"Summary of {safe_text[:20]}..."
 
         if not self.llm:
             msg = f"[{request_id}] OpenRouter API Key is missing. Cannot perform summarization."
@@ -92,41 +77,63 @@ class SummarizationAgent:
              logger.debug(f"[{request_id}] Config model {config.summarization_model} differs from agent model {self.model_name}. Using agent model.")
 
         try:
-            prompt = COD_TEMPLATE.format(context=text)
+            prompt = COD_TEMPLATE.format(context=safe_text)
             messages = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, config, request_id)
             return self._process_response(response, request_id)
 
         except Exception as e:
-            # Enhanced error logging with custom exception
             logger.exception(f"[{request_id}] Summarization failed for text length {len(text)}")
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 
-    def _validate_input(self, text: str) -> None:
+    def _validate_input(self, text: str, max_word_length: int) -> None:
         """
-        Sanitize and validate input text to prevent injection attacks or excessive load.
+        Sanitize and validate input text.
         """
-        # 1. Length Check
+        # 1. Length Check (Document)
         MAX_INPUT_LENGTH = 500_000
         if len(text) > MAX_INPUT_LENGTH:
              msg = f"Input text exceeds maximum allowed length ({MAX_INPUT_LENGTH} characters)."
              raise ValueError(msg)
 
-        # 2. Control Character Check
-        # Remove null bytes and other dangerous control characters, preserving newlines/tabs
-        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", text):
-             msg = "Input text contains invalid control characters."
+        # 2. Control Character Check (Unicode)
+        # We strictly disallow control characters that are not standard whitespace.
+        # \n (0x0A), \t (0x09) are allowed for formatting.
+        # \r (0x0D) is NOT allowed to prevent CRLF injection issues in logs/prompts if careless.
+        allowed_controls = {"\n", "\t"}
+
+        for char in text:
+            if unicodedata.category(char).startswith("C") and char not in allowed_controls:
+                 msg = f"Input text contains invalid control character: {char!r}"
+                 raise ValueError(msg)
+
+        # 3. Tokenizer DoS Protection
+        longest_word_len = max((len(w) for w in text.split()), default=0)
+        if longest_word_len > max_word_length:
+             msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
              raise ValueError(msg)
 
-        # 3. Tokenization DoS Protection (Long words)
-        # Check for extremely long uninterrupted sequences which can cause tokenizer issues
-        # Using a generator expression to be memory efficient
-        longest_word_len = max((len(w) for w in text.split()), default=0)
-        if longest_word_len > 5000:
-             msg = "Input text contains extremely long words (potential DoS vector)."
-             raise ValueError(msg)
+    def _sanitize_prompt_injection(self, text: str) -> str:
+        """
+        Basic mitigation for Prompt Injection.
+        """
+        patterns = [
+            r"(?i)ignore\s+previous\s+instructions",
+            r"(?i)ignore\s+all\s+instructions",
+            r"(?i)system\s+override",
+            r"(?i)execute\s+command",
+            r"(?i)reveal\s+system\s+prompt",
+            r"(?i)bypass\s+security",
+            r"(?i)output\s+as\s+json",
+        ]
+
+        sanitized = text
+        for pattern in patterns:
+            sanitized = re.sub(pattern, "[Filtered]", sanitized)
+
+        return sanitized
 
     def _invoke_llm(self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str) -> BaseMessage:
         """Helper to invoke LLM with retry logic."""
