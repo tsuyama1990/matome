@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 
 import numpy as np
 
@@ -42,9 +43,9 @@ class JapaneseSemanticChunker:
         """
         self.embedder = embedder
 
-    def split_text(self, text: str, config: ProcessingConfig) -> list[Chunk]:
+    def split_text(self, text: str, config: ProcessingConfig) -> Iterator[Chunk]:
         """
-        Split text into semantic chunks.
+        Split text into semantic chunks (streaming).
 
         This implementation streams sentences and embeddings to minimize memory usage,
         avoiding materialization of all sentence embeddings at once.
@@ -56,8 +57,8 @@ class JapaneseSemanticChunker:
             text: Raw input text.
             config: Configuration including semantic_chunking_threshold and max_tokens.
 
-        Returns:
-            List of Chunk objects.
+        Yields:
+            Chunk objects.
 
         Raises:
             ValueError: If input text is not a string.
@@ -65,21 +66,20 @@ class JapaneseSemanticChunker:
         self._validate_input(text)
 
         if not text:
-            return []
+            return
 
         # 1. Normalize
         normalized_text = normalize_text(text)
 
         if not normalized_text.strip():
             # If text was just whitespace, return empty list
-            return []
+            return
 
         # 2. Manual Batch Processing
         # Instead of zip() on parallel generators, we iterate sentences,
         # batch them, embed the batch, and then process the results.
         # This gives us strict control over memory usage and avoids magic buffering.
 
-        chunks: list[Chunk] = []
         sentences_gen = iter_sentences(normalized_text)
 
         # State for chunk accumulation
@@ -87,6 +87,7 @@ class JapaneseSemanticChunker:
         current_chunk_len = 0
         current_last_embedding: list[float] | None = None
         current_start_idx = 0
+        current_chunk_index = 0
 
         try:
             # Iterate in batches of sentences (e.g. 32 at a time)
@@ -127,15 +128,14 @@ class JapaneseSemanticChunker:
                     else:
                         # Finalize current chunk
                         chunk_text = "".join(current_chunk_sentences)
-                        chunks.append(
-                            Chunk(
-                                index=len(chunks),
-                                text=chunk_text,
-                                start_char_idx=current_start_idx,
-                                end_char_idx=current_start_idx + len(chunk_text),
-                                embedding=None,
-                            )
+                        yield Chunk(
+                            index=current_chunk_index,
+                            text=chunk_text,
+                            start_char_idx=current_start_idx,
+                            end_char_idx=current_start_idx + len(chunk_text),
+                            embedding=None,
                         )
+                        current_chunk_index += 1
                         current_start_idx += len(chunk_text)
 
                         # Start new chunk with current sentence
@@ -146,21 +146,17 @@ class JapaneseSemanticChunker:
             # Final flush after all batches
             if current_chunk_sentences:
                 chunk_text = "".join(current_chunk_sentences)
-                chunks.append(
-                    Chunk(
-                        index=len(chunks),
-                        text=chunk_text,
-                        start_char_idx=current_start_idx,
-                        end_char_idx=current_start_idx + len(chunk_text),
-                        embedding=None,
-                    )
+                yield Chunk(
+                    index=current_chunk_index,
+                    text=chunk_text,
+                    start_char_idx=current_start_idx,
+                    end_char_idx=current_start_idx + len(chunk_text),
+                    embedding=None,
                 )
 
         except Exception:
             logger.exception("Error during semantic chunking process.")
             raise
-
-        return chunks
 
     def _validate_input(self, text: str) -> None:
         if not isinstance(text, str):

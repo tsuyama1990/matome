@@ -15,10 +15,12 @@ class DummyEmbedder:
         self.dim = dim
         self.config = MagicMock()
 
-    def embed_chunks(self, chunks: list[Chunk]) -> Iterator[Chunk]:
-        for i, c in enumerate(chunks):
+    def embed_chunks(self, chunks: Iterator[Chunk]) -> Iterator[Chunk]:
+        # Consume iterator
+        chunk_list = list(chunks)
+        for i, c in enumerate(chunk_list):
             vec = [0.0] * self.dim
-            if i < len(chunks) // 2:
+            if i < len(chunk_list) // 2:
                 vec[0] = 1.0 + (i * 0.01)
             else:
                 vec[1] = 1.0 + (i * 0.01)
@@ -53,7 +55,7 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     chunks = [
         Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(10)
     ]
-    chunker.split_text.return_value = chunks
+    chunker.split_text.return_value = iter(chunks)
 
     # Real Clusterer (Implementation)
     clusterer = GMMClusterer()

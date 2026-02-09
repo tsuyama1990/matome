@@ -88,7 +88,7 @@ def test_full_pipeline_flow() -> None:
         summarizer = SummarizationAgent(config, llm=mock_llm_instance)
 
         # Act & Assert (Logic same as before, but with deterministic RNG)
-        chunks = chunker.split_text(text, config)
+        chunks = list(chunker.split_text(text, config))
         assert len(chunks) > 1
 
         chunks_with_embeddings = list(embedder.embed_chunks(chunks))

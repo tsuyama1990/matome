@@ -18,7 +18,7 @@ def test_chunking_error_handling() -> None:
     config = ProcessingConfig()
 
     # Empty text -> empty list
-    assert chunker.split_text("", config) == []
+    assert list(chunker.split_text("", config)) == []
 
 
 def test_embedding_error_handling() -> None:

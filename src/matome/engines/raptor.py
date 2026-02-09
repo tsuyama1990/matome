@@ -35,18 +35,24 @@ class RaptorEngine:
         self.config = config
 
     def _process_level_zero(
-        self, initial_chunks: list[Chunk], store: DiskChunkStore
+        self, initial_chunks: Iterator[Chunk], store: DiskChunkStore
     ) -> tuple[list[Cluster], list[NodeID]]:
         """Handle Level 0: Embedding, Storage, and Clustering."""
         current_level_ids: list[NodeID] = []
+        node_count = 0
 
+        # We wrap the generator to count nodes and handle single-node edge case
         def l0_embedding_generator() -> Iterator[list[float]]:
+            nonlocal node_count
             chunk_buffer: list[Chunk] = []
+
+            # Embed chunks (streaming from initial_chunks iterator)
             for chunk in self.embedder.embed_chunks(initial_chunks):
                 if chunk.embedding is None:
                     msg = f"Chunk {chunk.index} missing embedding."
                     raise ValueError(msg)
 
+                node_count += 1
                 yield chunk.embedding
 
                 # Store chunk (with embedding preserved)
@@ -60,33 +66,49 @@ class RaptorEngine:
             if chunk_buffer:
                 store.add_chunks(chunk_buffer)
 
-        if len(initial_chunks) > 1:
-            clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
-        else:
-            # For single chunk, we must ensure it's embedded and stored
-            # embed_chunks is a generator, so we need to consume it
-            chunks = list(self.embedder.embed_chunks(initial_chunks))
-            c = chunks[0]
-            store.add_chunk(c)
-            current_level_ids.append(c.index)
-            clusters = []
+        # We must start consuming the generator to know if we have > 1 chunks.
+        # But clusterer.cluster_nodes expects an iterable.
+        # If we consume it to check length, we lose data (it's an iterator).
+        # Solution: Pass the generator to clusterer. If clusterer yields empty or handles it, fine.
+        # But our GMMClusterer needs to know n_samples or handle stream.
+        # GMMClusterer.cluster_nodes supports streaming (via stream_write_embeddings).
+        # It handles n_samples=0 or 1 edge cases internally (see _handle_edge_cases).
+
+        clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
+
+        # If node_count was 1, GMMClusterer returns [Cluster(indices=[0])].
+        # If node_count was 0, it returns [].
+        # We need to ensure we don't crash if node_count=0 (handled by run check?)
+        # But run() calls split_text which yields. We don't know if empty until we consume.
+
+        if node_count == 0:
+             # This means initial_chunks yielded nothing.
+             # run() logic below should handle "no nodes remaining".
+             pass
 
         return clusters, current_level_ids
 
     def run(self, text: str) -> DocumentTree:
         """Execute the RAPTOR pipeline."""
         logger.info("Starting RAPTOR process: Chunking text.")
-        initial_chunks = self.chunker.split_text(text, self.config)
-        if not initial_chunks:
-            msg = "Input text is too short or empty to process."
-            raise ValueError(msg)
+        initial_chunks_iter = self.chunker.split_text(text, self.config)
+        # Note: We cannot check `if not initial_chunks_iter` because it's an iterator.
 
         all_summaries: dict[str, SummaryNode] = {}
 
+        # Ideally DocumentTree should not require all leaf chunks in memory if we want full streaming.
+        # But DocumentTree schema defines `leaf_chunks: list[Chunk]`.
+        # Constraint: "No loading entire datasets into memory".
+        # We reconstruct leaf_chunks at the end from the store to satisfy the return type,
+        # ensuring we don't hold them in memory during the heavy processing.
+
         with DiskChunkStore() as store:
             # Level 0
-            clusters, current_level_ids = self._process_level_zero(initial_chunks, store)
+            clusters, current_level_ids = self._process_level_zero(initial_chunks_iter, store)
             store.commit()
+
+            # Capture L0 IDs for later reconstruction
+            l0_ids = list(current_level_ids)
 
             level = 0
             while True:
@@ -119,7 +141,24 @@ class RaptorEngine:
                 else:
                     clusters = []
 
-            return self._finalize_tree(current_level_ids, store, all_summaries, initial_chunks)
+            # We need to reconstruct initial_chunks list for the return object.
+            # Only fetch what's needed or iterate.
+            # Since DocumentTree expects a list, we must materialize it.
+            # This violates "No loading entire datasets" if result is huge.
+            # But changing DocumentTree schema is a "Re-build Schema" step.
+            # I will assume for now we must return the list, but we retrieve it from DB
+            # so we don't hold it during clustering.
+            # Optimization: If we can iterate ids.
+            # Or we simply don't return leaf chunks in full text?
+            # Let's rebuild the list from store for correctness of the current schema.
+            # In a real huge-scale scenario, DocumentTree would change.
+            # Given constraints, I will reconstruct it.
+            # Assuming 'chunks' type in DB store is 'chunk'
+            # We can select all chunks.
+            # Or we can track IDs. `_process_level_zero` returns `current_level_ids` (L0 ids).
+            # We can use that.
+
+            return self._finalize_tree(current_level_ids, store, all_summaries, l0_ids)
 
     def _next_level_clustering(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
@@ -161,12 +200,23 @@ class RaptorEngine:
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
         all_summaries: dict[str, SummaryNode],
-        initial_chunks: list[Chunk],
+        l0_ids: list[NodeID],
     ) -> DocumentTree:
         """Construct the final DocumentTree."""
         if not current_level_ids:
+            # If input was empty?
             msg = "No nodes remaining."
             raise ValueError(msg)
+
+        # Reconstruct initial chunks from store using L0 IDs
+        initial_chunks: list[Chunk] = []
+        # Bulk fetch would be better, but loop for now.
+        for nid in l0_ids:
+            node = store.get_node(nid)
+            if isinstance(node, Chunk):
+                initial_chunks.append(node)
+            else:
+                logger.warning(f"L0 node {nid} is not a Chunk!")
 
         root_id = current_level_ids[0]
         root_node_obj = store.get_node(root_id)

@@ -10,7 +10,7 @@ def test_chunker_basic() -> None:
     chunker = JapaneseTokenChunker()
     text = "文１。文２。文３。"
     config = ProcessingConfig(max_tokens=100)
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
 
     assert isinstance(chunks, list)
     assert all(isinstance(c, Chunk) for c in chunks)
@@ -31,7 +31,7 @@ def test_chunker_max_tokens() -> None:
 
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig(max_tokens=200)
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
 
     assert len(chunks) > 1
 
@@ -72,10 +72,10 @@ def test_chunker_empty_input() -> None:
     """Test that empty input returns an empty list."""
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig()
-    chunks = chunker.split_text("", config)
+    chunks = list(chunker.split_text("", config))
     assert chunks == []
 
-    chunks_none = chunker.split_text(None, config)  # type: ignore
+    chunks_none = list(chunker.split_text(None, config))  # type: ignore
     assert chunks_none == []
 
 
@@ -88,7 +88,7 @@ def test_chunker_single_sentence_exceeds_limit() -> None:
     config = ProcessingConfig(max_tokens=100)
 
     # Current behavior: it appends the sentence even if it exceeds limits (no recursive splitting yet)
-    chunks = chunker.split_text(long_sentence, config)
+    chunks = list(chunker.split_text(long_sentence, config))
 
     assert len(chunks) == 1
     assert chunks[0].text == long_sentence
@@ -100,7 +100,7 @@ def test_chunker_unicode() -> None:
     chunker = JapaneseTokenChunker()
     text = "Hello 🌍! This is a test 🧪. 日本語もOKですか？はい。"
     config = ProcessingConfig(max_tokens=50)
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
 
     assert len(chunks) > 0
     reconstructed = "".join(c.text for c in chunks)
@@ -118,7 +118,7 @@ def test_chunker_very_long_input() -> None:
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig(max_tokens=1000)
 
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
     assert len(chunks) > 0
 
 
