@@ -48,6 +48,7 @@ class GMMClusterer:
         try:
             # First pass: Write to binary file
             path_obj = Path(tf_name)
+            # Use buffering to optimize I/O
             with path_obj.open('wb') as f:
                 for i, emb in enumerate(embeddings):
                     if i == 0:
@@ -63,6 +64,7 @@ class GMMClusterer:
                          msg = "Embeddings contain NaN or Infinity values."
                          raise ValueError(msg)
 
+                    # tofile writes C-order floats directly
                     np.array(emb, dtype='float32').tofile(f)
                     n_samples += 1
 

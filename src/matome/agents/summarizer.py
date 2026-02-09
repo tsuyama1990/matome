@@ -4,6 +4,7 @@ This module implements the summarization logic using OpenRouter and Chain of Den
 """
 import logging
 import re
+import unicodedata
 import uuid
 from typing import Any
 
@@ -118,11 +119,17 @@ class SummarizationAgent:
              msg = f"Input text exceeds maximum allowed length ({MAX_INPUT_LENGTH} characters)."
              raise ValueError(msg)
 
-        # 2. Control Character Check
-        # Remove null bytes and other dangerous control characters, preserving newlines/tabs
-        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", text):
-             msg = "Input text contains invalid control characters."
-             raise ValueError(msg)
+        # 2. Control Character Check (Unicode)
+        # Iterate and check category of each character.
+        # Categories: Cc (Control), Cf (Format), Cs (Surrogate), Co (Private Use), Cn (Unassigned)
+        # We allow newlines/tabs which are Cc but usually safe/needed for formatting.
+        # Allow: \n (0x0A), \r (0x0D), \t (0x09)
+        allowed_controls = {"\n", "\r", "\t"}
+
+        for char in text:
+            if unicodedata.category(char).startswith("C") and char not in allowed_controls:
+                 msg = f"Input text contains invalid control character: {char!r}"
+                 raise ValueError(msg)
 
         # 3. Tokenization DoS Protection (Long words)
         # Check for extremely long uninterrupted sequences which can cause tokenizer issues
@@ -148,11 +155,6 @@ class SummarizationAgent:
         sanitized = text
         for pattern in patterns:
             sanitized = re.sub(pattern, "[Filtered]", sanitized)
-
-        # Escape delimiters used in prompts if necessary (e.g. XML tags if prompt uses them)
-        # Our COD_TEMPLATE uses simple formatting.
-        # But generally, ensuring the input is treated as data is best handled by the prompt structure.
-        # Here we just filter explicit malicious intents.
 
         return sanitized
 

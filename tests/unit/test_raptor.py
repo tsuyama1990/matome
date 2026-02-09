@@ -44,22 +44,12 @@ def test_raptor_run_short_text(mock_dependencies: tuple[MagicMock, ...], config:
     chunker.split_text.return_value = [chunk1]
 
     # 2. Embedding
-    # NOTE: Since we updated RaptorEngine to stream embeddings, it calls embed_chunks.
-    # The side_effect needs to yield chunks.
-    def side_effect_embed_chunks_gen(chunks: list[Chunk]) -> Iterator[Chunk]:
-        for c in chunks:
-            c.embedding = [0.1, 0.2]
-            yield c
-
-    embedder.embed_chunks.side_effect = side_effect_embed_chunks_gen
+    # embedder.embed_chunks is NOT called for single chunk input optimization.
 
     # Run
     tree = engine.run("Short text")
 
     # Verify
-    # Because len(chunks) == 1, it enters the optimization branch where L0 > 1 is checked.
-    # If len=1, it copies chunks to leaf_chunks WITHOUT calling embed_chunks stream.
-    # So assert_called_once expectation was wrong based on optimization.
     embedder.embed_chunks.assert_not_called()
     clusterer.cluster_nodes.assert_not_called()
     summarizer.summarize.assert_not_called()
