@@ -1,31 +1,14 @@
 import logging
-import os
 from functools import lru_cache
 
 import tiktoken
 
-from domain_models.config import DEFAULT_TOKENIZER, ProcessingConfig
+from domain_models.config import ALLOWED_TOKENIZER_MODELS, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.utils.text import iter_sentences, normalize_text
 
 # Configure logger
 logger = logging.getLogger(__name__)
-
-# List of allowed tiktoken model names for security validation.
-# We whitelist specific models to prevent arbitrary string injection or unexpected resource usage
-# (e.g., loading a model that requires downloading large files or behaving unexpectedly).
-ALLOWED_MODELS = {
-    "cl100k_base",
-    "p50k_base",
-    "r50k_base",
-    "gpt2",
-    "gpt-3.5-turbo",
-    "gpt-4",
-    "gpt-4o",
-    "text-embedding-ada-002",
-    "text-embedding-3-small",
-    "text-embedding-3-large",
-}
 
 
 @lru_cache(maxsize=4)
@@ -43,10 +26,10 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
         ValueError: If the model name is not allowed or invalid.
     """
     # Security check: Validate input model name against allowed list
-    if model_name not in ALLOWED_MODELS:
+    if model_name not in ALLOWED_TOKENIZER_MODELS:
         msg = (
             f"Model name '{model_name}' is not in the allowed list. "
-            f"Allowed models: {sorted(ALLOWED_MODELS)}"
+            f"Allowed models: {sorted(ALLOWED_TOKENIZER_MODELS)}"
         )
         logger.error(msg)
         raise ValueError(msg)
@@ -120,29 +103,17 @@ class JapaneseTokenChunker:
     This implements the Chunker protocol.
     """
 
-    def __init__(self, model_name: str | None = None) -> None:
+    def __init__(self, config: ProcessingConfig | None = None) -> None:
         """
         Initialize the chunker with a specific tokenizer model.
 
         Args:
-            model_name: The name of the encoding to use.
-                        Defaults to TIKTOKEN_MODEL_NAME env var or DEFAULT_TOKENIZER.
+            config: Processing configuration containing tokenizer_model.
         """
-        # If model_name is not provided, use env var or default from config
-        if model_name is None:
-            model_name = os.getenv("TIKTOKEN_MODEL_NAME", DEFAULT_TOKENIZER)
+        if config is None:
+            config = ProcessingConfig()
 
-        if model_name not in ALLOWED_MODELS:
-            msg = (
-                f"Model name '{model_name}' is not in the allowed list. "
-                f"Allowed models: {sorted(ALLOWED_MODELS)}"
-            )
-            logger.error(msg)
-            raise ValueError(msg)
-
-        # Strict validation: This will raise ValueError if invalid.
-        # No fallback here - caller must handle or ensure config is correct.
-        self.tokenizer = get_cached_tokenizer(model_name)
+        self.tokenizer = get_cached_tokenizer(config.tokenizer_model)
 
     def count_tokens(self, text: str) -> int:
         """Count tokens in text."""

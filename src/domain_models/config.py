@@ -10,6 +10,20 @@ DEFAULT_TOKENIZER = "cl100k_base"
 DEFAULT_EMBEDDING = "intfloat/multilingual-e5-large"
 DEFAULT_SUMMARIZER = "gpt-4o"
 
+# Allowed tokenizer models for security whitelist
+ALLOWED_TOKENIZER_MODELS = {
+    "cl100k_base",
+    "p50k_base",
+    "r50k_base",
+    "gpt2",
+    "gpt-3.5-turbo",
+    "gpt-4",
+    "gpt-4o",
+    "text-embedding-ada-002",
+    "text-embedding-3-small",
+    "text-embedding-3-large",
+}
+
 
 class ClusteringAlgorithm(Enum):
     GMM = "gmm"
@@ -118,6 +132,18 @@ class ProcessingConfig(BaseModel):
         forbidden = [";", "&", "|", "`", "$", "(", ")", "<", ">"]
         if any(char in v for char in forbidden):
             msg = f"Invalid characters in embedding model name: {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("tokenizer_model")
+    @classmethod
+    def validate_tokenizer_model(cls, v: str) -> str:
+        """Validate tokenizer model against whitelist."""
+        if v not in ALLOWED_TOKENIZER_MODELS:
+            msg = (
+                f"Tokenizer model '{v}' is not allowed. "
+                f"Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
+            )
             raise ValueError(msg)
         return v
 

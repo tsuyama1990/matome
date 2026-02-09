@@ -50,11 +50,22 @@ def test_chunker_invalid_model_security() -> None:
     Test that invalid model names (not in whitelist) raise ValueError immediately,
     with no fallback to default.
     """
-    with pytest.raises(ValueError, match="not in the allowed list"):
-        JapaneseTokenChunker(model_name="invalid_model_name_that_does_not_exist")
+    # Validation now happens at Config level mostly, but also in tokenizer loader
+    from pydantic import ValidationError
+
+    # Case 1: Config validation
+    with pytest.raises(ValidationError, match="not allowed"):
+        ProcessingConfig(tokenizer_model="invalid_model")
+
+    # Case 2: If somehow bypassed (e.g., construct config manually without validation or mocking),
+    # the chunker should still catch it.
+    # We can simulate this by mocking ProcessingConfig or passing an object that looks like config
+    class MockConfig:
+        tokenizer_model = "invalid_model"
+        max_tokens = 100
 
     with pytest.raises(ValueError, match="not in the allowed list"):
-        JapaneseTokenChunker(model_name="a" * 100)  # Long name check
+        JapaneseTokenChunker(config=MockConfig())  # type: ignore
 
 
 def test_chunker_empty_input() -> None:
