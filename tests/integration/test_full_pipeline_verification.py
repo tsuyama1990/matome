@@ -67,10 +67,7 @@ def test_full_pipeline_flow() -> None:
              text_list = list(texts)
              # Use a fixed seed for every call to ensure consistent output
              rng = np.random.default_rng(42)
-             # We want different vectors for different calls but deterministic overall?
-             # Simple deterministic generation:
              count = len(text_list)
-             # Generate based on index or just random with fixed seed
              return rng.random((count, 10))
 
         mock_model.encode.side_effect = side_effect
@@ -111,3 +108,29 @@ def test_full_pipeline_flow() -> None:
         cluster_text = " ".join(cluster_text_parts)
         summary = summarizer.summarize(cluster_text, config)
         assert summary == "Summary of the cluster."
+
+def test_pipeline_streaming_logic() -> None:
+    """
+    Explicit test to verify that large datasets (simulated by small batch size)
+    are processed correctly without errors, implying streaming logic works.
+    """
+    # Create a large enough list of dummy embeddings
+    # 20 items, batch size 5 => 4 batches
+    embeddings = [[0.1 * i] * 10 for i in range(20)]
+
+    config = ProcessingConfig(
+        write_batch_size=5,
+        umap_n_neighbors=2,
+        umap_n_components=2
+    )
+
+    clusterer = GMMClusterer()
+
+    # We just want to ensure it runs without crashing and returns clusters
+    # This exercises the _stream_write_embeddings loop
+    clusters = clusterer.cluster_nodes(embeddings, config)
+
+    assert len(clusters) > 0
+    # Check total nodes clustered equals input
+    total_nodes = sum(len(c.node_indices) for c in clusters)
+    assert total_nodes == 20

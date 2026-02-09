@@ -23,6 +23,8 @@ class GMMClusterer:
     Implements the Clusterer protocol.
 
     Uses memory mapping to handle large datasets without loading everything into RAM.
+    While UMAP/GMM require the full dataset structure for global optimization,
+    np.memmap allows the OS to handle paging efficiently, preventing OOM on the Python side.
     """
 
     def cluster_nodes(
@@ -51,6 +53,8 @@ class GMMClusterer:
         path_obj = Path(tf_name)
 
         try:
+            # Stream write embeddings to disk.
+            # This ensures we never hold the full list of embeddings in Python memory.
             n_samples, dim = self._stream_write_embeddings(embeddings, path_obj, WRITE_BATCH_SIZE)
 
             if n_samples == 0:
@@ -62,11 +66,13 @@ class GMMClusterer:
                 return edge_case_result
 
             # Open as memmap
+            # This allows us to access the data as if it were in memory, backed by disk
             mm_array = np.memmap(tf_name, dtype='float32', mode='r', shape=(n_samples, dim))
 
             try:
                 return self._perform_clustering(mm_array, n_samples, config)
             finally:
+                # Ensure memmap is closed/deleted from python view
                 del mm_array
 
         finally:
@@ -82,20 +88,14 @@ class GMMClusterer:
     ) -> tuple[int, int]:
         """
         Stream embeddings to disk in batches.
-
-        Args:
-            embeddings: Iterator of vectors.
-            path_obj: Path to the temporary binary file.
-            batch_size: Number of vectors to write at once.
-
-        Returns:
-            Tuple containing (n_samples, dim).
+        Returns (n_samples, dim).
         """
         n_samples = 0
         dim = 0
 
         with path_obj.open('wb') as f:
             # Use batched utility to iterate in chunks
+            # batched() consumes the iterator lazily, ensuring we only hold 'batch_size' items in RAM.
             for batch_tuple in batched(embeddings, batch_size):
                 # batched returns a tuple of items
                 batch_list = list(batch_tuple)
