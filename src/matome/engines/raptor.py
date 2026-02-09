@@ -41,14 +41,16 @@ class RaptorEngine:
         """
         Handle Level 0: Embedding, Storage, and Clustering.
 
-        Consumes the initial chunks iterator, embeds them, stores them in the database,
-        and then clusters the embeddings. All operations are strictly streaming/batched.
+        Consumes the initial chunks iterator, embeds them, stores them in the database
+        (batched), and then clusters the embeddings. All operations are strictly streaming.
         """
         current_level_ids: list[NodeID] = []
         # Use mutable container to track count within generator
         stats = {"node_count": 0}
 
         def l0_embedding_generator() -> Iterator[list[float]]:
+            chunk_buffer: list[Chunk] = []
+
             # Embed chunks (streaming from initial_chunks iterator)
             for chunk in self.embedder.embed_chunks(initial_chunks):
                 if chunk.embedding is None:
@@ -61,16 +63,17 @@ class RaptorEngine:
 
                 yield chunk.embedding
 
-                # Directly add chunk to store individually or via small buffer managed here?
-                # Store.add_chunk is simple but N+1. Store.add_chunks does batching internally.
-                # However, we are yielding embeddings for clustering concurrently.
-                # If we use `store.add_chunk`, it's immediate.
-                # If we buffer here, we might delay storage.
-                # Since DiskChunkStore now has WAL+Pooling, add_chunk is acceptable,
-                # BUT batching is better.
-                # Let's use a small local buffer for store writes to balance IO/Mem.
-                store.add_chunk(chunk)
+                # Buffer chunks for storage to avoid N+1 DB transactions
+                chunk_buffer.append(chunk)
                 current_level_ids.append(chunk.index)
+
+                if len(chunk_buffer) >= self.config.chunk_buffer_size:
+                    store.add_chunks(chunk_buffer)
+                    chunk_buffer.clear()
+
+            # Flush remaining chunks
+            if chunk_buffer:
+                store.add_chunks(chunk_buffer)
 
         # cluster_nodes consumes the generator.
         # This will drive the loop above, which drives storage and counting.

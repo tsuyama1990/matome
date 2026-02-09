@@ -154,7 +154,7 @@ class ProcessingConfig(BaseModel):
         description="Model to use for verification (defaults to summarization model).",
     )
 
-    @field_validator("embedding_model")
+    @field_validator("embedding_model", mode="after")
     @classmethod
     def validate_embedding_model(cls, v: str) -> str:
         """Validate embedding model name to prevent potential issues."""
@@ -169,7 +169,7 @@ class ProcessingConfig(BaseModel):
             raise ValueError(msg)
         return v
 
-    @field_validator("summarization_model", "verification_model")
+    @field_validator("summarization_model", "verification_model", mode="after")
     @classmethod
     def validate_llm_model(cls, v: str) -> str:
         """Validate LLM model name against whitelist."""
@@ -181,7 +181,7 @@ class ProcessingConfig(BaseModel):
             raise ValueError(msg)
         return v
 
-    @field_validator("tokenizer_model")
+    @field_validator("tokenizer_model", mode="after")
     @classmethod
     def validate_tokenizer_model(cls, v: str) -> str:
         """Validate tokenizer model against whitelist."""

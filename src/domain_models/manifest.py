@@ -68,7 +68,7 @@ class Chunk(BaseModel):
         # If the schema allows None, we accept None.
         # However, if it's NOT None, we strictly validate content.
         if self.embedding is not None:
-            if not self.embedding:
+            if len(self.embedding) == 0:
                 msg = "Embedding cannot be an empty list if provided."
                 logger.error(msg)
                 raise ValueError(msg)
