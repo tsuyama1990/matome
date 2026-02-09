@@ -1,9 +1,5 @@
-import contextlib
 import logging
-import os
-import tempfile
 from collections.abc import Iterable
-from pathlib import Path
 
 import numpy as np
 from sklearn.mixture import GaussianMixture
@@ -14,6 +10,7 @@ from domain_models.manifest import Cluster
 from domain_models.types import NodeID
 
 logger = logging.getLogger(__name__)
+
 
 class GMMClusterer:
     """
@@ -38,59 +35,38 @@ class GMMClusterer:
         """
         self._validate_algorithm(config)
 
-        n_samples = 0
-        dim = 0
+        # Materialize iterator to check size and content
+        embeddings_list = list(embeddings)
+        n_samples = len(embeddings_list)
 
-        # Create temp file
-        fd, tf_name = tempfile.mkstemp()
-        os.close(fd)
+        if n_samples == 0:
+            return []
 
-        try:
-            # First pass: Write to binary file
-            path_obj = Path(tf_name)
-            # Use buffering to optimize I/O
-            with path_obj.open('wb') as f:
-                for i, emb in enumerate(embeddings):
-                    if i == 0:
-                        dim = len(emb)
-                        if dim == 0:
-                             msg = "Embedding dimension cannot be zero."
-                             raise ValueError(msg)
-                    elif len(emb) != dim:
-                         msg = f"Embedding dimension mismatch at index {i}."
-                         raise ValueError(msg)
+        # Validate dimensions and content
+        # Check first element for dimension
+        dim = len(embeddings_list[0])
+        if dim == 0:
+            msg = "Embedding dimension cannot be zero."
+            raise ValueError(msg)
 
-                    if any(np.isnan(x) or np.isinf(x) for x in emb):
-                         msg = "Embeddings contain NaN or Infinity values."
-                         raise ValueError(msg)
+        # Check all
+        for i, emb in enumerate(embeddings_list):
+            if len(emb) != dim:
+                msg = f"Embedding dimension mismatch at index {i}."
+                raise ValueError(msg)
+            if any(np.isnan(x) or np.isinf(x) for x in emb):
+                msg = "Embeddings contain NaN or Infinity values."
+                raise ValueError(msg)
 
-                    # tofile writes C-order floats directly
-                    np.array(emb, dtype='float32').tofile(f)
-                    n_samples += 1
+        # Handle edge cases (small datasets)
+        edge_case_result = self._handle_edge_cases(n_samples)
+        if edge_case_result:
+            return edge_case_result
 
-            if n_samples == 0:
-                return []
+        # Convert to numpy array for processing
+        data = np.array(embeddings_list, dtype='float32')
 
-            # Handle edge cases
-            edge_case_result = self._handle_edge_cases(n_samples)
-            if edge_case_result:
-                return edge_case_result
-
-            # Open as memmap
-            mm_array = np.memmap(tf_name, dtype='float32', mode='r', shape=(n_samples, dim))
-
-            try:
-                return self._perform_clustering(mm_array, n_samples, config)
-            finally:
-                # Close memmap logic
-                del mm_array
-
-        finally:
-             # Cleanup
-             path = Path(tf_name)
-             if path.exists():
-                 with contextlib.suppress(OSError):
-                     path.unlink()
+        return self._perform_clustering(data, n_samples, config)
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
         if config.clustering_algorithm.value != "gmm":
@@ -98,9 +74,15 @@ class GMMClusterer:
             raise ValueError(msg)
 
     def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
+        """
+        Handle cases where the dataset is too small for meaningful clustering.
+        """
         if n_samples == 1:
             return [Cluster(id=0, level=0, node_indices=[0])]
 
+        # Threshold for "too small to cluster"
+        # Standard UMAP/GMM can fail or be unstable with very few samples.
+        # 5 is a reasonable heuristic.
         if n_samples <= 5:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
@@ -108,12 +90,13 @@ class GMMClusterer:
         return None
 
     def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
-        """Helper to run UMAP and GMM on the data (numpy array or memmap)."""
+        """Helper to run UMAP and GMM on the data."""
         # UMAP Parameters
         n_neighbors = config.umap_n_neighbors
         min_dist = config.umap_min_dist
         n_components = config.umap_n_components
 
+        # Adjust n_neighbors if dataset is small but larger than edge case threshold
         effective_n_neighbors = max(min(n_neighbors, n_samples - 1), 2)
 
         if effective_n_neighbors != n_neighbors:
@@ -128,38 +111,44 @@ class GMMClusterer:
             f"GMM: n_clusters={config.n_clusters or 'auto'}."
         )
 
-        # 1. Dimensionality Reduction (UMAP)
-        reducer = UMAP(
-            n_neighbors=effective_n_neighbors,
-            min_dist=min_dist,
-            n_components=n_components,
-            random_state=config.random_state,
-        )
-        reduced_embeddings = reducer.fit_transform(data)
+        try:
+            # 1. Dimensionality Reduction (UMAP)
+            reducer = UMAP(
+                n_neighbors=effective_n_neighbors,
+                min_dist=min_dist,
+                n_components=n_components,
+                random_state=config.random_state,
+            )
+            reduced_embeddings = reducer.fit_transform(data)
 
-        # 2. GMM Clustering
-        if config.n_clusters:
-            gmm_n_components = config.n_clusters
-        else:
-            gmm_n_components = self._calculate_optimal_clusters(reduced_embeddings, config.random_state)
+            # 2. GMM Clustering
+            if config.n_clusters:
+                gmm_n_components = config.n_clusters
+            else:
+                gmm_n_components = self._calculate_optimal_clusters(reduced_embeddings, config.random_state)
 
-        gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
-        gmm.fit(reduced_embeddings)
-        labels = gmm.predict(reduced_embeddings)
+            gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
+            gmm.fit(reduced_embeddings)
+            labels = gmm.predict(reduced_embeddings)
 
-        # 3. Form Clusters
-        return self._form_clusters(labels)
+            # 3. Form Clusters
+            return self._form_clusters(labels)
+
+        except Exception:
+            logger.exception("Clustering failed.")
+            raise
 
     def _form_clusters(self, labels: np.ndarray) -> list[Cluster]:
         clusters: list[Cluster] = []
         unique_labels = np.unique(labels)
         for label in unique_labels:
             indices = np.where(labels == label)[0]
-            node_indices: list[NodeID] = [int(indices[i].item()) for i in range(len(indices))]
+            # Convert numpy indices to NodeID (int) list
+            node_indices: list[NodeID] = [int(idx) for idx in indices]
 
             cluster = Cluster(
-                id=int(label.item()) if hasattr(label, "item") else int(label),
-                level=0,
+                id=int(label),
+                level=0, # Default to 0, caller handles level logic
                 node_indices=node_indices,
             )
             clusters.append(cluster)

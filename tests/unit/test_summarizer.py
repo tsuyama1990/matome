@@ -98,7 +98,7 @@ def test_summarize_missing_key(config: ProcessingConfig) -> None:
         # agent.llm should be None
         assert agent.llm is None
 
-        with pytest.raises(SummarizationError, match="OpenRouter API Key is missing"):
+        with pytest.raises(SummarizationError, match="LLM not initialized"):
             agent.summarize("some context", config)
 
 def test_summarize_list_response(agent: SummarizationAgent, config: ProcessingConfig) -> None:

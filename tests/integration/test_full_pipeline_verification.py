@@ -24,11 +24,11 @@ def test_interface_compliance() -> None:
     assert isinstance(clusterer, Clusterer)
 
     # Summarizer
-    # Patch to avoid API key check
+    # Use dependency injection to avoid API key requirement
     config = ProcessingConfig()
-    with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
-        summarizer = SummarizationAgent(config)
-        assert isinstance(summarizer, Summarizer)
+    mock_llm = MagicMock()
+    summarizer = SummarizationAgent(config, llm=mock_llm)
+    assert isinstance(summarizer, Summarizer)
 
 def test_configuration_flow() -> None:
     """Verify configuration object validation and default values."""
@@ -71,42 +71,37 @@ def test_full_pipeline_flow() -> None:
 
         embedder = EmbeddingService(config)
 
-        # Mock SummarizationAgent
-        with (
-            patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-fake-key"),
-            patch("matome.agents.summarizer.ChatOpenAI") as MockChatOpenAI
-        ):
-            mock_llm_instance = MagicMock()
-            MockChatOpenAI.return_value = mock_llm_instance
+        # Mock LLM for SummarizationAgent
+        mock_llm_instance = MagicMock()
+        mock_response = MagicMock()
+        mock_response.content = "Summary of the cluster."
+        mock_llm_instance.invoke.return_value = mock_response
 
-            mock_response = MagicMock()
-            mock_response.content = "Summary of the cluster."
-            mock_llm_instance.invoke.return_value = mock_response
+        # Use dependency injection
+        summarizer = SummarizationAgent(config, llm=mock_llm_instance)
 
-            summarizer = SummarizationAgent(config)
+        # Act & Assert (Logic same as before, but with deterministic RNG)
+        chunks = chunker.split_text(text, config)
+        assert len(chunks) > 1
 
-            # Act & Assert (Logic same as before, but with deterministic RNG)
-            chunks = chunker.split_text(text, config)
-            assert len(chunks) > 1
+        chunks_with_embeddings = list(embedder.embed_chunks(chunks))
+        assert all(c.embedding is not None for c in chunks_with_embeddings)
 
-            chunks_with_embeddings = list(embedder.embed_chunks(chunks))
-            assert all(c.embedding is not None for c in chunks_with_embeddings)
+        valid_embeddings: list[list[float]] = []
+        for c in chunks_with_embeddings:
+            if c.embedding is None:
+                pytest.fail("Embedding should not be None")
+            valid_embeddings.append(c.embedding)
 
-            valid_embeddings: list[list[float]] = []
-            for c in chunks_with_embeddings:
-                if c.embedding is None:
-                    pytest.fail("Embedding should not be None")
-                valid_embeddings.append(c.embedding)
+        clusters = clusterer.cluster_nodes(valid_embeddings, config)
+        assert isinstance(clusters, list)
+        assert len(clusters) > 0
 
-            clusters = clusterer.cluster_nodes(valid_embeddings, config)
-            assert isinstance(clusters, list)
-            assert len(clusters) > 0
+        cluster = clusters[0]
+        cluster_text_parts = []
+        for idx in cluster.node_indices:
+            cluster_text_parts.append(chunks_with_embeddings[int(idx)].text)
 
-            cluster = clusters[0]
-            cluster_text_parts = []
-            for idx in cluster.node_indices:
-                cluster_text_parts.append(chunks_with_embeddings[int(idx)].text)
-
-            cluster_text = " ".join(cluster_text_parts)
-            summary = summarizer.summarize(cluster_text, config)
-            assert summary == "Summary of the cluster."
+        cluster_text = " ".join(cluster_text_parts)
+        summary = summarizer.summarize(cluster_text, config)
+        assert summary == "Summary of the cluster."
