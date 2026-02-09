@@ -8,6 +8,7 @@ from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
+from matome.utils.compat import batched
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
@@ -41,39 +42,46 @@ class RaptorEngine:
         """
         Handle Level 0: Embedding, Storage, and Clustering.
 
-        Consumes the initial chunks iterator, embeds them, stores them in the database
-        (batched), and then clusters the embeddings. All operations are strictly streaming.
+        Consumes the initial chunks iterator, embeds them, stores them in the database,
+        and then clusters the embeddings. All operations are strictly streaming.
         """
         current_level_ids: list[NodeID] = []
         # Use mutable container to track count within generator
         stats = {"node_count": 0}
 
         def l0_embedding_generator() -> Iterator[list[float]]:
-            chunk_buffer: list[Chunk] = []
+            # We must yield embeddings for the clusterer.
+            # While doing so, we save to DB.
 
-            # Embed chunks (streaming from initial_chunks iterator)
-            for chunk in self.embedder.embed_chunks(initial_chunks):
-                if chunk.embedding is None:
-                    msg = f"Chunk {chunk.index} missing embedding."
-                    raise ValueError(msg)
+            # Streaming chain:
+            # 1. initial_chunks (Iterator)
+            # 2. embedder.embed_chunks (Iterator) -> Yields Chunk with embedding
 
-                stats["node_count"] += 1
+            chunk_stream = self.embedder.embed_chunks(initial_chunks)
+
+            # We assume store.add_chunks handles lists efficiently.
+            # But to strictly stream, we should batch manually here and call store.add_chunks on batches.
+
+            # Using batched to process small groups of chunks. Use config for buffer size.
+            for chunk_batch_tuple in batched(chunk_stream, self.config.chunk_buffer_size):
+                # Convert tuple to list for store.add_chunks (interface expects Iterable)
+                chunk_batch = list(chunk_batch_tuple)
+
+                # 1. Store batch
+                store.add_chunks(chunk_batch)
+
+                # 2. Yield embeddings and collect IDs
+                for chunk in chunk_batch:
+                    if chunk.embedding is None:
+                        msg = f"Chunk {chunk.index} missing embedding."
+                        raise ValueError(msg)
+
+                    stats["node_count"] += 1
+                    current_level_ids.append(chunk.index)
+                    yield chunk.embedding
+
                 if stats["node_count"] % 100 == 0:
                     logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")
-
-                yield chunk.embedding
-
-                # Buffer chunks for storage to avoid N+1 DB transactions
-                chunk_buffer.append(chunk)
-                current_level_ids.append(chunk.index)
-
-                if len(chunk_buffer) >= self.config.chunk_buffer_size:
-                    store.add_chunks(chunk_buffer)
-                    chunk_buffer.clear()
-
-            # Flush remaining chunks
-            if chunk_buffer:
-                store.add_chunks(chunk_buffer)
 
         # cluster_nodes consumes the generator.
         # This will drive the loop above, which drives storage and counting.
@@ -88,7 +96,19 @@ class RaptorEngine:
         Args:
             text: Input text to process.
             store: Optional persistent store. If None, a temporary store is used (and closed on exit).
+
+        Raises:
+            ValueError: If input text is empty or invalid.
         """
+        if not text or not isinstance(text, str):
+            msg = "Input text must be a non-empty string."
+            raise ValueError(msg)
+
+        # Length validation
+        if len(text) > self.config.max_input_length:
+            msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
+            raise ValueError(msg)
+
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
 
@@ -116,8 +136,24 @@ class RaptorEngine:
                 if node_count <= 1:
                     break
 
-                if len(clusters) == node_count:
-                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+                # Force reduction if clustering returns same number of clusters as nodes
+                if len(clusters) == node_count and node_count > 1:
+                    logger.warning(
+                        f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
+                    )
+                    # Fallback: Merge all into one cluster if node_count is small, else break?
+                    # If we break, we stop summarization.
+                    # Let's collapse to 1 cluster if small enough.
+                    if node_count < 20:
+                        clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+                    else:
+                        # Just proceed, maybe next level will cluster better?
+                        # No, if we don't reduce, we loop forever or just summarize 1-to-1?
+                        # Summarize 1-to-1 is useless.
+                        # We MUST reduce.
+                        # Let's break for safety to avoid infinite loops if we can't reduce.
+                        logger.error("Could not reduce nodes. Stopping recursion.")
+                        break
 
                 logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
@@ -146,13 +182,14 @@ class RaptorEngine:
                     active_store.add_summaries(summary_buffer)
 
                 if len(current_level_ids) > 1:
-                    clusters = self._next_level_clustering(current_level_ids, active_store)
+                    # Embed and Cluster for next level
+                    clusters = self._embed_and_cluster_next_level(current_level_ids, active_store)
                 else:
                     clusters = []
 
             return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
 
-    def _next_level_clustering(
+    def _embed_and_cluster_next_level(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
     ) -> list[Cluster]:
         """
@@ -175,22 +212,43 @@ class RaptorEngine:
                         )
 
             # Strategy: Batched processing manually
-            from matome.utils.compat import batched
-
-            # We process in batches to avoid loading all texts
+            # We process in batches to avoid loading all texts.
+            # batch is a tuple of (NodeID, str) tuples.
+            # batched is lazy, so we don't load everything.
             for batch in batched(node_text_generator(), self.config.embedding_batch_size):
-                # batch is a tuple of (nid, text)
-                ids = [item[0] for item in batch]
-                texts = [item[1] for item in batch]
+                # batch is tuple of (id, text)
+                # To efficiently use embed_strings and keep synchronization with IDs,
+                # we unzip the batch into two iterators.
+
+                # unzip: zip(*batch) returns two tuples: (id1, id2...), (text1, text2...)
+                unzipped = list(zip(*batch, strict=True))
+                if not unzipped:
+                    continue
+
+                ids_tuple = unzipped[0]
+                texts_tuple = unzipped[1]
 
                 # Embed batch (returns iterator)
-                embeddings = self.embedder.embed_strings(texts)
+                try:
+                    # embed_strings takes Iterable[str], so tuple is fine.
+                    embeddings = self.embedder.embed_strings(texts_tuple)
 
-                for nid, embedding in zip(ids, embeddings, strict=True):
-                    store.update_node_embedding(nid, embedding)
-                    yield embedding
+                    # We iterate embeddings and match with IDs
+                    # zip ensures lock-step iteration
+                    for nid, embedding in zip(ids_tuple, embeddings, strict=True):
+                        store.update_node_embedding(nid, embedding)
+                        yield embedding
+                except Exception as e:
+                    logger.exception("Failed to embed batch during next level clustering.")
+                    msg = "Embedding failed during recursion."
+                    raise RuntimeError(msg) from e
 
-        return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
+        try:
+            return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
+        except Exception as e:
+            logger.exception("Clustering failed during recursion.")
+            msg = "Clustering failed during recursion."
+            raise RuntimeError(msg) from e
 
     def _finalize_tree(
         self,
@@ -208,8 +266,6 @@ class RaptorEngine:
             # If input was empty?
             if not l0_ids:
                 # Should return empty tree if no chunks at all
-                # But we need a dummy root? Or empty tree?
-                # Returning minimal dummy tree for safety if logic requires return
                 pass
             # If current_level_ids empty but l0_ids not empty (unlikely unless summarization failed completely)
             msg = "No nodes remaining."
@@ -271,6 +327,11 @@ class RaptorEngine:
 
             for idx_raw in cluster.node_indices:
                 idx = int(idx_raw)
+                # Check bounds
+                if idx < 0 or idx >= len(current_level_ids):
+                    logger.warning(f"Cluster index {idx} out of bounds for current level nodes.")
+                    continue
+
                 node_id = current_level_ids[idx]
                 node = store.get_node(node_id)
                 if not node:
@@ -278,6 +339,10 @@ class RaptorEngine:
 
                 children_indices.append(node_id)
                 cluster_texts.append(node.text)
+
+            if not cluster_texts:
+                logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
+                continue
 
             # Note: For very large clusters, joining texts might still be memory intensive.
             # But the summarizer typically takes a string.

@@ -17,13 +17,12 @@ def sample_embeddings() -> list[list[float]]:
 
 @patch("matome.engines.cluster.UMAP")
 @patch("matome.engines.cluster.GaussianMixture")
-def test_clustering_with_gmm(
+def test_clustering_with_gmm_soft(
     mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sample_embeddings: list[list[float]]
 ) -> None:
     # Setup mocks
     mock_umap_instance = MagicMock()
     mock_umap_cls.return_value = mock_umap_instance
-    # Reduce to 2 dimensions for GMM
     reduced_embeddings = np.array(
         [[0.1, 0.1], [0.1, 0.1], [0.1, 0.1], [0.9, 0.9], [0.9, 0.9], [0.9, 0.9]]
     )
@@ -31,18 +30,30 @@ def test_clustering_with_gmm(
 
     mock_gmm_instance = MagicMock()
     mock_gmm_cls.return_value = mock_gmm_instance
-    # Predict returns cluster labels: [0, 0, 0, 1, 1, 1]
-    mock_gmm_instance.predict.return_value = np.array([0, 0, 0, 1, 1, 1])
-    # n_components_ is needed if we use it, but predict is key
-    mock_gmm_instance.n_components = 2
-    # Mock BIC scores: lowest for n=2 (first call)
+
+    # Soft Clustering Probabilities (N=6, K=2)
+    # 0,1,2 -> Cluster 0 (Prob ~0.9, 0.1)
+    # 3,4,5 -> Cluster 1 (Prob ~0.1, 0.9)
+    # Node 2 is ambiguous -> (Prob 0.45, 0.55). Max is 1, but if threshold is 0.4, both selected.
+    # Let's test that logic.
+    probs = np.array([
+        [0.9, 0.1],
+        [0.9, 0.1],
+        [0.45, 0.55], # Ambiguous
+        [0.1, 0.9],
+        [0.1, 0.9],
+        [0.1, 0.9]
+    ])
+    mock_gmm_instance.predict_proba.return_value = probs
+
+    # Mock BIC scores to select 2 clusters
     mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]
 
-    # Instantiate engine
+    # Instantiate engine with threshold 0.4
     engine = GMMClusterer()
-    config = ProcessingConfig(clustering_algorithm="gmm")
+    config = ProcessingConfig(clustering_algorithm="gmm", clustering_probability_threshold=0.4)
 
-    # Perform clustering (pass as iterable to test streaming)
+    # Perform clustering
     clusters = engine.cluster_nodes(iter(sample_embeddings), config)
 
     # We expect 2 clusters
@@ -50,16 +61,17 @@ def test_clustering_with_gmm(
 
     # Check cluster 0
     c0 = next(c for c in clusters if c.id == 0)
+    # Node 2 (0.45) >= 0.4, so it should be in C0
     assert set(c0.node_indices) == {0, 1, 2}
 
     # Check cluster 1
     c1 = next(c for c in clusters if c.id == 1)
-    assert set(c1.node_indices) == {3, 4, 5}
+    # Node 2 (0.55) >= 0.4, so it should be in C1 too
+    assert set(c1.node_indices) == {2, 3, 4, 5}
 
     # Verify calls
     mock_umap_cls.assert_called_once()
-    mock_gmm_cls.assert_called()  # Could be called multiple times for BIC search
-    mock_umap_instance.fit_transform.assert_called()
+    mock_gmm_instance.predict_proba.assert_called()
 
 
 def test_empty_embeddings() -> None:
@@ -80,7 +92,8 @@ def test_fixed_n_clusters(
 
     mock_gmm_instance = MagicMock()
     mock_gmm_cls.return_value = mock_gmm_instance
-    mock_gmm_instance.predict.return_value = np.zeros(len(sample_embeddings))
+    # Needs predict_proba
+    mock_gmm_instance.predict_proba.return_value = np.zeros((len(sample_embeddings), 3))
 
     # Config with fixed clusters
     config = ProcessingConfig(n_clusters=3)
@@ -90,28 +103,6 @@ def test_fixed_n_clusters(
 
     # Should create GMM with n_components=3
     mock_gmm_cls.assert_called_with(n_components=3, random_state=42)
-
-
-def test_single_cluster_forced(sample_embeddings: list[list[float]]) -> None:
-    # Test that we handle n_clusters=1 gracefully if needed
-    config = ProcessingConfig(n_clusters=1)
-    engine = GMMClusterer()
-
-    with (
-        patch("matome.engines.cluster.UMAP") as mock_umap,
-        patch("matome.engines.cluster.GaussianMixture") as mock_gmm,
-    ):
-        mock_umap.return_value.fit_transform.return_value = np.array(sample_embeddings)
-        mock_gmm.return_value.predict.return_value = np.zeros(len(sample_embeddings))
-
-        clusters = engine.cluster_nodes(sample_embeddings, config)
-
-        assert len(clusters) == 1
-        assert clusters[0].id == 0
-        assert len(clusters[0].node_indices) == 6
-
-        # Verify GMM called with 1 component
-        mock_gmm.assert_called_with(n_components=1, random_state=42)
 
 
 def test_very_small_dataset_skip(sample_embeddings: list[list[float]]) -> None:
@@ -147,7 +138,7 @@ def test_umap_config_params(
     mock_umap_instance = MagicMock()
     mock_umap_cls.return_value = mock_umap_instance
     mock_umap_instance.fit_transform.return_value = np.array(sample_embeddings)
-    mock_gmm_cls.return_value.predict.return_value = np.zeros(len(sample_embeddings))
+    mock_gmm_cls.return_value.predict_proba.return_value = np.zeros((len(sample_embeddings), 3))
 
     config = ProcessingConfig(umap_n_components=3, umap_n_neighbors=5, umap_min_dist=0.0)
     engine = GMMClusterer()

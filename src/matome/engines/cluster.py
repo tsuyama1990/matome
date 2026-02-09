@@ -4,6 +4,7 @@ import os
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
+from typing import Any, BinaryIO
 
 import numpy as np
 from sklearn.cluster import MiniBatchKMeans
@@ -44,8 +45,8 @@ class GMMClusterer:
         """
         self._validate_algorithm(config)
 
-        # Batch size for disk writing to reduce I/O overhead
-        WRITE_BATCH_SIZE = config.write_batch_size
+        # Batch size for disk writing (from config)
+        write_batch_size = config.write_batch_size
 
         # Create temp file for memory mapping
         fd, tf_name = tempfile.mkstemp()
@@ -55,7 +56,9 @@ class GMMClusterer:
         try:
             # Stream write embeddings to disk.
             # This ensures we never hold the full list of embeddings in Python memory.
-            n_samples, dim = self._stream_write_embeddings(embeddings, path_obj, WRITE_BATCH_SIZE)
+            n_samples, dim = self._stream_write_embeddings(
+                embeddings, path_obj, write_batch_size
+            )
 
             if n_samples == 0:
                 return []
@@ -88,67 +91,90 @@ class GMMClusterer:
     ) -> tuple[int, int]:
         """
         Stream embeddings to disk in batches.
-        Returns (n_samples, dim).
+
+        Iterates over the input embeddings and writes them to a binary file
+        (to be used with np.memmap). Validates dimensions and values.
+        Optimized to write using a configurable buffer to avoid I/O bottlenecks.
+
+        Args:
+            embeddings: Iterable of embedding vectors.
+            path_obj: Path object to write the embeddings to.
+            batch_size: Number of embeddings to process at once.
+
+        Returns:
+            A tuple (n_samples, dim), where n_samples is the total count
+            and dim is the embedding dimension.
         """
         n_samples = 0
         dim = 0
+        buffer: list[list[float]] = []
+
+        # Use configured batch size
+        buffer_size = batch_size
 
         with path_obj.open("wb") as f:
-            # Use batched utility to iterate in chunks
-            # batched() consumes the iterator lazily, ensuring we only hold 'batch_size' items in RAM.
-            for batch_tuple in batched(embeddings, batch_size):
-                # Process in smaller sub-batches to avoid large memory allocation
-                # even if batch_size is large (e.g. from default config).
-                # 1000 rows * 1024 dims * 4 bytes = 4MB. Safe.
-                SUB_BATCH_SIZE = 1000
-
-                for i in range(0, len(batch_tuple), SUB_BATCH_SIZE):
-                    sub_batch = batch_tuple[i : i + SUB_BATCH_SIZE]
-
-                    if n_samples == 0 and i == 0:
-                        dim = len(sub_batch[0])
-                        if dim == 0:
-                            msg = "Embedding dimension cannot be zero."
-                            raise ValueError(msg)
-
-                    try:
-                        np_batch = np.array(sub_batch, dtype="float32")
-                    except ValueError as e:
-                        msg = f"Failed to create batch array: {e}"
-                        raise ValueError(msg) from e
-
-                    if np_batch.shape[1] != dim:
-                        msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
+            for i, vec in enumerate(embeddings):
+                if n_samples == 0 and len(buffer) == 0:
+                    dim = len(vec)
+                    if dim == 0:
+                        msg = "Embedding dimension cannot be zero."
                         raise ValueError(msg)
 
-                    if not np.isfinite(np_batch).all():
-                        msg = "Embeddings contain NaN or Infinity values."
-                        raise ValueError(msg)
+                if len(vec) != dim:
+                    msg = f"Embedding dimension mismatch at index {i}."
+                    raise ValueError(msg)
 
-                    np_batch.tofile(f)
-                    n_samples += len(sub_batch)
+                buffer.append(vec)
+
+                if len(buffer) >= buffer_size:
+                    self._flush_buffer(f, buffer)
+                    n_samples += len(buffer)
+                    buffer.clear()
+
+            # Final flush
+            if buffer:
+                self._flush_buffer(f, buffer)
+                n_samples += len(buffer)
+                buffer.clear()
 
         return n_samples, dim
+
+    def _flush_buffer(self, f: BinaryIO, buffer: list[list[float]]) -> None:
+        """Helper to write a buffer of vectors to disk."""
+        try:
+            # Convert whole buffer to array at once - fast
+            np_batch = np.array(buffer, dtype="float32")
+        except ValueError as e:
+            msg = f"Failed to create array from buffer: {e}"
+            raise ValueError(msg) from e
+
+        if not np.isfinite(np_batch).all():
+            msg = "Embeddings contain NaN or Infinity values."
+            raise ValueError(msg)
+
+        np_batch.tofile(f)
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
         """Validate that the configured algorithm is supported."""
         algo = config.clustering_algorithm
-        # Handle case where it's an Enum (normal) or a raw string (testing/bypassing validation)
-        algo_value = algo.value if hasattr(algo, "value") else algo
-
-        # Use the Enum value for validation, avoiding hardcoded string if possible
-        expected_algo = ClusteringAlgorithm.GMM.value
-
-        if algo_value != expected_algo:
-            msg = f"Unsupported clustering algorithm: {algo}. Only '{expected_algo}' is supported."
-            raise ValueError(msg)
+        # Strict Enum comparison
+        if algo != ClusteringAlgorithm.GMM:
+             msg = f"Unsupported clustering algorithm: {algo}. Only '{ClusteringAlgorithm.GMM.value}' is supported."
+             raise ValueError(msg)
 
     def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
         """
         Handle cases where the dataset is too small for meaningful clustering.
 
+        Checks if the number of samples is below a minimum threshold for
+        clustering algorithms (UMAP/GMM) to work reliably.
+
+        Args:
+            n_samples: The number of embedding samples.
+
         Returns:
-            List of Clusters if handled, None otherwise (proceed to normal clustering).
+            List of Clusters if handled (e.g., single cluster),
+            None otherwise (indicating to proceed to normal clustering).
         """
         if n_samples == 1:
             return [Cluster(id=0, level=0, node_indices=[0])]
@@ -169,6 +195,7 @@ class GMMClusterer:
     ) -> list[Cluster]:
         """
         Execute UMAP reduction and GMM clustering on the data.
+        Performs Soft Clustering using GMM probabilities.
 
         Args:
             data: The dataset (numpy array or memmap).
@@ -221,10 +248,10 @@ class GMMClusterer:
             logger.info(f"Clustering into {gmm_n_components} components.")
             gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
             gmm.fit(reduced_embeddings)
-            labels = gmm.predict(reduced_embeddings)
 
-            # 3. Form Clusters
-            return self._form_clusters(labels)
+            # 3. Soft Clustering (Probabilistic Assignment)
+            probs = gmm.predict_proba(reduced_embeddings)
+            return self._form_clusters_soft(probs, gmm_n_components, config.clustering_probability_threshold)
 
         except Exception as e:
             logger.exception("Clustering process failed during UMAP/GMM execution.")
@@ -232,7 +259,7 @@ class GMMClusterer:
             raise RuntimeError(msg) from e
 
     def _form_clusters(self, labels: np.ndarray) -> list[Cluster]:
-        """Convert clustering labels into Cluster objects."""
+        """Convert hard clustering labels into Cluster objects (used for approx clustering)."""
         clusters: list[Cluster] = []
         unique_labels = np.unique(labels)
         for label in unique_labels:
@@ -246,6 +273,48 @@ class GMMClusterer:
                 node_indices=node_indices,
             )
             clusters.append(cluster)
+        return clusters
+
+    def _form_clusters_soft(
+        self, probs: np.ndarray, n_clusters: int, threshold: float
+    ) -> list[Cluster]:
+        """
+        Convert GMM probabilities into Cluster objects (Soft Clustering).
+        A node is assigned to a cluster if P(cluster|node) >= threshold.
+        Guarantees every node is assigned to at least one cluster (argmax).
+        """
+        # Dictionary to hold list of node indices for each cluster
+        cluster_map: dict[int, list[NodeID]] = {i: [] for i in range(n_clusters)}
+
+        n_samples = probs.shape[0]
+
+        for i in range(n_samples):
+            # Get probabilities for node i
+            node_probs = probs[i]
+
+            # Identify clusters exceeding threshold
+            assigned_indices = np.where(node_probs >= threshold)[0]
+
+            # If no cluster exceeds threshold, assign to the one with max probability
+            if len(assigned_indices) == 0:
+                max_idx = np.argmax(node_probs)
+                cluster_map[int(max_idx)].append(i)
+            else:
+                for cluster_idx in assigned_indices:
+                    cluster_map[int(cluster_idx)].append(i)
+
+        # Create Cluster objects
+        clusters: list[Cluster] = []
+        for cluster_id, node_indices in cluster_map.items():
+            if node_indices:
+                clusters.append(
+                    Cluster(
+                        id=cluster_id,
+                        level=0,
+                        node_indices=node_indices
+                    )
+                )
+
         return clusters
 
     def _perform_approximate_clustering(
@@ -344,4 +413,7 @@ class GMMClusterer:
         except Exception:
             # Catch import errors or other unexpected issues
             logger.exception("Unexpected error during BIC calculation. Defaulting to 1 cluster.")
-            return 1
+            # Critical fix: Re-raise unexpected exceptions to ensure data integrity/awareness
+            # unless we explicitly want fallback.
+            # Given requirement "Catch specific exceptions and propagate errors appropriately", re-raising is safer.
+            raise
