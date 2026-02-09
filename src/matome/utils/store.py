@@ -94,11 +94,8 @@ class DiskChunkStore:
         buffer: list[dict[str, Any]] = []
 
         # Construct query string (safe because using internal constants)
-        query = (
-            f"INSERT OR REPLACE INTO {TABLE_NODES} ({COL_ID}, {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING}) "
-            f"VALUES (:id, :type, :content, :embedding)"
-        )
-        stmt = text(query)  # noqa: S608
+        query = f"INSERT OR REPLACE INTO {TABLE_NODES} ({COL_ID}, {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING}) VALUES (:id, :type, :content, :embedding)"  # noqa: S608
+        stmt = text(query)
 
         with self.engine.begin() as conn:
             for node in nodes:
@@ -150,8 +147,8 @@ class DiskChunkStore:
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
         # Construct query string (safe because using internal constants)
-        query = f"SELECT {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING} FROM {TABLE_NODES} WHERE {COL_ID} = :id"
-        stmt = text(query)  # noqa: S608
+        query = f"SELECT {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING} FROM {TABLE_NODES} WHERE {COL_ID} = :id"  # noqa: S608
+        stmt = text(query)
 
         with self.engine.connect() as conn:
             result = conn.execute(stmt, {"id": str(node_id)})
@@ -179,10 +176,10 @@ class DiskChunkStore:
                     return obj
 
                 if node_type == "summary":
-                    obj = SummaryNode.model_validate_json(content_json)
+                    summary_obj = SummaryNode.model_validate_json(content_json)
                     if embedding is not None:
-                        obj.embedding = embedding
-                    return obj
+                        summary_obj.embedding = embedding
+                    return summary_obj
 
             except Exception:
                 logger.exception(f"Failed to deserialize node {node_id}")

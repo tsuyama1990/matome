@@ -77,6 +77,7 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
         row = conn.execute(
             text(f"SELECT content, embedding FROM {TABLE_NODES} WHERE id='1'")  # noqa: S608
         ).fetchone()
+        assert row is not None
         content_json, embedding_json = row
         assert "embedding" not in content_json  # We excluded it
         assert embedding_json == "[0.9, 0.9]"

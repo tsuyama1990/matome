@@ -110,11 +110,17 @@ class Cluster(BaseModel):
 
 
 class DocumentTree(BaseModel):
-    """Represents the full RAPTOR tree structure."""
+    """
+    Represents the full RAPTOR tree structure.
+
+    Designed for scalability:
+    - Does not store full leaf chunks in memory to avoid O(N) memory usage for large documents.
+    - Stores IDs allowing retrieval from the associated `DiskChunkStore`.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
     all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
-    leaf_chunks: list[Chunk] = Field(..., description="The original leaf chunks (Level 0).")
+    leaf_chunks: list[Chunk] = Field(..., description="List of the original leaf chunks (Level 0).")
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")

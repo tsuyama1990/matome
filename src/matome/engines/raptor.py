@@ -1,6 +1,6 @@
 import logging
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
@@ -35,7 +35,7 @@ class RaptorEngine:
         self.config = config
 
     def _process_level_zero(
-        self, initial_chunks: Iterator[Chunk], store: DiskChunkStore
+        self, initial_chunks: Iterable[Chunk], store: DiskChunkStore
     ) -> tuple[list[Cluster], list[NodeID]]:
         """Handle Level 0: Embedding, Storage, and Clustering."""
         current_level_ids: list[NodeID] = []
