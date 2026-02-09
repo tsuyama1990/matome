@@ -17,7 +17,7 @@ class DummyEmbedder(EmbeddingService):
         self.dim = dim
         self.config = create_autospec(ProcessingConfig)
 
-    def embed_chunks(self, chunks: Iterator[Chunk]) -> Iterator[Chunk]:
+    def embed_chunks(self, chunks: Iterable[Chunk]) -> Iterator[Chunk]:
         # Consume iterator
         chunk_list = list(chunks)
         for i, c in enumerate(chunk_list):

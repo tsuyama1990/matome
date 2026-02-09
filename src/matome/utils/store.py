@@ -159,6 +159,7 @@ class DiskChunkStore:
 
         embedding_json = json.dumps(embedding)
 
+        # Use SQLAlchemy Core expression for parameterized update
         stmt = (
             update(self.nodes_table)
             .where(self.nodes_table.c.id == str(node_id))
@@ -170,6 +171,7 @@ class DiskChunkStore:
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
+        # Use SQLAlchemy Core expression for parameterized select
         stmt = select(
             self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
         ).where(self.nodes_table.c.id == str(node_id))
