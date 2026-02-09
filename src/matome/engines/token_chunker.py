@@ -4,7 +4,7 @@ from functools import lru_cache
 
 import tiktoken
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import DEFAULT_TOKENIZER, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.utils.text import iter_sentences, normalize_text
 
@@ -126,11 +126,11 @@ class JapaneseTokenChunker:
 
         Args:
             model_name: The name of the encoding to use.
-                        Defaults to TIKTOKEN_MODEL_NAME env var or "cl100k_base".
+                        Defaults to TIKTOKEN_MODEL_NAME env var or DEFAULT_TOKENIZER.
         """
-        # If model_name is not provided, use env var or default "cl100k_base"
+        # If model_name is not provided, use env var or default from config
         if model_name is None:
-            model_name = os.getenv("TIKTOKEN_MODEL_NAME", "cl100k_base")
+            model_name = os.getenv("TIKTOKEN_MODEL_NAME", DEFAULT_TOKENIZER)
 
         if model_name not in ALLOWED_MODELS:
             msg = (

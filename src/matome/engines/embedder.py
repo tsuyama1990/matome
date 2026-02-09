@@ -96,9 +96,9 @@ class EmbeddingService:
             texts = [c.text for c in batch_chunks]
 
             # Embed batch (returns iterator, consumed immediately)
-            embeddings = list(self._process_batch(texts))
+            embeddings_gen = self._process_batch(texts)
 
             # Assign and yield
-            for chunk, embedding in zip(batch_chunks, embeddings, strict=True):
+            for chunk, embedding in zip(batch_chunks, embeddings_gen, strict=True):
                 chunk.embedding = embedding
                 yield chunk

@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.decomposition import IncrementalPCA
 from sklearn.mixture import GaussianMixture
 from umap import UMAP
 
@@ -68,6 +70,15 @@ class GMMClusterer:
             mm_array = np.memmap(tf_name, dtype="float32", mode="r", shape=(n_samples, dim))
 
             try:
+                # Heuristic threshold for switching to approximate clustering
+                # 20000 vectors of 1024 dim is ~80MB, which fits in memory easily.
+                # However, UMAP intermediate structures can be 10x-100x larger.
+                # We set a safe limit.
+                LARGE_SCALE_THRESHOLD = 20000
+
+                if n_samples > LARGE_SCALE_THRESHOLD:
+                    return self._perform_approximate_clustering(mm_array, n_samples, config)
+
                 return self._perform_clustering(mm_array, n_samples, config)
             finally:
                 # Ensure memmap is closed/deleted from python view
@@ -238,6 +249,67 @@ class GMMClusterer:
             )
             clusters.append(cluster)
         return clusters
+
+    def _perform_approximate_clustering(
+        self, data: np.ndarray, n_samples: int, config: ProcessingConfig
+    ) -> list[Cluster]:
+        """
+        Execute streaming clustering using IncrementalPCA and MiniBatchKMeans.
+        Avoids loading the entire dataset into memory.
+        """
+        n_components = config.umap_n_components
+        # Use config.n_clusters or heuristic.
+        # For large data, we definitely need > 1 cluster.
+        # Heuristic: sqrt(n_samples/2) is common, but capped.
+        # Or simple constant. Let's default to a reasonable number if not set.
+        n_clusters = config.n_clusters or min(int(np.sqrt(n_samples)), 50)
+
+        logger.info(
+            f"Starting Approximate Clustering for {n_samples} nodes. "
+            f"PCA components={n_components}, KMeans clusters={n_clusters}."
+        )
+
+        try:
+            # 1. Incremental PCA Training
+            ipca = IncrementalPCA(n_components=n_components)
+            batch_size = config.write_batch_size  # reuse batch size
+
+            # Loop over memmap in batches
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                ipca.partial_fit(batch)
+
+            # 2. MiniBatchKMeans Training
+            # We must transform and feed to KMeans
+            kmeans = MiniBatchKMeans(
+                n_clusters=n_clusters,
+                random_state=config.random_state,
+                batch_size=batch_size,
+                n_init="auto",
+            )
+
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                reduced_batch = ipca.transform(batch)
+                kmeans.partial_fit(reduced_batch)
+
+            # 3. Predict Labels (Final Pass)
+            # We can't store all labels in memory if n_samples is huge?
+            # 10M labels (int32) is 40MB. That's fine.
+            labels_list = []
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                reduced_batch = ipca.transform(batch)
+                batch_labels = kmeans.predict(reduced_batch)
+                labels_list.append(batch_labels)
+
+            labels = np.concatenate(labels_list)
+            return self._form_clusters(labels)
+
+        except Exception as e:
+            logger.exception("Approximate clustering failed.")
+            msg = f"Approximate clustering failed: {e}"
+            raise RuntimeError(msg) from e
 
     def _calculate_optimal_clusters(self, embeddings: np.ndarray, random_state: int) -> int:
         """
