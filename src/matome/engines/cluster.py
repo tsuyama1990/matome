@@ -120,9 +120,8 @@ class GMMClusterer:
                         msg = "Embedding dimension cannot be zero."
                         raise ValueError(msg)
 
-                # Validation: Dimension check
                 if len(vec) != dim:
-                    msg = f"Embedding dimension mismatch at index {i}. Expected {dim}, got {len(vec)}."
+                    msg = f"Embedding dimension mismatch at index {i}."
                     raise ValueError(msg)
 
                 buffer.append(vec)
