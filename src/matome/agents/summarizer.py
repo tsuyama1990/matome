@@ -109,9 +109,6 @@ class SummarizationAgent:
         Sanitize and validate input text to prevent injection attacks or excessive load.
         """
         # 1. Length Check
-        # Assuming extremely large inputs might be a DoS vector.
-        # But this is summarization, so large inputs are expected.
-        # Let's set a reasonable upper bound if needed, e.g., 100k chars for now.
         MAX_INPUT_LENGTH = 500_000
         if len(text) > MAX_INPUT_LENGTH:
              msg = f"Input text exceeds maximum allowed length ({MAX_INPUT_LENGTH} characters)."
@@ -119,9 +116,16 @@ class SummarizationAgent:
 
         # 2. Control Character Check
         # Remove null bytes and other dangerous control characters, preserving newlines/tabs
-        # Use regex to find control characters (C0 and C1) excluding CR, LF, Tab
         if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", text):
              msg = "Input text contains invalid control characters."
+             raise ValueError(msg)
+
+        # 3. Tokenization DoS Protection (Long words)
+        # Check for extremely long uninterrupted sequences which can cause tokenizer issues
+        # Using a generator expression to be memory efficient
+        longest_word_len = max((len(w) for w in text.split()), default=0)
+        if longest_word_len > 5000:
+             msg = "Input text contains extremely long words (potential DoS vector)."
              raise ValueError(msg)
 
     def _invoke_llm(self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str) -> BaseMessage:

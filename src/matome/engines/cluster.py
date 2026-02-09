@@ -1,5 +1,6 @@
 import logging
 import tempfile
+from pathlib import Path
 
 import numpy as np
 from sklearn.mixture import GaussianMixture
@@ -80,8 +81,13 @@ class GMMClusterer:
     def _process_with_memmap(self, embeddings: list[list[float]], n_samples: int, config: ProcessingConfig) -> list[Cluster]:
         dim = len(embeddings[0])
 
-        with tempfile.NamedTemporaryFile(delete=True) as tf:
-            mm_array = np.memmap(tf, dtype='float32', mode='w+', shape=(n_samples, dim))
+        # Use context manager to satisfy SIM115
+        # delete=False ensures file persists after close for memmap usage
+        with tempfile.NamedTemporaryFile(delete=False) as tf:
+            tf_name = tf.name
+
+        try:
+            mm_array = np.memmap(tf_name, dtype='float32', mode='w+', shape=(n_samples, dim))
 
             # Copy data
             for i, emb in enumerate(embeddings):
@@ -94,7 +100,21 @@ class GMMClusterer:
                  msg = "Embeddings contain NaN or Infinity values."
                  raise ValueError(msg)
 
-            return self._perform_clustering(mm_array, n_samples, config)
+            # Perform clustering
+            clusters = self._perform_clustering(mm_array, n_samples, config)
+
+            # Ensure memmap is closed/deleted before unlinking file
+            del mm_array
+            return clusters
+
+        finally:
+            # Manual cleanup of temporary file using Path (PTH110, PTH108)
+            path = Path(tf_name)
+            if path.exists():
+                try:
+                    path.unlink()
+                except OSError:
+                    logger.warning(f"Failed to delete temporary file: {tf_name}")
 
     def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
         """Helper to run UMAP and GMM on the data (numpy array or memmap)."""
@@ -163,11 +183,21 @@ class GMMClusterer:
 
         bics = []
         n_range = range(2, max_clusters + 1)
-        for n in n_range:
-            gmm = GaussianMixture(n_components=n, random_state=random_state)
-            gmm.fit(embeddings)
-            bics.append(gmm.bic(embeddings))
 
-        # Find n with minimum BIC
-        optimal_n = n_range[np.argmin(bics)]
-        return int(optimal_n)
+        try:
+            for n in n_range:
+                gmm = GaussianMixture(n_components=n, random_state=random_state)
+                gmm.fit(embeddings)
+                bics.append(gmm.bic(embeddings))
+
+            if not bics:
+                # Should not happen given logic above, but for safety
+                return 1
+
+            # Find n with minimum BIC
+            optimal_n = n_range[np.argmin(bics)]
+            return int(optimal_n)
+
+        except Exception:
+            logger.exception("Failed to calculate optimal clusters via BIC. Defaulting to 1.")
+            return 1

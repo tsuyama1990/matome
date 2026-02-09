@@ -42,30 +42,19 @@ class Chunk(BaseModel):
     @model_validator(mode="after")
     def check_indices(self) -> "Chunk":
         """
-        Validate that start_char_idx is less than or equal to end_char_idx.
+        Validate that text is present and indices form a valid range.
         Also check embedding validity if present.
         """
-        # Index Validation
-        if self.start_char_idx > self.end_char_idx:
-            msg = (
-                f"start_char_idx ({self.start_char_idx}) cannot be greater than "
-                f"end_char_idx ({self.end_char_idx})"
-            )
+        if not self.text:
+            msg = "Chunk text cannot be empty."
             logger.error(msg)
             raise ValueError(msg)
 
-        if self.start_char_idx == self.end_char_idx and self.text:
-             msg = f"Zero-length range ({self.start_char_idx}-{self.end_char_idx}) but text is not empty."
-             logger.error(msg)
-             raise ValueError(msg)
-
-        if not self.text and self.start_char_idx != self.end_char_idx:
-             msg = f"Empty text but range is not zero-length ({self.start_char_idx}-{self.end_char_idx})."
-             logger.error(msg)
-             raise ValueError(msg)
-
-        if not self.text:
-            msg = "Chunk text cannot be empty."
+        if self.start_char_idx >= self.end_char_idx:
+            msg = (
+                f"Invalid character range: start ({self.start_char_idx}) must be less than "
+                f"end ({self.end_char_idx}) for non-empty text."
+            )
             logger.error(msg)
             raise ValueError(msg)
 

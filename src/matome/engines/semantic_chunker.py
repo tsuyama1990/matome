@@ -73,61 +73,60 @@ class JapaneseSemanticChunker:
         # 3. Stream processing
         chunks: list[Chunk] = []
 
-        # Initialize state with the first sentence
         try:
-            first_sentence = next(sentences_for_content)
-            first_embedding = next(embeddings_gen)
-        except StopIteration:
-            return []
+            # Initialize state with the first sentence
+            try:
+                first_sentence = next(sentences_for_content)
+                first_embedding = next(embeddings_gen)
+            except StopIteration:
+                return []
 
-        current_chunk_sentences: list[str] = [first_sentence]
-        # We only need the latest embedding to compare with the next one
-        # But if we want to calculate centroid later, we might need all.
-        # For simple splitting, we compare adjacent sentences.
-        # RAPTOR/Semantic Chunking usually compares current sentence with *current chunk* or *previous sentence*.
-        # The original implementation compared with *previous sentence embedding*.
-        current_last_embedding = first_embedding
+            current_chunk_sentences: list[str] = [first_sentence]
+            current_last_embedding = first_embedding
+            current_start_idx = 0
 
-        current_start_idx = 0
+            # Iterate through the rest
+            for sentence, embedding in zip(sentences_for_content, embeddings_gen, strict=True):
+                similarity = cosine_similarity(current_last_embedding, embedding)
 
-        # Iterate through the rest
-        for sentence, embedding in zip(sentences_for_content, embeddings_gen, strict=True):
-            similarity = cosine_similarity(current_last_embedding, embedding)
+                # Check size constraint (rough estimate: 1 char = 1 token for safety/speed)
+                current_text_len = sum(len(s) for s in current_chunk_sentences)
 
-            # Check size constraint (rough estimate: 1 char = 1 token for safety/speed)
-            current_text_len = sum(len(s) for s in current_chunk_sentences)
+                # Determine whether to merge the current sentence into the existing chunk
+                if (similarity >= config.semantic_chunking_threshold) and (current_text_len + len(sentence) < config.max_tokens):
+                    current_chunk_sentences.append(sentence)
+                    current_last_embedding = embedding
+                else:
+                    # Create chunk from accumulated sentences
+                    chunk_text = "".join(current_chunk_sentences)
+                    chunks.append(Chunk(
+                        index=len(chunks),
+                        text=chunk_text,
+                        start_char_idx=current_start_idx,
+                        end_char_idx=current_start_idx + len(chunk_text),
+                        embedding=None
+                    ))
+                    current_start_idx += len(chunk_text)
 
-            # Determine whether to merge the current sentence into the existing chunk
-            if (similarity >= config.semantic_chunking_threshold) and (current_text_len + len(sentence) < config.max_tokens):
-                current_chunk_sentences.append(sentence)
-                current_last_embedding = embedding
-            else:
-                # Create chunk from accumulated sentences
+                    # Start new chunk with current sentence
+                    current_chunk_sentences = [sentence]
+                    current_last_embedding = embedding
+
+            # Final chunk
+            if current_chunk_sentences:
                 chunk_text = "".join(current_chunk_sentences)
                 chunks.append(Chunk(
                     index=len(chunks),
                     text=chunk_text,
                     start_char_idx=current_start_idx,
                     end_char_idx=current_start_idx + len(chunk_text),
-                    # We don't store sentence embeddings to save memory.
-                    # If chunk embedding is needed, it should be calculated for the whole chunk later.
                     embedding=None
                 ))
-                current_start_idx += len(chunk_text)
 
-                # Start new chunk with current sentence
-                current_chunk_sentences = [sentence]
-                current_last_embedding = embedding
-
-        # Final chunk
-        if current_chunk_sentences:
-            chunk_text = "".join(current_chunk_sentences)
-            chunks.append(Chunk(
-                index=len(chunks),
-                text=chunk_text,
-                start_char_idx=current_start_idx,
-                end_char_idx=current_start_idx + len(chunk_text),
-                embedding=None
-            ))
-
-        return chunks
+        except Exception:
+            logger.exception("Error during semantic chunking process.")
+            # In case of error, we cannot return partial/valid chunks reliably matching the input text.
+            # Reraising ensures the caller knows the process failed.
+            raise
+        else:
+            return chunks

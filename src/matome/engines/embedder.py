@@ -1,4 +1,3 @@
-import itertools
 import logging
 from collections.abc import Iterable, Iterator
 
@@ -7,6 +6,7 @@ from sentence_transformers import SentenceTransformer
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
+from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,7 @@ class EmbeddingService:
         Embeds an iterable of strings and yields their vectors.
 
         This method processes inputs in batches to avoid loading all texts or embeddings into memory.
-        Uses itertools.batched for efficient streaming.
+        Uses batched utility (Python 3.12+ compatible) for efficient streaming.
 
         Args:
             texts: Iterable of strings to embed.
@@ -48,8 +48,8 @@ class EmbeddingService:
         """
         batch_size = self.config.embedding_batch_size
 
-        # Use itertools.batched (Python 3.12+) for memory-safe batching
-        for batch in itertools.batched(texts, batch_size):
+        # Use batched utility for memory-safe batching
+        for batch in batched(texts, batch_size):
             # batch is a tuple of strings
             yield from self._process_batch(list(batch))
 
@@ -87,8 +87,8 @@ class EmbeddingService:
         """
         batch_size = self.config.embedding_batch_size
 
-        # Use itertools.batched (Python 3.12+) to stream chunks in batches
-        for batch_chunks in itertools.batched(chunks, batch_size):
+        # Use batched utility to stream chunks in batches
+        for batch_chunks in batched(chunks, batch_size):
             # batch_chunks is a tuple of Chunk objects
             chunk_list = list(batch_chunks)
             texts = [c.text for c in chunk_list]
