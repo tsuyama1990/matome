@@ -1,11 +1,12 @@
-import pytest
 from unittest.mock import MagicMock, patch
-import numpy as np
 
-from domain_models.manifest import Chunk
+import numpy as np
+import pytest
+
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk
+from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
-from matome.engines.cluster import ClusterEngine
 
 TEST_SMALL_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
@@ -53,9 +54,9 @@ def test_full_pipeline_mocked(mock_gmm: MagicMock, mock_umap: MagicMock, mock_st
     assert chunks_with_embeddings[0].embedding is not None
 
     # 2. Clustering
-    cluster_engine = ClusterEngine(config)
-    embeddings = np.array([c.embedding for c in chunks_with_embeddings])
-    clusters = cluster_engine.perform_clustering(chunks_with_embeddings, embeddings)
+    cluster_engine = GMMClusterer()
+    embeddings = [c.embedding for c in chunks_with_embeddings]
+    clusters = cluster_engine.cluster_nodes(embeddings, config)
 
     assert len(clusters) == 2
     assert clusters[0].id == 0
@@ -94,11 +95,14 @@ def test_real_pipeline_small() -> None:
 
     # 2. Real Clustering
     # With 4 samples, UMAP might need help.
-    cluster_engine = ClusterEngine(config)
-    embeddings = np.array([c.embedding for c in chunks])
+    cluster_engine = GMMClusterer()
+    embeddings = [c.embedding for c in chunks]
 
     # Use n_neighbors=2 for small dataset
-    clusters = cluster_engine.perform_clustering(chunks, embeddings, n_neighbors=2)
+    # In ClusterEngine, n_neighbors was arg. GMMClusterer uses defaults.
+    # To adjust n_neighbors, we might need to rely on internal logic adjusting it down for small datasets (which we implemented).
+
+    clusters = cluster_engine.cluster_nodes(embeddings, config)
 
     assert len(clusters) == 2
     # Check that similar items are grouped together

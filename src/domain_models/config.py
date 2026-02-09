@@ -8,12 +8,24 @@ class ProcessingConfig(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    # Chunking Configuration
     max_tokens: int = Field(default=500, ge=1, description="Maximum number of tokens per chunk.")
     overlap: int = Field(
         default=0, ge=0, description="Number of overlapping tokens between chunks."
     )
     tokenizer_model: str = Field(
         default="cl100k_base", description="Tokenizer model/encoding name to use."
+    )
+
+    # Semantic Chunking Configuration
+    semantic_chunking_mode: bool = Field(
+        default=False, description="Whether to use semantic chunking instead of token chunking."
+    )
+    semantic_chunking_threshold: float = Field(
+        default=0.8, ge=0.0, le=1.0, description="Cosine similarity threshold for merging sentences."
+    )
+    semantic_chunking_percentile: int = Field(
+        default=90, ge=0, le=100, description="Percentile threshold for breakpoint detection (if using percentile mode)."
     )
 
     # Embedding Configuration

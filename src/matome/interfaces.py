@@ -48,12 +48,12 @@ class Clusterer(Protocol):
 
         Args:
             embeddings: A list of vectors (list of floats), where each vector corresponds to a node.
-                        The order of embeddings must match the order of nodes being clustered.
+                        The order of embeddings implies the index (0..N-1).
             config: Configuration parameters such as `n_clusters` or `clustering_algorithm`.
 
         Returns:
             A list of `Cluster` objects.
-            Each `Cluster` contains `node_indices` which correspond to the indices of the
+            Each `Cluster` contains `node_indices` which correspond to the indices (0..N-1) of the
             input `embeddings` list.
         """
         ...

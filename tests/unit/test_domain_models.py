@@ -114,6 +114,9 @@ def test_config_validation() -> None:
     config_default = ProcessingConfig.default()
     assert config_default.clustering_algorithm == "gmm"
     assert config_default.summarization_model == "gpt-4o"
+    # Test semantic chunking defaults
+    assert config_default.semantic_chunking_mode is False
+    assert config_default.semantic_chunking_threshold == 0.8
 
     # Invalid case: zero max_tokens (ge=1)
     with pytest.raises(ValidationError):

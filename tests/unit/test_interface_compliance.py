@@ -2,8 +2,10 @@
 Test to ensure SummarizationAgent complies with Summarizer protocol.
 """
 from unittest.mock import patch
-from matome.interfaces import Summarizer
+
 from matome.agents.summarizer import SummarizationAgent
+from matome.interfaces import Summarizer
+
 
 def test_summarization_agent_implements_summarizer() -> None:
     """Verify that SummarizationAgent implements the Summarizer protocol."""

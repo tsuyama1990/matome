@@ -1,8 +1,11 @@
-import pytest
 from unittest.mock import MagicMock, patch
-from domain_models.manifest import Chunk
+
+import pytest
+
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk
 from matome.engines.embedder import EmbeddingService
+
 
 @pytest.fixture
 def sample_chunks() -> list[Chunk]:

@@ -110,7 +110,8 @@ class SummarizationAgent:
                     response = self.llm.invoke(messages)
 
             if not response:
-                 raise SummarizationError(f"[{request_id}] No response received from LLM.")
+                 msg = f"[{request_id}] No response received from LLM."
+                 raise SummarizationError(msg)  # noqa: TRY301
 
             # Add debug logging for successful response
             logger.debug(f"[{request_id}] Received response from LLM. Processing content.")

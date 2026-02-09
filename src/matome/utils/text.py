@@ -16,6 +16,8 @@ def normalize_text(text: str) -> str:
 
     Results are cached for performance.
     """
+    if not text:
+        return ""
     return unicodedata.normalize("NFKC", text)
 
 
@@ -26,38 +28,24 @@ def iter_sentences(text: str) -> Iterator[str]:
     This uses `SENTENCE_SPLIT_PATTERN.finditer(text)` to find delimiters,
     and yields the text between them.
     """
+    if not text:
+        return
+
     last_idx = 0
     for match in SENTENCE_SPLIT_PATTERN.finditer(text):
-        # match.start() is where the separator begins.
-        # The sentence is everything before the separator.
-
-        # Note: pattern `(?<=[。！？])` is zero-width lookbehind.
-        # It matches AT the position after punctuation.
-        # Then `\s*` matches whitespace.
-        # If we have `文。`, the lookbehind matches after `。`. `\s*` is empty.
-        # match.start() is index after `。`.
-        # If we have `文。\n`, `\n+` matches starting at index after `。`.
-        # If we have `\n`, it matches at index 0 (if at start).
-
-        # Let's verify standard split logic.
-        # If `re.split` works, `finditer` should find the separators.
-        # Separator is what `re.split` consumes.
-        # Our pattern is `(?<=[。！？])\s*|\n+`.
-        # If text is `A。B`, pattern matches at index 2 (after `。`) with length 0 (if no space).
-        # finditer will yield a match at (2, 2).
-        # chunk before is text[0:2] = "A。"
-        # last_idx becomes 2.
-        # Next loop starts.
-
         sep_start = match.start()
         sep_end = match.end()
 
-        # If sep_start == sep_end (zero width match), we must be careful not to infinite loop if we were implementing split manually.
-        # But finditer handles moving forward.
+        # The sentence is strictly before the separator start?
+        # No, because the lookbehind `(?<=X)` matches AFTER X.
+        # But wait, `sep_start` is the index where the MATCH starts.
+        # If pattern is `(?<=X)`, the match is technically zero-width if nothing follows.
+        # But `match.start()` returns the position.
+        # If `A。`, match is at 2. `text[0:2]` is `A。`.
+        # `sep_start` is 2.
 
-        # However, for zero-width lookbehind, the match start is crucial.
-        # If `A。B`, match at (2,2).
-        # We yield text[0:2].
+        # If pattern is `\n+`. `A\nB`. Match at 1. `sep_start` is 1.
+        # `text[0:1]` is `A`.
 
         sentence = text[last_idx:sep_start].strip()
         if sentence:
