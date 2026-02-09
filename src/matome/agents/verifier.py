@@ -97,7 +97,16 @@ class VerifierAgent:
             logger.exception(f"[{request_id}] Verification failed.")
             if isinstance(e, VerificationError):
                 raise
-            msg = f"Verification failed: {e}"
+
+            # Basic error categorization
+            err_str = str(e).lower()
+            if "context_length_exceeded" in err_str:
+                msg = f"Verification failed: Context length exceeded. (Source length: {len(source_text)})"
+            elif "rate_limit" in err_str:
+                msg = "Verification failed: Rate limit exceeded."
+            else:
+                msg = f"Verification failed: {e}"
+
             raise VerificationError(msg) from e
 
     def _invoke_llm(
@@ -154,7 +163,7 @@ class VerifierAgent:
             return VerificationResult(**data)
         except json.JSONDecodeError as e:
             logger.exception(f"[{request_id}] Failed to parse JSON response: {content}")
-            msg = f"Failed to parse verification response: {e}"
+            msg = f"Verification failed: Model returned invalid JSON. Response was: {content[:100]}..."
             raise VerificationError(msg) from e
         except Exception as e:
             logger.exception(f"[{request_id}] Validation failed for response data.")

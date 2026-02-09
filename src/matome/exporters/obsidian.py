@@ -200,7 +200,8 @@ class ObsidianCanvasExporter:
         text = ""
         if isinstance(node_id, int):
             chunk = self._chunk_map.get(node_id)
-            text = f"Chunk {node_id}\n\n{chunk.text if chunk else 'Missing Chunk'}"
+            chunk_content = chunk.text if chunk else "Missing Chunk"
+            text = f"Chunk {node_id}\n\n{chunk_content}"
         else:
             # Summary Node
             node = tree.all_nodes.get(str(node_id))

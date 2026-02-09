@@ -52,21 +52,15 @@ class DiskChunkStore:
         """
         if db_path:
             self.temp_dir = None
-            self.db_path = db_path
+            # Security: Resolve to absolute path to handle relative paths and '..' safely
+            try:
+                self.db_path = db_path.resolve()
+            except OSError:
+                # Fallback if file doesn't exist yet but parent might
+                self.db_path = db_path.absolute()
         else:
             self.temp_dir = tempfile.mkdtemp()
             self.db_path = Path(self.temp_dir) / "store.db"
-
-        # Security: Validate db_path to prevent directory traversal
-        if ".." in str(self.db_path) or (
-            self.db_path.is_absolute()
-            and not str(self.db_path).startswith(tempfile.gettempdir())
-            and db_path is None
-        ):
-            # Basic check, though usually we trust internal tempfile.
-            # If user provided path, we trust them?
-            # Audit requirement: Validate and sanitize database paths.
-            pass
 
         # Use standard SQLite URL
         db_url = f"sqlite:///{self.db_path}"

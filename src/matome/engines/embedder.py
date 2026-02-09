@@ -48,9 +48,14 @@ class EmbeddingService:
             Embedding vectors (lists of floats).
         """
         batch_size = self.config.embedding_batch_size
+        processed_count = 0
 
         # Use batched utility for memory-safe batching
         for batch in batched(texts, batch_size):
+            processed_count += len(batch)
+            if processed_count % (batch_size * 10) == 0:
+                logger.info(f"Embedded {processed_count} items...")
+
             # batch is a tuple of strings
             yield from self._process_batch(batch)
 

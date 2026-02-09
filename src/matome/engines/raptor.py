@@ -38,7 +38,12 @@ class RaptorEngine:
     def _process_level_zero(
         self, initial_chunks: Iterable[Chunk], store: DiskChunkStore
     ) -> tuple[list[Cluster], list[NodeID]]:
-        """Handle Level 0: Embedding, Storage, and Clustering."""
+        """
+        Handle Level 0: Embedding, Storage, and Clustering.
+
+        Consumes the initial chunks iterator, embeds them, stores them in the database,
+        and then clusters the embeddings.
+        """
         current_level_ids: list[NodeID] = []
         node_count = 0
 
@@ -54,6 +59,9 @@ class RaptorEngine:
                     raise ValueError(msg)
 
                 node_count += 1
+                if node_count % 100 == 0:
+                    logger.info(f"Processed {node_count} chunks (Level 0)...")
+
                 yield chunk.embedding
 
                 # Store chunk (with embedding preserved)
@@ -163,7 +171,12 @@ class RaptorEngine:
     def _next_level_clustering(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
     ) -> list[Cluster]:
-        """Perform embedding and clustering for the next level (summaries)."""
+        """
+        Perform embedding and clustering for the next level (summaries).
+
+        Retrieves text for the current level nodes from the store, generates embeddings,
+        updates the store with new embeddings, and clusters them.
+        """
 
         def lx_embedding_generator() -> Iterator[list[float]]:
             # Generator that yields (id, text) tuples
@@ -202,7 +215,11 @@ class RaptorEngine:
         all_summaries: dict[str, SummaryNode],
         l0_ids: list[NodeID],
     ) -> DocumentTree:
-        """Construct the final DocumentTree."""
+        """
+        Construct the final DocumentTree.
+
+        Builds the tree structure from the final root node down to the leaf chunks.
+        """
         if not current_level_ids:
             # If input was empty?
             if not l0_ids:
@@ -258,7 +275,12 @@ class RaptorEngine:
         store: DiskChunkStore,
         level: int,
     ) -> Iterator[SummaryNode]:
-        """Process clusters to generate summaries (streaming)."""
+        """
+        Process clusters to generate summaries (streaming).
+
+        Iterates over clusters, retrieves member texts, and invokes the summarizer.
+        Yields SummaryNodes for the next level.
+        """
         for cluster in clusters:
             children_indices: list[NodeID] = []
             cluster_texts: list[str] = []
