@@ -9,7 +9,7 @@ import numpy as np
 from sklearn.mixture import GaussianMixture
 from umap import UMAP
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from domain_models.manifest import Cluster
 from domain_models.types import NodeID
 
@@ -41,35 +41,16 @@ class GMMClusterer:
         """
         self._validate_algorithm(config)
 
-        n_samples = 0
-        dim = 0
+        # Batch size for disk writing to reduce I/O overhead
+        WRITE_BATCH_SIZE = 10_000
 
         # Create temp file for memory mapping
         fd, tf_name = tempfile.mkstemp()
         os.close(fd)
+        path_obj = Path(tf_name)
 
         try:
-            # First pass: Write to binary file
-            # We iterate once to stream data to disk
-            path_obj = Path(tf_name)
-            with path_obj.open('wb') as f:
-                for i, emb in enumerate(embeddings):
-                    if i == 0:
-                        dim = len(emb)
-                        if dim == 0:
-                             msg = "Embedding dimension cannot be zero."
-                             raise ValueError(msg)
-                    elif len(emb) != dim:
-                         msg = f"Embedding dimension mismatch at index {i}."
-                         raise ValueError(msg)
-
-                    if any(np.isnan(x) or np.isinf(x) for x in emb):
-                         msg = "Embeddings contain NaN or Infinity values."
-                         raise ValueError(msg)
-
-                    # tofile writes C-order floats directly
-                    np.array(emb, dtype='float32').tofile(f)
-                    n_samples += 1
+            n_samples, dim = self._stream_write_embeddings(embeddings, path_obj, WRITE_BATCH_SIZE)
 
             if n_samples == 0:
                 return []
@@ -80,29 +61,71 @@ class GMMClusterer:
                 return edge_case_result
 
             # Open as memmap
-            # This allows us to access the data as if it were in memory, backed by disk
             mm_array = np.memmap(tf_name, dtype='float32', mode='r', shape=(n_samples, dim))
 
             try:
                 return self._perform_clustering(mm_array, n_samples, config)
             finally:
-                # Close memmap logic (explicit delete to be safe, though GC usually handles it)
                 del mm_array
 
         finally:
-             # Cleanup temp file
-             path = Path(tf_name)
-             if path.exists():
+             if path_obj.exists():
                  with contextlib.suppress(OSError):
-                     path.unlink()
+                     path_obj.unlink()
+
+    def _stream_write_embeddings(
+        self,
+        embeddings: Iterable[list[float]],
+        path_obj: Path,
+        batch_size: int
+    ) -> tuple[int, int]:
+        """
+        Stream embeddings to disk in batches.
+        Returns (n_samples, dim).
+        """
+        n_samples = 0
+        dim = 0
+
+        with path_obj.open('wb') as f:
+            current_batch: list[list[float]] = []
+
+            for emb in embeddings:
+                if n_samples == 0:
+                    dim = len(emb)
+                    if dim == 0:
+                            msg = "Embedding dimension cannot be zero."
+                            raise ValueError(msg)
+                elif len(emb) != dim:
+                        msg = f"Embedding dimension mismatch at index {n_samples}."
+                        raise ValueError(msg)
+
+                if any(np.isnan(x) or np.isinf(x) for x in emb):
+                        msg = "Embeddings contain NaN or Infinity values."
+                        raise ValueError(msg)
+
+                current_batch.append(emb)
+                n_samples += 1
+
+                if len(current_batch) >= batch_size:
+                    np.array(current_batch, dtype='float32').tofile(f)
+                    current_batch.clear()
+
+            if current_batch:
+                np.array(current_batch, dtype='float32').tofile(f)
+                current_batch.clear()
+
+        return n_samples, dim
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
         algo = config.clustering_algorithm
         # Handle case where it's an Enum (normal) or a raw string (testing/bypassing validation)
         algo_value = algo.value if hasattr(algo, "value") else algo
 
-        if algo_value != "gmm":
-            msg = f"Unsupported clustering algorithm: {algo}. Only 'gmm' is supported."
+        # Use the Enum value for validation, avoiding hardcoded string if possible
+        expected_algo = ClusteringAlgorithm.GMM.value
+
+        if algo_value != expected_algo:
+            msg = f"Unsupported clustering algorithm: {algo}. Only '{expected_algo}' is supported."
             raise ValueError(msg)
 
     def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
@@ -146,6 +169,10 @@ class GMMClusterer:
         try:
             # 1. Dimensionality Reduction (UMAP)
             logger.debug("Running UMAP dimensionality reduction...")
+            # Note: standard UMAP fits on the whole dataset.
+            # While it supports `transform` on new data, `fit_transform` usually requires seeing everything.
+            # We pass the memmap array, which allows UMAP to access data on-demand from disk if needed,
+            # though UMAP implementation might still load pages into memory.
             reducer = UMAP(
                 n_neighbors=effective_n_neighbors,
                 min_dist=min_dist,

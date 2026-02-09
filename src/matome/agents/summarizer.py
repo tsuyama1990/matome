@@ -116,9 +116,11 @@ class SummarizationAgent:
 
         Checks:
         1. Maximum overall length to prevent processing extremely large inputs.
-        2. Control characters (Unicode 'C' category) to prevent injection or formatting issues.
-           Note: Newline (\\n) and Tab (\\t) are explicitly allowed as they are standard text formatting
-           characters often found in documents, and stripping them would destroy structure.
+        2. Control characters (Unicode 'C' category).
+           We strictly disallow control characters that are not standard whitespace.
+           While Newline (\\n) and Tab (\\t) are often used for formatting, they can be used for injection.
+           However, blocking them makes summarizing documents impossible.
+           Therefore, we strictly validate that ONLY \\n and \\t are present among control chars.
            Other control characters (like \\r, null bytes, backspaces) are rejected.
         3. Word length to prevent tokenizer Denial of Service (DoS) attacks.
 
