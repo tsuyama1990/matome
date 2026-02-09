@@ -1,20 +1,17 @@
 import re
 import unicodedata
 from collections.abc import Iterator
-from functools import lru_cache
+
+from domain_models.constants import SENTENCE_SPLIT_PATTERN as SENTENCE_SPLIT_PATTERN_STR
 
 # Pre-compile the sentence splitting pattern
-# Splits AFTER '。', '！', '？' followed by optional whitespace, OR on one or more newlines.
-SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？])\s*|\n+")
+SENTENCE_SPLIT_PATTERN = re.compile(SENTENCE_SPLIT_PATTERN_STR)
 
 
-@lru_cache(maxsize=1024)
 def normalize_text(text: str) -> str:
     """
     Normalize text using NFKC (Unicode Normalization Form KC).
     This converts full-width alphanumeric characters to half-width, etc.
-
-    Results are cached for performance.
     """
     if not text:
         return ""
