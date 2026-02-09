@@ -112,8 +112,8 @@ class JapaneseTokenChunker:
         # Ensure full Pydantic validation runs even if manually instantiated
         # This catches any other invalid fields beyond just tokenizer_model
         if not isinstance(config, ProcessingConfig):
-             # Try to validate/coerce
-             config = ProcessingConfig.model_validate(config)
+            # Try to validate/coerce
+            config = ProcessingConfig.model_validate(config)
 
         # Explicitly validate against whitelist before usage, ensuring security
         # even if config validation was somehow bypassed (though ProcessingConfig enforces it).

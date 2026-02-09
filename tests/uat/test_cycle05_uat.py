@@ -22,29 +22,16 @@ def uat_tree() -> DocumentTree:
     c2 = Chunk(index=2, text="Chunk 2", start_char_idx=6, end_char_idx=10)
     c3 = Chunk(index=3, text="Chunk 3", start_char_idx=11, end_char_idx=15)
 
-    node_a = SummaryNode(
-        id="summary_a",
-        text="Summary A",
-        level=1,
-        children_indices=[1, 2]
-    )
-    node_b = SummaryNode(
-        id="summary_b",
-        text="Summary B",
-        level=1,
-        children_indices=[3]
-    )
+    node_a = SummaryNode(id="summary_a", text="Summary A", level=1, children_indices=[1, 2])
+    node_b = SummaryNode(id="summary_b", text="Summary B", level=1, children_indices=[3])
     root = SummaryNode(
-        id="root",
-        text="Root Summary",
-        level=2,
-        children_indices=["summary_a", "summary_b"]
+        id="root", text="Root Summary", level=2, children_indices=["summary_a", "summary_b"]
     )
 
     return DocumentTree(
         root_node=root,
         all_nodes={"root": root, "summary_a": node_a, "summary_b": node_b},
-        leaf_chunk_ids=[c1.index, c2.index, c3.index]
+        leaf_chunk_ids=[c1.index, c2.index, c3.index],
     )
 
 

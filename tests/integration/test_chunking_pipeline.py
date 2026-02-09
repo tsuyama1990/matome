@@ -51,7 +51,9 @@ def test_chunking_pipeline_integration(tmp_path: Path) -> None:
 
         # 3. Token Limit Check (Strict)
         token_count = chunker.count_tokens(chunk.text)
-        assert token_count <= config.max_tokens, f"Chunk {i} exceeds max tokens: {token_count} > {config.max_tokens}"
+        assert token_count <= config.max_tokens, (
+            f"Chunk {i} exceeds max tokens: {token_count} > {config.max_tokens}"
+        )
 
     # 4. Content Preservation Check
     # The concatenated chunks should exactly match the normalized input text

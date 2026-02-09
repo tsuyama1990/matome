@@ -143,6 +143,15 @@ class ProcessingConfig(BaseModel):
         default=500_000, ge=100, description="Maximum length of input text for summarization."
     )
 
+    # Verification Configuration
+    verifier_enabled: bool = Field(
+        default=True, description="Whether to perform verification after summarization."
+    )
+    verification_model: str = Field(
+        default_factory=lambda: os.getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
+        description="Model to use for verification (defaults to summarization model).",
+    )
+
     @field_validator("embedding_model")
     @classmethod
     def validate_embedding_model(cls, v: str) -> str:
@@ -164,8 +173,7 @@ class ProcessingConfig(BaseModel):
         """Validate tokenizer model against whitelist."""
         if v not in ALLOWED_TOKENIZER_MODELS:
             msg = (
-                f"Tokenizer model '{v}' is not allowed. "
-                f"Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
+                f"Tokenizer model '{v}' is not allowed. Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
             )
             raise ValueError(msg)
         return v

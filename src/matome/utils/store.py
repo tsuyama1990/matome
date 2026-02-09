@@ -58,11 +58,15 @@ class DiskChunkStore:
             self.db_path = Path(self.temp_dir) / "store.db"
 
         # Security: Validate db_path to prevent directory traversal
-        if ".." in str(self.db_path) or (self.db_path.is_absolute() and not str(self.db_path).startswith(tempfile.gettempdir()) and db_path is None):
-             # Basic check, though usually we trust internal tempfile.
-             # If user provided path, we trust them?
-             # Audit requirement: Validate and sanitize database paths.
-             pass
+        if ".." in str(self.db_path) or (
+            self.db_path.is_absolute()
+            and not str(self.db_path).startswith(tempfile.gettempdir())
+            and db_path is None
+        ):
+            # Basic check, though usually we trust internal tempfile.
+            # If user provided path, we trust them?
+            # Audit requirement: Validate and sanitize database paths.
+            pass
 
         # Use standard SQLite URL
         db_url = f"sqlite:///{self.db_path}"
@@ -71,11 +75,7 @@ class DiskChunkStore:
         # SQLite handles concurrency poorly with multiple writers, but we use WAL mode.
         # Pool size and timeout help manage contention.
         self.engine = create_engine(
-            db_url,
-            pool_size=5,
-            max_overflow=10,
-            pool_timeout=30,
-            pool_recycle=1800
+            db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800
         )
         self._setup_db()
 
@@ -176,10 +176,9 @@ class DiskChunkStore:
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
-        stmt = (
-            select(self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding)
-            .where(self.nodes_table.c.id == str(node_id))
-        )
+        stmt = select(
+            self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
+        ).where(self.nodes_table.c.id == str(node_id))
 
         with self.engine.connect() as conn:
             result = conn.execute(stmt)

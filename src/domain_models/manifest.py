@@ -127,5 +127,7 @@ class DocumentTree(BaseModel):
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
     all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
-    leaf_chunk_ids: list[NodeID] = Field(..., description="IDs of the original leaf chunks (Level 0).")
+    leaf_chunk_ids: list[NodeID] = Field(
+        ..., description="IDs of the original leaf chunks (Level 0)."
+    )
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")

@@ -59,7 +59,9 @@ def test_raptor_run_short_text(
 
     # IMPORTANT: Mock clusterer to consume the generator
     # Even for 1 chunk, cluster_nodes is called to consume stream
-    def side_effect_cluster(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
+    def side_effect_cluster(
+        embeddings: Iterator[list[float]], config: ProcessingConfig
+    ) -> list[Cluster]:
         # Consume
         count = sum(1 for _ in embeddings)
         if count <= 1:

@@ -54,9 +54,7 @@ class EmbeddingService:
             # batch is a tuple of strings
             yield from self._process_batch(batch)
 
-    def _process_batch(
-        self, batch_texts: list[str] | tuple[str, ...]
-    ) -> Iterator[list[float]]:
+    def _process_batch(self, batch_texts: list[str] | tuple[str, ...]) -> Iterator[list[float]]:
         """Helper to process a single batch."""
         if not batch_texts:
             return
@@ -69,7 +67,7 @@ class EmbeddingService:
             MINI_BATCH_SIZE = 8
 
             for i in range(0, len(batch_texts), MINI_BATCH_SIZE):
-                chunk_texts = batch_texts[i : i + MINI_BATCH_SIZE] # slice works on list/tuple
+                chunk_texts = batch_texts[i : i + MINI_BATCH_SIZE]  # slice works on list/tuple
 
                 chunk_embeddings = self.model.encode(
                     chunk_texts,  # type: ignore[arg-type]

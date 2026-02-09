@@ -93,7 +93,7 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         # But get_node works for both.
         root_fetched = store.get_node(tree.root_node.id)
         if root_fetched:
-             assert root_fetched.embedding is not None, "Root node must have an embedding in store."
+            assert root_fetched.embedding is not None, "Root node must have an embedding in store."
 
         assert tree.root_node.embedding is not None, "Root node object must have an embedding."
 

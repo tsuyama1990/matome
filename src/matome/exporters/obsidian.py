@@ -21,12 +21,8 @@ class CanvasNode(BaseModel):
     y: int = Field(..., description="Y coordinate of the node.")
     width: int = Field(..., description="Width of the node.")
     height: int = Field(..., description="Height of the node.")
-    type: Literal["text", "file", "group"] = Field(
-        default="text", description="Type of the node."
-    )
-    text: str | None = Field(
-        default=None, description="Text content for text nodes."
-    )
+    type: Literal["text", "file", "group"] = Field(default="text", description="Type of the node.")
+    text: str | None = Field(default=None, description="Text content for text nodes.")
 
 
 class CanvasEdge(BaseModel):
@@ -35,12 +31,8 @@ class CanvasEdge(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     id: str = Field(..., description="Unique identifier for the edge.")
-    from_node: str = Field(
-        ..., alias="fromNode", description="ID of the source node."
-    )
-    to_node: str = Field(
-        ..., alias="toNode", description="ID of the target node."
-    )
+    from_node: str = Field(..., alias="fromNode", description="ID of the source node.")
+    to_node: str = Field(..., alias="toNode", description="ID of the target node.")
 
 
 class CanvasFile(BaseModel):
@@ -90,7 +82,7 @@ class ObsidianCanvasExporter:
                     self._chunk_map[node.index] = node
 
         if not tree.root_node:
-             return CanvasFile(nodes=[], edges=[])
+            return CanvasFile(nodes=[], edges=[])
 
         # 1. Calculate subtree widths (Post-order)
         self._calculate_subtree_width(tree.root_node.id, tree)
@@ -120,11 +112,7 @@ class ObsidianCanvasExporter:
         with output_path.open("w", encoding="utf-8") as f:
             # exclude_none=True to avoid dumping optional fields as null if not needed
             # by_alias=True to use fromNode/toNode
-            f.write(
-                canvas_file.model_dump_json(
-                    indent=2, by_alias=True, exclude_none=True
-                )
-            )
+            f.write(canvas_file.model_dump_json(indent=2, by_alias=True, exclude_none=True))
 
     def _get_node_id_str(self, node_id: int | str) -> str:
         """Converts internal node ID to canvas node ID."""
@@ -202,7 +190,9 @@ class ObsidianCanvasExporter:
 
         self._subtree_widths[node_id_str] = width
 
-    def _assign_positions(self, node_id: int | str, center_x: int, y: int, tree: "DocumentTree") -> None:
+    def _assign_positions(
+        self, node_id: int | str, center_x: int, y: int, tree: "DocumentTree"
+    ) -> None:
         """Recursively assigns (x, y) positions to nodes and creates edges."""
         node_id_str = self._get_node_id_str(node_id)
 
@@ -229,7 +219,7 @@ class ObsidianCanvasExporter:
             width=self.NODE_WIDTH,
             height=self.NODE_HEIGHT,
             type="text",
-            text=text
+            text=text,
         )
         self.nodes.append(canvas_node)
 
@@ -275,9 +265,7 @@ class ObsidianCanvasExporter:
 
             # Create Edge
             edge = CanvasEdge(
-                id=f"edge_{node_id_str}_{child_id_str}",
-                from_node=node_id_str,
-                to_node=child_id_str
+                id=f"edge_{node_id_str}_{child_id_str}", from_node=node_id_str, to_node=child_id_str
             )
             self.edges.append(edge)
 

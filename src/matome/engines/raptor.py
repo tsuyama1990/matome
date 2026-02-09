@@ -83,9 +83,9 @@ class RaptorEngine:
         # But run() calls split_text which yields. We don't know if empty until we consume.
 
         if node_count == 0:
-             # This means initial_chunks yielded nothing.
-             # run() logic below should handle "no nodes remaining".
-             pass
+            # This means initial_chunks yielded nothing.
+            # run() logic below should handle "no nodes remaining".
+            pass
 
         return clusters, current_level_ids
 
@@ -110,7 +110,9 @@ class RaptorEngine:
 
         with store_ctx as active_store:
             # Level 0
-            clusters, current_level_ids = self._process_level_zero(initial_chunks_iter, active_store)
+            clusters, current_level_ids = self._process_level_zero(
+                initial_chunks_iter, active_store
+            )
             # Capture L0 IDs for later reconstruction
             l0_ids = list(current_level_ids)
 
@@ -171,7 +173,9 @@ class RaptorEngine:
                     if node:
                         yield nid, node.text
                     else:
-                        logger.warning(f"Node {nid} not found in store during next level clustering.")
+                        logger.warning(
+                            f"Node {nid} not found in store during next level clustering."
+                        )
 
             # Strategy: Batched processing manually
             from matome.utils.compat import batched
@@ -202,10 +206,10 @@ class RaptorEngine:
         if not current_level_ids:
             # If input was empty?
             if not l0_ids:
-                 # Should return empty tree if no chunks at all
-                 # But we need a dummy root? Or empty tree?
-                 # Returning minimal dummy tree for safety if logic requires return
-                 pass
+                # Should return empty tree if no chunks at all
+                # But we need a dummy root? Or empty tree?
+                # Returning minimal dummy tree for safety if logic requires return
+                pass
             # If current_level_ids empty but l0_ids not empty (unlikely unless summarization failed completely)
             msg = "No nodes remaining."
             raise ValueError(msg)
