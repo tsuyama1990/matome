@@ -45,8 +45,8 @@ class Chunk(BaseModel):
         Validate that text is present and indices form a valid range.
         Also check embedding validity if present.
         """
-        if not self.text:
-            msg = "Chunk text cannot be empty."
+        if not self.text or not self.text.strip():
+            msg = "Chunk text cannot be empty or whitespace only."
             logger.error(msg)
             raise ValueError(msg)
 

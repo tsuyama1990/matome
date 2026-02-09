@@ -105,7 +105,15 @@ class RaptorEngine:
 
         # 2. Embedding Level 0
         logger.info(f"Embedding {len(initial_chunks)} chunks.")
-        # embed_chunks yields chunks with embeddings populated
+
+        # embed_chunks is a generator that yields chunks with embeddings populated.
+        # However, for clustering (step 3), we need random access to embeddings/nodes
+        # because the clusterer returns indices, and we need to map those back to nodes.
+        # Also, UMAP/GMM clustering algorithms typically require the full dataset
+        # to find structure, so full streaming is not feasible for the clustering step itself.
+        # We limit memory usage in clustering via memmap, but here we hold objects in memory.
+        # For extremely large datasets, this list materialization is a bottleneck.
+        # TODO: Future optimization: Store chunks in DB/disk and only hold IDs/Embeddings in memory.
         leaf_chunks = list(self.embedder.embed_chunks(initial_chunks))
 
         # Prepare for recursion

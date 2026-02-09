@@ -42,12 +42,21 @@ def test_export_to_markdown() -> None:
     assert len(md) > 0
 
     # Check structure
-    # Root should be h1 or top level
-    assert "# Root text" in md or "Root text" in md
+    lines = md.splitlines()
 
-    # Summary L1 should be nested or listed
-    assert "Summary L1 text" in md
+    # Root should be h1 (#)
+    assert any(line.startswith("# Root text") for line in lines)
 
-    # Chunks should be present
-    assert "Chunk 0 text" in md
-    assert "Chunk 1 text" in md
+    # Summary L1 should be h2 (##) because it is depth 1
+    assert any(line.startswith("## Summary L1 text") for line in lines)
+
+    # Chunks should be bullet points
+    # Chunk 0
+    chunk0_line = next((line for line in lines if "Chunk 0 text" in line), None)
+    assert chunk0_line is not None
+    assert chunk0_line.strip().startswith("- **Chunk 0**:")
+
+    # Chunk 1
+    chunk1_line = next((line for line in lines if "Chunk 1 text" in line), None)
+    assert chunk1_line is not None
+    assert chunk1_line.strip().startswith("- **Chunk 1**:")

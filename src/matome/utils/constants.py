@@ -1,21 +1,8 @@
+"""
+Configuration constants for the Matome system.
+Primarily used for environment variable keys or centralized constant values
+that are not default configuration values.
+"""
 from domain_models.constants import *  # noqa: F403
 
-__all__ = [
-    "DEFAULT_MAX_TOKENS",
-    "DEFAULT_OVERLAP",
-    "DEFAULT_TOKENIZER_MODEL",
-    "DEFAULT_SEMANTIC_CHUNKING_MODE",
-    "DEFAULT_SEMANTIC_CHUNKING_THRESHOLD",
-    "DEFAULT_SEMANTIC_CHUNKING_PERCENTILE",
-    "DEFAULT_EMBEDDING_MODEL",
-    "DEFAULT_EMBEDDING_BATCH_SIZE",
-    "DEFAULT_CLUSTERING_ALGORITHM",
-    "DEFAULT_N_CLUSTERS",
-    "DEFAULT_RANDOM_STATE",
-    "DEFAULT_UMAP_N_NEIGHBORS",
-    "DEFAULT_UMAP_MIN_DIST",
-    "DEFAULT_SUMMARIZATION_MODEL",
-    "DEFAULT_MAX_SUMMARY_TOKENS",
-    "DEFAULT_MAX_RETRIES",
-    "DEFAULT_OPENROUTER_BASE_URL",
-]
+__all__: list[str] = []

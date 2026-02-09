@@ -13,9 +13,9 @@ from langchain_openai import ChatOpenAI
 from tenacity import stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
+from domain_models.constants import DEFAULT_SUMMARIZATION_MODEL
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.constants import DEFAULT_SUMMARIZATION_MODEL
 from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)

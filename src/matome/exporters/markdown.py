@@ -1,4 +1,18 @@
-from domain_models.manifest import Chunk, DocumentTree
+
+from domain_models.manifest import Chunk, DocumentTree, SummaryNode
+
+
+def _format_chunk(chunk: Chunk, depth: int) -> str:
+    """Format a leaf chunk as a bullet point."""
+    indent = "  " * depth
+    return f"{indent}- **Chunk {chunk.index}**: {chunk.text.strip()}"
+
+
+def _format_summary(node: SummaryNode, depth: int) -> tuple[str, str]:
+    """Format a summary node as a heading."""
+    heading_level = min(depth + 1, 6)
+    heading = "#" * heading_level
+    return f"{heading} {node.text.strip()}", ""
 
 
 def _process_node(
@@ -14,9 +28,7 @@ def _process_node(
         if isinstance(node_id, int):
             chunk = chunk_map.get(node_id)
             if chunk:
-                # Leaf node: Bullet point
-                indent = "  " * depth
-                lines.append(f"{indent}- **Chunk {chunk.index}**: {chunk.text.strip()}")
+                lines.append(_format_chunk(chunk, depth))
         return
 
     # It's a SummaryNode
@@ -27,11 +39,9 @@ def _process_node(
             return
 
         # Heading
-        heading_level = min(depth + 1, 6)
-        heading = "#" * heading_level
-
-        lines.append(f"{heading} {node.text.strip()}")
-        lines.append("")
+        heading, empty_line = _format_summary(node, depth)
+        lines.append(heading)
+        lines.append(empty_line)
 
         # Process Children
         for child_idx in node.children_indices:

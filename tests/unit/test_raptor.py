@@ -43,19 +43,10 @@ def test_raptor_run_short_text(mock_dependencies: tuple[MagicMock, ...], config:
     chunk1 = Chunk(index=0, text="Short text", start_char_idx=0, end_char_idx=10)
     chunker.split_text.return_value = [chunk1]
 
-    # 2. Embedding returns 1 vector
-    embedder.embed_chunks.return_value = [chunk1] # It yields chunks with embeddings
-    # We need to simulate the embedding being set
-    def side_effect_embed_chunks(chunks: list[Chunk]) -> list[Chunk]:
-        for c in chunks:
-            c.embedding = [0.1, 0.2]
-        return chunks
-
-    # Mocking generator behavior is tricky with side_effect
-    # If side_effect is a function, it's called with arguments.
-    # The real embed_chunks returns an iterator.
-    # Our engine calls list(embedder.embed_chunks(chunks))
-    # So side_effect should return an iterable.
+    # 2. Embedding
+    # embedder.embed_chunks returns an iterator yielding chunks with embeddings
+    # We must ensure that the side_effect returns an iterable, AND modifies the chunks.
+    # The engine consumes the iterator.
     def side_effect_embed_chunks_gen(chunks: list[Chunk]) -> Iterator[Chunk]:
         for c in chunks:
             c.embedding = [0.1, 0.2]
@@ -63,17 +54,20 @@ def test_raptor_run_short_text(mock_dependencies: tuple[MagicMock, ...], config:
 
     embedder.embed_chunks.side_effect = side_effect_embed_chunks_gen
 
-    # 3. Clustering returns 1 cluster for the chunk
-    # Wait, if node_count <= 1, loop breaks immediately.
-    # So clustering is NOT called.
+    # 3. Clustering
+    # Should NOT be called because len(chunks) == 1, so node_count=1 -> break loop.
 
     # 4. Summarization
-    # Not called if loop breaks.
+    # Not called.
 
     # Run
     tree = engine.run("Short text")
 
     # Verify
+    embedder.embed_chunks.assert_called_once()
+    clusterer.cluster_nodes.assert_not_called()
+    summarizer.summarize.assert_not_called()
+
     assert isinstance(tree, DocumentTree)
     assert len(tree.leaf_chunks) == 1
     # Since loop broke immediately, it enters _finalize_root.

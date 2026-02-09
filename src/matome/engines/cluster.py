@@ -1,4 +1,6 @@
+import contextlib
 import logging
+import os
 import tempfile
 from pathlib import Path
 
@@ -81,10 +83,12 @@ class GMMClusterer:
     def _process_with_memmap(self, embeddings: list[list[float]], n_samples: int, config: ProcessingConfig) -> list[Cluster]:
         dim = len(embeddings[0])
 
-        # Use context manager to satisfy SIM115
-        # delete=False ensures file persists after close for memmap usage
-        with tempfile.NamedTemporaryFile(delete=False) as tf:
-            tf_name = tf.name
+        # Create temp file but don't open it here, let memmap handle it if possible or use name
+        # Using mkstemp is safer for manual cleanup
+        fd, tf_name = tempfile.mkstemp()
+        os.close(fd) # Close immediately, let memmap open it
+
+        mm_array = None
 
         try:
             mm_array = np.memmap(tf_name, dtype='float32', mode='w+', shape=(n_samples, dim))
@@ -101,14 +105,16 @@ class GMMClusterer:
                  raise ValueError(msg)
 
             # Perform clustering
-            clusters = self._perform_clustering(mm_array, n_samples, config)
-
-            # Ensure memmap is closed/deleted before unlinking file
-            del mm_array
-            return clusters
+            return self._perform_clustering(mm_array, n_samples, config)
 
         finally:
-            # Manual cleanup of temporary file using Path (PTH110, PTH108)
+            # Close memmap if it exists
+            if mm_array is not None:
+                # Windows compatibility: close memmap before deleting file
+                with contextlib.suppress(Exception):
+                     del mm_array
+
+            # Manual cleanup of temporary file
             path = Path(tf_name)
             if path.exists():
                 try:
@@ -198,6 +204,9 @@ class GMMClusterer:
             optimal_n = n_range[np.argmin(bics)]
             return int(optimal_n)
 
+        except (ValueError, RuntimeError) as e:
+            logger.warning(f"Error during BIC calculation: {e!s}. Defaulting to 1 cluster.")
+            return 1
         except Exception:
-            logger.exception("Failed to calculate optimal clusters via BIC. Defaulting to 1.")
+            logger.exception("Unexpected error during BIC calculation. Defaulting to 1 cluster.")
             return 1
