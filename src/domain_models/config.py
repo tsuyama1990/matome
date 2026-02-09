@@ -8,6 +8,10 @@ from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
     ALLOWED_SUMMARIZATION_MODELS,
     ALLOWED_TOKENIZER_MODELS,
+    DEFAULT_CANVAS_GAP_X,
+    DEFAULT_CANVAS_GAP_Y,
+    DEFAULT_CANVAS_NODE_HEIGHT,
+    DEFAULT_CANVAS_NODE_WIDTH,
     DEFAULT_EMBEDDING,
     DEFAULT_SUMMARIZER,
     DEFAULT_TOKENIZER,
@@ -19,11 +23,20 @@ class ClusteringAlgorithm(Enum):
     GMM = "gmm"
 
 
+def _safe_getenv(key: str, default: str) -> str:
+    """Safely get environment variable with fallback."""
+    val = os.getenv(key)
+    if val is None or not val.strip():
+        return default
+    return val
+
+
 class ProcessingConfig(BaseModel):
     """
     Configuration for text processing and chunking.
 
     Defaults are defined directly in the model or via default_factory using os.getenv.
+    Securely handles environment variables.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -34,7 +47,7 @@ class ProcessingConfig(BaseModel):
         default=0, ge=0, description="Number of overlapping tokens between chunks."
     )
     tokenizer_model: str = Field(
-        default_factory=lambda: os.getenv("TOKENIZER_MODEL", DEFAULT_TOKENIZER),
+        default_factory=lambda: _safe_getenv("TOKENIZER_MODEL", DEFAULT_TOKENIZER),
         description="Tokenizer model/encoding name to use.",
     )
 
@@ -57,7 +70,7 @@ class ProcessingConfig(BaseModel):
 
     # Embedding Configuration
     embedding_model: str = Field(
-        default_factory=lambda: os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING),
+        default_factory=lambda: _safe_getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING),
         description="HuggingFace model name for embeddings.",
     )
     embedding_batch_size: int = Field(
@@ -89,6 +102,12 @@ class ProcessingConfig(BaseModel):
         ge=1,
         description="Batch size for writing vectors to disk during clustering.",
     )
+    clustering_probability_threshold: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Minimum probability for assigning a node to a cluster (soft clustering).",
+    )
     large_scale_threshold: int = Field(
         default=LARGE_SCALE_THRESHOLD,
         ge=1,
@@ -100,25 +119,25 @@ class ProcessingConfig(BaseModel):
         description="Buffer size for batch database writes in Raptor engine.",
     )
     canvas_node_width: int = Field(
-        default=400,
+        default=DEFAULT_CANVAS_NODE_WIDTH,
         ge=10,
         le=5000,
         description="Width of nodes in Obsidian Canvas export.",
     )
     canvas_node_height: int = Field(
-        default=200,
+        default=DEFAULT_CANVAS_NODE_HEIGHT,
         ge=10,
         le=5000,
         description="Height of nodes in Obsidian Canvas export.",
     )
     canvas_gap_x: int = Field(
-        default=50,
+        default=DEFAULT_CANVAS_GAP_X,
         ge=0,
         le=2000,
         description="Horizontal gap between nodes in Obsidian Canvas export.",
     )
     canvas_gap_y: int = Field(
-        default=300,
+        default=DEFAULT_CANVAS_GAP_Y,
         ge=0,
         le=2000,
         description="Vertical gap between nodes in Obsidian Canvas export.",
@@ -126,7 +145,7 @@ class ProcessingConfig(BaseModel):
 
     # Summarization Configuration
     summarization_model: str = Field(
-        default_factory=lambda: os.getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZER),
+        default_factory=lambda: _safe_getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZER),
         description="Model to use for summarization.",
     )
     max_summary_tokens: int = Field(
@@ -150,7 +169,7 @@ class ProcessingConfig(BaseModel):
         default=True, description="Whether to perform verification after summarization."
     )
     verification_model: str = Field(
-        default_factory=lambda: os.getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
+        default_factory=lambda: _safe_getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
         description="Model to use for verification (defaults to summarization model).",
     )
 

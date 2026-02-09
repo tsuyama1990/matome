@@ -18,26 +18,30 @@ def test_scenario_05_embedding_vector_generation() -> None:
     with patch("matome.engines.embedder.SentenceTransformer") as mock_st:
         mock_instance = MagicMock()
         mock_st.return_value = mock_instance
-        # Use small vector dimension (32) to save memory in tests
-        mock_instance.encode.return_value = np.array(
-            [list(np.random.rand(32)), list(np.random.rand(32))]
-        )
+        # Use fixed vectors instead of random
+        # Vector dim 4 for simplicity
+        fixed_vecs = [
+            [0.1, 0.2, 0.3, 0.4],
+            [0.5, 0.6, 0.7, 0.8]
+        ]
+        mock_instance.encode.return_value = np.array(fixed_vecs)
 
         config = ProcessingConfig()
         service = EmbeddingService(config)
         embedded_chunks = service.embed_chunks(chunks)
 
-        for chunk in embedded_chunks:
+        for i, chunk in enumerate(embedded_chunks):
             assert chunk.embedding is not None
-            assert len(chunk.embedding) == 32
+            assert len(chunk.embedding) == 4
+            assert chunk.embedding == fixed_vecs[i]
 
 
 # Scenario 06: Clustering Logic Verification
 def test_scenario_06_clustering_logic() -> None:
-    # 3 Apple Pie, 3 Python
-    # Use 10-dim vectors for simplicity
-    group_a = [np.random.normal(0, 0.1, 10).tolist() for _ in range(3)]
-    group_b = [np.random.normal(5, 0.1, 10).tolist() for _ in range(3)]
+    # 3 Apple Pie (Cluster A), 3 Python (Cluster B)
+    # Use deterministic vectors
+    group_a = [[0.1] * 10, [0.11] * 10, [0.09] * 10]
+    group_b = [[0.9] * 10, [0.91] * 10, [0.89] * 10]
     embeddings = group_a + group_b
 
     config = ProcessingConfig(clustering_algorithm="gmm")
@@ -55,6 +59,14 @@ def test_scenario_06_clustering_logic() -> None:
         # Mock GMM
         mock_gmm_instance = MagicMock()
         mock_gmm.return_value = mock_gmm_instance
+        # predict_proba returns (N, K) probabilities
+        # Deterministic probabilities
+        # A -> Cluster 0, B -> Cluster 1
+        probs = np.array([
+            [0.99, 0.01], [0.99, 0.01], [0.99, 0.01],
+            [0.01, 0.99], [0.01, 0.99], [0.01, 0.99]
+        ])
+        mock_gmm_instance.predict_proba.return_value = probs
         mock_gmm_instance.predict.return_value = np.array([0, 0, 0, 1, 1, 1])
         mock_gmm_instance.n_components = 2  # Simulate BIC finding 2
         mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]
@@ -67,8 +79,7 @@ def test_scenario_06_clustering_logic() -> None:
         cluster_0 = next(c for c in clusters if c.id == 0)
         cluster_1 = next(c for c in clusters if c.id == 1)
 
-        # Assuming cluster 0 and 1 are distinct, but their IDs might be swapped
-        # Check that we have two sets of indices: {0,1,2} and {3,4,5}
+        # Assuming cluster 0 and 1 are distinct
         indices_set_0 = set(cluster_0.node_indices)
         indices_set_1 = set(cluster_1.node_indices)
 

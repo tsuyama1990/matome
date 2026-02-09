@@ -2,7 +2,7 @@ import json
 import logging
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,8 @@ from sqlalchemy import (
 )
 
 from domain_models.manifest import Chunk, SummaryNode
+from domain_models.types import NodeID
+from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +122,6 @@ class DiskChunkStore:
         # Use Core Insert with REPLACE logic for SQLite
         stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
-        from matome.utils.compat import batched
-
         # Iterate over the input iterable using batched() to handle chunks efficiently
         # without loading the entire dataset into memory.
         for node_batch in batched(nodes, BATCH_SIZE):
@@ -183,29 +183,43 @@ class DiskChunkStore:
             if not row:
                 return None
 
-            node_type, content_json, embedding_json = row
+            return self._deserialize_row(row, str(node_id))
 
-            try:
-                # Deserialize embedding first
-                embedding = json.loads(embedding_json) if embedding_json else None
+    def get_nodes(self, node_ids: Iterable[NodeID]) -> Iterator[Chunk | SummaryNode]:
+        """
+        Retrieve multiple nodes efficiently.
+        Note: Currently iterates one-by-one to support streaming input without large IN clause.
+        TODO: Implement batched SELECT with IN clause for performance.
+        """
+        for nid in node_ids:
+            node = self.get_node(nid)
+            if node:
+                yield node
 
-                if node_type == "chunk":
-                    # Parse JSON then validate to ensure strict type compliance
-                    data = json.loads(content_json)
-                    if embedding is not None:
-                        data["embedding"] = embedding
-                    return Chunk.model_validate(data)
+    def _deserialize_row(self, row: Any, node_id: str) -> Chunk | SummaryNode | None:
+        """Helper to deserialize DB row into object."""
+        node_type, content_json, embedding_json = row
 
-                if node_type == "summary":
-                    data = json.loads(content_json)
-                    if embedding is not None:
-                        data["embedding"] = embedding
-                    return SummaryNode.model_validate(data)
+        try:
+            # Deserialize embedding first
+            embedding = json.loads(embedding_json) if embedding_json else None
 
-            except Exception:
-                logger.exception(f"Failed to deserialize node {node_id}")
-                return None
+            if node_type == "chunk":
+                # Parse JSON then validate to ensure strict type compliance
+                data = json.loads(content_json)
+                if embedding is not None:
+                    data["embedding"] = embedding
+                return Chunk.model_validate(data)
 
+            if node_type == "summary":
+                data = json.loads(content_json)
+                if embedding is not None:
+                    data["embedding"] = embedding
+                return SummaryNode.model_validate(data)
+
+        except Exception:
+            logger.exception(f"Failed to deserialize node {node_id}")
+            return None
         return None
 
     def commit(self) -> None:
