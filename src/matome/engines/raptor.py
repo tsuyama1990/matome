@@ -55,7 +55,7 @@ class RaptorEngine:
                 chunk_buffer.append(store_chunk)
                 current_level_ids.append(store_chunk.index)
 
-                if len(chunk_buffer) >= 100:
+                if len(chunk_buffer) >= self.config.chunk_buffer_size:
                     store.add_chunks(chunk_buffer)
                     chunk_buffer.clear()
 

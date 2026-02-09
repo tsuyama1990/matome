@@ -140,12 +140,15 @@ class SummarizationAgent:
 
         # 2. Control Character Check (Unicode)
         # We strictly disallow control characters that are not standard whitespace.
-        # \n (0x0A), \t (0x09) are allowed for formatting.
-        allowed_controls = {"\n", "\t"}
+        # Allow standard whitespace controls: \n, \t, \r
+        # \f and \v are technically whitespace but rare, safer to block if not needed?
+        # Let's align with common definition: \t, \n, \r.
+        allowed_controls = {"\n", "\t", "\r"}
 
         for char in text:
+            # Check for control characters (Cc, Cf, Cs, Co, Cn)
             if unicodedata.category(char).startswith("C") and char not in allowed_controls:
-                msg = f"Input text contains invalid control character: {char!r}"
+                msg = f"Input text contains invalid control character: {char!r} (U+{ord(char):04X})"
                 raise ValueError(msg)
 
         # 3. Tokenizer DoS Protection

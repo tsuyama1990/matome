@@ -70,13 +70,7 @@ class GMMClusterer:
             mm_array = np.memmap(tf_name, dtype="float32", mode="r", shape=(n_samples, dim))
 
             try:
-                # Heuristic threshold for switching to approximate clustering
-                # 20000 vectors of 1024 dim is ~80MB, which fits in memory easily.
-                # However, UMAP intermediate structures can be 10x-100x larger.
-                # We set a safe limit.
-                LARGE_SCALE_THRESHOLD = 20000
-
-                if n_samples > LARGE_SCALE_THRESHOLD:
+                if n_samples > config.large_scale_threshold:
                     return self._perform_approximate_clustering(mm_array, n_samples, config)
 
                 return self._perform_clustering(mm_array, n_samples, config)

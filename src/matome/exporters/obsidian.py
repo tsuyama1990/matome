@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from domain_models.config import ProcessingConfig
+
 if TYPE_CHECKING:
     from domain_models.manifest import Chunk, DocumentTree
 
@@ -51,16 +53,17 @@ class CanvasFile(BaseModel):
 class ObsidianCanvasExporter:
     """Exports DocumentTree to Obsidian Canvas format."""
 
-    NODE_WIDTH = 400
-    NODE_HEIGHT = 200
     GAP_X = 50
     GAP_Y = 300
 
-    def __init__(self) -> None:
+    def __init__(self, config: ProcessingConfig | None = None) -> None:
         self.nodes: list[CanvasNode] = []
         self.edges: list[CanvasEdge] = []
         self._subtree_widths: dict[str, int] = {}
         self._chunk_map: dict[int, Chunk] = {}
+        self.config = config or ProcessingConfig()
+        self.NODE_WIDTH = self.config.canvas_node_width
+        self.NODE_HEIGHT = self.config.canvas_node_height
 
     def generate_canvas_data(self, tree: "DocumentTree") -> CanvasFile:
         """Generates the canvas data structure from the document tree."""

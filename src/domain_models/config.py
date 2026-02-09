@@ -99,6 +99,26 @@ class ProcessingConfig(BaseModel):
         ge=1,
         description="Batch size for writing vectors to disk during clustering.",
     )
+    large_scale_threshold: int = Field(
+        default=20000,
+        ge=1,
+        description="Threshold for switching to approximate clustering.",
+    )
+    chunk_buffer_size: int = Field(
+        default=100,
+        ge=1,
+        description="Buffer size for batch database writes in Raptor engine.",
+    )
+    canvas_node_width: int = Field(
+        default=400,
+        ge=10,
+        description="Width of nodes in Obsidian Canvas export.",
+    )
+    canvas_node_height: int = Field(
+        default=200,
+        ge=10,
+        description="Height of nodes in Obsidian Canvas export.",
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(
