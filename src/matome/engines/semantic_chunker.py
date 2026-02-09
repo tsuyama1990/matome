@@ -58,12 +58,24 @@ class JapaneseSemanticChunker:
 
         Returns:
             List of Chunk objects.
+
+        Raises:
+            ValueError: If input text is not a string.
         """
+        if not isinstance(text, str):
+            msg = f"Input text must be a string, got {type(text)}."
+            raise TypeError(msg)
+
         if not text:
             return []
 
         # 1. Normalize and stream sentences
         normalized_text = normalize_text(text)
+
+        if not normalized_text.strip():
+            # If text was just whitespace, return empty list
+            return []
+
         sentences_gen = iter_sentences(normalized_text)
 
         # Create two iterators: one for embedding, one for content

@@ -15,6 +15,7 @@ from tenacity import Retrying, stop_after_attempt, wait_exponential
 from domain_models.config import ProcessingConfig
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
+from matome.utils.constants import PROMPT_INJECTION_PATTERNS
 from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
@@ -54,17 +55,16 @@ class SummarizationAgent:
             # If LLM is injected, we disable internal mock mode unless explicitly set via api_key="mock"
             # But the caller provided an LLM, so they probably want to use it.
             # If api_key is "mock", we might still want to short-circuit.
+        elif api_key and not self.mock_mode:
+            self.llm = ChatOpenAI(
+                model=self.model_name,
+                api_key=api_key,
+                base_url=base_url,
+                temperature=config.llm_temperature,
+                max_retries=config.max_retries,
+            )
         else:
-            if api_key and not self.mock_mode:
-                self.llm = ChatOpenAI(
-                    model=self.model_name,
-                    api_key=api_key,
-                    base_url=base_url,
-                    temperature=config.llm_temperature,
-                    max_retries=config.max_retries,
-                )
-            else:
-                self.llm = None
+            self.llm = None
 
     def summarize(self, text: str, config: ProcessingConfig | None = None) -> str:
         """
@@ -114,6 +114,18 @@ class SummarizationAgent:
     def _validate_input(self, text: str, max_word_length: int) -> None:
         """
         Sanitize and validate input text.
+
+        Checks:
+        1. Maximum overall length to prevent processing extremely large inputs.
+        2. Control characters (Unicode 'C' category) to prevent injection or formatting issues.
+        3. Word length to prevent tokenizer Denial of Service (DoS) attacks.
+
+        Args:
+            text: The input text to validate.
+            max_word_length: The maximum allowed length for a single word.
+
+        Raises:
+            ValueError: If any validation check fails.
         """
         # 1. Length Check (Document)
         MAX_INPUT_LENGTH = 500_000
@@ -145,25 +157,37 @@ class SummarizationAgent:
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
         Basic mitigation for Prompt Injection.
-        """
-        patterns = [
-            r"(?i)ignore\s+previous\s+instructions",
-            r"(?i)ignore\s+all\s+instructions",
-            r"(?i)system\s+override",
-            r"(?i)execute\s+command",
-            r"(?i)reveal\s+system\s+prompt",
-            r"(?i)bypass\s+security",
-            r"(?i)output\s+as\s+json",
-        ]
 
+        Iterates through a list of known injection patterns (e.g., 'ignore previous instructions')
+        and replaces them with a placeholder '[Filtered]'.
+
+        Args:
+            text: The input text to sanitize.
+
+        Returns:
+            The sanitized text string.
+        """
         sanitized = text
-        for pattern in patterns:
+        for pattern in PROMPT_INJECTION_PATTERNS:
             sanitized = re.sub(pattern, "[Filtered]", sanitized)
 
         return sanitized
 
     def _invoke_llm(self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str) -> BaseMessage:
-        """Helper to invoke LLM with retry logic."""
+        """
+        Invoke the LLM with exponential backoff retry logic.
+
+        Args:
+            messages: List of LangChain messages to send.
+            config: Configuration containing retry settings.
+            request_id: Unique ID for logging purposes.
+
+        Returns:
+            The response message from the LLM.
+
+        Raises:
+            SummarizationError: If the LLM call fails after all retries or returns no response.
+        """
         if not self.llm:
              msg = "LLM not initialized"
              raise SummarizationError(msg)
@@ -193,7 +217,18 @@ class SummarizationAgent:
         return response
 
     def _process_response(self, response: BaseMessage, request_id: str) -> str:
-        """Helper to process LLM response content."""
+        """
+        Process and extract content from the LLM response.
+
+        Handles different response types (string, list, etc.) and ensures a string return.
+
+        Args:
+            response: The raw response message from the LLM.
+            request_id: Unique ID for logging.
+
+        Returns:
+            The extracted summary text.
+        """
         content: str | list[str | dict[str, Any]] = response.content
 
         if isinstance(content, str):

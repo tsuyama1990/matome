@@ -69,8 +69,12 @@ class GMMClusterer:
         return self._perform_clustering(data, n_samples, config)
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
-        if config.clustering_algorithm.value != "gmm":
-            msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
+        algo = config.clustering_algorithm
+        # Handle case where it's an Enum (normal) or a raw string (testing/bypassing validation)
+        algo_value = algo.value if hasattr(algo, "value") else algo
+
+        if algo_value != "gmm":
+            msg = f"Unsupported clustering algorithm: {algo}. Only 'gmm' is supported."
             raise ValueError(msg)
 
     def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
@@ -105,14 +109,15 @@ class GMMClusterer:
                 f"due to small dataset size ({n_samples} samples)."
             )
 
-        logger.debug(
-            f"Starting clustering with {n_samples} samples. "
-            f"UMAP: n_neighbors={effective_n_neighbors}, min_dist={min_dist}, n_components={n_components}. "
-            f"GMM: n_clusters={config.n_clusters or 'auto'}."
+        logger.info(
+            f"Starting clustering for {n_samples} nodes. "
+            f"UMAP params: neighbors={effective_n_neighbors}, min_dist={min_dist}. "
+            f"GMM target: {config.n_clusters if config.n_clusters else 'auto-BIC'}."
         )
 
         try:
             # 1. Dimensionality Reduction (UMAP)
+            logger.debug("Running UMAP dimensionality reduction...")
             reducer = UMAP(
                 n_neighbors=effective_n_neighbors,
                 min_dist=min_dist,
@@ -125,8 +130,10 @@ class GMMClusterer:
             if config.n_clusters:
                 gmm_n_components = config.n_clusters
             else:
+                logger.debug("Calculating optimal cluster count using BIC...")
                 gmm_n_components = self._calculate_optimal_clusters(reduced_embeddings, config.random_state)
 
+            logger.info(f"Clustering into {gmm_n_components} components.")
             gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
             gmm.fit(reduced_embeddings)
             labels = gmm.predict(reduced_embeddings)
@@ -158,7 +165,11 @@ class GMMClusterer:
         """
         Helper to find optimal number of clusters using BIC (Bayesian Information Criterion).
         """
+        # Limit max clusters to avoid overfitting or excessive fragmentation.
+        # 20 is a heuristic upper bound often sufficient for typical document sectioning tasks.
+        # If the number of embeddings is small, we cap it at len(embeddings).
         max_clusters = min(20, len(embeddings))
+
         if max_clusters < 2:
             return 1
 

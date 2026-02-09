@@ -13,6 +13,7 @@ def mock_embedder() -> MagicMock:
     # We will control the output in tests
     return MagicMock(spec=EmbeddingService)
 
+
 def test_semantic_chunker_merging(mock_embedder: MagicMock) -> None:
     # Setup: 3 sentences.
     # S1 and S2 are similar (sim=1.0). S3 is different (sim=0.0).
@@ -35,6 +36,7 @@ def test_semantic_chunker_merging(mock_embedder: MagicMock) -> None:
     assert len(chunks) == 2
     assert chunks[0].text == "文1。文2。"
     assert chunks[1].text == "文3。"
+
 
 def test_semantic_chunker_max_tokens(mock_embedder: MagicMock) -> None:
     # Setup: 2 sentences, similar, but max_tokens limits merging.
@@ -59,7 +61,23 @@ def test_semantic_chunker_max_tokens(mock_embedder: MagicMock) -> None:
     assert chunks[0].text == "長い文1。"
     assert chunks[1].text == "長い文2。"
 
+
 def test_empty_text(mock_embedder: MagicMock) -> None:
     chunker = JapaneseSemanticChunker(mock_embedder)
     config = ProcessingConfig()
     assert chunker.split_text("", config) == []
+
+
+def test_split_text_edge_cases(
+    mock_embedder: MagicMock
+) -> None:
+    """Test handling of edge cases like empty strings and whitespace."""
+    chunker = JapaneseSemanticChunker(mock_embedder)
+    config = ProcessingConfig()
+
+    # Whitespace only
+    assert chunker.split_text("   \n   ", config) == []
+
+    # Invalid input type
+    with pytest.raises(TypeError, match="Input text must be a string"):
+        chunker.split_text(123, config)  # type: ignore[arg-type]
