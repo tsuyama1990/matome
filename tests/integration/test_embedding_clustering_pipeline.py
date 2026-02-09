@@ -103,8 +103,13 @@ def test_real_pipeline_small() -> None:
     with patch("matome.engines.embedder.SentenceTransformer") as MockST:
         mock_instance = MagicMock()
         MockST.return_value = mock_instance
-        # Return 10 random vectors of dim 10
-        mock_instance.encode.return_value = np.random.rand(10, 10)
+
+        # Correctly mock encode to return (N, 10) array based on input
+        def side_effect(texts: Any, **kwargs: Any) -> np.ndarray:
+            n = len(texts)
+            return np.random.rand(n, 10)
+
+        mock_instance.encode.side_effect = side_effect
 
         embedder = EmbeddingService(config)
         embeddings_gen = embedder.embed_strings(texts)

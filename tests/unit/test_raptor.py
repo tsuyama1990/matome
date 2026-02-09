@@ -51,13 +51,15 @@ def test_raptor_run_short_text(
     chunker.split_text.return_value = [chunk1]
 
     # 2. Embedding
-    # embedder.embed_chunks is NOT called for single chunk input optimization.
+    # We must ensure embed_chunks works even for single chunk
+    chunk1.embedding = [0.1] * 768
+    embedder.embed_chunks.return_value = iter([chunk1])
 
     # Run
     tree = engine.run("Short text")
 
     # Verify
-    embedder.embed_chunks.assert_not_called()
+    embedder.embed_chunks.assert_called()
     clusterer.cluster_nodes.assert_not_called()
     summarizer.summarize.assert_not_called()
 
@@ -92,7 +94,12 @@ def test_raptor_run_recursive(
     embedder.embed_chunks.side_effect = side_effect_embed_chunks
 
     # Mock embedding for summary nodes (strings)
-    embedder.embed_strings.return_value = [[0.2] * 768]  # For any summary
+    # Must yield one embedding per input text.
+    def side_effect_embed_strings(texts: list[str]) -> Iterator[list[float]]:
+        for _ in texts:
+            yield [0.2] * 768
+
+    embedder.embed_strings.side_effect = side_effect_embed_strings
 
     # Clustering Logic
     # Call 1 (Level 0 Chunks): Returns 2 clusters (needs reducing)

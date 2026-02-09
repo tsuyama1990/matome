@@ -77,3 +77,10 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     assert tree.root_node.level >= 1
     if tree.root_node.level > 1:
         assert len(tree.all_nodes) > 1
+
+    # Verify embeddings are present
+    assert tree.leaf_chunks[0].embedding is not None, "Leaf chunks must retain embeddings."
+    assert tree.root_node.embedding is not None, "Root node must have an embedding."
+
+    for node in tree.all_nodes.values():
+        assert node.embedding is not None, f"Summary node {node.id} must have an embedding."

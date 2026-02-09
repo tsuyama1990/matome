@@ -81,6 +81,35 @@ class DiskChunkStore:
         with self.engine.begin() as conn:
             conn.execute(stmt, params)
 
+    def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
+        """
+        Update the embedding of an existing node.
+        Fetches the node, updates the embedding, and saves it back.
+        """
+        node = self.get_node(node_id)
+        if not node:
+            logger.warning(f"Attempted to update embedding for non-existent node {node_id}")
+            return
+
+        # Update embedding field
+        # Use model_copy to ensure validation if needed, or direct assignment if mutable?
+        # Pydantic models are mutable by default unless frozen=True.
+        # Check domain_models/manifest.py: Chunk config extra='forbid', validate_assignment=True.
+        # But allow mutation? No, config doesn't say frozen=True.
+        # SummaryNode config extra='forbid'.
+        # Let's try direct assignment.
+        try:
+            node.embedding = embedding
+        except Exception:
+            # If frozen, use model_copy with update
+            node = node.model_copy(update={"embedding": embedding})
+
+        # Save back based on type
+        if isinstance(node, Chunk):
+            self.add_chunk(node)
+        elif isinstance(node, SummaryNode):
+            self.add_summary(node)
+
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
         stmt = text("SELECT type, data FROM nodes WHERE id = :id")

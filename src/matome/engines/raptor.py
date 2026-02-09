@@ -49,11 +49,9 @@ class RaptorEngine:
 
                 yield chunk.embedding
 
-                # Store chunk (without embedding)
-                store_chunk = chunk.model_copy()
-                store_chunk.embedding = None
-                chunk_buffer.append(store_chunk)
-                current_level_ids.append(store_chunk.index)
+                # Store chunk (with embedding preserved)
+                chunk_buffer.append(chunk)
+                current_level_ids.append(chunk.index)
 
                 if len(chunk_buffer) >= self.config.chunk_buffer_size:
                     store.add_chunks(chunk_buffer)
@@ -65,7 +63,10 @@ class RaptorEngine:
         if len(initial_chunks) > 1:
             clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
         else:
-            c = initial_chunks[0]
+            # For single chunk, we must ensure it's embedded and stored
+            # embed_chunks is a generator, so we need to consume it
+            chunks = list(self.embedder.embed_chunks(initial_chunks))
+            c = chunks[0]
             store.add_chunk(c)
             current_level_ids.append(c.index)
             clusters = []
@@ -126,13 +127,32 @@ class RaptorEngine:
         """Perform embedding and clustering for the next level (summaries)."""
 
         def lx_embedding_generator() -> Iterator[list[float]]:
-            def text_gen() -> Iterator[str]:
-                for nid in current_level_ids:
-                    node = store.get_node(nid)
-                    if node:
-                        yield node.text
+            # We need to coordinate embedding generation with updating the store.
+            # We iterate current_level_ids, fetch text, generate embedding, update store, and yield embedding.
 
-            yield from self.embedder.embed_strings(text_gen())
+            # 1. Fetch texts and keep track of IDs
+            # Note: We must ensure 1-to-1 mapping. If a node is missing, we skip it in both list and embedding?
+            # But current_level_ids drives the process.
+            # Let's assume nodes exist in store.
+
+            valid_ids = []
+            texts = []
+            for nid in current_level_ids:
+                node = store.get_node(nid)
+                if node:
+                    valid_ids.append(nid)
+                    texts.append(node.text)
+                else:
+                    logger.warning(f"Node {nid} not found in store during next level clustering.")
+
+            if not valid_ids:
+                return
+
+            # 2. Embed and Update
+            # embed_strings is a generator. We zip it with valid_ids.
+            for nid, embedding in zip(valid_ids, self.embedder.embed_strings(texts), strict=True):
+                store.update_node_embedding(nid, embedding)
+                yield embedding
 
         return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
 
@@ -154,6 +174,17 @@ class RaptorEngine:
         if not root_node_obj:
             msg = "Root node not found in store."
             raise ValueError(msg)
+
+        # Ensure root node has embedding (it might be skipped in loop if it was the only node)
+        if root_node_obj.embedding is None:
+            logger.info(f"Generating embedding for root node {root_id}")
+            # Generate single embedding
+            embeddings = list(self.embedder.embed_strings([root_node_obj.text]))
+            if embeddings:
+                root_node_obj.embedding = embeddings[0]
+                store.update_node_embedding(root_id, embeddings[0])
+                if isinstance(root_node_obj, SummaryNode):
+                    all_summaries[str(root_id)] = root_node_obj
 
         if isinstance(root_node_obj, Chunk):
             root_node = SummaryNode(
