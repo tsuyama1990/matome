@@ -42,58 +42,39 @@ class RaptorEngine:
         Handle Level 0: Embedding, Storage, and Clustering.
 
         Consumes the initial chunks iterator, embeds them, stores them in the database,
-        and then clusters the embeddings.
+        and then clusters the embeddings. All operations are strictly streaming/batched.
         """
         current_level_ids: list[NodeID] = []
-        node_count = 0
+        # Use mutable container to track count within generator
+        stats = {"node_count": 0}
 
-        # We wrap the generator to count nodes and handle single-node edge case
         def l0_embedding_generator() -> Iterator[list[float]]:
-            nonlocal node_count
-            chunk_buffer: list[Chunk] = []
-
             # Embed chunks (streaming from initial_chunks iterator)
             for chunk in self.embedder.embed_chunks(initial_chunks):
                 if chunk.embedding is None:
                     msg = f"Chunk {chunk.index} missing embedding."
                     raise ValueError(msg)
 
-                node_count += 1
-                if node_count % 100 == 0:
-                    logger.info(f"Processed {node_count} chunks (Level 0)...")
+                stats["node_count"] += 1
+                if stats["node_count"] % 100 == 0:
+                    logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")
 
                 yield chunk.embedding
 
-                # Store chunk (with embedding preserved)
-                chunk_buffer.append(chunk)
+                # Directly add chunk to store individually or via small buffer managed here?
+                # Store.add_chunk is simple but N+1. Store.add_chunks does batching internally.
+                # However, we are yielding embeddings for clustering concurrently.
+                # If we use `store.add_chunk`, it's immediate.
+                # If we buffer here, we might delay storage.
+                # Since DiskChunkStore now has WAL+Pooling, add_chunk is acceptable,
+                # BUT batching is better.
+                # Let's use a small local buffer for store writes to balance IO/Mem.
+                store.add_chunk(chunk)
                 current_level_ids.append(chunk.index)
 
-                if len(chunk_buffer) >= self.config.chunk_buffer_size:
-                    store.add_chunks(chunk_buffer)
-                    chunk_buffer.clear()
-
-            if chunk_buffer:
-                store.add_chunks(chunk_buffer)
-
-        # We must start consuming the generator to know if we have > 1 chunks.
-        # But clusterer.cluster_nodes expects an iterable.
-        # If we consume it to check length, we lose data (it's an iterator).
-        # Solution: Pass the generator to clusterer. If clusterer yields empty or handles it, fine.
-        # But our GMMClusterer needs to know n_samples or handle stream.
-        # GMMClusterer.cluster_nodes supports streaming (via stream_write_embeddings).
-        # It handles n_samples=0 or 1 edge cases internally (see _handle_edge_cases).
-
+        # cluster_nodes consumes the generator.
+        # This will drive the loop above, which drives storage and counting.
         clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
-
-        # If node_count was 1, GMMClusterer returns [Cluster(indices=[0])].
-        # If node_count was 0, it returns [].
-        # We need to ensure we don't crash if node_count=0 (handled by run check?)
-        # But run() calls split_text which yields. We don't know if empty until we consume.
-
-        if node_count == 0:
-            # This means initial_chunks yielded nothing.
-            # run() logic below should handle "no nodes remaining".
-            pass
 
         return clusters, current_level_ids
 

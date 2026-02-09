@@ -112,44 +112,40 @@ class DiskChunkStore:
         self._add_nodes(nodes, "summary")
 
     def _add_nodes(self, nodes: Iterable[Chunk | SummaryNode], node_type: str) -> None:
-        """Helper to batch insert nodes."""
-        # We need to process the iterable in batches to avoid O(N) memory usage
-        # collecting parameters.
+        """
+        Helper to batch insert nodes.
+        Streaming safe: processes input iterable in batches without full materialization.
+        """
         BATCH_SIZE = 1000
-        buffer: list[dict[str, Any]] = []
-
-        # Use Core Insert statement (Insert or Replace is SQLite specific)
-        # SQLAlchemy generic insert doesn't replace.
-        # But SQLite supports `INSERT OR REPLACE`.
-        # We can construct it manually or use `prefix_with`.
+        # Use Core Insert with REPLACE logic for SQLite
         stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
-        # Streaming loop: Only keep BATCH_SIZE items in memory
-        for node in nodes:
-            # Prepare data
-            # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
-            content_json = node.model_dump_json(exclude={"embedding"})
+        from matome.utils.compat import batched
 
-            # Embedding JSON
-            embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+        # Iterate over the input iterable using batched() to handle chunks efficiently
+        # without loading the entire dataset into memory.
+        for node_batch in batched(nodes, BATCH_SIZE):
+            buffer: list[dict[str, Any]] = []
 
-            node_id = str(node.index) if isinstance(node, Chunk) else node.id
+            for node in node_batch:
+                # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
+                content_json = node.model_dump_json(exclude={"embedding"})
 
-            buffer.append(
-                {
-                    "id": node_id,
-                    "type": node_type,
-                    "content": content_json,
-                    "embedding": embedding_json,
-                }
-            )
+                # Embedding JSON
+                embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
 
-            if len(buffer) >= BATCH_SIZE:
-                with self.engine.begin() as conn:
-                    conn.execute(stmt, buffer)
-                buffer.clear()
+                node_id = str(node.index) if isinstance(node, Chunk) else node.id
 
-        if buffer:
+                buffer.append(
+                    {
+                        "id": node_id,
+                        "type": node_type,
+                        "content": content_json,
+                        "embedding": embedding_json,
+                    }
+                )
+
+            # Flush batch
             with self.engine.begin() as conn:
                 conn.execute(stmt, buffer)
 
