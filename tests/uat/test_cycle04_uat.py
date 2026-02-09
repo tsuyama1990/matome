@@ -44,12 +44,14 @@ class UATEmbedder:
             vec[100] = 1.0
             yield vec
 
+
 @pytest.fixture
 def uat_config() -> ProcessingConfig:
     return ProcessingConfig(
-        umap_n_neighbors=5, # Slightly larger for 50 chunks
+        umap_n_neighbors=5,  # Slightly larger for 50 chunks
         umap_min_dist=0.0,
     )
+
 
 def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
     """
@@ -60,8 +62,7 @@ def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
     chunker = MagicMock()
     # 3 chunks (small enough to be one cluster)
     chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
-        for i in range(3)
+        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(3)
     ]
     chunker.split_text.return_value = chunks
 
@@ -73,7 +74,7 @@ def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
     summarizer = MagicMock()
     summarizer.summarize.return_value = "Summary Root"
 
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config) # type: ignore
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
     tree = engine.run("Short doc")
 
     # 3 chunks -> 1 cluster -> 1 Summary (Root)
@@ -81,6 +82,7 @@ def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
     assert tree.root_node.level == 1
     assert len(tree.leaf_chunks) == 3
     assert tree.root_node.text == "Summary Root"
+
 
 def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     """
@@ -92,8 +94,7 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     # 50 chunks
     # UATEmbedder will create 5 clusters (indices 0-9, 10-19, etc.)
     chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
-        for i in range(50)
+        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(50)
     ]
     chunker.split_text.return_value = chunks
 
@@ -108,7 +109,7 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     summarizer = MagicMock()
     summarizer.summarize.return_value = "Summary Node"
 
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config) # type: ignore
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
     tree = engine.run("Long doc")
 
     # 50 chunks -> Multiple clusters -> Multiple Summaries (L1).
@@ -117,6 +118,7 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     assert len(tree.leaf_chunks) == 50
     # Check that we have intermediate summaries
     assert len(tree.all_nodes) > 1
+
 
 def test_uat_scenario_13_summary_coherence() -> None:
     """
@@ -129,7 +131,7 @@ def test_uat_scenario_13_summary_coherence() -> None:
     chunker = MagicMock()
     chunks = [
         Chunk(index=0, text="Climate change is real.", start_char_idx=0, end_char_idx=20),
-        Chunk(index=1, text="Sea levels are rising.", start_char_idx=20, end_char_idx=40)
+        Chunk(index=1, text="Sea levels are rising.", start_char_idx=20, end_char_idx=40),
     ]
     chunker.split_text.return_value = chunks
 
@@ -139,7 +141,7 @@ def test_uat_scenario_13_summary_coherence() -> None:
     summarizer = MagicMock()
     summarizer.summarize.return_value = "Global Warming Summary"
 
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config) # type: ignore
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)  # type: ignore
     tree = engine.run("Climate doc")
 
     # Verify coherence (mocked)

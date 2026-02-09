@@ -1,6 +1,7 @@
 """
 Test to ensure SummarizationAgent complies with Summarizer protocol.
 """
+
 from unittest.mock import patch
 
 from domain_models.config import ProcessingConfig

@@ -41,7 +41,9 @@ class Clusterer(Protocol):
     to facilitate hierarchical summarization (RAPTOR).
     """
 
-    def cluster_nodes(self, embeddings: Iterable[list[float]], config: ProcessingConfig) -> list[Cluster]:
+    def cluster_nodes(
+        self, embeddings: Iterable[list[float]], config: ProcessingConfig
+    ) -> list[Cluster]:
         """
         Cluster nodes based on embeddings.
 

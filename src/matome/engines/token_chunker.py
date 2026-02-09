@@ -1,31 +1,16 @@
 import logging
-import os
 from functools import lru_cache
 
 import tiktoken
 
 from domain_models.config import ProcessingConfig
+from domain_models.constants import ALLOWED_TOKENIZER_MODELS
 from domain_models.manifest import Chunk
 from matome.utils.text import iter_sentences, normalize_text
 
 # Configure logger
 logger = logging.getLogger(__name__)
 
-# List of allowed tiktoken model names for security validation.
-# We whitelist specific models to prevent arbitrary string injection or unexpected resource usage
-# (e.g., loading a model that requires downloading large files or behaving unexpectedly).
-ALLOWED_MODELS = {
-    "cl100k_base",
-    "p50k_base",
-    "r50k_base",
-    "gpt2",
-    "gpt-3.5-turbo",
-    "gpt-4",
-    "gpt-4o",
-    "text-embedding-ada-002",
-    "text-embedding-3-small",
-    "text-embedding-3-large",
-}
 
 @lru_cache(maxsize=4)
 def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
@@ -42,10 +27,10 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
         ValueError: If the model name is not allowed or invalid.
     """
     # Security check: Validate input model name against allowed list
-    if model_name not in ALLOWED_MODELS:
+    if model_name not in ALLOWED_TOKENIZER_MODELS:
         msg = (
             f"Model name '{model_name}' is not in the allowed list. "
-            f"Allowed models: {sorted(ALLOWED_MODELS)}"
+            f"Allowed models: {sorted(ALLOWED_TOKENIZER_MODELS)}"
         )
         logger.error(msg)
         raise ValueError(msg)
@@ -119,21 +104,27 @@ class JapaneseTokenChunker:
     This implements the Chunker protocol.
     """
 
-    def __init__(self, model_name: str | None = None) -> None:
+    def __init__(self, config: ProcessingConfig | None = None) -> None:
         """
         Initialize the chunker with a specific tokenizer model.
 
         Args:
-            model_name: The name of the encoding to use.
-                        Defaults to TIKTOKEN_MODEL_NAME env var or "cl100k_base".
+            config: Processing configuration containing tokenizer_model.
         """
-        # If model_name is not provided, use env var or default "cl100k_base"
-        if model_name is None:
-            model_name = os.getenv("TIKTOKEN_MODEL_NAME", "cl100k_base")
+        if config is None:
+            config = ProcessingConfig()
 
-        # Strict validation: This will raise ValueError if invalid.
-        # No fallback here - caller must handle or ensure config is correct.
-        self.tokenizer = get_cached_tokenizer(model_name)
+        # Explicitly validate against whitelist before usage, ensuring security
+        # even if config validation was somehow bypassed (though ProcessingConfig enforces it).
+        if config.tokenizer_model not in ALLOWED_TOKENIZER_MODELS:
+            msg = (
+                f"Tokenizer model '{config.tokenizer_model}' is not allowed. "
+                f"Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
+            )
+            logger.error(msg)
+            raise ValueError(msg)
+
+        self.tokenizer = get_cached_tokenizer(config.tokenizer_model)
 
     def count_tokens(self, text: str) -> int:
         """Count tokens in text."""
@@ -158,7 +149,7 @@ class JapaneseTokenChunker:
 
         logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
 
-        chunking_model_name = self.tokenizer.name # e.g. "cl100k_base"
+        chunking_model_name = self.tokenizer.name  # e.g. "cl100k_base"
 
         chunks = _perform_chunking(text, config.max_tokens, chunking_model_name)
 

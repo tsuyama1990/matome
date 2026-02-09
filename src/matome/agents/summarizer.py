@@ -2,6 +2,7 @@
 Summarization Agent module.
 This module implements the summarization logic using OpenRouter and Chain of Density prompting.
 """
+
 import logging
 import re
 import unicodedata
@@ -13,9 +14,9 @@ from langchain_openai import ChatOpenAI
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
+from domain_models.constants import PROMPT_INJECTION_PATTERNS
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.constants import PROMPT_INJECTION_PATTERNS
 from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
@@ -26,11 +27,7 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(
-        self,
-        config: ProcessingConfig,
-        llm: ChatOpenAI | None = None
-    ) -> None:
+    def __init__(self, config: ProcessingConfig, llm: ChatOpenAI | None = None) -> None:
         """
         Initialize the SummarizationAgent.
 
@@ -45,7 +42,7 @@ class SummarizationAgent:
         api_key = get_openrouter_api_key()
         base_url = get_openrouter_base_url()
 
-        self.mock_mode = (api_key == "mock")
+        self.mock_mode = api_key == "mock"
 
         self.llm: ChatOpenAI | None = None
 
@@ -81,7 +78,9 @@ class SummarizationAgent:
             return ""
 
         # Validate input for security
-        self._validate_input(text, effective_config.max_input_length, effective_config.max_word_length)
+        self._validate_input(
+            text, effective_config.max_input_length, effective_config.max_word_length
+        )
 
         # Sanitize prompt injection
         safe_text = self._sanitize_prompt_injection(text)
@@ -96,7 +95,9 @@ class SummarizationAgent:
             raise SummarizationError(msg)
 
         if effective_config.summarization_model != self.model_name:
-             logger.debug(f"[{request_id}] Config model {effective_config.summarization_model} differs from agent model {self.model_name}. Using agent model.")
+            logger.debug(
+                f"[{request_id}] Config model {effective_config.summarization_model} differs from agent model {self.model_name}. Using agent model."
+            )
 
         try:
             prompt = COD_TEMPLATE.format(context=safe_text)
@@ -134,18 +135,21 @@ class SummarizationAgent:
         """
         # 1. Length Check (Document)
         if len(text) > max_input_length:
-             msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
-             raise ValueError(msg)
+            msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
+            raise ValueError(msg)
 
         # 2. Control Character Check (Unicode)
         # We strictly disallow control characters that are not standard whitespace.
-        # \n (0x0A), \t (0x09) are allowed for formatting.
-        allowed_controls = {"\n", "\t"}
+        # Allow standard whitespace controls: \n, \t, \r
+        # \f and \v are technically whitespace but rare, safer to block if not needed?
+        # Let's align with common definition: \t, \n, \r.
+        allowed_controls = {"\n", "\t", "\r"}
 
         for char in text:
+            # Check for control characters (Cc, Cf, Cs, Co, Cn)
             if unicodedata.category(char).startswith("C") and char not in allowed_controls:
-                 msg = f"Input text contains invalid control character: {char!r}"
-                 raise ValueError(msg)
+                msg = f"Input text contains invalid control character: {char!r} (U+{ord(char):04X})"
+                raise ValueError(msg)
 
         # 3. Tokenizer DoS Protection
         # Split by whitespace to check word length
@@ -155,8 +159,8 @@ class SummarizationAgent:
 
         longest_word_len = max((len(w) for w in words), default=0)
         if longest_word_len > max_word_length:
-             msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
-             raise ValueError(msg)
+            msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
+            raise ValueError(msg)
 
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
@@ -182,7 +186,9 @@ class SummarizationAgent:
 
         return sanitized
 
-    def _invoke_llm(self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str) -> BaseMessage:
+    def _invoke_llm(
+        self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str
+    ) -> BaseMessage:
         """
         Invoke the LLM with exponential backoff retry logic.
 
@@ -198,30 +204,32 @@ class SummarizationAgent:
             SummarizationError: If the LLM call fails after all retries or returns no response.
         """
         if not self.llm:
-             msg = "LLM not initialized"
-             raise SummarizationError(msg)
+            msg = "LLM not initialized"
+            raise SummarizationError(msg)
 
         response = None
         # Use Tenacity for retries based on config
         for attempt in Retrying(
             stop=stop_after_attempt(config.max_retries),
             wait=wait_exponential(multiplier=1, min=2, max=10),
-            reraise=True
+            reraise=True,
         ):
             with attempt:
                 if attempt.retry_state.attempt_number > 1:
-                    logger.warning(f"[{request_id}] Retrying LLM call (Attempt {attempt.retry_state.attempt_number}/{config.max_retries})")
+                    logger.warning(
+                        f"[{request_id}] Retrying LLM call (Attempt {attempt.retry_state.attempt_number}/{config.max_retries})"
+                    )
 
                 # Check if LLM is chat model or simple LLM (though typed as ChatOpenAI)
                 if hasattr(self.llm, "invoke"):
-                     response = self.llm.invoke(messages)
+                    response = self.llm.invoke(messages)
                 else:
-                     # Fallback for mock objects that might not have invoke
-                     response = self.llm(messages) # type: ignore[operator]
+                    # Fallback for mock objects that might not have invoke
+                    response = self.llm(messages)  # type: ignore[operator]
 
         if not response:
-             msg = f"[{request_id}] No response received from LLM."
-             raise SummarizationError(msg)
+            msg = f"[{request_id}] No response received from LLM."
+            raise SummarizationError(msg)
 
         return response
 

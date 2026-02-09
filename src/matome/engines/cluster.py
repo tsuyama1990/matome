@@ -6,6 +6,8 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import numpy as np
+from sklearn.cluster import MiniBatchKMeans
+from sklearn.decomposition import IncrementalPCA
 from sklearn.mixture import GaussianMixture
 from umap import UMAP
 
@@ -28,9 +30,7 @@ class GMMClusterer:
     """
 
     def cluster_nodes(
-        self,
-        embeddings: Iterable[list[float]],
-        config: ProcessingConfig
+        self, embeddings: Iterable[list[float]], config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Clusters the nodes based on their embeddings.
@@ -67,24 +67,24 @@ class GMMClusterer:
 
             # Open as memmap
             # This allows us to access the data as if it were in memory, backed by disk
-            mm_array = np.memmap(tf_name, dtype='float32', mode='r', shape=(n_samples, dim))
+            mm_array = np.memmap(tf_name, dtype="float32", mode="r", shape=(n_samples, dim))
 
             try:
+                if n_samples > config.large_scale_threshold:
+                    return self._perform_approximate_clustering(mm_array, n_samples, config)
+
                 return self._perform_clustering(mm_array, n_samples, config)
             finally:
                 # Ensure memmap is closed/deleted from python view
                 del mm_array
 
         finally:
-             if path_obj.exists():
-                 with contextlib.suppress(OSError):
-                     path_obj.unlink()
+            if path_obj.exists():
+                with contextlib.suppress(OSError):
+                    path_obj.unlink()
 
     def _stream_write_embeddings(
-        self,
-        embeddings: Iterable[list[float]],
-        path_obj: Path,
-        batch_size: int
+        self, embeddings: Iterable[list[float]], path_obj: Path, batch_size: int
     ) -> tuple[int, int]:
         """
         Stream embeddings to disk in batches.
@@ -93,39 +93,40 @@ class GMMClusterer:
         n_samples = 0
         dim = 0
 
-        with path_obj.open('wb') as f:
+        with path_obj.open("wb") as f:
             # Use batched utility to iterate in chunks
             # batched() consumes the iterator lazily, ensuring we only hold 'batch_size' items in RAM.
             for batch_tuple in batched(embeddings, batch_size):
-                # batched returns a tuple of items
-                batch_list = list(batch_tuple)
+                # Process in smaller sub-batches to avoid large memory allocation
+                # even if batch_size is large (e.g. from default config).
+                # 1000 rows * 1024 dims * 4 bytes = 4MB. Safe.
+                SUB_BATCH_SIZE = 1000
 
-                # Validation on first item of first batch
-                if n_samples == 0:
-                    dim = len(batch_list[0])
-                    if dim == 0:
-                        msg = "Embedding dimension cannot be zero."
+                for i in range(0, len(batch_tuple), SUB_BATCH_SIZE):
+                    sub_batch = batch_tuple[i : i + SUB_BATCH_SIZE]
+
+                    if n_samples == 0 and i == 0:
+                        dim = len(sub_batch[0])
+                        if dim == 0:
+                            msg = "Embedding dimension cannot be zero."
+                            raise ValueError(msg)
+
+                    try:
+                        np_batch = np.array(sub_batch, dtype="float32")
+                    except ValueError as e:
+                        msg = f"Failed to create batch array: {e}"
+                        raise ValueError(msg) from e
+
+                    if np_batch.shape[1] != dim:
+                        msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
                         raise ValueError(msg)
 
-                # Check dimensions and content for the batch
-                try:
-                    np_batch = np.array(batch_list, dtype='float32')
-                except ValueError as e:
-                    # Likely inhomogeneous shape if lengths differ
-                    msg = f"Failed to create batch array: {e}"
-                    raise ValueError(msg) from e
+                    if not np.isfinite(np_batch).all():
+                        msg = "Embeddings contain NaN or Infinity values."
+                        raise ValueError(msg)
 
-                if np_batch.shape[1] != dim:
-                     msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
-                     raise ValueError(msg)
-
-                if not np.isfinite(np_batch).all():
-                     msg = "Embeddings contain NaN or Infinity values."
-                     raise ValueError(msg)
-
-                # Write to disk
-                np_batch.tofile(f)
-                n_samples += len(batch_list)
+                    np_batch.tofile(f)
+                    n_samples += len(sub_batch)
 
         return n_samples, dim
 
@@ -156,12 +157,16 @@ class GMMClusterer:
         # Standard UMAP/GMM can fail or be unstable with very few samples.
         # 5 is a reasonable heuristic.
         if n_samples <= 5:
-            logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
+            logger.info(
+                f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster."
+            )
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
 
         return None
 
-    def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
+    def _perform_clustering(
+        self, data: np.ndarray, n_samples: int, config: ProcessingConfig
+    ) -> list[Cluster]:
         """
         Execute UMAP reduction and GMM clustering on the data.
 
@@ -209,7 +214,9 @@ class GMMClusterer:
                 gmm_n_components = config.n_clusters
             else:
                 logger.debug("Calculating optimal cluster count using BIC...")
-                gmm_n_components = self._calculate_optimal_clusters(reduced_embeddings, config.random_state)
+                gmm_n_components = self._calculate_optimal_clusters(
+                    reduced_embeddings, config.random_state
+                )
 
             logger.info(f"Clustering into {gmm_n_components} components.")
             gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
@@ -235,11 +242,72 @@ class GMMClusterer:
 
             cluster = Cluster(
                 id=int(label),
-                level=0, # Default to 0, caller handles level logic
+                level=0,  # Default to 0, caller handles level logic
                 node_indices=node_indices,
             )
             clusters.append(cluster)
         return clusters
+
+    def _perform_approximate_clustering(
+        self, data: np.ndarray, n_samples: int, config: ProcessingConfig
+    ) -> list[Cluster]:
+        """
+        Execute streaming clustering using IncrementalPCA and MiniBatchKMeans.
+        Avoids loading the entire dataset into memory.
+        """
+        n_components = config.umap_n_components
+        # Use config.n_clusters or heuristic.
+        # For large data, we definitely need > 1 cluster.
+        # Heuristic: sqrt(n_samples/2) is common, but capped.
+        # Or simple constant. Let's default to a reasonable number if not set.
+        n_clusters = config.n_clusters or min(int(np.sqrt(n_samples)), 50)
+
+        logger.info(
+            f"Starting Approximate Clustering for {n_samples} nodes. "
+            f"PCA components={n_components}, KMeans clusters={n_clusters}."
+        )
+
+        try:
+            # 1. Incremental PCA Training
+            ipca = IncrementalPCA(n_components=n_components)
+            batch_size = config.write_batch_size  # reuse batch size
+
+            # Loop over memmap in batches
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                ipca.partial_fit(batch)
+
+            # 2. MiniBatchKMeans Training
+            # We must transform and feed to KMeans
+            kmeans = MiniBatchKMeans(
+                n_clusters=n_clusters,
+                random_state=config.random_state,
+                batch_size=batch_size,
+                n_init="auto",
+            )
+
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                reduced_batch = ipca.transform(batch)
+                kmeans.partial_fit(reduced_batch)
+
+            # 3. Predict Labels (Final Pass)
+            # We can't store all labels in memory if n_samples is huge?
+            # 10M labels (int32) is 40MB. That's fine.
+            labels_list = []
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                reduced_batch = ipca.transform(batch)
+                batch_labels = kmeans.predict(reduced_batch)
+                labels_list.append(batch_labels)
+
+            labels = np.concatenate(labels_list)
+            return self._form_clusters(labels)
+
+        except Exception as e:
+            logger.exception("Approximate clustering failed.")
+            msg = f"Approximate clustering failed: {e}"
+            raise RuntimeError(msg) from e
 
     def _calculate_optimal_clusters(self, embeddings: np.ndarray, random_state: int) -> int:
         """
@@ -274,6 +342,6 @@ class GMMClusterer:
             logger.warning(f"Error during BIC calculation: {e!s}. Defaulting to 1 cluster.")
             return 1
         except Exception:
-             # Catch import errors or other unexpected issues
+            # Catch import errors or other unexpected issues
             logger.exception("Unexpected error during BIC calculation. Defaulting to 1 cluster.")
             return 1

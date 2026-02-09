@@ -99,11 +99,11 @@ class JapaneseSemanticChunker:
                 embedding_batch = list(self.embedder.embed_strings(sentence_batch))
 
                 if len(sentence_batch) != len(embedding_batch):
-                     logger.warning(
-                         f"Mismatch between sentences ({len(sentence_batch)}) and embeddings ({len(embedding_batch)})."
-                     )
-                     # Should ideally fail or handle gracefully.
-                     # For now, zip will stop at shortest, but let's be safe.
+                    logger.warning(
+                        f"Mismatch between sentences ({len(sentence_batch)}) and embeddings ({len(embedding_batch)})."
+                    )
+                    # Should ideally fail or handle gracefully.
+                    # For now, zip will stop at shortest, but let's be safe.
 
                 # Process this batch
                 for sentence, embedding in zip(sentence_batch, embedding_batch, strict=False):
@@ -118,21 +118,24 @@ class JapaneseSemanticChunker:
                     similarity = cosine_similarity(current_last_embedding, embedding)
                     sentence_len = len(sentence)
 
-                    if (similarity >= config.semantic_chunking_threshold) and \
-                       (current_chunk_len + sentence_len < config.max_tokens):
+                    if (similarity >= config.semantic_chunking_threshold) and (
+                        current_chunk_len + sentence_len < config.max_tokens
+                    ):
                         current_chunk_sentences.append(sentence)
                         current_chunk_len += sentence_len
                         current_last_embedding = embedding
                     else:
                         # Finalize current chunk
                         chunk_text = "".join(current_chunk_sentences)
-                        chunks.append(Chunk(
-                            index=len(chunks),
-                            text=chunk_text,
-                            start_char_idx=current_start_idx,
-                            end_char_idx=current_start_idx + len(chunk_text),
-                            embedding=None
-                        ))
+                        chunks.append(
+                            Chunk(
+                                index=len(chunks),
+                                text=chunk_text,
+                                start_char_idx=current_start_idx,
+                                end_char_idx=current_start_idx + len(chunk_text),
+                                embedding=None,
+                            )
+                        )
                         current_start_idx += len(chunk_text)
 
                         # Start new chunk with current sentence
@@ -143,13 +146,15 @@ class JapaneseSemanticChunker:
             # Final flush after all batches
             if current_chunk_sentences:
                 chunk_text = "".join(current_chunk_sentences)
-                chunks.append(Chunk(
-                    index=len(chunks),
-                    text=chunk_text,
-                    start_char_idx=current_start_idx,
-                    end_char_idx=current_start_idx + len(chunk_text),
-                    embedding=None
-                ))
+                chunks.append(
+                    Chunk(
+                        index=len(chunks),
+                        text=chunk_text,
+                        start_char_idx=current_start_idx,
+                        end_char_idx=current_start_idx + len(chunk_text),
+                        embedding=None,
+                    )
+                )
 
         except Exception:
             logger.exception("Error during semantic chunking process.")

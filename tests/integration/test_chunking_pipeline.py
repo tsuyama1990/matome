@@ -6,26 +6,24 @@ from matome.utils.io import read_file
 from matome.utils.text import normalize_text
 
 
-def test_chunking_pipeline_integration() -> None:
+def test_chunking_pipeline_integration(tmp_path: Path) -> None:
     """
     Integration test for the chunking pipeline.
     Reads a real Japanese text file, chunks it, and verifies the output.
     """
     # Setup
-    sample_file = Path("tests/data/sample_jp.txt")
-
-    # Ensure the file exists (it might be missing in the environment)
-    if not sample_file.exists():
-        # Create a dummy file if it doesn't exist for testing purposes
-        sample_file.parent.mkdir(parents=True, exist_ok=True)
-        sample_file.write_text("これはテストです。日本語の文章です。RAPTORシステムをテストします。Lost-in-the-Middle問題を解決します。", encoding="utf-8")
+    sample_file = tmp_path / "sample_jp.txt"
+    sample_file.write_text(
+        "これはテストです。日本語の文章です。RAPTORシステムをテストします。Lost-in-the-Middle問題を解決します。",
+        encoding="utf-8",
+    )
 
     text = read_file(sample_file)
     normalized_input = normalize_text(text)
 
     chunker = JapaneseTokenChunker()
-    # Use a small token limit to force multiple chunks
-    config = ProcessingConfig.high_precision()
+    # Use a small token limit to force multiple chunks, explicit overlap=0 as implementation doesn't support overlap yet
+    config = ProcessingConfig(max_tokens=50, overlap=0)
 
     # Execute
     chunks = chunker.split_text(text, config)
@@ -51,9 +49,9 @@ def test_chunking_pipeline_integration() -> None:
         reconstructed += chunk.text
         current_idx = expected_end
 
-        # 3. Token Limit Check (Approximate)
-        # We assume sample text isn't huge, chunks should be reasonable
-        assert len(chunk.text) < 1000
+        # 3. Token Limit Check (Strict)
+        token_count = chunker.count_tokens(chunk.text)
+        assert token_count <= config.max_tokens, f"Chunk {i} exceeds max tokens: {token_count} > {config.max_tokens}"
 
     # 4. Content Preservation Check
     # The concatenated chunks should exactly match the normalized input text

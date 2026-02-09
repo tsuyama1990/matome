@@ -20,6 +20,7 @@ def test_chunking_error_handling() -> None:
     # Empty text -> empty list
     assert chunker.split_text("", config) == []
 
+
 def test_embedding_error_handling() -> None:
     """Test error handling in embedding service."""
     config = ProcessingConfig()
@@ -35,6 +36,7 @@ def test_embedding_error_handling() -> None:
         with pytest.raises(Exception, match="Model Error"):
             list(gen)
 
+
 def test_clustering_error_handling() -> None:
     """Test error handling in clustering engine."""
     config = ProcessingConfig()
@@ -46,6 +48,7 @@ def test_clustering_error_handling() -> None:
 
     with pytest.raises(ValueError, match="Unsupported clustering algorithm"):
         engine.cluster_nodes([[0.1]], bad_config)
+
 
 def test_summarization_error_handling() -> None:
     """Test error handling in summarization agent."""

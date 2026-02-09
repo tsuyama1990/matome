@@ -12,10 +12,12 @@ def test_read_file_success(tmp_path: Path) -> None:
     content = read_file(p)
     assert content == "content"
 
+
 def test_read_file_not_found() -> None:
     """Test reading a non-existent file raises FileNotFoundError."""
     with pytest.raises(FileNotFoundError):
         read_file("non_existent_file.txt")
+
 
 def test_read_file_is_directory(tmp_path: Path) -> None:
     """Test reading a directory raises ValueError."""

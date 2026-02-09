@@ -27,17 +27,17 @@ def mock_embeddings() -> list[list[float]]:
     # Explicitly cast to list[list[float]]
     return [[float(x) for x in row] for row in data]
 
+
 @pytest.fixture
 def sample_chunks() -> list[str]:
     return [f"Chunk {i}" for i in range(30)]
 
-def test_embedding_clustering_pipeline(mock_embeddings: list[list[float]], sample_chunks: list[str]) -> None:
+
+def test_embedding_clustering_pipeline(
+    mock_embeddings: list[list[float]], sample_chunks: list[str]
+) -> None:
     """Test the pipeline flow with mocked embeddings."""
-    config = ProcessingConfig(
-        embedding_model="mock-model",
-        n_clusters=3,
-        random_state=42
-    )
+    config = ProcessingConfig(embedding_model="mock-model", n_clusters=3, random_state=42)
 
     # Mock SentenceTransformer
     with patch("matome.engines.embedder.SentenceTransformer") as MockST:
@@ -46,22 +46,23 @@ def test_embedding_clustering_pipeline(mock_embeddings: list[list[float]], sampl
 
         # Configure encode to return our mock embeddings
         config = ProcessingConfig(
-             embedding_model="mock-model",
-             n_clusters=3,
-             random_state=42,
-             embedding_batch_size=100
+            embedding_model="mock-model", n_clusters=3, random_state=42, embedding_batch_size=100
         )
 
         def side_effect(texts: Any, **kwargs: Any) -> np.ndarray:
             # Return random embeddings matching the number of texts
-            return np.array(mock_embeddings[:len(texts)])
+            return np.array(mock_embeddings[: len(texts)])
 
         mock_instance.encode.side_effect = side_effect
 
         # 1. Embedding
         embedder = EmbeddingService(config)
         from domain_models.manifest import Chunk
-        chunk_objects = [Chunk(index=i, text=t, start_char_idx=0, end_char_idx=10) for i, t in enumerate(sample_chunks)]
+
+        chunk_objects = [
+            Chunk(index=i, text=t, start_char_idx=0, end_char_idx=10)
+            for i, t in enumerate(sample_chunks)
+        ]
 
         # embed_chunks returns Iterator[Chunk], so we consume it
         embedded_chunks = list(embedder.embed_chunks(chunk_objects))
@@ -74,8 +75,7 @@ def test_embedding_clustering_pipeline(mock_embeddings: list[list[float]], sampl
         # Extract embeddings and ensure they are not None
         valid_embeddings: list[list[float]] = []
         for c in embedded_chunks:
-            if c.embedding is None:
-                 pytest.fail("Embedding should not be None")
+            assert c.embedding is not None, "Embedding should not be None"
             valid_embeddings.append(c.embedding)
 
         clusters = clusterer.cluster_nodes(valid_embeddings, config)
@@ -83,7 +83,8 @@ def test_embedding_clustering_pipeline(mock_embeddings: list[list[float]], sampl
         assert len(clusters) > 0
         # Check that we have valid clusters
         for cluster in clusters:
-             assert cluster.node_indices
+            assert cluster.node_indices
+
 
 def test_real_pipeline_small() -> None:
     """
@@ -93,7 +94,7 @@ def test_real_pipeline_small() -> None:
         embedding_model="mock-model",
         n_clusters=2,
         random_state=42,
-        umap_n_neighbors=5 # Small neighbors for small dataset
+        umap_n_neighbors=5,  # Small neighbors for small dataset
     )
 
     # Generate 10 random chunks

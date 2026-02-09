@@ -9,6 +9,7 @@ def test_uat_scenario_02_ingestion_cleaning() -> None:
     cleaned = normalize_text(text)
     assert cleaned == "123ABC"
 
+
 def test_uat_scenario_03_sentence_splitting() -> None:
     """Scenario 03: Japanese Sentence Splitting."""
     text = "「これはテストです。」と彼は言った。次の文です！"
@@ -22,6 +23,7 @@ def test_uat_scenario_03_sentence_splitting() -> None:
     # We assert that "次の文です！" is a separate sentence at the end.
     assert sentences[-1] == "次の文です！"
 
+
 def test_uat_scenario_04_chunk_size() -> None:
     """Scenario 04: Chunk Size Management."""
     # Long text
@@ -29,7 +31,7 @@ def test_uat_scenario_04_chunk_size() -> None:
     text = sentence * 10
 
     chunker = JapaneseTokenChunker()
-    config = ProcessingConfig(max_tokens=50) # Small limit to force chunking
+    config = ProcessingConfig(max_tokens=50)  # Small limit to force chunking
     chunks = chunker.split_text(text, config)
 
     assert len(chunks) > 1

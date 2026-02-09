@@ -20,13 +20,7 @@ def test_document_validation() -> None:
 def test_chunk_validation() -> None:
     """Test valid and invalid Chunk creation."""
     # Valid
-    chunk = Chunk(
-        index=0,
-        text="chunk text",
-        start_char_idx=0,
-        end_char_idx=10,
-        metadata={}
-    )
+    chunk = Chunk(index=0, text="chunk text", start_char_idx=0, end_char_idx=10, metadata={})
     assert chunk.index == 0
     assert chunk.text == "chunk text"
 
@@ -43,11 +37,7 @@ def test_summary_node_validation() -> None:
     """Test valid and invalid SummaryNode creation."""
     # Valid
     node = SummaryNode(
-        id="node1",
-        text="Summary of text",
-        level=1,
-        children_indices=[0, 1],
-        metadata={}
+        id="node1", text="Summary of text", level=1, children_indices=[0, 1], metadata={}
     )
     assert node.level == 1
     assert node.children_indices == [0, 1]
@@ -58,29 +48,20 @@ def test_summary_node_validation() -> None:
             id="node1",
             text="Summary",
             level=0,  # Should be >= 1
-            children_indices=[0]
+            children_indices=[0],
         )
 
 
 def test_cluster_validation() -> None:
     """Test valid and invalid Cluster creation."""
     # Valid
-    cluster = Cluster(
-        id="c1",
-        level=0,
-        node_indices=[0, 1, 2],
-        centroid=[0.1, 0.2]
-    )
+    cluster = Cluster(id="c1", level=0, node_indices=[0, 1, 2], centroid=[0.1, 0.2])
     assert cluster.level == 0
     assert cluster.node_indices == [0, 1, 2]
 
     # Invalid case: level < 0
     with pytest.raises(ValidationError):
-        Cluster(
-            id="c1",
-            level=-1,
-            node_indices=[0]
-        )
+        Cluster(id="c1", level=-1, node_indices=[0])
 
 
 def test_document_tree_validation() -> None:
@@ -88,19 +69,11 @@ def test_document_tree_validation() -> None:
     # Setup components
     chunk1 = Chunk(index=0, text="A", start_char_idx=0, end_char_idx=1)
     chunk2 = Chunk(index=1, text="B", start_char_idx=1, end_char_idx=2)
-    summary = SummaryNode(
-        id="s1",
-        text="AB",
-        level=1,
-        children_indices=[0, 1]
-    )
+    summary = SummaryNode(id="s1", text="AB", level=1, children_indices=[0, 1])
 
     # Valid DocumentTree
     tree = DocumentTree(
-        root_node=summary,
-        all_nodes={"s1": summary},
-        leaf_chunks=[chunk1, chunk2],
-        metadata={}
+        root_node=summary, all_nodes={"s1": summary}, leaf_chunks=[chunk1, chunk2], metadata={}
     )
     assert tree.root_node.id == "s1"
     assert len(tree.leaf_chunks) == 2

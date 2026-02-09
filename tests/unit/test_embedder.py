@@ -20,10 +20,9 @@ def test_scenario_05_embedding_vector_generation() -> None:
         # Use small vector dimension (32) to save memory in tests
         # Mock encode to return a list of arrays (simulating convert_to_numpy=True)
         # Note: embed_strings yields a generator, embed_chunks consumes it
-        mock_instance.encode.return_value = np.array([
-            list(np.random.rand(32)),
-            list(np.random.rand(32))
-        ])
+        mock_instance.encode.return_value = np.array(
+            [list(np.random.rand(32)), list(np.random.rand(32))]
+        )
 
         config = ProcessingConfig()
         service = EmbeddingService(config)
@@ -32,6 +31,7 @@ def test_scenario_05_embedding_vector_generation() -> None:
         for chunk in embedded_chunks:
             assert chunk.embedding is not None
             assert len(chunk.embedding) == 32
+
 
 def test_embed_strings_generator() -> None:
     texts = ["text1", "text2", "text3"]
@@ -44,7 +44,7 @@ def test_embed_strings_generator() -> None:
         # 2nd batch (1 item)
         mock_instance.encode.side_effect = [
             np.array([[0.1, 0.1], [0.2, 0.2]]),
-            np.array([[0.3, 0.3]])
+            np.array([[0.3, 0.3]]),
         ]
 
         # Instantiate inside the patch to use the mock
@@ -65,9 +65,15 @@ def test_embed_strings_generator() -> None:
         assert mock_instance.encode.call_count == 2
         # Note: check arguments carefully.
         # The first call should be with the first batch
-        mock_instance.encode.assert_any_call(["text1", "text2"], batch_size=2, convert_to_numpy=True, show_progress_bar=False)
+        # We now pass tuples to avoid list materialization
+        mock_instance.encode.assert_any_call(
+            ("text1", "text2"), batch_size=2, convert_to_numpy=True, show_progress_bar=False
+        )
         # The second call with the remainder
-        mock_instance.encode.assert_any_call(["text3"], batch_size=1, convert_to_numpy=True, show_progress_bar=False)
+        mock_instance.encode.assert_any_call(
+            ("text3",), batch_size=1, convert_to_numpy=True, show_progress_bar=False
+        )
+
 
 def test_embed_strings_empty() -> None:
     config = ProcessingConfig()

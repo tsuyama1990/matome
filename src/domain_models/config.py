@@ -4,14 +4,18 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# Define strict defaults here to isolate them
-# These are fallback values if Env Vars are not present
-DEFAULT_TOKENIZER = "cl100k_base"
-DEFAULT_EMBEDDING = "intfloat/multilingual-e5-large"
-DEFAULT_SUMMARIZER = "gpt-4o"
+from domain_models.constants import (
+    ALLOWED_EMBEDDING_MODELS,
+    ALLOWED_TOKENIZER_MODELS,
+    DEFAULT_EMBEDDING,
+    DEFAULT_SUMMARIZER,
+    DEFAULT_TOKENIZER,
+)
+
 
 class ClusteringAlgorithm(Enum):
     GMM = "gmm"
+
 
 class ProcessingConfig(BaseModel):
     """
@@ -29,7 +33,7 @@ class ProcessingConfig(BaseModel):
     )
     tokenizer_model: str = Field(
         default_factory=lambda: os.getenv("TOKENIZER_MODEL", DEFAULT_TOKENIZER),
-        description="Tokenizer model/encoding name to use."
+        description="Tokenizer model/encoding name to use.",
     )
 
     # Semantic Chunking Configuration
@@ -37,16 +41,22 @@ class ProcessingConfig(BaseModel):
         default=False, description="Whether to use semantic chunking instead of token chunking."
     )
     semantic_chunking_threshold: float = Field(
-        default=0.8, ge=0.0, le=1.0, description="Cosine similarity threshold for merging sentences."
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="Cosine similarity threshold for merging sentences.",
     )
     semantic_chunking_percentile: int = Field(
-        default=90, ge=0, le=100, description="Percentile threshold for breakpoint detection (if using percentile mode)."
+        default=90,
+        ge=0,
+        le=100,
+        description="Percentile threshold for breakpoint detection (if using percentile mode).",
     )
 
     # Embedding Configuration
     embedding_model: str = Field(
         default_factory=lambda: os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING),
-        description="HuggingFace model name for embeddings."
+        description="HuggingFace model name for embeddings.",
     )
     embedding_batch_size: int = Field(
         default=32, ge=1, description="Batch size for embedding generation."
@@ -54,16 +64,17 @@ class ProcessingConfig(BaseModel):
 
     # Clustering Configuration
     clustering_algorithm: ClusteringAlgorithm = Field(
-        default=ClusteringAlgorithm.GMM, description="Algorithm to use (e.g., 'gmm'). Currently only 'gmm' is supported."
+        default=ClusteringAlgorithm.GMM,
+        description="Algorithm to use (e.g., 'gmm'). Currently only 'gmm' is supported.",
     )
     n_clusters: int | None = Field(
         default=None, description="Fixed number of clusters (if applicable)."
     )
-    random_state: int = Field(
-        default=42, description="Random seed for reproducibility."
-    )
+    random_state: int = Field(default=42, description="Random seed for reproducibility.")
     umap_n_neighbors: int = Field(
-        default=15, ge=2, description="UMAP parameter: Number of neighbors for dimensionality reduction."
+        default=15,
+        ge=2,
+        description="UMAP parameter: Number of neighbors for dimensionality reduction.",
     )
     umap_min_dist: float = Field(
         default=0.1, ge=0.0, description="UMAP parameter: Minimum distance between points."
@@ -72,13 +83,35 @@ class ProcessingConfig(BaseModel):
         default=2, ge=2, description="UMAP parameter: Number of dimensions to reduce to."
     )
     write_batch_size: int = Field(
-        default=10_000, ge=1, description="Batch size for writing vectors to disk during clustering."
+        default=1000,
+        ge=1,
+        description="Batch size for writing vectors to disk during clustering.",
+    )
+    large_scale_threshold: int = Field(
+        default=20000,
+        ge=1,
+        description="Threshold for switching to approximate clustering.",
+    )
+    chunk_buffer_size: int = Field(
+        default=50,
+        ge=1,
+        description="Buffer size for batch database writes in Raptor engine.",
+    )
+    canvas_node_width: int = Field(
+        default=400,
+        ge=10,
+        description="Width of nodes in Obsidian Canvas export.",
+    )
+    canvas_node_height: int = Field(
+        default=200,
+        ge=10,
+        description="Height of nodes in Obsidian Canvas export.",
     )
 
     # Summarization Configuration
     summarization_model: str = Field(
         default_factory=lambda: os.getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZER),
-        description="Model to use for summarization."
+        description="Model to use for summarization.",
     )
     max_summary_tokens: int = Field(
         default=200, ge=1, description="Target token count for summaries."
@@ -103,10 +136,23 @@ class ProcessingConfig(BaseModel):
         if not v or not v.strip():
             msg = "Embedding model name cannot be empty."
             raise ValueError(msg)
-        # Basic check for suspicious characters
-        forbidden = [";", "&", "|", "`", "$", "(", ")", "<", ">"]
-        if any(char in v for char in forbidden):
-            msg = f"Invalid characters in embedding model name: {v}"
+        if v not in ALLOWED_EMBEDDING_MODELS:
+            msg = (
+                f"Embedding model '{v}' is not in the allowed list. "
+                f"Allowed: {sorted(ALLOWED_EMBEDDING_MODELS)}"
+            )
+            raise ValueError(msg)
+        return v
+
+    @field_validator("tokenizer_model")
+    @classmethod
+    def validate_tokenizer_model(cls, v: str) -> str:
+        """Validate tokenizer model against whitelist."""
+        if v not in ALLOWED_TOKENIZER_MODELS:
+            msg = (
+                f"Tokenizer model '{v}' is not allowed. "
+                f"Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
+            )
             raise ValueError(msg)
         return v
 

@@ -11,12 +11,14 @@ from matome.agents.summarizer import SummarizationAgent
 def config() -> ProcessingConfig:
     return ProcessingConfig()
 
+
 @pytest.fixture
 def agent(config: ProcessingConfig) -> SummarizationAgent:
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="test_key"):
         agent = SummarizationAgent(config)
         agent.llm = MagicMock()
         return agent
+
 
 def test_summarize_long_document_dos(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """
@@ -27,10 +29,10 @@ def test_summarize_long_document_dos(agent: SummarizationAgent, config: Processi
     # Should check max word length too, so we need spaces
     # 5000 chars per word max allowed (default 1000 now)
     # We construct safe text with spaces
-    safe_text_words = ("a" * 100 + " ") * 4900 # ~495k chars
+    safe_text_words = ("a" * 100 + " ") * 4900  # ~495k chars
 
     # Mock LLM
-    agent.llm.invoke.return_value = AIMessage(content="Summary") # type: ignore
+    agent.llm.invoke.return_value = AIMessage(content="Summary")  # type: ignore
 
     # Safe text should pass validation
     result = agent.summarize(safe_text_words, config)
@@ -40,6 +42,7 @@ def test_summarize_long_document_dos(agent: SummarizationAgent, config: Processi
     unsafe_text = "a" * 500_001
     with pytest.raises(ValueError, match="Input text exceeds maximum allowed length"):
         agent.summarize(unsafe_text, config)
+
 
 def test_summarize_token_dos(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test protection against long words (tokenization bomb)."""
