@@ -68,6 +68,8 @@ class DiskChunkStore:
         # Configure connection pooling for performance
         # SQLite handles concurrency poorly with multiple writers, but we use WAL mode.
         # Pool size and timeout help manage contention.
+        # isolation_level=None allows manual transaction control if needed, but AUTOCOMMIT is default.
+        # For WAL, standard is fine. We explicitly set PRAGMAs.
         self.engine = create_engine(
             db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800
         )
@@ -78,6 +80,8 @@ class DiskChunkStore:
         with self.engine.begin() as conn:
             # Enable WAL mode for performance
             conn.execute(text("PRAGMA journal_mode=WAL;"))
+            # Synchronous NORMAL is faster and safe enough for WAL
+            conn.execute(text("PRAGMA synchronous=NORMAL;"))
 
         # Define schema using SQLAlchemy Core
         metadata = MetaData()

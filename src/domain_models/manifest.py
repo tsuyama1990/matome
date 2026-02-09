@@ -25,7 +25,7 @@ class Chunk(BaseModel):
     model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     index: int = Field(..., ge=0, description="Sequential ID of the chunk.")
-    text: str = Field(..., description="The actual text content of the chunk.")
+    text: str = Field(..., min_length=1, description="The actual text content of the chunk.")
     start_char_idx: int = Field(
         ..., ge=0, description="Starting character position in the original text."
     )

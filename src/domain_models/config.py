@@ -6,10 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
+    ALLOWED_SUMMARIZATION_MODELS,
     ALLOWED_TOKENIZER_MODELS,
     DEFAULT_EMBEDDING,
     DEFAULT_SUMMARIZER,
     DEFAULT_TOKENIZER,
+    LARGE_SCALE_THRESHOLD,
 )
 
 
@@ -88,7 +90,7 @@ class ProcessingConfig(BaseModel):
         description="Batch size for writing vectors to disk during clustering.",
     )
     large_scale_threshold: int = Field(
-        default=20000,
+        default=LARGE_SCALE_THRESHOLD,
         ge=1,
         description="Threshold for switching to approximate clustering.",
     )
@@ -163,6 +165,18 @@ class ProcessingConfig(BaseModel):
             msg = (
                 f"Embedding model '{v}' is not in the allowed list. "
                 f"Allowed: {sorted(ALLOWED_EMBEDDING_MODELS)}"
+            )
+            raise ValueError(msg)
+        return v
+
+    @field_validator("summarization_model", "verification_model")
+    @classmethod
+    def validate_llm_model(cls, v: str) -> str:
+        """Validate LLM model name against whitelist."""
+        if v not in ALLOWED_SUMMARIZATION_MODELS:
+            msg = (
+                f"LLM model '{v}' is not allowed. "
+                f"Allowed: {sorted(ALLOWED_SUMMARIZATION_MODELS)}"
             )
             raise ValueError(msg)
         return v
