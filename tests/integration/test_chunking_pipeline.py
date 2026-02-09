@@ -1,12 +1,10 @@
 from pathlib import Path
+from unittest.mock import patch
 
 from domain_models.config import ProcessingConfig
 from matome.engines.token_chunker import JapaneseTokenChunker
-from matome.utils.io import read_file
 from matome.utils.text import normalize_text
 
-
-from unittest.mock import patch
 
 def test_chunking_pipeline_integration(tmp_path: Path) -> None:
     """

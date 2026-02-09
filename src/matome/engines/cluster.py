@@ -169,6 +169,7 @@ class GMMClusterer:
     ) -> list[Cluster]:
         """
         Execute UMAP reduction and GMM clustering on the data.
+        Performs Soft Clustering using GMM probabilities.
 
         Args:
             data: The dataset (numpy array or memmap).
@@ -221,10 +222,10 @@ class GMMClusterer:
             logger.info(f"Clustering into {gmm_n_components} components.")
             gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
             gmm.fit(reduced_embeddings)
-            labels = gmm.predict(reduced_embeddings)
 
-            # 3. Form Clusters
-            return self._form_clusters(labels)
+            # 3. Soft Clustering (Probabilistic Assignment)
+            probs = gmm.predict_proba(reduced_embeddings)
+            return self._form_clusters_soft(probs, gmm_n_components, config.clustering_probability_threshold)
 
         except Exception as e:
             logger.exception("Clustering process failed during UMAP/GMM execution.")
@@ -232,7 +233,7 @@ class GMMClusterer:
             raise RuntimeError(msg) from e
 
     def _form_clusters(self, labels: np.ndarray) -> list[Cluster]:
-        """Convert clustering labels into Cluster objects."""
+        """Convert hard clustering labels into Cluster objects (used for approx clustering)."""
         clusters: list[Cluster] = []
         unique_labels = np.unique(labels)
         for label in unique_labels:
@@ -246,6 +247,48 @@ class GMMClusterer:
                 node_indices=node_indices,
             )
             clusters.append(cluster)
+        return clusters
+
+    def _form_clusters_soft(
+        self, probs: np.ndarray, n_clusters: int, threshold: float
+    ) -> list[Cluster]:
+        """
+        Convert GMM probabilities into Cluster objects (Soft Clustering).
+        A node is assigned to a cluster if P(cluster|node) >= threshold.
+        Guarantees every node is assigned to at least one cluster (argmax).
+        """
+        # Dictionary to hold list of node indices for each cluster
+        cluster_map: dict[int, list[NodeID]] = {i: [] for i in range(n_clusters)}
+
+        n_samples = probs.shape[0]
+
+        for i in range(n_samples):
+            # Get probabilities for node i
+            node_probs = probs[i]
+
+            # Identify clusters exceeding threshold
+            assigned_indices = np.where(node_probs >= threshold)[0]
+
+            # If no cluster exceeds threshold, assign to the one with max probability
+            if len(assigned_indices) == 0:
+                max_idx = np.argmax(node_probs)
+                cluster_map[int(max_idx)].append(i)
+            else:
+                for cluster_idx in assigned_indices:
+                    cluster_map[int(cluster_idx)].append(i)
+
+        # Create Cluster objects
+        clusters: list[Cluster] = []
+        for cluster_id, node_indices in cluster_map.items():
+            if node_indices:
+                clusters.append(
+                    Cluster(
+                        id=cluster_id,
+                        level=0,
+                        node_indices=node_indices
+                    )
+                )
+
         return clusters
 
     def _perform_approximate_clustering(

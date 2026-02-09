@@ -89,6 +89,12 @@ class ProcessingConfig(BaseModel):
         ge=1,
         description="Batch size for writing vectors to disk during clustering.",
     )
+    clustering_probability_threshold: float = Field(
+        default=0.1,
+        ge=0.0,
+        le=1.0,
+        description="Minimum probability for assigning a node to a cluster (soft clustering).",
+    )
     large_scale_threshold: int = Field(
         default=LARGE_SCALE_THRESHOLD,
         ge=1,

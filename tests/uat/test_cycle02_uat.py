@@ -55,6 +55,12 @@ def test_scenario_06_clustering_logic() -> None:
         # Mock GMM
         mock_gmm_instance = MagicMock()
         mock_gmm.return_value = mock_gmm_instance
+        # predict_proba returns (N, K) probabilities
+        probs = np.array([
+            [0.99, 0.01], [0.99, 0.01], [0.99, 0.01],
+            [0.01, 0.99], [0.01, 0.99], [0.01, 0.99]
+        ])
+        mock_gmm_instance.predict_proba.return_value = probs
         mock_gmm_instance.predict.return_value = np.array([0, 0, 0, 1, 1, 1])
         mock_gmm_instance.n_components = 2  # Simulate BIC finding 2
         mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]

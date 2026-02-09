@@ -8,6 +8,7 @@ from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
+from matome.utils.compat import batched
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
@@ -116,8 +117,24 @@ class RaptorEngine:
                 if node_count <= 1:
                     break
 
-                if len(clusters) == node_count:
-                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+                # Force reduction if clustering returns same number of clusters as nodes
+                if len(clusters) == node_count and node_count > 1:
+                    logger.warning(
+                        f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
+                    )
+                    # Fallback: Merge all into one cluster if node_count is small, else break?
+                    # If we break, we stop summarization.
+                    # Let's collapse to 1 cluster if small enough.
+                    if node_count < 20:
+                        clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+                    else:
+                        # Just proceed, maybe next level will cluster better?
+                        # No, if we don't reduce, we loop forever or just summarize 1-to-1?
+                        # Summarize 1-to-1 is useless.
+                        # We MUST reduce.
+                        # Let's break for safety to avoid infinite loops if we can't reduce.
+                        logger.error("Could not reduce nodes. Stopping recursion.")
+                        break
 
                 logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
@@ -146,13 +163,14 @@ class RaptorEngine:
                     active_store.add_summaries(summary_buffer)
 
                 if len(current_level_ids) > 1:
-                    clusters = self._next_level_clustering(current_level_ids, active_store)
+                    # Embed and Cluster for next level
+                    clusters = self._embed_and_cluster_next_level(current_level_ids, active_store)
                 else:
                     clusters = []
 
             return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
 
-    def _next_level_clustering(
+    def _embed_and_cluster_next_level(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
     ) -> list[Cluster]:
         """
@@ -175,8 +193,6 @@ class RaptorEngine:
                         )
 
             # Strategy: Batched processing manually
-            from matome.utils.compat import batched
-
             # We process in batches to avoid loading all texts
             for batch in batched(node_text_generator(), self.config.embedding_batch_size):
                 # batch is a tuple of (nid, text)
@@ -271,6 +287,11 @@ class RaptorEngine:
 
             for idx_raw in cluster.node_indices:
                 idx = int(idx_raw)
+                # Check bounds
+                if idx < 0 or idx >= len(current_level_ids):
+                    logger.warning(f"Cluster index {idx} out of bounds for current level nodes.")
+                    continue
+
                 node_id = current_level_ids[idx]
                 node = store.get_node(node_id)
                 if not node:
@@ -278,6 +299,10 @@ class RaptorEngine:
 
                 children_indices.append(node_id)
                 cluster_texts.append(node.text)
+
+            if not cluster_texts:
+                logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
+                continue
 
             # Note: For very large clusters, joining texts might still be memory intensive.
             # But the summarizer typically takes a string.
