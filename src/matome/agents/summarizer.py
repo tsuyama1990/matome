@@ -4,6 +4,7 @@ This module implements the summarization logic using OpenRouter and Chain of Den
 """
 import logging
 import os
+import re
 import uuid
 from typing import Any
 
@@ -74,6 +75,9 @@ class SummarizationAgent:
             logger.debug(f"[{request_id}] Skipping empty text summarization.")
             return ""
 
+        # Validate input for security
+        self._validate_input(text)
+
         # Mock Mode Check
         if self.api_key == "mock":
             logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
@@ -99,6 +103,26 @@ class SummarizationAgent:
             logger.exception(f"[{request_id}] Summarization failed for text length {len(text)}")
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
+
+    def _validate_input(self, text: str) -> None:
+        """
+        Sanitize and validate input text to prevent injection attacks or excessive load.
+        """
+        # 1. Length Check
+        # Assuming extremely large inputs might be a DoS vector.
+        # But this is summarization, so large inputs are expected.
+        # Let's set a reasonable upper bound if needed, e.g., 100k chars for now.
+        MAX_INPUT_LENGTH = 500_000
+        if len(text) > MAX_INPUT_LENGTH:
+             msg = f"Input text exceeds maximum allowed length ({MAX_INPUT_LENGTH} characters)."
+             raise ValueError(msg)
+
+        # 2. Control Character Check
+        # Remove null bytes and other dangerous control characters, preserving newlines/tabs
+        # Use regex to find control characters (C0 and C1) excluding CR, LF, Tab
+        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", text):
+             msg = "Input text contains invalid control characters."
+             raise ValueError(msg)
 
     def _invoke_llm(self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str) -> BaseMessage:
         """Helper to invoke LLM with retry logic."""

@@ -45,7 +45,6 @@ def test_embedding_clustering_pipeline(mock_embeddings: list[list[float]], sampl
         MockST.return_value = mock_instance
 
         # Configure encode to return our mock embeddings
-        # Since embed_strings processes in batches, we need to handle batching or return all.
         config = ProcessingConfig(
              embedding_model="mock-model",
              n_clusters=3,
@@ -61,11 +60,11 @@ def test_embedding_clustering_pipeline(mock_embeddings: list[list[float]], sampl
 
         # 1. Embedding
         embedder = EmbeddingService(config)
-        # We mock chunks as objects with .text and .embedding
         from domain_models.manifest import Chunk
         chunk_objects = [Chunk(index=i, text=t, start_char_idx=0, end_char_idx=10) for i, t in enumerate(sample_chunks)]
 
-        embedded_chunks = embedder.embed_chunks(chunk_objects)
+        # embed_chunks returns Iterator[Chunk], so we consume it
+        embedded_chunks = list(embedder.embed_chunks(chunk_objects))
 
         assert len(embedded_chunks) == 30
         assert embedded_chunks[0].embedding is not None
@@ -89,7 +88,6 @@ def test_embedding_clustering_pipeline(mock_embeddings: list[list[float]], sampl
 def test_real_pipeline_small() -> None:
     """
     Test using mocked SentenceTransformer but real UMAP/GMM.
-    This replaces the old skipped test with a valid mocked test.
     """
     config = ProcessingConfig(
         embedding_model="mock-model",

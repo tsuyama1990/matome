@@ -32,89 +32,77 @@ class GMMClusterer:
         Returns:
             A list of Cluster objects containing indices of grouped nodes.
         """
-        # Validate algorithm
-        if config.clustering_algorithm != "gmm":
-            msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
-            raise ValueError(msg)
-
         if not embeddings:
             return []
 
-        # Validate data integrity (no None embeddings)
-        # Note: Iterating to check integrity is fast enough
-        if any(e is None for e in embeddings):
-             msg = "Embeddings list contains None values."
-             raise ValueError(msg)
+        self._validate_algorithm(config)
+        self._validate_embeddings(embeddings)
 
         n_samples = len(embeddings)
         if n_samples == 0:
             return []
 
-        dim = len(embeddings[0])
+        # Handle edge cases (n < 3) separately
+        edge_case_result = self._handle_edge_cases(n_samples)
+        if edge_case_result:
+            return edge_case_result
 
-        # Edge case: Single node or small dataset
-        # We must check for NaNs/Infs even in these cases if we want strict validation.
-        # Since n is small, we can convert to array/memmap and check, or check manually.
-        # Let's rely on _perform_clustering validation logic, BUT _perform_clustering
-        # is only called for n >= 3 usually.
-        # To ensure consistency, we should validate content before returning early results
-        # if the test demands it.
-        # For n < 3, checking explicitly:
-        if n_samples < 3:
+        # Use memory-mapped file for main processing
+        return self._process_with_memmap(embeddings, n_samples, config)
+
+    def _validate_algorithm(self, config: ProcessingConfig) -> None:
+        if config.clustering_algorithm != "gmm":
+            msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
+            raise ValueError(msg)
+
+    def _validate_embeddings(self, embeddings: list[list[float]]) -> None:
+        if any(e is None for e in embeddings):
+             msg = "Embeddings list contains None values."
+             raise ValueError(msg)
+
+        # Check for NaN/Inf in small datasets where memmap is skipped
+        if len(embeddings) < 3:
              for vec in embeddings:
                  if any(np.isnan(x) or np.isinf(x) for x in vec):
                       msg = "Embeddings contain NaN or Infinity values."
                       raise ValueError(msg)
 
-        # Edge case: Single node
+    def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
         if n_samples == 1:
             return [Cluster(id=0, level=0, node_indices=[0])]
 
-        # Edge case: Very small dataset (< 3 samples).
         if n_samples < 3:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
             return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
 
-        # Use memory-mapped file to avoid in-memory numpy array copy
-        # limiting OOM risk for large datasets
+        return None
+
+    def _process_with_memmap(self, embeddings: list[list[float]], n_samples: int, config: ProcessingConfig) -> list[Cluster]:
+        dim = len(embeddings[0])
 
         with tempfile.NamedTemporaryFile(delete=True) as tf:
-            # We need a filename for memmap
-            # NamedTemporaryFile is deleted on close. We keep it open or use name.
-            # On Linux/Unix, we can use the name while open.
-
-            # Create a memmap array matching the shape
-            # We use 'w+' to read/write
             mm_array = np.memmap(tf, dtype='float32', mode='w+', shape=(n_samples, dim))
 
-            # Copy data to memmap chunk by chunk or row by row
-            # Since input is a list, we iterate.
+            # Copy data
             for i, emb in enumerate(embeddings):
                 mm_array[i] = emb
 
-            # Flush changes to disk
             mm_array.flush()
 
-            # Now perform clustering using the memmap array
-            # Cleanup is handled by NamedTemporaryFile context exit
+            # Validate content on memmap
+            if np.isnan(mm_array).any() or np.isinf(mm_array).any():
+                 msg = "Embeddings contain NaN or Infinity values."
+                 raise ValueError(msg)
+
             return self._perform_clustering(mm_array, n_samples, config)
 
     def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
         """Helper to run UMAP and GMM on the data (numpy array or memmap)."""
-
-        # Input Validation (checking nan/inf on the array/memmap)
-        # This might be expensive on memmap, but necessary.
-        if np.isnan(data).any() or np.isinf(data).any():
-             msg = "Embeddings contain NaN or Infinity values."
-             raise ValueError(msg)
-
-        # UMAP Parameters from Config
+        # UMAP Parameters
         n_neighbors = config.umap_n_neighbors
         min_dist = config.umap_min_dist
 
-        # Adjust n_neighbors for small datasets
-        effective_n_neighbors = min(n_neighbors, n_samples - 1)
-        effective_n_neighbors = max(effective_n_neighbors, 2)
+        effective_n_neighbors = max(min(n_neighbors, n_samples - 1), 2)
 
         if effective_n_neighbors != n_neighbors:
             logger.warning(
@@ -148,11 +136,13 @@ class GMMClusterer:
         labels = gmm.predict(reduced_embeddings)
 
         # 3. Form Clusters
+        return self._form_clusters(labels)
+
+    def _form_clusters(self, labels: np.ndarray) -> list[Cluster]:
         clusters: list[Cluster] = []
         unique_labels = np.unique(labels)
         for label in unique_labels:
             indices = np.where(labels == label)[0]
-            # Convert numpy indices to standard python ints for JSON serializability
             node_indices: list[NodeID] = [int(indices[i].item()) for i in range(len(indices))]
 
             cluster = Cluster(
@@ -161,7 +151,6 @@ class GMMClusterer:
                 node_indices=node_indices,
             )
             clusters.append(cluster)
-
         return clusters
 
     def _calculate_optimal_clusters(self, embeddings: np.ndarray, random_state: int) -> int:

@@ -96,11 +96,13 @@ def test_full_pipeline_flow() -> None:
             assert len(chunks) > 1, "Should have produced multiple chunks"
 
             # 2. Embedding
-            chunks = embedder.embed_chunks(chunks)
-            assert all(c.embedding is not None for c in chunks)
+            # embed_chunks returns iterator, convert to list for verification
+            chunks_with_embeddings = list(embedder.embed_chunks(chunks))
+            assert all(c.embedding is not None for c in chunks_with_embeddings)
+
             # Help mypy understand embedding is not None
             valid_embeddings: list[list[float]] = []
-            for c in chunks:
+            for c in chunks_with_embeddings:
                 if c.embedding is None:
                     pytest.fail("Embedding should not be None")
                 valid_embeddings.append(c.embedding)
@@ -124,7 +126,7 @@ def test_full_pipeline_flow() -> None:
                 if not isinstance(idx, int):
                     # Should be int indices relative to input list for GMMClusterer
                      pytest.fail(f"Expected int index, got {type(idx)}")
-                cluster_text_parts.append(chunks[idx].text)
+                cluster_text_parts.append(chunks_with_embeddings[idx].text)
 
             cluster_text = " ".join(cluster_text_parts)
 

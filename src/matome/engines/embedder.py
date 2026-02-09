@@ -80,20 +80,23 @@ class EmbeddingService:
             logger.exception("Failed to encode batch.")
             raise
 
-    def embed_chunks(self, chunks: list[Chunk]) -> list[Chunk]:
+    def embed_chunks(self, chunks: Iterable[Chunk]) -> Iterator[Chunk]:
         """
-        Embeds a list of chunks in-place and returns them.
+        Embeds an iterable of chunks and yields them with embeddings.
+        This enables streaming processing of chunks.
         """
-        if not chunks:
-            return []
+        batch_size = self.config.embedding_batch_size
 
-        # Create a generator for texts
-        texts_gen = (chunk.text for chunk in chunks)
+        # Use itertools.batched (Python 3.12+) to stream chunks in batches
+        for batch_chunks in itertools.batched(chunks, batch_size):
+            # batch_chunks is a tuple of Chunk objects
+            chunk_list = list(batch_chunks)
+            texts = [c.text for c in chunk_list]
 
-        # consume the generator
-        embeddings_gen = self.embed_strings(texts_gen)
+            # Embed batch (returns iterator, consumed immediately)
+            embeddings = list(self._process_batch(texts))
 
-        for chunk, embedding in zip(chunks, embeddings_gen, strict=True):
-            chunk.embedding = embedding
-
-        return chunks
+            # Assign and yield
+            for chunk, embedding in zip(chunk_list, embeddings, strict=True):
+                chunk.embedding = embedding
+                yield chunk
