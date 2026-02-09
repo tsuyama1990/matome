@@ -207,7 +207,7 @@ class SummarizationAgent:
             msg = "LLM not initialized"
             raise SummarizationError(msg)
 
-        response = None
+        response: BaseMessage | None = None
         # Use Tenacity for retries based on config
         for attempt in Retrying(
             stop=stop_after_attempt(config.max_retries),
@@ -220,14 +220,9 @@ class SummarizationAgent:
                         f"[{request_id}] Retrying LLM call (Attempt {attempt.retry_state.attempt_number}/{config.max_retries})"
                     )
 
-                # Check if LLM is chat model or simple LLM (though typed as ChatOpenAI)
-                if hasattr(self.llm, "invoke"):
-                    response = self.llm.invoke(messages)
-                else:
-                    # Fallback for mock objects that might not have invoke
-                    response = self.llm(messages)  # type: ignore[operator]
+                response = self.llm.invoke(messages)
 
-        if not response:
+        if response is None:
             msg = f"[{request_id}] No response received from LLM."
             raise SummarizationError(msg)
 
