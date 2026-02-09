@@ -3,7 +3,8 @@ from functools import lru_cache
 
 import tiktoken
 
-from domain_models.config import ALLOWED_TOKENIZER_MODELS, ProcessingConfig
+from domain_models.config import ProcessingConfig
+from domain_models.constants import ALLOWED_TOKENIZER_MODELS
 from domain_models.manifest import Chunk
 from matome.utils.text import iter_sentences, normalize_text
 
@@ -112,6 +113,16 @@ class JapaneseTokenChunker:
         """
         if config is None:
             config = ProcessingConfig()
+
+        # Explicitly validate against whitelist before usage, ensuring security
+        # even if config validation was somehow bypassed (though ProcessingConfig enforces it).
+        if config.tokenizer_model not in ALLOWED_TOKENIZER_MODELS:
+            msg = (
+                f"Tokenizer model '{config.tokenizer_model}' is not allowed. "
+                f"Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
+            )
+            logger.error(msg)
+            raise ValueError(msg)
 
         self.tokenizer = get_cached_tokenizer(config.tokenizer_model)
 

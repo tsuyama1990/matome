@@ -97,32 +97,36 @@ class GMMClusterer:
             # Use batched utility to iterate in chunks
             # batched() consumes the iterator lazily, ensuring we only hold 'batch_size' items in RAM.
             for batch_tuple in batched(embeddings, batch_size):
-                # Validation on first item of first batch
-                if n_samples == 0:
-                    dim = len(batch_tuple[0])
-                    if dim == 0:
-                        msg = "Embedding dimension cannot be zero."
+                # Process in smaller sub-batches to avoid large memory allocation
+                # even if batch_size is large (e.g. from default config).
+                # 1000 rows * 1024 dims * 4 bytes = 4MB. Safe.
+                SUB_BATCH_SIZE = 1000
+
+                for i in range(0, len(batch_tuple), SUB_BATCH_SIZE):
+                    sub_batch = batch_tuple[i : i + SUB_BATCH_SIZE]
+
+                    if n_samples == 0 and i == 0:
+                        dim = len(sub_batch[0])
+                        if dim == 0:
+                            msg = "Embedding dimension cannot be zero."
+                            raise ValueError(msg)
+
+                    try:
+                        np_batch = np.array(sub_batch, dtype="float32")
+                    except ValueError as e:
+                        msg = f"Failed to create batch array: {e}"
+                        raise ValueError(msg) from e
+
+                    if np_batch.shape[1] != dim:
+                        msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
                         raise ValueError(msg)
 
-                # Check dimensions and content for the batch
-                try:
-                    np_batch = np.array(batch_tuple, dtype="float32")
-                except ValueError as e:
-                    # Likely inhomogeneous shape if lengths differ
-                    msg = f"Failed to create batch array: {e}"
-                    raise ValueError(msg) from e
+                    if not np.isfinite(np_batch).all():
+                        msg = "Embeddings contain NaN or Infinity values."
+                        raise ValueError(msg)
 
-                if np_batch.shape[1] != dim:
-                    msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
-                    raise ValueError(msg)
-
-                if not np.isfinite(np_batch).all():
-                    msg = "Embeddings contain NaN or Infinity values."
-                    raise ValueError(msg)
-
-                # Write to disk
-                np_batch.tofile(f)
-                n_samples += len(batch_tuple)
+                    np_batch.tofile(f)
+                    n_samples += len(sub_batch)
 
         return n_samples, dim
 

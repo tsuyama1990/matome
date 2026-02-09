@@ -3,7 +3,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import Column, MetaData, String, Table, Text, create_engine, text
 
 from domain_models.manifest import Chunk, SummaryNode
 
@@ -29,14 +29,17 @@ class DiskChunkStore:
         with self.engine.begin() as conn:
             # Enable WAL mode for performance
             conn.execute(text("PRAGMA journal_mode=WAL;"))
-            # Store serialized objects as TEXT (JSON)
-            conn.execute(text("""
-                CREATE TABLE nodes (
-                    id TEXT PRIMARY KEY,
-                    type TEXT,
-                    data TEXT
-                )
-            """))
+
+        # Define schema using SQLAlchemy Core
+        metadata = MetaData()
+        self.nodes_table = Table(
+            "nodes",
+            metadata,
+            Column("id", String, primary_key=True),
+            Column("type", String),
+            Column("data", Text),
+        )
+        metadata.create_all(self.engine)
 
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""

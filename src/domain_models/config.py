@@ -4,25 +4,13 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# Define strict defaults here to isolate them
-# These are fallback values if Env Vars are not present
-DEFAULT_TOKENIZER = "cl100k_base"
-DEFAULT_EMBEDDING = "intfloat/multilingual-e5-large"
-DEFAULT_SUMMARIZER = "gpt-4o"
-
-# Allowed tokenizer models for security whitelist
-ALLOWED_TOKENIZER_MODELS = {
-    "cl100k_base",
-    "p50k_base",
-    "r50k_base",
-    "gpt2",
-    "gpt-3.5-turbo",
-    "gpt-4",
-    "gpt-4o",
-    "text-embedding-ada-002",
-    "text-embedding-3-small",
-    "text-embedding-3-large",
-}
+from domain_models.constants import (
+    ALLOWED_EMBEDDING_MODELS,
+    ALLOWED_TOKENIZER_MODELS,
+    DEFAULT_EMBEDDING,
+    DEFAULT_SUMMARIZER,
+    DEFAULT_TOKENIZER,
+)
 
 
 class ClusteringAlgorithm(Enum):
@@ -95,7 +83,7 @@ class ProcessingConfig(BaseModel):
         default=2, ge=2, description="UMAP parameter: Number of dimensions to reduce to."
     )
     write_batch_size: int = Field(
-        default=10_000,
+        default=1000,
         ge=1,
         description="Batch size for writing vectors to disk during clustering.",
     )
@@ -105,7 +93,7 @@ class ProcessingConfig(BaseModel):
         description="Threshold for switching to approximate clustering.",
     )
     chunk_buffer_size: int = Field(
-        default=100,
+        default=50,
         ge=1,
         description="Buffer size for batch database writes in Raptor engine.",
     )
@@ -148,10 +136,11 @@ class ProcessingConfig(BaseModel):
         if not v or not v.strip():
             msg = "Embedding model name cannot be empty."
             raise ValueError(msg)
-        # Basic check for suspicious characters
-        forbidden = [";", "&", "|", "`", "$", "(", ")", "<", ">"]
-        if any(char in v for char in forbidden):
-            msg = f"Invalid characters in embedding model name: {v}"
+        if v not in ALLOWED_EMBEDDING_MODELS:
+            msg = (
+                f"Embedding model '{v}' is not in the allowed list. "
+                f"Allowed: {sorted(ALLOWED_EMBEDDING_MODELS)}"
+            )
             raise ValueError(msg)
         return v
 

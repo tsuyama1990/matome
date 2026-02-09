@@ -63,21 +63,27 @@ class EmbeddingService:
 
         try:
             # Access self.model (property) to trigger lazy load if needed
-            batch_embeddings = self.model.encode(
-                batch_texts,  # type: ignore[arg-type]
-                batch_size=len(batch_texts),  # We already batched it manually
-                convert_to_numpy=True,
-                show_progress_bar=False,
-            )
+            # Process in strict mini-batches to avoid any large memory allocation
+            # SentenceTransformer.encode internally batches, but returns full result.
+            # We must call encode on smaller chunks if we want to avoid full result in memory.
+            MINI_BATCH_SIZE = 8
 
-            if isinstance(batch_embeddings, np.ndarray):
-                # Iterate over rows
-                for i in range(batch_embeddings.shape[0]):
-                    yield batch_embeddings[i].tolist()
-            else:
-                # List of tensors or arrays
-                for emb in batch_embeddings:
-                    yield emb.tolist()
+            for i in range(0, len(batch_texts), MINI_BATCH_SIZE):
+                chunk_texts = batch_texts[i : i + MINI_BATCH_SIZE] # slice works on list/tuple
+
+                chunk_embeddings = self.model.encode(
+                    chunk_texts,  # type: ignore[arg-type]
+                    batch_size=len(chunk_texts),
+                    convert_to_numpy=True,
+                    show_progress_bar=False,
+                )
+
+                if isinstance(chunk_embeddings, np.ndarray):
+                    for j in range(chunk_embeddings.shape[0]):
+                        yield chunk_embeddings[j].tolist()
+                else:
+                    for emb in chunk_embeddings:
+                        yield emb.tolist()
 
         except Exception:
             logger.exception("Failed to encode batch.")

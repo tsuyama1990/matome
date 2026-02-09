@@ -21,9 +21,13 @@ def test_embedding_model_validation() -> None:
     with pytest.raises(ValidationError):
         ProcessingConfig(embedding_model="   ")
 
-    # Injection chars
+    # Injection chars / Not in whitelist
     with pytest.raises(ValidationError):
         ProcessingConfig(embedding_model="model; rm -rf")
+
+    # Valid model
+    config = ProcessingConfig(embedding_model="intfloat/multilingual-e5-large")
+    assert config.embedding_model == "intfloat/multilingual-e5-large"
 
 
 def test_tokenizer_model_validation() -> None:
