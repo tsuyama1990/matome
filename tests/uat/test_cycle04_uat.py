@@ -80,7 +80,7 @@ def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
     # 3 chunks -> 1 cluster -> 1 Summary (Root)
     # Level 1.
     assert tree.root_node.level == 1
-    assert len(tree.leaf_chunks) == 3
+    assert len(tree.leaf_chunk_ids) == 3
     assert tree.root_node.text == "Summary Root"
 
 
@@ -115,7 +115,7 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     # 50 chunks -> Multiple clusters -> Multiple Summaries (L1).
     # Multiple Summaries -> ... -> Root (L2+).
     assert tree.root_node.level >= 2
-    assert len(tree.leaf_chunks) == 50
+    assert len(tree.leaf_chunk_ids) == 50
     # Check that we have intermediate summaries
     assert len(tree.all_nodes) > 1
 

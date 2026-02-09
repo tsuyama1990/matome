@@ -4,9 +4,11 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk
 
 if TYPE_CHECKING:
-    from domain_models.manifest import Chunk, DocumentTree
+    from domain_models.manifest import DocumentTree
+    from matome.utils.store import DiskChunkStore
 
 
 class CanvasNode(BaseModel):
@@ -53,9 +55,6 @@ class CanvasFile(BaseModel):
 class ObsidianCanvasExporter:
     """Exports DocumentTree to Obsidian Canvas format."""
 
-    GAP_X = 50
-    GAP_Y = 300
-
     def __init__(self, config: ProcessingConfig | None = None) -> None:
         self.nodes: list[CanvasNode] = []
         self.edges: list[CanvasEdge] = []
@@ -64,13 +63,31 @@ class ObsidianCanvasExporter:
         self.config = config or ProcessingConfig()
         self.NODE_WIDTH = self.config.canvas_node_width
         self.NODE_HEIGHT = self.config.canvas_node_height
+        self.GAP_X = self.config.canvas_gap_x
+        self.GAP_Y = self.config.canvas_gap_y
 
-    def generate_canvas_data(self, tree: "DocumentTree") -> CanvasFile:
-        """Generates the canvas data structure from the document tree."""
+    def generate_canvas_data(
+        self, tree: "DocumentTree", store: "DiskChunkStore | None" = None
+    ) -> CanvasFile:
+        """
+        Generates the canvas data structure from the document tree.
+
+        Args:
+            tree: The DocumentTree to export.
+            store: Optional DiskChunkStore to retrieve leaf chunk text.
+                   If None, leaf chunks will be missing text.
+        """
         self.nodes = []
         self.edges = []
         self._subtree_widths = {}
-        self._chunk_map = {c.index: c for c in tree.leaf_chunks}
+        self._chunk_map = {}
+
+        # Populate chunk map from store if available
+        if store and tree.leaf_chunk_ids:
+            for chunk_id in tree.leaf_chunk_ids:
+                node = store.get_node(chunk_id)
+                if isinstance(node, Chunk):
+                    self._chunk_map[node.index] = node
 
         if not tree.root_node:
              return CanvasFile(nodes=[], edges=[])
@@ -84,9 +101,18 @@ class ObsidianCanvasExporter:
 
         return CanvasFile(nodes=self.nodes, edges=self.edges)
 
-    def export(self, tree: "DocumentTree", output_path: Path) -> None:
-        """Exports the canvas to a file."""
-        canvas_file = self.generate_canvas_data(tree)
+    def export(
+        self, tree: "DocumentTree", output_path: Path, store: "DiskChunkStore | None" = None
+    ) -> None:
+        """
+        Exports the canvas to a file.
+
+        Args:
+            tree: The DocumentTree to export.
+            output_path: Destination path for the .canvas file.
+            store: Optional DiskChunkStore to retrieve leaf chunk text.
+        """
+        canvas_file = self.generate_canvas_data(tree, store)
 
         # Ensure output directory exists
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,40 +132,75 @@ class ObsidianCanvasExporter:
             return f"chunk_{node_id}"
         return node_id
 
-    def _calculate_subtree_width(self, node_id: int | str, tree: "DocumentTree") -> int:
-        """Recursively calculates the width of the subtree rooted at node_id."""
-        node_id_str = self._get_node_id_str(node_id)
+    def _calculate_subtree_width(self, root_id: int | str, tree: "DocumentTree") -> int:
+        """
+        Iteratively calculates the width of the subtree rooted at node_id using a stack.
+        Avoids recursion depth limits.
+        """
+        # Post-order traversal preparation
+        processing_order = self._get_traversal_order(root_id, tree)
 
-        # If it's a Chunk (leaf)
-        if isinstance(node_id, int):
-            width = self.NODE_WIDTH
-            self._subtree_widths[node_id_str] = width
-            return width
+        # Process in reverse (bottom-up) to calculate widths
+        for curr_id in reversed(processing_order):
+            self._process_node_width(curr_id, tree)
 
-        # If it's a SummaryNode
-        summary_node = tree.all_nodes.get(str(node_id)) if str(node_id) != tree.root_node.id else tree.root_node
-        if str(node_id) == tree.root_node.id:
-            summary_node = tree.root_node
+        return self._subtree_widths[self._get_node_id_str(root_id)]
 
-        if not summary_node:
-            # Should not happen if tree is consistent
+    def _get_traversal_order(self, root_id: int | str, tree: "DocumentTree") -> list[int | str]:
+        """Helper to get processing order for nodes."""
+        stack = [root_id]
+        processing_order: list[int | str] = []
+
+        while stack:
+            curr_id = stack.pop()
+            processing_order.append(curr_id)
+
+            if isinstance(curr_id, str):
+                self._append_children_to_stack(curr_id, stack, tree)
+        return processing_order
+
+    def _append_children_to_stack(
+        self, curr_id: str, stack: list[int | str], tree: "DocumentTree"
+    ) -> None:
+        """Helper to push children to stack."""
+        node = tree.all_nodes.get(curr_id)
+        if curr_id == tree.root_node.id:
+            node = tree.root_node
+
+        if node:
+            for child_idx in node.children_indices:
+                stack.append(child_idx)
+
+    def _process_node_width(self, curr_id: int | str, tree: "DocumentTree") -> None:
+        """Helper to calculate width for a single node."""
+        node_id_str = self._get_node_id_str(curr_id)
+
+        # If Chunk
+        if isinstance(curr_id, int):
             self._subtree_widths[node_id_str] = self.NODE_WIDTH
-            return self.NODE_WIDTH
+            return
+
+        # If SummaryNode
+        node = tree.all_nodes.get(str(curr_id))
+        if str(curr_id) == tree.root_node.id:
+            node = tree.root_node
+
+        if not node:
+            self._subtree_widths[node_id_str] = self.NODE_WIDTH
+            return
 
         children_widths = [
-            self._calculate_subtree_width(child_idx, tree)
-            for child_idx in summary_node.children_indices
+            self._subtree_widths.get(self._get_node_id_str(child_idx), self.NODE_WIDTH)
+            for child_idx in node.children_indices
         ]
 
         if not children_widths:
             width = self.NODE_WIDTH
         else:
             total_children_width = sum(children_widths) + self.GAP_X * (len(children_widths) - 1)
-            # Parent width is at least NODE_WIDTH, but subtree width is determined by children spread
             width = max(self.NODE_WIDTH, total_children_width)
 
         self._subtree_widths[node_id_str] = width
-        return width
 
     def _assign_positions(self, node_id: int | str, center_x: int, y: int, tree: "DocumentTree") -> None:
         """Recursively assigns (x, y) positions to nodes and creates edges."""

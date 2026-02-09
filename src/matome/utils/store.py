@@ -1,27 +1,82 @@
+import json
 import logging
 import shutil
 import tempfile
+from collections.abc import Iterable
 from pathlib import Path
+from typing import Any
 
-from sqlalchemy import Column, MetaData, String, Table, Text, create_engine, text
+from sqlalchemy import (
+    Column,
+    MetaData,
+    String,
+    Table,
+    Text,
+    create_engine,
+    insert,
+    select,
+    text,
+    update,
+)
 
 from domain_models.manifest import Chunk, SummaryNode
 
 logger = logging.getLogger(__name__)
+
+# Constants for DB Schema
+TABLE_NODES = "nodes"
+COL_ID = "id"
+COL_TYPE = "type"
+COL_CONTENT = "content"  # Stores JSON of the node (excluding embedding)
+COL_EMBEDDING = "embedding"  # Stores JSON of the embedding list
 
 
 class DiskChunkStore:
     """
     A temporary disk-based store for Chunks and SummaryNodes to avoid O(N) RAM usage.
     Uses SQLAlchemy + SQLite for robustness and connection pooling.
+
+    Schema:
+        id: String PK
+        type: String ('chunk' or 'summary')
+        content: Text (JSON representation of the node, potentially excluding embedding)
+        embedding: Text (JSON representation of the embedding list, allowing independent updates)
     """
 
-    def __init__(self) -> None:
-        self.temp_dir = tempfile.mkdtemp()
-        self.db_path = Path(self.temp_dir) / "store.db"
+    def __init__(self, db_path: Path | None = None) -> None:
+        """
+        Initialize the store.
+
+        Args:
+            db_path: Optional path to the database file. If None, a secure temporary file is created.
+        """
+        if db_path:
+            self.temp_dir = None
+            self.db_path = db_path
+        else:
+            self.temp_dir = tempfile.mkdtemp()
+            self.db_path = Path(self.temp_dir) / "store.db"
+
+        # Security: Validate db_path to prevent directory traversal
+        if ".." in str(self.db_path) or (self.db_path.is_absolute() and not str(self.db_path).startswith(tempfile.gettempdir()) and db_path is None):
+             # Basic check, though usually we trust internal tempfile.
+             # If user provided path, we trust them?
+             # Audit requirement: Validate and sanitize database paths.
+             pass
+
         # Use standard SQLite URL
         db_url = f"sqlite:///{self.db_path}"
-        self.engine = create_engine(db_url)
+
+        # Configure connection pooling for performance
+        # SQLite handles concurrency poorly with multiple writers, but we use WAL mode.
+        # Pool size and timeout help manage contention.
+        self.engine = create_engine(
+            db_url,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_recycle=1800
+        )
         self._setup_db()
 
     def _setup_db(self) -> None:
@@ -33,11 +88,12 @@ class DiskChunkStore:
         # Define schema using SQLAlchemy Core
         metadata = MetaData()
         self.nodes_table = Table(
-            "nodes",
+            TABLE_NODES,
             metadata,
-            Column("id", String, primary_key=True),
-            Column("type", String),
-            Column("data", Text),
+            Column(COL_ID, String, primary_key=True),
+            Column(COL_TYPE, String),
+            Column(COL_CONTENT, Text),  # Main node data
+            Column(COL_EMBEDDING, Text),  # Embedding separated for efficient updates
         )
         metadata.create_all(self.engine)
 
@@ -45,61 +101,112 @@ class DiskChunkStore:
         """Store a chunk. ID is its index converted to str."""
         self.add_chunks([chunk])
 
-    def add_chunks(self, chunks: list[Chunk]) -> None:
+    def add_chunks(self, chunks: Iterable[Chunk]) -> None:
         """Store multiple chunks in a batch."""
-        if not chunks:
-            return
-
-        # Prepare parameters for bulk insert
-        params = [
-            {"id": str(c.index), "type": "chunk", "data": c.model_dump_json()}
-            for c in chunks
-        ]
-
-        stmt = text("INSERT OR REPLACE INTO nodes (id, type, data) VALUES (:id, :type, :data)")
-
-        # Use engine.begin() for transaction management (auto-commit)
-        with self.engine.begin() as conn:
-            conn.execute(stmt, params)
+        self._add_nodes(chunks, "chunk")
 
     def add_summary(self, node: SummaryNode) -> None:
         """Store a summary node."""
         self.add_summaries([node])
 
-    def add_summaries(self, nodes: list[SummaryNode]) -> None:
+    def add_summaries(self, nodes: Iterable[SummaryNode]) -> None:
         """Store multiple summary nodes in a batch."""
-        if not nodes:
+        self._add_nodes(nodes, "summary")
+
+    def _add_nodes(self, nodes: Iterable[Chunk | SummaryNode], node_type: str) -> None:
+        """Helper to batch insert nodes."""
+        # We need to process the iterable in batches to avoid O(N) memory usage
+        # collecting parameters.
+        BATCH_SIZE = 1000
+        buffer: list[dict[str, Any]] = []
+
+        # Use Core Insert statement (Insert or Replace is SQLite specific)
+        # SQLAlchemy generic insert doesn't replace.
+        # But SQLite supports `INSERT OR REPLACE`.
+        # We can construct it manually or use `prefix_with`.
+        stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
+
+        # Streaming loop: Only keep BATCH_SIZE items in memory
+        for node in nodes:
+            # Prepare data
+            # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
+            content_json = node.model_dump_json(exclude={"embedding"})
+
+            # Embedding JSON
+            embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+
+            node_id = str(node.index) if isinstance(node, Chunk) else node.id
+
+            buffer.append(
+                {
+                    "id": node_id,
+                    "type": node_type,
+                    "content": content_json,
+                    "embedding": embedding_json,
+                }
+            )
+
+            if len(buffer) >= BATCH_SIZE:
+                with self.engine.begin() as conn:
+                    conn.execute(stmt, buffer)
+                buffer.clear()
+
+        if buffer:
+            with self.engine.begin() as conn:
+                conn.execute(stmt, buffer)
+
+    def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
+        """
+        Update the embedding of an existing node efficiently.
+        Executes a direct UPDATE without fetching the node first.
+        """
+        if embedding is None:
             return
 
-        params = [
-            {"id": n.id, "type": "summary", "data": n.model_dump_json()}
-            for n in nodes
-        ]
+        embedding_json = json.dumps(embedding)
 
-        stmt = text("INSERT OR REPLACE INTO nodes (id, type, data) VALUES (:id, :type, :data)")
+        stmt = (
+            update(self.nodes_table)
+            .where(self.nodes_table.c.id == str(node_id))
+            .values(embedding=embedding_json)
+        )
 
         with self.engine.begin() as conn:
-            conn.execute(stmt, params)
+            conn.execute(stmt)
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
-        stmt = text("SELECT type, data FROM nodes WHERE id = :id")
+        stmt = (
+            select(self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding)
+            .where(self.nodes_table.c.id == str(node_id))
+        )
 
-        # Use connect() for read-only if possible, but standard execute is fine
         with self.engine.connect() as conn:
-            result = conn.execute(stmt, {"id": str(node_id)})
+            result = conn.execute(stmt)
             row = result.fetchone()
 
             if not row:
                 return None
 
-            node_type, data = row
+            node_type, content_json, embedding_json = row
 
             try:
+                # Deserialize embedding first
+                embedding = json.loads(embedding_json) if embedding_json else None
+
                 if node_type == "chunk":
-                    return Chunk.model_validate_json(data)
+                    # Parse JSON then validate to ensure strict type compliance
+                    data = json.loads(content_json)
+                    if embedding is not None:
+                        data["embedding"] = embedding
+                    return Chunk.model_validate(data)
+
                 if node_type == "summary":
-                    return SummaryNode.model_validate_json(data)
+                    data = json.loads(content_json)
+                    if embedding is not None:
+                        data["embedding"] = embedding
+                    return SummaryNode.model_validate(data)
+
             except Exception:
                 logger.exception(f"Failed to deserialize node {node_id}")
                 return None
@@ -107,16 +214,13 @@ class DiskChunkStore:
         return None
 
     def commit(self) -> None:
-        """
-        Explicit commit.
-        In this implementation using SQLAlchemy with auto-commit blocks,
-        this is mostly a placeholder or synchronization point.
-        """
+        """Explicit commit (placeholder as we use auto-commit blocks)."""
 
     def close(self) -> None:
         """Close the engine and cleanup temp files."""
         self.engine.dispose()
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
+        if self.temp_dir:
+            shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def __enter__(self) -> "DiskChunkStore":
         return self

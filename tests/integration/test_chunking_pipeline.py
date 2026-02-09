@@ -26,7 +26,7 @@ def test_chunking_pipeline_integration(tmp_path: Path) -> None:
     config = ProcessingConfig(max_tokens=50, overlap=0)
 
     # Execute
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
 
     # Verify
     assert len(chunks) > 0

@@ -44,7 +44,7 @@ def uat_tree() -> DocumentTree:
     return DocumentTree(
         root_node=root,
         all_nodes={"root": root, "summary_a": node_a, "summary_b": node_b},
-        leaf_chunks=[c1, c2, c3]
+        leaf_chunk_ids=[c1.index, c2.index, c3.index]
     )
 
 

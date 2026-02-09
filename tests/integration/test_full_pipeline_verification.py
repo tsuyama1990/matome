@@ -65,13 +65,13 @@ def test_full_pipeline_flow() -> None:
 
         # Mock encode to return deterministic vectors
         # Using a fixed RNG to ensure determinism across test runs
-        # Patching np.random.default_rng is hard, so we use a deterministic side_effect
+        # We define the RNG outside the side_effect so it maintains state across calls
+        rng = np.random.default_rng(42)
 
         def side_effect(texts: Iterable[str], **kwargs: Any) -> np.ndarray:
             text_list = list(texts)
-            # Use a fixed seed for every call to ensure consistent output
-            rng = np.random.default_rng(42)
             count = len(text_list)
+            # Returns standard uniform [0.0, 1.0)
             return rng.random((count, 10))
 
         mock_model.encode.side_effect = side_effect
@@ -88,7 +88,7 @@ def test_full_pipeline_flow() -> None:
         summarizer = SummarizationAgent(config, llm=mock_llm_instance)
 
         # Act & Assert (Logic same as before, but with deterministic RNG)
-        chunks = chunker.split_text(text, config)
+        chunks = list(chunker.split_text(text, config))
         assert len(chunks) > 1
 
         chunks_with_embeddings = list(embedder.embed_chunks(chunks))

@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 from functools import lru_cache
 
 import tiktoken
@@ -6,7 +7,7 @@ import tiktoken
 from domain_models.config import ProcessingConfig
 from domain_models.constants import ALLOWED_TOKENIZER_MODELS
 from domain_models.manifest import Chunk
-from matome.utils.text import iter_sentences, normalize_text
+from matome.utils.text import iter_normalized_sentences
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -46,17 +47,13 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
         raise ValueError(msg) from e
 
 
-def _perform_chunking(text: str, max_tokens: int, model_name: str) -> list[Chunk]:
+def _perform_chunking(text: str, max_tokens: int, model_name: str) -> Iterator[Chunk]:
     """
-    Core chunking logic.
+    Core chunking logic using streaming.
     """
-    # 1. Normalize
-    normalized_text = normalize_text(text)
-
     # Retrieve tokenizer
     tokenizer = get_cached_tokenizer(model_name)
 
-    chunks: list[Chunk] = []
     current_chunk_sentences: list[str] = []
     current_tokens = 0
     chunk_index = 0
@@ -71,13 +68,13 @@ def _perform_chunking(text: str, max_tokens: int, model_name: str) -> list[Chunk
             metadata={},
         )
 
-    # Use iterator for sentences
-    for sentence in iter_sentences(normalized_text):
+    # Use iterator for normalized sentences to allow streaming
+    for sentence in iter_normalized_sentences(text):
         sentence_tokens = len(tokenizer.encode(sentence))
 
         if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:
             chunk_text = "".join(current_chunk_sentences)
-            chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
+            yield create_chunk(chunk_index, chunk_text, start_char_idx)
 
             chunk_index += 1
             start_char_idx += len(chunk_text)
@@ -91,9 +88,7 @@ def _perform_chunking(text: str, max_tokens: int, model_name: str) -> list[Chunk
     # Final chunk
     if current_chunk_sentences:
         chunk_text = "".join(current_chunk_sentences)
-        chunks.append(create_chunk(chunk_index, chunk_text, start_char_idx))
-
-    return chunks
+        yield create_chunk(chunk_index, chunk_text, start_char_idx)
 
 
 class JapaneseTokenChunker:
@@ -114,6 +109,12 @@ class JapaneseTokenChunker:
         if config is None:
             config = ProcessingConfig()
 
+        # Ensure full Pydantic validation runs even if manually instantiated
+        # This catches any other invalid fields beyond just tokenizer_model
+        if not isinstance(config, ProcessingConfig):
+             # Try to validate/coerce
+             config = ProcessingConfig.model_validate(config)
+
         # Explicitly validate against whitelist before usage, ensuring security
         # even if config validation was somehow bypassed (though ProcessingConfig enforces it).
         if config.tokenizer_model not in ALLOWED_TOKENIZER_MODELS:
@@ -132,26 +133,24 @@ class JapaneseTokenChunker:
             return 0
         return len(self.tokenizer.encode(text))
 
-    def split_text(self, text: str, config: ProcessingConfig) -> list[Chunk]:
+    def split_text(self, text: str, config: ProcessingConfig) -> Iterator[Chunk]:
         """
-        Split text into chunks.
+        Split text into chunks (streaming).
 
         Args:
             text: Raw input text.
             config: Configuration including max_tokens and tokenizer_model.
 
-        Returns:
-            List of Chunk objects.
+        Yields:
+            Chunk objects.
         """
         if not text:
-            logger.warning("Empty input text provided to split_text. Returning empty list.")
-            return []
+            logger.warning("Empty input text provided to split_text. Yielding nothing.")
+            return
 
         logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
 
         chunking_model_name = self.tokenizer.name  # e.g. "cl100k_base"
 
-        chunks = _perform_chunking(text, config.max_tokens, chunking_model_name)
-
-        logger.info(f"Successfully split text into {len(chunks)} chunks.")
-        return chunks
+        # Yield from generator directly
+        yield from _perform_chunking(text, config.max_tokens, chunking_model_name)

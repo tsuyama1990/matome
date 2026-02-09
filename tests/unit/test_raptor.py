@@ -1,19 +1,21 @@
 from collections.abc import Iterator
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree
+from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
+from matome.interfaces import Chunker, Clusterer, Summarizer
 
 
 @pytest.fixture
 def mock_dependencies() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
-    chunker = MagicMock()
-    embedder = MagicMock()
-    clusterer = MagicMock()
-    summarizer = MagicMock()
+    chunker = create_autospec(Chunker, instance=True)
+    embedder = create_autospec(EmbeddingService, instance=True)
+    clusterer = create_autospec(Clusterer, instance=True)
+    summarizer = create_autospec(Summarizer, instance=True)
     return chunker, embedder, clusterer, summarizer
 
 
@@ -48,21 +50,36 @@ def test_raptor_run_short_text(
 
     # 1. Chunking returns 1 chunk
     chunk1 = Chunk(index=0, text="Short text", start_char_idx=0, end_char_idx=10)
-    chunker.split_text.return_value = [chunk1]
+    chunker.split_text.return_value = iter([chunk1])
 
     # 2. Embedding
-    # embedder.embed_chunks is NOT called for single chunk input optimization.
+    # We must ensure embed_chunks works even for single chunk
+    chunk1.embedding = [0.1] * 768
+    embedder.embed_chunks.return_value = iter([chunk1])
+
+    # IMPORTANT: Mock clusterer to consume the generator
+    # Even for 1 chunk, cluster_nodes is called to consume stream
+    def side_effect_cluster(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        # Consume
+        count = sum(1 for _ in embeddings)
+        if count <= 1:
+            # GMMClusterer returns 1 cluster for 1 item edge case
+            # Indices are 0-based relative to the batch.
+            return [Cluster(id=0, level=0, node_indices=[0])] if count == 1 else []
+        return []
+
+    clusterer.cluster_nodes.side_effect = side_effect_cluster
 
     # Run
     tree = engine.run("Short text")
 
     # Verify
-    embedder.embed_chunks.assert_not_called()
-    clusterer.cluster_nodes.assert_not_called()
+    embedder.embed_chunks.assert_called()
+    clusterer.cluster_nodes.assert_called()
     summarizer.summarize.assert_not_called()
 
     assert isinstance(tree, DocumentTree)
-    assert len(tree.leaf_chunks) == 1
+    assert len(tree.leaf_chunk_ids) == 1
     assert tree.root_node.level == 1
     assert tree.root_node.text == "Short text"
     assert tree.root_node.children_indices == [0]
@@ -81,10 +98,10 @@ def test_raptor_run_recursive(
         Chunk(index=i, text=f"Chunk {i}", start_char_idx=i * 10, end_char_idx=(i + 1) * 10)
         for i in range(3)
     ]
-    chunker.split_text.return_value = chunks
+    chunker.split_text.return_value = iter(chunks)
 
     # Mock embedding to always populate embedding field
-    def side_effect_embed_chunks(chunks: list[Chunk]) -> Iterator[Chunk]:
+    def side_effect_embed_chunks(chunks: Iterator[Chunk]) -> Iterator[Chunk]:
         for c in chunks:
             c.embedding = [0.1] * 768
             yield c
@@ -92,7 +109,12 @@ def test_raptor_run_recursive(
     embedder.embed_chunks.side_effect = side_effect_embed_chunks
 
     # Mock embedding for summary nodes (strings)
-    embedder.embed_strings.return_value = [[0.2] * 768]  # For any summary
+    # Must yield one embedding per input text.
+    def side_effect_embed_strings(texts: list[str]) -> Iterator[list[float]]:
+        for _ in texts:
+            yield [0.2] * 768
+
+    embedder.embed_strings.side_effect = side_effect_embed_strings
 
     # Clustering Logic
     # Call 1 (Level 0 Chunks): Returns 2 clusters (needs reducing)

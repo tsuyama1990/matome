@@ -45,15 +45,20 @@ class Chunk(BaseModel):
         Validate that text is present and indices form a valid range.
         Also check embedding validity if present.
         """
+        # Ensure text is not just whitespace and not empty
+        # We strip to check, but we don't modify the actual text field here as it might be intentional?
+        # No, RAPTOR chunks should contain meaningful content.
         if not self.text or not self.text.strip():
             msg = "Chunk text cannot be empty or whitespace only."
             logger.error(msg)
             raise ValueError(msg)
 
-        if self.start_char_idx >= self.end_char_idx:
+        # Simplified validation as requested by feedback
+        # Empty text is already rejected above, so we can be strict about range
+        if self.start_char_idx > self.end_char_idx:
             msg = (
-                f"Invalid character range: start ({self.start_char_idx}) must be less than "
-                f"end ({self.end_char_idx}) for non-empty text."
+                f"Invalid character range: start ({self.start_char_idx}) cannot be greater than "
+                f"end ({self.end_char_idx})."
             )
             logger.error(msg)
             raise ValueError(msg)
@@ -110,11 +115,17 @@ class Cluster(BaseModel):
 
 
 class DocumentTree(BaseModel):
-    """Represents the full RAPTOR tree structure."""
+    """
+    Represents the full RAPTOR tree structure.
+
+    Designed for scalability:
+    - Does not store full leaf chunks in memory to avoid O(N) memory usage for large documents.
+    - Stores IDs allowing retrieval from the associated `DiskChunkStore`.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
     all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
-    leaf_chunks: list[Chunk] = Field(..., description="The original leaf chunks (Level 0).")
+    leaf_chunk_ids: list[NodeID] = Field(..., description="IDs of the original leaf chunks (Level 0).")
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")

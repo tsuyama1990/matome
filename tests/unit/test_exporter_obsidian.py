@@ -3,17 +3,13 @@ from pathlib import Path
 
 import pytest
 
-from domain_models.manifest import Chunk, DocumentTree, SummaryNode
+from domain_models.manifest import DocumentTree, SummaryNode
 from matome.exporters.obsidian import CanvasFile, ObsidianCanvasExporter
 
 
 @pytest.fixture
 def sample_tree() -> DocumentTree:
     """Create a sample DocumentTree with Root -> [Node A, Node B] -> [Chunk 1, Chunk 2]."""
-    # Chunks
-    c1 = Chunk(index=0, text="Chunk 1 text", start_char_idx=0, end_char_idx=10)
-    c2 = Chunk(index=1, text="Chunk 2 text", start_char_idx=11, end_char_idx=20)
-
     # Summary Nodes
     node_a = SummaryNode(
         id="node_a",
@@ -43,7 +39,7 @@ def sample_tree() -> DocumentTree:
     return DocumentTree(
         root_node=root,
         all_nodes=all_nodes,
-        leaf_chunks=[c1, c2],
+        leaf_chunk_ids=[0, 1],
     )
 
 

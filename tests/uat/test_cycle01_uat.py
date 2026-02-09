@@ -32,6 +32,6 @@ def test_uat_scenario_04_chunk_size() -> None:
 
     chunker = JapaneseTokenChunker()
     config = ProcessingConfig(max_tokens=50)  # Small limit to force chunking
-    chunks = chunker.split_text(text, config)
+    chunks = list(chunker.split_text(text, config))
 
     assert len(chunks) > 1

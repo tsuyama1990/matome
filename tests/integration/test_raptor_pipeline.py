@@ -8,6 +8,7 @@ from domain_models.manifest import Chunk, DocumentTree
 from matome.engines.cluster import GMMClusterer
 from matome.engines.raptor import RaptorEngine
 from matome.interfaces import Chunker, Summarizer
+from matome.utils.store import DiskChunkStore
 
 
 class DummyEmbedder:
@@ -15,10 +16,12 @@ class DummyEmbedder:
         self.dim = dim
         self.config = MagicMock()
 
-    def embed_chunks(self, chunks: list[Chunk]) -> Iterator[Chunk]:
-        for i, c in enumerate(chunks):
+    def embed_chunks(self, chunks: Iterator[Chunk]) -> Iterator[Chunk]:
+        # Consume iterator
+        chunk_list = list(chunks)
+        for i, c in enumerate(chunk_list):
             vec = [0.0] * self.dim
-            if i < len(chunks) // 2:
+            if i < len(chunk_list) // 2:
                 vec[0] = 1.0 + (i * 0.01)
             else:
                 vec[1] = 1.0 + (i * 0.01)
@@ -53,7 +56,7 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     chunks = [
         Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(10)
     ]
-    chunker.split_text.return_value = chunks
+    chunker.split_text.return_value = iter(chunks)
 
     # Real Clusterer (Implementation)
     clusterer = GMMClusterer()
@@ -69,11 +72,30 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     # We cast embedder because it's a dummy class satisfying implicit interface used by Raptor
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)  # type: ignore
 
-    tree = engine.run("Dummy text")
+    # Use a store to verify persistence
+    with DiskChunkStore() as store:
+        tree = engine.run("Dummy text", store=store)
 
-    assert isinstance(tree, DocumentTree)
-    assert tree.root_node is not None
-    assert len(tree.leaf_chunks) == 10
-    assert tree.root_node.level >= 1
-    if tree.root_node.level > 1:
-        assert len(tree.all_nodes) > 1
+        assert isinstance(tree, DocumentTree)
+        assert tree.root_node is not None
+        assert len(tree.leaf_chunk_ids) == 10
+        assert tree.root_node.level >= 1
+        if tree.root_node.level > 1:
+            assert len(tree.all_nodes) > 1
+
+        # Verify embeddings are present in store
+        first_chunk = store.get_node(tree.leaf_chunk_ids[0])
+        assert first_chunk is not None
+        assert first_chunk.embedding is not None, "Leaf chunks must retain embeddings."
+
+        # Verify root embedding
+        # Root might be in store (SummaryNode) or if level 0, it's chunk.
+        # But get_node works for both.
+        root_fetched = store.get_node(tree.root_node.id)
+        if root_fetched:
+             assert root_fetched.embedding is not None, "Root node must have an embedding in store."
+
+        assert tree.root_node.embedding is not None, "Root node object must have an embedding."
+
+        for node in tree.all_nodes.values():
+            assert node.embedding is not None, f"Summary node {node.id} must have an embedding."
