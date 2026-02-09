@@ -1,78 +1,128 @@
 import logging
+import tempfile
+from pathlib import Path
 
 import numpy as np
 from sklearn.mixture import GaussianMixture
 from umap import UMAP
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster
+from domain_models.manifest import Cluster
+from domain_models.types import NodeID
 
 logger = logging.getLogger(__name__)
 
-class ClusterEngine:
-    """Engine for clustering text chunks using UMAP and GMM."""
+class GMMClusterer:
+    """
+    Engine for clustering text chunks/nodes using UMAP and GMM.
+    Implements the Clusterer protocol.
+    """
 
-    def __init__(self, config: ProcessingConfig) -> None:
+    def cluster_nodes(
+        self,
+        embeddings: list[list[float]],
+        config: ProcessingConfig
+    ) -> list[Cluster]:
         """
-        Initialize the clustering engine.
+        Clusters the nodes based on their embeddings.
 
         Args:
-            config: Processing configuration containing clustering parameters.
-                    Currently, only 'gmm' is supported for `clustering_algorithm`.
-        """
-        self.config = config
+            embeddings: A list of vectors (list of floats).
+            config: Processing configuration.
 
-        # Validate algorithm
+        Returns:
+            A list of Cluster objects containing indices of grouped nodes.
+        """
+        if not embeddings:
+            return []
+
+        self._validate_algorithm(config)
+        self._validate_embeddings(embeddings)
+
+        n_samples = len(embeddings)
+        if n_samples == 0:
+            return []
+
+        # Handle edge cases (n < 3) separately
+        edge_case_result = self._handle_edge_cases(n_samples)
+        if edge_case_result:
+            return edge_case_result
+
+        # Use memory-mapped file for main processing
+        return self._process_with_memmap(embeddings, n_samples, config)
+
+    def _validate_algorithm(self, config: ProcessingConfig) -> None:
         if config.clustering_algorithm != "gmm":
             msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
             raise ValueError(msg)
 
-    def perform_clustering(
-        self,
-        chunks: list[Chunk],
-        embeddings: np.ndarray,
-        n_neighbors: int = 15,
-        min_dist: float = 0.1,
-    ) -> list[Cluster]:
-        """
-        Clusters the chunks based on their embeddings.
+    def _validate_embeddings(self, embeddings: list[list[float]]) -> None:
+        if any(e is None for e in embeddings):
+             msg = "Embeddings list contains None values."
+             raise ValueError(msg)
 
-        Args:
-            chunks: The list of chunks (used for indices).
-            embeddings: The numpy array of embeddings corresponding to chunks.
-            n_neighbors: UMAP parameter for local neighborhood size.
-                         Will be automatically adjusted if larger than dataset size.
-            min_dist: UMAP parameter for minimum distance between points.
+        # Check for NaN/Inf in small datasets where memmap is skipped
+        if len(embeddings) < 3:
+             for vec in embeddings:
+                 if any(np.isnan(x) or np.isinf(x) for x in vec):
+                      msg = "Embeddings contain NaN or Infinity values."
+                      raise ValueError(msg)
 
-        Returns:
-            A list of Cluster objects containing indices of grouped chunks.
-        """
-        if not chunks:
-            return []
-
-        # Input Validation
-        if embeddings.size == 0:
-            logger.warning("Empty embeddings array provided to clustering.")
-            return []
-
-        if np.isnan(embeddings).any() or np.isinf(embeddings).any():
-            msg = "Embeddings contain NaN or Infinity values."
-            raise ValueError(msg)
-
-        n_samples = len(chunks)
-
-        # Edge case: Single chunk
+    def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
         if n_samples == 1:
-            return [Cluster(id=0, level=0, node_indices=[chunks[0].index])]
+            return [Cluster(id=0, level=0, node_indices=[0])]
 
-        # Edge case: Very small dataset (< 3 samples).
         if n_samples < 3:
             logger.info(f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster.")
-            return [Cluster(id=0, level=0, node_indices=[c.index for c in chunks])]
+            return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
 
-        # Adjust n_neighbors for small datasets
-        effective_n_neighbors = min(n_neighbors, n_samples - 1)
-        effective_n_neighbors = max(effective_n_neighbors, 2) # Minimum viable for UMAP?
+        return None
+
+    def _process_with_memmap(self, embeddings: list[list[float]], n_samples: int, config: ProcessingConfig) -> list[Cluster]:
+        dim = len(embeddings[0])
+
+        # Use context manager to satisfy SIM115
+        # delete=False ensures file persists after close for memmap usage
+        with tempfile.NamedTemporaryFile(delete=False) as tf:
+            tf_name = tf.name
+
+        try:
+            mm_array = np.memmap(tf_name, dtype='float32', mode='w+', shape=(n_samples, dim))
+
+            # Copy data
+            for i, emb in enumerate(embeddings):
+                mm_array[i] = emb
+
+            mm_array.flush()
+
+            # Validate content on memmap
+            if np.isnan(mm_array).any() or np.isinf(mm_array).any():
+                 msg = "Embeddings contain NaN or Infinity values."
+                 raise ValueError(msg)
+
+            # Perform clustering
+            clusters = self._perform_clustering(mm_array, n_samples, config)
+
+            # Ensure memmap is closed/deleted before unlinking file
+            del mm_array
+            return clusters
+
+        finally:
+            # Manual cleanup of temporary file using Path (PTH110, PTH108)
+            path = Path(tf_name)
+            if path.exists():
+                try:
+                    path.unlink()
+                except OSError:
+                    logger.warning(f"Failed to delete temporary file: {tf_name}")
+
+    def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
+        """Helper to run UMAP and GMM on the data (numpy array or memmap)."""
+        # UMAP Parameters
+        n_neighbors = config.umap_n_neighbors
+        min_dist = config.umap_min_dist
+
+        effective_n_neighbors = max(min(n_neighbors, n_samples - 1), 2)
 
         if effective_n_neighbors != n_neighbors:
             logger.warning(
@@ -83,7 +133,7 @@ class ClusterEngine:
         logger.debug(
             f"Starting clustering with {n_samples} samples. "
             f"UMAP: n_neighbors={effective_n_neighbors}, min_dist={min_dist}. "
-            f"GMM: n_clusters={self.config.n_clusters or 'auto'}."
+            f"GMM: n_clusters={config.n_clusters or 'auto'}."
         )
 
         # 1. Dimensionality Reduction (UMAP)
@@ -91,27 +141,29 @@ class ClusterEngine:
             n_neighbors=effective_n_neighbors,
             min_dist=min_dist,
             n_components=2,
-            random_state=self.config.random_state,
+            random_state=config.random_state,
         )
-        reduced_embeddings = reducer.fit_transform(embeddings)
+        reduced_embeddings = reducer.fit_transform(data)
 
         # 2. GMM Clustering
-        if self.config.n_clusters:
-            n_components = self.config.n_clusters
+        if config.n_clusters:
+            n_components = config.n_clusters
         else:
-            n_components = self._calculate_optimal_clusters(reduced_embeddings)
+            n_components = self._calculate_optimal_clusters(reduced_embeddings, config.random_state)
 
-        gmm = GaussianMixture(n_components=n_components, random_state=self.config.random_state)
+        gmm = GaussianMixture(n_components=n_components, random_state=config.random_state)
         gmm.fit(reduced_embeddings)
         labels = gmm.predict(reduced_embeddings)
 
         # 3. Form Clusters
-        clusters = []
+        return self._form_clusters(labels)
+
+    def _form_clusters(self, labels: np.ndarray) -> list[Cluster]:
+        clusters: list[Cluster] = []
         unique_labels = np.unique(labels)
         for label in unique_labels:
             indices = np.where(labels == label)[0]
-            # Robust type conversion using .item()
-            node_indices: list[int | str] = [int(indices[i].item()) for i in range(len(indices))]
+            node_indices: list[NodeID] = [int(indices[i].item()) for i in range(len(indices))]
 
             cluster = Cluster(
                 id=int(label.item()) if hasattr(label, "item") else int(label),
@@ -119,18 +171,11 @@ class ClusterEngine:
                 node_indices=node_indices,
             )
             clusters.append(cluster)
-
         return clusters
 
-    def _calculate_optimal_clusters(self, embeddings: np.ndarray) -> int:
+    def _calculate_optimal_clusters(self, embeddings: np.ndarray, random_state: int) -> int:
         """
         Helper to find optimal number of clusters using BIC (Bayesian Information Criterion).
-
-        Args:
-            embeddings: The reduced embeddings (2D).
-
-        Returns:
-            Optimal number of clusters.
         """
         max_clusters = min(20, len(embeddings))
         if max_clusters < 2:
@@ -138,11 +183,21 @@ class ClusterEngine:
 
         bics = []
         n_range = range(2, max_clusters + 1)
-        for n in n_range:
-            gmm = GaussianMixture(n_components=n, random_state=self.config.random_state)
-            gmm.fit(embeddings)
-            bics.append(gmm.bic(embeddings))
 
-        # Find n with minimum BIC
-        optimal_n = n_range[np.argmin(bics)]
-        return int(optimal_n)
+        try:
+            for n in n_range:
+                gmm = GaussianMixture(n_components=n, random_state=random_state)
+                gmm.fit(embeddings)
+                bics.append(gmm.bic(embeddings))
+
+            if not bics:
+                # Should not happen given logic above, but for safety
+                return 1
+
+            # Find n with minimum BIC
+            optimal_n = n_range[np.argmin(bics)]
+            return int(optimal_n)
+
+        except Exception:
+            logger.exception("Failed to calculate optimal clusters via BIC. Defaulting to 1.")
+            return 1

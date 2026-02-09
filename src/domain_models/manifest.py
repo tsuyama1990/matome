@@ -1,15 +1,11 @@
-from typing import Any, TypeAlias
 import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domain_models.types import Metadata, NodeID
+
 # Configure logger
 logger = logging.getLogger(__name__)
-
-# Define a type alias for Metadata to improve readability and consistency.
-# Metadata is a flexible dictionary used to store arbitrary context (e.g., source file path,
-# timestamps, author info, or processing metrics) that doesn't fit into the core schema.
-Metadata: TypeAlias = dict[str, Any]
 
 
 class Document(BaseModel):
@@ -26,7 +22,7 @@ class Document(BaseModel):
 class Chunk(BaseModel):
     """Represents a segment of text (Leaf Node in RAPTOR tree)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
 
     index: int = Field(..., ge=0, description="Sequential ID of the chunk.")
     text: str = Field(..., description="The actual text content of the chunk.")
@@ -46,38 +42,32 @@ class Chunk(BaseModel):
     @model_validator(mode="after")
     def check_indices(self) -> "Chunk":
         """
-        Validate that start_char_idx is less than or equal to end_char_idx.
-
-        Strictly, if text is non-empty, start < end.
-        If text is empty (unlikely but possible), start == end.
-        But generally chunks should have content.
+        Validate that text is present and indices form a valid range.
+        Also check embedding validity if present.
         """
-        if self.start_char_idx > self.end_char_idx:
-            msg = (
-                f"start_char_idx ({self.start_char_idx}) cannot be greater than "
-                f"end_char_idx ({self.end_char_idx})"
-            )
-            logger.error(msg)
-            raise ValueError(msg)
-
-        # Check for zero length if strictly required
-        if self.start_char_idx == self.end_char_idx and self.text:
-            # If text has content but indices are same -> error
-             msg = f"Zero-length range ({self.start_char_idx}-{self.end_char_idx}) but text is not empty."
-             logger.error(msg)
-             raise ValueError(msg)
-
-        if not self.text and self.start_char_idx != self.end_char_idx:
-             # If text is empty but range is not -> error
-             msg = f"Empty text but range is not zero-length ({self.start_char_idx}-{self.end_char_idx})."
-             logger.error(msg)
-             raise ValueError(msg)
-
-        # Disallow empty chunks entirely?
         if not self.text:
             msg = "Chunk text cannot be empty."
             logger.error(msg)
             raise ValueError(msg)
+
+        if self.start_char_idx >= self.end_char_idx:
+            msg = (
+                f"Invalid character range: start ({self.start_char_idx}) must be less than "
+                f"end ({self.end_char_idx}) for non-empty text."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
+
+        # Embedding Validation
+        if self.embedding is not None:
+            if not self.embedding:
+                msg = "Embedding cannot be an empty list."
+                logger.error(msg)
+                raise ValueError(msg)
+            if any(not isinstance(x, (float, int)) for x in self.embedding):
+                 msg = "Embedding must contain only numeric values."
+                 logger.error(msg)
+                 raise ValueError(msg)
 
         return self
 
@@ -90,7 +80,7 @@ class SummaryNode(BaseModel):
     id: str = Field(..., description="Unique identifier for the node.")
     text: str = Field(..., description="The summary text.")
     level: int = Field(..., ge=1, description="Hierarchical level (1 = above chunks).")
-    children_indices: list[int | str] = Field(
+    children_indices: list[NodeID] = Field(
         ..., description="List of child indices (Chunk index or SummaryNode ID)."
     )
     metadata: Metadata = Field(
@@ -103,9 +93,9 @@ class Cluster(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    id: int | str = Field(..., description="Cluster identifier.")
+    id: NodeID = Field(..., description="Cluster identifier.")
     level: int = Field(..., ge=0, description="Level of the nodes in this cluster.")
-    node_indices: list[int | str] = Field(
+    node_indices: list[NodeID] = Field(
         ..., description="Indices of nodes (Chunks or SummaryNodes) in this cluster."
     )
     centroid: list[float] | None = Field(
