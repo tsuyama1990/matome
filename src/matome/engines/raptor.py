@@ -73,6 +73,9 @@ class RaptorEngine:
                 if len(clusters) == node_count:
                     # If clustering returned 1 cluster per node (or just one big cluster of all),
                     # we might be done or need one last summary.
+                    # If 1 cluster total, we summarize it and we are done (next level has 1 node).
+                    # If N clusters (each node is a cluster), we stop?
+                    # GMMClusterer returns clusters.
                     pass
 
                 logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
