@@ -1,5 +1,6 @@
 import logging
-from collections.abc import Iterable, Iterator
+import itertools
+from collections.abc import Iterator, Iterable
 
 import numpy as np
 
@@ -142,6 +143,10 @@ class JapaneseSemanticChunker:
         # Sentences: S0, S1, S2...
         # Distances: D0 (S0-S1), D1 (S1-S2)...
         # We iterate through distances and pull the *next* sentence (S1, S2...)
+
+        # Validation: We expect distances to correspond exactly to gaps.
+        # Since we use iterator for sentences, we can't check length upfront.
+        # But we consume one distance per next_sentence.
 
         for dist in distances:
             try:

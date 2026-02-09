@@ -49,25 +49,6 @@ class RaptorEngine:
         # Use mutable container to track count within generator
         stats = {"node_count": 0}
 
-        def chunk_storage_generator(chunks: Iterator[Chunk]) -> Iterator[Chunk]:
-            """
-            Intermediate generator that stores chunks as they pass through.
-            DiskChunkStore.add_chunks handles batching internally if we pass a generator?
-            Actually, add_chunks takes Iterable. We can't yield and consume at same time easily.
-
-            Strategy: We yield chunks to add_chunks. But wait, we need to embed first.
-            EmbeddingService.embed_chunks yields chunks with embeddings.
-
-            So: initial -> embedder -> storage -> yield embedding for clustering.
-            """
-            # We buffer slightly here to batch writes effectively if store doesn't buffer enough?
-            # store.add_chunks implementation: iterates in batches.
-            # So if we call store.add_chunks(generator), it consumes generator.
-            # But we need to yield embeddings to clusterer *after* (or during) storage.
-            # We can't consume generator twice.
-            # So we must drive the loop manually.
-            yield from chunks
-
         def l0_embedding_generator() -> Iterator[list[float]]:
             # We must yield embeddings for the clusterer.
             # While doing so, we save to DB.
@@ -81,8 +62,9 @@ class RaptorEngine:
             # We assume store.add_chunks handles lists efficiently.
             # But to strictly stream, we should batch manually here and call store.add_chunks on batches.
 
-            # Using batched to process small groups of chunks
+            # Using batched to process small groups of chunks. Use config for buffer size.
             for chunk_batch_tuple in batched(chunk_stream, self.config.chunk_buffer_size):
+                # Convert tuple to list for store.add_chunks (interface expects Iterable)
                 chunk_batch = list(chunk_batch_tuple)
 
                 # 1. Store batch
@@ -120,6 +102,11 @@ class RaptorEngine:
         """
         if not text or not isinstance(text, str):
             msg = "Input text must be a non-empty string."
+            raise ValueError(msg)
+
+        # Length validation
+        if len(text) > self.config.max_input_length:
+            msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
             raise ValueError(msg)
 
         logger.info("Starting RAPTOR process: Chunking text.")
@@ -230,24 +217,25 @@ class RaptorEngine:
             # batched is lazy, so we don't load everything.
             for batch in batched(node_text_generator(), self.config.embedding_batch_size):
                 # batch is tuple of (id, text)
-                ids_iter = (item[0] for item in batch)
-                texts_iter = (item[1] for item in batch)
+                # To efficiently use embed_strings and keep synchronization with IDs,
+                # we unzip the batch into two iterators.
 
-                # To efficiently use embed_strings (which batches internally too, but expects iterable),
-                # we can pass the texts iterator.
-                # However, we need to zip results with IDs.
-                # We need to materialize ids for zipping if we pass iterator to embedder?
-                # embed_strings returns iterator.
-                # It's safer to materialize this small batch of IDs and Texts to ensure alignment.
-                # Since batch size is small (e.g. 32), this is safe.
+                # unzip: zip(*batch) returns two tuples: (id1, id2...), (text1, text2...)
+                unzipped = list(zip(*batch, strict=True))
+                if not unzipped:
+                    continue
 
-                ids = list(ids_iter)
-                texts = list(texts_iter)
+                ids_tuple = unzipped[0]
+                texts_tuple = unzipped[1]
 
                 # Embed batch (returns iterator)
                 try:
-                    embeddings = self.embedder.embed_strings(texts)
-                    for nid, embedding in zip(ids, embeddings, strict=True):
+                    # embed_strings takes Iterable[str], so tuple is fine.
+                    embeddings = self.embedder.embed_strings(texts_tuple)
+
+                    # We iterate embeddings and match with IDs
+                    # zip ensures lock-step iteration
+                    for nid, embedding in zip(ids_tuple, embeddings, strict=True):
                         store.update_node_embedding(nid, embedding)
                         yield embedding
                 except Exception as e:

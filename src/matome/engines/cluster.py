@@ -4,7 +4,7 @@ import os
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import numpy as np
 from sklearn.cluster import MiniBatchKMeans
@@ -15,6 +15,7 @@ from umap import UMAP
 from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from domain_models.manifest import Cluster
 from domain_models.types import NodeID
+from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +45,8 @@ class GMMClusterer:
         """
         self._validate_algorithm(config)
 
-        # Batch size for disk writing to reduce I/O overhead
-        WRITE_BATCH_SIZE = config.write_batch_size
+        # Batch size for disk writing (from config)
+        write_batch_size = config.write_batch_size
 
         # Create temp file for memory mapping
         fd, tf_name = tempfile.mkstemp()
@@ -55,7 +56,9 @@ class GMMClusterer:
         try:
             # Stream write embeddings to disk.
             # This ensures we never hold the full list of embeddings in Python memory.
-            n_samples, dim = self._stream_write_embeddings(embeddings, path_obj, WRITE_BATCH_SIZE)
+            n_samples, dim = self._stream_write_embeddings(
+                embeddings, path_obj, write_batch_size
+            )
 
             if n_samples == 0:
                 return []
@@ -91,12 +94,12 @@ class GMMClusterer:
 
         Iterates over the input embeddings and writes them to a binary file
         (to be used with np.memmap). Validates dimensions and values.
-        Optimized to write using a small buffer to avoid I/O bottlenecks.
+        Optimized to write using a configurable buffer to avoid I/O bottlenecks.
 
         Args:
             embeddings: Iterable of embedding vectors.
             path_obj: Path object to write the embeddings to.
-            batch_size: Number of embeddings to process at once (used for loop structure).
+            batch_size: Number of embeddings to process at once.
 
         Returns:
             A tuple (n_samples, dim), where n_samples is the total count
@@ -105,7 +108,9 @@ class GMMClusterer:
         n_samples = 0
         dim = 0
         buffer: list[list[float]] = []
-        BUFFER_SIZE = 1000 # Hardcoded sensible default for I/O buffer
+
+        # Use configured batch size
+        buffer_size = batch_size
 
         with path_obj.open("wb") as f:
             for i, vec in enumerate(embeddings):
@@ -121,7 +126,7 @@ class GMMClusterer:
 
                 buffer.append(vec)
 
-                if len(buffer) >= BUFFER_SIZE:
+                if len(buffer) >= buffer_size:
                     self._flush_buffer(f, buffer)
                     n_samples += len(buffer)
                     buffer.clear()
@@ -134,7 +139,7 @@ class GMMClusterer:
 
         return n_samples, dim
 
-    def _flush_buffer(self, f: Any, buffer: list[list[float]]) -> None:
+    def _flush_buffer(self, f: BinaryIO, buffer: list[list[float]]) -> None:
         """Helper to write a buffer of vectors to disk."""
         try:
             # Convert whole buffer to array at once - fast
