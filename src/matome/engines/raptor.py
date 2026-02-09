@@ -89,7 +89,14 @@ class RaptorEngine:
         Args:
             text: Input text to process.
             store: Optional persistent store. If None, a temporary store is used (and closed on exit).
+
+        Raises:
+            ValueError: If input text is empty or invalid.
         """
+        if not text or not isinstance(text, str):
+            msg = "Input text must be a non-empty string."
+            raise ValueError(msg)
+
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
 
@@ -193,20 +200,29 @@ class RaptorEngine:
                         )
 
             # Strategy: Batched processing manually
-            # We process in batches to avoid loading all texts
+            # We process in batches to avoid loading all texts.
+            # batch is a tuple of (NodeID, str) tuples.
             for batch in batched(node_text_generator(), self.config.embedding_batch_size):
-                # batch is a tuple of (nid, text)
                 ids = [item[0] for item in batch]
                 texts = [item[1] for item in batch]
 
                 # Embed batch (returns iterator)
-                embeddings = self.embedder.embed_strings(texts)
+                try:
+                    embeddings = self.embedder.embed_strings(texts)
+                    for nid, embedding in zip(ids, embeddings, strict=True):
+                        store.update_node_embedding(nid, embedding)
+                        yield embedding
+                except Exception as e:
+                    logger.exception("Failed to embed batch during next level clustering.")
+                    msg = "Embedding failed during recursion."
+                    raise RuntimeError(msg) from e
 
-                for nid, embedding in zip(ids, embeddings, strict=True):
-                    store.update_node_embedding(nid, embedding)
-                    yield embedding
-
-        return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
+        try:
+            return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
+        except Exception as e:
+            logger.exception("Clustering failed during recursion.")
+            msg = "Clustering failed during recursion."
+            raise RuntimeError(msg) from e
 
     def _finalize_tree(
         self,

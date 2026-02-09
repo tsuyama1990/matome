@@ -1,6 +1,5 @@
 import logging
 from collections.abc import Iterator
-from typing import cast
 
 import numpy as np
 
@@ -13,38 +12,13 @@ from matome.utils.text import iter_normalized_sentences
 logger = logging.getLogger(__name__)
 
 
-def calculate_cosine_distances(embeddings: list[list[float]]) -> list[float]:
-    """
-    Calculate cosine distances (1 - similarity) between adjacent embeddings.
-    Returns a list of length N-1.
-    """
-    if len(embeddings) < 2:
-        return []
-
-    matrix = np.array(embeddings)
-    norms = np.linalg.norm(matrix, axis=1)
-
-    # Avoid division by zero
-    norms[norms == 0] = 1e-10
-
-    normalized_matrix = matrix / norms[:, np.newaxis]
-
-    # Calculate dot products of adjacent vectors: v[i] dot v[i+1]
-    similarities = np.sum(normalized_matrix[:-1] * normalized_matrix[1:], axis=1)
-
-    # Distance is 1 - Similarity.
-    # Range is [0, 2] because cosine sim is [-1, 1].
-    distances = 1.0 - similarities
-    return cast(list[float], distances.tolist())
-
-
 class JapaneseSemanticChunker:
     """
     Chunking engine that splits text based on semantic similarity using a Global Percentile Strategy.
 
     1. Splits text into all sentences.
     2. Embeds all sentences to capture global context distribution.
-    3. Calculates cosine distances between adjacent sentences.
+    3. Calculates cosine distances between adjacent sentences on-the-fly to save memory.
     4. Determines a dynamic split threshold based on a percentile of these distances.
     5. Merges sentences into chunks where distance < threshold, respecting max_tokens.
     """
@@ -82,45 +56,55 @@ class JapaneseSemanticChunker:
         if not sentences:
             return
 
-        # 2. Embed all sentences
+        # 2. Stream Embeddings and Calculate Distances
+        # We store distances, not embeddings, to be memory efficient.
+        distances: list[float] = []
+        prev_embedding: np.ndarray | None = None
+
         try:
-            # We consume the iterator into a list because we need random access / all items
-            embeddings = list(self.embedder.embed_strings(sentences))
+            # embed_strings streams embeddings (batch by batch internally)
+            for embedding_list in self.embedder.embed_strings(sentences):
+                current_embedding = np.array(embedding_list)
+
+                if prev_embedding is not None:
+                    # Calculate Cosine Distance = 1 - Cosine Similarity
+                    norm_a = np.linalg.norm(prev_embedding)
+                    norm_b = np.linalg.norm(current_embedding)
+
+                    if norm_a == 0 or norm_b == 0:
+                        sim = 0.0
+                    else:
+                        sim = float(np.dot(prev_embedding, current_embedding) / (norm_a * norm_b))
+
+                    # Clamp sim to [-1, 1] to avoid float errors causing distance < 0 or > 2
+                    sim = max(-1.0, min(1.0, sim))
+                    distances.append(1.0 - sim)
+
+                prev_embedding = current_embedding
+
         except Exception:
             logger.exception("Failed to generate embeddings for sentences.")
             raise
 
-        if len(sentences) != len(embeddings):
-            logger.warning(
-                f"Mismatch between sentences ({len(sentences)}) and embeddings ({len(embeddings)})."
-            )
-            # Proceed with the shorter length to avoid crashing
-            min_len = min(len(sentences), len(embeddings))
-            sentences = sentences[:min_len]
-            embeddings = embeddings[:min_len]
-
-        if len(sentences) == 1:
-            # Single sentence case
-            yield Chunk(
-                index=0,
-                text=sentences[0],
-                start_char_idx=0,
-                end_char_idx=len(sentences[0]),
-                embedding=None,
-            )
+        if not distances:
+            # Only one sentence or empty
+            if len(sentences) == 1:
+                yield Chunk(
+                    index=0,
+                    text=sentences[0],
+                    start_char_idx=0,
+                    end_char_idx=len(sentences[0]),
+                    embedding=None,
+                )
             return
 
-        # 3. Calculate Distances & Threshold
-        distances = calculate_cosine_distances(embeddings)
-
-        # Calculate dynamic threshold
-        # If percentile is 90, we want to split at the top 10% largest distances (most dissimilar).
-        # So we look for the 90th percentile value.
-        # Any distance > threshold is a breakpoint.
+        # 3. Calculate Threshold
         percentile_val = config.semantic_chunking_percentile
         threshold = np.percentile(distances, percentile_val)
 
-        logger.info(f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile.")
+        logger.info(
+            f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile."
+        )
 
         # 4. Merge Sentences
         current_chunk_sentences: list[str] = [sentences[0]]
@@ -128,19 +112,10 @@ class JapaneseSemanticChunker:
         current_start_idx = 0
         current_chunk_index = 0
 
-        # We iterate through the gaps between sentences.
-        # gap i is between sentence i and sentence i+1.
-        # distance[i] corresponds to gap i.
-
-        for i in range(len(distances)):
-            dist = distances[i]
-            next_sentence = sentences[i+1]
+        # Iterate gaps. distances[i] is gap between sentences[i] and sentences[i+1]
+        for i, dist in enumerate(distances):
+            next_sentence = sentences[i + 1]
             next_len = len(next_sentence)
-
-            # Logic:
-            # If distance > threshold, it's a semantic break -> Split.
-            # OR if adding next sentence exceeds max_tokens -> Split.
-            # Else -> Merge.
 
             is_semantic_break = dist > threshold
             is_token_overflow = (current_chunk_len + next_len) > config.max_tokens

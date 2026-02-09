@@ -88,7 +88,18 @@ class GMMClusterer:
     ) -> tuple[int, int]:
         """
         Stream embeddings to disk in batches.
-        Returns (n_samples, dim).
+
+        Iterates over the input embeddings and writes them to a binary file
+        (to be used with np.memmap). Validates dimensions and values.
+
+        Args:
+            embeddings: Iterable of embedding vectors.
+            path_obj: Path object to write the embeddings to.
+            batch_size: Number of embeddings to process at once.
+
+        Returns:
+            A tuple (n_samples, dim), where n_samples is the total count
+            and dim is the embedding dimension.
         """
         n_samples = 0
         dim = 0
@@ -147,8 +158,15 @@ class GMMClusterer:
         """
         Handle cases where the dataset is too small for meaningful clustering.
 
+        Checks if the number of samples is below a minimum threshold for
+        clustering algorithms (UMAP/GMM) to work reliably.
+
+        Args:
+            n_samples: The number of embedding samples.
+
         Returns:
-            List of Clusters if handled, None otherwise (proceed to normal clustering).
+            List of Clusters if handled (e.g., single cluster),
+            None otherwise (indicating to proceed to normal clustering).
         """
         if n_samples == 1:
             return [Cluster(id=0, level=0, node_indices=[0])]
