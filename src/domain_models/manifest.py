@@ -59,9 +59,12 @@ class Chunk(BaseModel):
             raise ValueError(msg)
 
         # Embedding Validation
+        # Explicit check for None is implied by logic: if self.embedding is not None, we validate it.
+        # If the schema allows None, we accept None.
+        # However, if it's NOT None, we strictly validate content.
         if self.embedding is not None:
             if not self.embedding:
-                msg = "Embedding cannot be an empty list."
+                msg = "Embedding cannot be an empty list if provided."
                 logger.error(msg)
                 raise ValueError(msg)
             if any(not isinstance(x, (float, int)) for x in self.embedding):

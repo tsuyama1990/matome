@@ -47,7 +47,8 @@ def test_full_pipeline_flow() -> None:
     config = ProcessingConfig(
         max_tokens=20,  # Small token limit to force multiple chunks
         umap_n_neighbors=2, # Small neighbors for small dataset
-        umap_min_dist=0.0 # Default
+        umap_min_dist=0.0, # Default
+        write_batch_size=5 # Small batch size for testing streaming
     )
 
     chunker = JapaneseTokenChunker()
@@ -59,12 +60,18 @@ def test_full_pipeline_flow() -> None:
         mock_st_cls.return_value = mock_model
 
         # Mock encode to return deterministic vectors
-        # Using fixed seed for determinism
-        rng = np.random.default_rng(42)
+        # Using a fixed RNG to ensure determinism across test runs
+        # Patching np.random.default_rng is hard, so we use a deterministic side_effect
 
         def side_effect(texts: Iterable[str], **kwargs: Any) -> np.ndarray:
              text_list = list(texts)
-             return rng.random((len(text_list), 10))
+             # Use a fixed seed for every call to ensure consistent output
+             rng = np.random.default_rng(42)
+             # We want different vectors for different calls but deterministic overall?
+             # Simple deterministic generation:
+             count = len(text_list)
+             # Generate based on index or just random with fixed seed
+             return rng.random((count, 10))
 
         mock_model.encode.side_effect = side_effect
 
@@ -91,6 +98,7 @@ def test_full_pipeline_flow() -> None:
             assert c.embedding is not None, "Embedding should not be None"
             valid_embeddings.append(c.embedding)
 
+        # Ensure we patch GMM/UMAP randomness if needed, but config.random_state handles it
         clusters = clusterer.cluster_nodes(valid_embeddings, config)
         assert isinstance(clusters, list)
         assert len(clusters) > 0

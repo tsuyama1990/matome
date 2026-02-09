@@ -12,6 +12,7 @@ from umap import UMAP
 from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from domain_models.manifest import Cluster
 from domain_models.types import NodeID
+from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class GMMClusterer:
         self._validate_algorithm(config)
 
         # Batch size for disk writing to reduce I/O overhead
-        WRITE_BATCH_SIZE = 10_000
+        WRITE_BATCH_SIZE = config.write_batch_size
 
         # Create temp file for memory mapping
         fd, tf_name = tempfile.mkstemp()
@@ -87,32 +88,41 @@ class GMMClusterer:
         dim = 0
 
         with path_obj.open('wb') as f:
-            current_batch: list[list[float]] = []
+            # Use batched utility to iterate in chunks
+            for batch_tuple in batched(embeddings, batch_size):
+                # batched returns a tuple of items
+                batch_list = list(batch_tuple)
 
-            for emb in embeddings:
+                # Validation on first item of first batch
                 if n_samples == 0:
-                    dim = len(emb)
+                    dim = len(batch_list[0])
                     if dim == 0:
-                            msg = "Embedding dimension cannot be zero."
-                            raise ValueError(msg)
-                elif len(emb) != dim:
-                        msg = f"Embedding dimension mismatch at index {n_samples}."
+                        msg = "Embedding dimension cannot be zero."
                         raise ValueError(msg)
 
-                if any(np.isnan(x) or np.isinf(x) for x in emb):
-                        msg = "Embeddings contain NaN or Infinity values."
-                        raise ValueError(msg)
+                # Check dimensions and content for the batch
+                # We can do this efficiently with numpy if we trust the input structure,
+                # or loop if we need detailed error messages.
+                # For strict correctness per spec, we should validate.
+                # Converting to numpy first allows faster checking.
+                try:
+                    np_batch = np.array(batch_list, dtype='float32')
+                except ValueError as e:
+                    # Likely inhomogeneous shape if lengths differ
+                    msg = f"Failed to create batch array: {e}"
+                    raise ValueError(msg) from e
 
-                current_batch.append(emb)
-                n_samples += 1
+                if np_batch.shape[1] != dim:
+                     msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
+                     raise ValueError(msg)
 
-                if len(current_batch) >= batch_size:
-                    np.array(current_batch, dtype='float32').tofile(f)
-                    current_batch.clear()
+                if not np.isfinite(np_batch).all():
+                     msg = "Embeddings contain NaN or Infinity values."
+                     raise ValueError(msg)
 
-            if current_batch:
-                np.array(current_batch, dtype='float32').tofile(f)
-                current_batch.clear()
+                # Write to disk
+                np_batch.tofile(f)
+                n_samples += len(batch_list)
 
         return n_samples, dim
 
@@ -169,10 +179,6 @@ class GMMClusterer:
         try:
             # 1. Dimensionality Reduction (UMAP)
             logger.debug("Running UMAP dimensionality reduction...")
-            # Note: standard UMAP fits on the whole dataset.
-            # While it supports `transform` on new data, `fit_transform` usually requires seeing everything.
-            # We pass the memmap array, which allows UMAP to access data on-demand from disk if needed,
-            # though UMAP implementation might still load pages into memory.
             reducer = UMAP(
                 n_neighbors=effective_n_neighbors,
                 min_dist=min_dist,

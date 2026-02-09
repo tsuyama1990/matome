@@ -71,6 +71,9 @@ class ProcessingConfig(BaseModel):
     umap_n_components: int = Field(
         default=2, ge=2, description="UMAP parameter: Number of dimensions to reduce to."
     )
+    write_batch_size: int = Field(
+        default=10_000, ge=1, description="Batch size for writing vectors to disk during clustering."
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(
@@ -88,6 +91,9 @@ class ProcessingConfig(BaseModel):
     )
     max_word_length: int = Field(
         default=1000, ge=100, description="Maximum length of a single word for input validation."
+    )
+    max_input_length: int = Field(
+        default=500_000, ge=100, description="Maximum length of input text for summarization."
     )
 
     @field_validator("embedding_model")

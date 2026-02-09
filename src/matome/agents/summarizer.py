@@ -81,7 +81,7 @@ class SummarizationAgent:
             return ""
 
         # Validate input for security
-        self._validate_input(text, effective_config.max_word_length)
+        self._validate_input(text, effective_config.max_input_length, effective_config.max_word_length)
 
         # Sanitize prompt injection
         safe_text = self._sanitize_prompt_injection(text)
@@ -110,7 +110,7 @@ class SummarizationAgent:
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 
-    def _validate_input(self, text: str, max_word_length: int) -> None:
+    def _validate_input(self, text: str, max_input_length: int, max_word_length: int) -> None:
         """
         Sanitize and validate input text.
 
@@ -126,15 +126,15 @@ class SummarizationAgent:
 
         Args:
             text: The input text to validate.
+            max_input_length: Maximum allowed total characters.
             max_word_length: The maximum allowed length for a single word.
 
         Raises:
             ValueError: If any validation check fails.
         """
         # 1. Length Check (Document)
-        MAX_INPUT_LENGTH = 500_000
-        if len(text) > MAX_INPUT_LENGTH:
-             msg = f"Input text exceeds maximum allowed length ({MAX_INPUT_LENGTH} characters)."
+        if len(text) > max_input_length:
+             msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
              raise ValueError(msg)
 
         # 2. Control Character Check (Unicode)
@@ -165,6 +165,9 @@ class SummarizationAgent:
         Iterates through a list of known injection patterns (e.g., 'ignore previous instructions')
         and replaces them with a placeholder '[Filtered]'.
 
+        Using literal string matching (if pattern is simple) or careful regex matching
+        is handled by PROMPT_INJECTION_PATTERNS definitions.
+
         Args:
             text: The input text to sanitize.
 
@@ -173,6 +176,8 @@ class SummarizationAgent:
         """
         sanitized = text
         for pattern in PROMPT_INJECTION_PATTERNS:
+            # We use re.sub for flexible matching (case insensitive, whitespace variations)
+            # which are defined in the patterns themselves.
             sanitized = re.sub(pattern, "[Filtered]", sanitized)
 
         return sanitized
