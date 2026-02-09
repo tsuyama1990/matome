@@ -19,11 +19,20 @@ class ClusteringAlgorithm(Enum):
     GMM = "gmm"
 
 
+def _safe_getenv(key: str, default: str) -> str:
+    """Safely get environment variable with fallback."""
+    val = os.getenv(key)
+    if val is None or not val.strip():
+        return default
+    return val
+
+
 class ProcessingConfig(BaseModel):
     """
     Configuration for text processing and chunking.
 
     Defaults are defined directly in the model or via default_factory using os.getenv.
+    Securely handles environment variables.
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -34,7 +43,7 @@ class ProcessingConfig(BaseModel):
         default=0, ge=0, description="Number of overlapping tokens between chunks."
     )
     tokenizer_model: str = Field(
-        default_factory=lambda: os.getenv("TOKENIZER_MODEL", DEFAULT_TOKENIZER),
+        default_factory=lambda: _safe_getenv("TOKENIZER_MODEL", DEFAULT_TOKENIZER),
         description="Tokenizer model/encoding name to use.",
     )
 
@@ -57,7 +66,7 @@ class ProcessingConfig(BaseModel):
 
     # Embedding Configuration
     embedding_model: str = Field(
-        default_factory=lambda: os.getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING),
+        default_factory=lambda: _safe_getenv("EMBEDDING_MODEL", DEFAULT_EMBEDDING),
         description="HuggingFace model name for embeddings.",
     )
     embedding_batch_size: int = Field(
@@ -132,7 +141,7 @@ class ProcessingConfig(BaseModel):
 
     # Summarization Configuration
     summarization_model: str = Field(
-        default_factory=lambda: os.getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZER),
+        default_factory=lambda: _safe_getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZER),
         description="Model to use for summarization.",
     )
     max_summary_tokens: int = Field(
@@ -156,7 +165,7 @@ class ProcessingConfig(BaseModel):
         default=True, description="Whether to perform verification after summarization."
     )
     verification_model: str = Field(
-        default_factory=lambda: os.getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
+        default_factory=lambda: _safe_getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
         description="Model to use for verification (defaults to summarization model).",
     )
 

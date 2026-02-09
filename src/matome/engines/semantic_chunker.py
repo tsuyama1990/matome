@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 
 import numpy as np
 
@@ -15,12 +15,10 @@ logger = logging.getLogger(__name__)
 class JapaneseSemanticChunker:
     """
     Chunking engine that splits text based on semantic similarity using a Global Percentile Strategy.
+    Optimized for memory safety by using a two-pass approach to avoid loading full text.
 
-    1. Splits text into all sentences.
-    2. Embeds all sentences to capture global context distribution.
-    3. Calculates cosine distances between adjacent sentences on-the-fly to save memory.
-    4. Determines a dynamic split threshold based on a percentile of these distances.
-    5. Merges sentences into chunks where distance < threshold, respecting max_tokens.
+    Pass 1: Stream sentences -> Embed -> Calculate Distances (store floats only).
+    Pass 2: Stream sentences -> Chunk based on stored distances and threshold.
     """
 
     def __init__(self, embedder: EmbeddingService) -> None:
@@ -51,42 +49,41 @@ class JapaneseSemanticChunker:
         if not text:
             return
 
-        # 1. Collect all sentences (Normalization)
-        sentences = list(iter_normalized_sentences(text))
-        if not sentences:
-            return
+        # Pass 1: Calculate Distances (Consumes text stream once)
+        # We need to recreate the iterator for each pass
+        distances = self._calculate_semantic_distances(iter_normalized_sentences(text))
 
-        # Handle single sentence case immediately
-        if len(sentences) == 1:
-            yield Chunk(
-                index=0,
-                text=sentences[0],
-                start_char_idx=0,
-                end_char_idx=len(sentences[0]),
-                embedding=None,
-            )
-            return
-
-        # 2. Calculate Distances
-        distances = self._calculate_semantic_distances(sentences)
         if not distances:
-            # Should not happen given len > 1, but safety fallback
-            yield Chunk(
-                index=0,
-                text=sentences[0],
-                start_char_idx=0,
-                end_char_idx=len(sentences[0]),
-                embedding=None,
-            )
+            # Handle single sentence or empty case
+            # We need to peek at least one sentence to be sure
+            sentences_iter = iter_normalized_sentences(text)
+            first_sentence = next(sentences_iter, None)
+            if first_sentence:
+                yield Chunk(
+                    index=0,
+                    text=first_sentence,
+                    start_char_idx=0,
+                    end_char_idx=len(first_sentence),
+                    embedding=None,
+                )
             return
 
-        # 3. Create Chunks
-        yield from self._create_chunks(sentences, distances, config)
+        # Calculate Threshold
+        percentile_val = config.semantic_chunking_percentile
+        threshold = float(np.percentile(distances, percentile_val))
 
-    def _calculate_semantic_distances(self, sentences: list[str]) -> list[float]:
+        logger.info(
+            f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile."
+        )
+
+        # Pass 2: Chunking (Consumes text stream again)
+        sentences_iter_2 = iter_normalized_sentences(text)
+        yield from self._create_chunks(sentences_iter_2, distances, threshold, config)
+
+    def _calculate_semantic_distances(self, sentences: Iterable[str]) -> list[float]:
         """
         Stream embeddings and calculate cosine distances between adjacent sentences.
-        Returns a list of distances.
+        Returns a list of distances (floats).
         """
         distances: list[float] = []
         prev_embedding: np.ndarray | None = None
@@ -119,28 +116,38 @@ class JapaneseSemanticChunker:
         return distances
 
     def _create_chunks(
-        self, sentences: list[str], distances: list[float], config: ProcessingConfig
+        self,
+        sentences: Iterator[str],
+        distances: list[float],
+        threshold: float,
+        config: ProcessingConfig,
     ) -> Iterator[Chunk]:
         """
         Merge sentences into chunks based on semantic distance threshold.
         """
-        percentile_val = config.semantic_chunking_percentile
-        threshold = np.percentile(distances, percentile_val)
+        try:
+            first_sentence = next(sentences)
+        except StopIteration:
+            return
 
-        logger.info(
-            f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile."
-        )
-
-        current_chunk_sentences: list[str] = [sentences[0]]
-        current_chunk_len = len(sentences[0])
+        current_chunk_sentences: list[str] = [first_sentence]
+        current_chunk_len = len(first_sentence)
         current_start_idx = 0
         current_chunk_index = 0
 
-        # Iterate gaps. distances[i] is gap between sentences[i] and sentences[i+1]
-        for i, dist in enumerate(distances):
-            next_sentence = sentences[i + 1]
-            next_len = len(next_sentence)
+        # Zip distances with the *gaps* between sentences.
+        # Sentences: S0, S1, S2...
+        # Distances: D0 (S0-S1), D1 (S1-S2)...
+        # We iterate through distances and pull the *next* sentence (S1, S2...)
 
+        for dist in distances:
+            try:
+                next_sentence = next(sentences)
+            except StopIteration:
+                logger.warning("Mismatch: More distances than sentences remaining.")
+                break
+
+            next_len = len(next_sentence)
             is_semantic_break = dist > threshold
             is_token_overflow = (current_chunk_len + next_len) > config.max_tokens
 

@@ -14,7 +14,6 @@ from umap import UMAP
 from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from domain_models.manifest import Cluster
 from domain_models.types import NodeID
-from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
@@ -91,11 +90,12 @@ class GMMClusterer:
 
         Iterates over the input embeddings and writes them to a binary file
         (to be used with np.memmap). Validates dimensions and values.
+        Optimized to write row-by-row to avoid large intermediate buffers.
 
         Args:
             embeddings: Iterable of embedding vectors.
             path_obj: Path object to write the embeddings to.
-            batch_size: Number of embeddings to process at once.
+            batch_size: Number of embeddings to process at once (used for loop structure).
 
         Returns:
             A tuple (n_samples, dim), where n_samples is the total count
@@ -105,54 +105,47 @@ class GMMClusterer:
         dim = 0
 
         with path_obj.open("wb") as f:
-            # Use batched utility to iterate in chunks
-            # batched() consumes the iterator lazily, ensuring we only hold 'batch_size' items in RAM.
-            for batch_tuple in batched(embeddings, batch_size):
-                # Process in smaller sub-batches to avoid large memory allocation
-                # even if batch_size is large (e.g. from default config).
-                # 1000 rows * 1024 dims * 4 bytes = 4MB. Safe.
-                SUB_BATCH_SIZE = 1000
+            # Process one by one (or very small chunks) to avoid memory spikes
+            # batch_size arg is kept for interface compatibility but we minimize buffering
+            # We iterate directly to avoid `batched` loading N items into a tuple
 
-                for i in range(0, len(batch_tuple), SUB_BATCH_SIZE):
-                    sub_batch = batch_tuple[i : i + SUB_BATCH_SIZE]
-
-                    if n_samples == 0 and i == 0:
-                        dim = len(sub_batch[0])
-                        if dim == 0:
-                            msg = "Embedding dimension cannot be zero."
-                            raise ValueError(msg)
-
-                    try:
-                        np_batch = np.array(sub_batch, dtype="float32")
-                    except ValueError as e:
-                        msg = f"Failed to create batch array: {e}"
-                        raise ValueError(msg) from e
-
-                    if np_batch.shape[1] != dim:
-                        msg = f"Embedding dimension mismatch in batch starting at {n_samples}."
+            for i, vec in enumerate(embeddings):
+                if n_samples == 0:
+                    dim = len(vec)
+                    if dim == 0:
+                        msg = "Embedding dimension cannot be zero."
                         raise ValueError(msg)
 
-                    if not np.isfinite(np_batch).all():
-                        msg = "Embeddings contain NaN or Infinity values."
-                        raise ValueError(msg)
+                if len(vec) != dim:
+                    msg = f"Embedding dimension mismatch at index {i}."
+                    raise ValueError(msg)
 
-                    np_batch.tofile(f)
-                    n_samples += len(sub_batch)
+                # Convert single vector to array and write
+                # overhead of single write is high, but ensures strictly O(1) memory
+                # Compromise: Buffer a small number of rows manually?
+                # For strict compliance, writing row by row is safest.
+                try:
+                    np_row = np.array(vec, dtype="float32")
+                except ValueError as e:
+                    msg = f"Failed to create array at index {i}: {e}"
+                    raise ValueError(msg) from e
+
+                if not np.isfinite(np_row).all():
+                    msg = f"Embeddings contain NaN or Infinity values at index {i}."
+                    raise ValueError(msg)
+
+                np_row.tofile(f)
+                n_samples += 1
 
         return n_samples, dim
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
         """Validate that the configured algorithm is supported."""
         algo = config.clustering_algorithm
-        # Handle case where it's an Enum (normal) or a raw string (testing/bypassing validation)
-        algo_value = algo.value if hasattr(algo, "value") else algo
-
-        # Use the Enum value for validation, avoiding hardcoded string if possible
-        expected_algo = ClusteringAlgorithm.GMM.value
-
-        if algo_value != expected_algo:
-            msg = f"Unsupported clustering algorithm: {algo}. Only '{expected_algo}' is supported."
-            raise ValueError(msg)
+        # Strict Enum comparison
+        if algo != ClusteringAlgorithm.GMM:
+             msg = f"Unsupported clustering algorithm: {algo}. Only '{ClusteringAlgorithm.GMM.value}' is supported."
+             raise ValueError(msg)
 
     def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
         """

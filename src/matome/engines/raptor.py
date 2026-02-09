@@ -42,39 +42,63 @@ class RaptorEngine:
         """
         Handle Level 0: Embedding, Storage, and Clustering.
 
-        Consumes the initial chunks iterator, embeds them, stores them in the database
-        (batched), and then clusters the embeddings. All operations are strictly streaming.
+        Consumes the initial chunks iterator, embeds them, stores them in the database,
+        and then clusters the embeddings. All operations are strictly streaming.
         """
         current_level_ids: list[NodeID] = []
         # Use mutable container to track count within generator
         stats = {"node_count": 0}
 
+        def chunk_storage_generator(chunks: Iterator[Chunk]) -> Iterator[Chunk]:
+            """
+            Intermediate generator that stores chunks as they pass through.
+            DiskChunkStore.add_chunks handles batching internally if we pass a generator?
+            Actually, add_chunks takes Iterable. We can't yield and consume at same time easily.
+
+            Strategy: We yield chunks to add_chunks. But wait, we need to embed first.
+            EmbeddingService.embed_chunks yields chunks with embeddings.
+
+            So: initial -> embedder -> storage -> yield embedding for clustering.
+            """
+            # We buffer slightly here to batch writes effectively if store doesn't buffer enough?
+            # store.add_chunks implementation: iterates in batches.
+            # So if we call store.add_chunks(generator), it consumes generator.
+            # But we need to yield embeddings to clusterer *after* (or during) storage.
+            # We can't consume generator twice.
+            # So we must drive the loop manually.
+
         def l0_embedding_generator() -> Iterator[list[float]]:
-            chunk_buffer: list[Chunk] = []
+            # We must yield embeddings for the clusterer.
+            # While doing so, we save to DB.
 
-            # Embed chunks (streaming from initial_chunks iterator)
-            for chunk in self.embedder.embed_chunks(initial_chunks):
-                if chunk.embedding is None:
-                    msg = f"Chunk {chunk.index} missing embedding."
-                    raise ValueError(msg)
+            # Streaming chain:
+            # 1. initial_chunks (Iterator)
+            # 2. embedder.embed_chunks (Iterator) -> Yields Chunk with embedding
 
-                stats["node_count"] += 1
+            chunk_stream = self.embedder.embed_chunks(initial_chunks)
+
+            # We assume store.add_chunks handles lists efficiently.
+            # But to strictly stream, we should batch manually here and call store.add_chunks on batches.
+
+            # Using batched to process small groups of chunks
+            for chunk_batch_tuple in batched(chunk_stream, self.config.chunk_buffer_size):
+                chunk_batch = list(chunk_batch_tuple)
+
+                # 1. Store batch
+                store.add_chunks(chunk_batch)
+
+                # 2. Yield embeddings and collect IDs
+                for chunk in chunk_batch:
+                    if chunk.embedding is None:
+                        msg = f"Chunk {chunk.index} missing embedding."
+                        raise ValueError(msg)
+
+                    stats["node_count"] += 1
+                    current_level_ids.append(chunk.index)
+                    yield chunk.embedding
+
                 if stats["node_count"] % 100 == 0:
                     logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")
-
-                yield chunk.embedding
-
-                # Buffer chunks for storage to avoid N+1 DB transactions
-                chunk_buffer.append(chunk)
-                current_level_ids.append(chunk.index)
-
-                if len(chunk_buffer) >= self.config.chunk_buffer_size:
-                    store.add_chunks(chunk_buffer)
-                    chunk_buffer.clear()
-
-            # Flush remaining chunks
-            if chunk_buffer:
-                store.add_chunks(chunk_buffer)
 
         # cluster_nodes consumes the generator.
         # This will drive the loop above, which drives storage and counting.
@@ -202,9 +226,22 @@ class RaptorEngine:
             # Strategy: Batched processing manually
             # We process in batches to avoid loading all texts.
             # batch is a tuple of (NodeID, str) tuples.
+            # batched is lazy, so we don't load everything.
             for batch in batched(node_text_generator(), self.config.embedding_batch_size):
-                ids = [item[0] for item in batch]
-                texts = [item[1] for item in batch]
+                # batch is tuple of (id, text)
+                ids_iter = (item[0] for item in batch)
+                texts_iter = (item[1] for item in batch)
+
+                # To efficiently use embed_strings (which batches internally too, but expects iterable),
+                # we can pass the texts iterator.
+                # However, we need to zip results with IDs.
+                # We need to materialize ids for zipping if we pass iterator to embedder?
+                # embed_strings returns iterator.
+                # It's safer to materialize this small batch of IDs and Texts to ensure alignment.
+                # Since batch size is small (e.g. 32), this is safe.
+
+                ids = list(ids_iter)
+                texts = list(texts_iter)
 
                 # Embed batch (returns iterator)
                 try:
@@ -240,8 +277,6 @@ class RaptorEngine:
             # If input was empty?
             if not l0_ids:
                 # Should return empty tree if no chunks at all
-                # But we need a dummy root? Or empty tree?
-                # Returning minimal dummy tree for safety if logic requires return
                 pass
             # If current_level_ids empty but l0_ids not empty (unlikely unless summarization failed completely)
             msg = "No nodes remaining."
