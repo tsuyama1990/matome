@@ -80,7 +80,7 @@ Matome provides a robust CLI to process documents.
 
 ```python
 from pathlib import Path
-from matome.engines.chunker import JapaneseTokenChunker
+from matome.engines.semantic_chunker import JapaneseSemanticChunker
 from matome.engines.embedder import EmbeddingService
 from matome.engines.cluster import GMMClusterer
 from matome.agents.summarizer import SummarizationAgent
@@ -93,8 +93,8 @@ from domain_models.config import ProcessingConfig
 config = ProcessingConfig(max_tokens=500)
 
 # 2. Initialize Components
-chunker = JapaneseTokenChunker()
 embedder = EmbeddingService(config)
+chunker = JapaneseSemanticChunker(embedder)
 clusterer = GMMClusterer()
 summarizer = SummarizationAgent(config)
 verifier = VerifierAgent(config)
@@ -105,9 +105,10 @@ engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 tree = engine.run("Your long Japanese text here...", store=store)
 
 # 4. Verify Root Summary
-root_summary = tree.root_node.text
-result = verifier.verify(root_summary, "Source text...")
-print(f"Verification Score: {result.score}")
+if tree.root_node:
+    root_summary = tree.root_node.text
+    result = verifier.verify(root_summary, "Source text...")
+    print(f"Verification Score: {result.score}")
 ```
 
 ## Architecture/Structure
