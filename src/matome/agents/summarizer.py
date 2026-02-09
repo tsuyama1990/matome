@@ -79,10 +79,13 @@ class SummarizationAgent:
         # Validate input for security
         self._validate_input(text, config.max_word_length)
 
+        # Sanitize prompt injection
+        safe_text = self._sanitize_prompt_injection(text)
+
         # Mock Mode Check
         if self.api_key == "mock":
             logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
-            return f"Summary of {text[:20]}..."
+            return f"Summary of {safe_text[:20]}..."
 
         if not self.llm:
             msg = f"[{request_id}] OpenRouter API Key is missing. Cannot perform summarization."
@@ -93,7 +96,7 @@ class SummarizationAgent:
              logger.debug(f"[{request_id}] Config model {config.summarization_model} differs from agent model {self.model_name}. Using agent model.")
 
         try:
-            prompt = COD_TEMPLATE.format(context=text)
+            prompt = COD_TEMPLATE.format(context=safe_text)
             messages = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, config, request_id)
@@ -129,6 +132,30 @@ class SummarizationAgent:
              msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
              raise ValueError(msg)
 
+    def _sanitize_prompt_injection(self, text: str) -> str:
+        """
+        Basic mitigation for Prompt Injection.
+        Escapes or removes sequences that might confuse the LLM or break out of the context block.
+        """
+        # Remove explicit "Ignore previous instructions" patterns
+        # Simple regex for common jailbreaks
+        patterns = [
+            r"(?i)ignore\s+previous\s+instructions",
+            r"(?i)system\s+override",
+            r"(?i)ignore\s+all\s+instructions",
+        ]
+
+        sanitized = text
+        for pattern in patterns:
+            sanitized = re.sub(pattern, "[Filtered]", sanitized)
+
+        # Escape delimiters used in prompts if necessary (e.g. XML tags if prompt uses them)
+        # Our COD_TEMPLATE uses simple formatting.
+        # But generally, ensuring the input is treated as data is best handled by the prompt structure.
+        # Here we just filter explicit malicious intents.
+
+        return sanitized
+
     def _invoke_llm(self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str) -> BaseMessage:
         """Helper to invoke LLM with retry logic."""
         if not self.llm:
@@ -136,13 +163,6 @@ class SummarizationAgent:
              raise SummarizationError(msg)
 
         from tenacity import Retrying
-
-        # If LLM client handles retries, we might double-retry here.
-        # But explicitly controlling it via tenacity allows logging and custom wait strategies.
-        # We initialized LLM with max_retries=config.max_retries.
-        # So maybe we don't need tenacity?
-        # But tenacity provides better logging "Retrying LLM call...".
-        # Let's keep tenacity for robustness.
 
         response = None
         for attempt in Retrying(
