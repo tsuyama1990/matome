@@ -1,10 +1,25 @@
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ProcessingConfig(BaseModel):
-    """Configuration for text processing and chunking."""
+    """
+    Configuration for text processing and chunking.
+
+    Examples:
+        Default configuration:
+        >>> config = ProcessingConfig.default()
+
+        High precision configuration (smaller chunks):
+        >>> config = ProcessingConfig.high_precision()
+
+        Custom configuration:
+        >>> config = ProcessingConfig(
+        ...     max_tokens=1000,
+        ...     embedding_model="sentence-transformers/all-mpnet-base-v2"
+        ... )
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -57,6 +72,20 @@ class ProcessingConfig(BaseModel):
     max_retries: int = Field(
         default=3, ge=0, description="Maximum number of retries for LLM calls."
     )
+
+    @field_validator("embedding_model")
+    @classmethod
+    def validate_embedding_model(cls, v: str) -> str:
+        """Validate embedding model name to prevent potential issues."""
+        if not v or not v.strip():
+            msg = "Embedding model name cannot be empty."
+            raise ValueError(msg)
+        # Basic check for suspicious characters
+        forbidden = [";", "&", "|", "`", "$", "(", ")", "<", ">"]
+        if any(char in v for char in forbidden):
+            msg = f"Invalid characters in embedding model name: {v}"
+            raise ValueError(msg)
+        return v
 
     @classmethod
     def default(cls) -> Self:

@@ -55,7 +55,10 @@ def test_full_pipeline_mocked(mock_gmm: MagicMock, mock_umap: MagicMock, mock_st
 
     # 2. Clustering
     cluster_engine = GMMClusterer()
-    embeddings = [c.embedding for c in chunks_with_embeddings]
+    # Ensure embeddings are not None for mypy
+    embeddings = [c.embedding for c in chunks_with_embeddings if c.embedding is not None]
+    assert len(embeddings) == len(chunks_with_embeddings)
+
     clusters = cluster_engine.cluster_nodes(embeddings, config)
 
     assert len(clusters) == 2
@@ -96,7 +99,9 @@ def test_real_pipeline_small() -> None:
     # 2. Real Clustering
     # With 4 samples, UMAP might need help.
     cluster_engine = GMMClusterer()
-    embeddings = [c.embedding for c in chunks]
+    # Ensure embeddings are not None for mypy
+    embeddings = [c.embedding for c in chunks if c.embedding is not None]
+    assert len(embeddings) == len(chunks)
 
     # Use n_neighbors=2 for small dataset
     # In ClusterEngine, n_neighbors was arg. GMMClusterer uses defaults.
