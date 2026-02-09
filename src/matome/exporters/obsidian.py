@@ -55,9 +55,6 @@ class CanvasFile(BaseModel):
 class ObsidianCanvasExporter:
     """Exports DocumentTree to Obsidian Canvas format."""
 
-    GAP_X = 50
-    GAP_Y = 300
-
     def __init__(self, config: ProcessingConfig | None = None) -> None:
         self.nodes: list[CanvasNode] = []
         self.edges: list[CanvasEdge] = []
@@ -66,6 +63,8 @@ class ObsidianCanvasExporter:
         self.config = config or ProcessingConfig()
         self.NODE_WIDTH = self.config.canvas_node_width
         self.NODE_HEIGHT = self.config.canvas_node_height
+        self.GAP_X = self.config.canvas_gap_x
+        self.GAP_Y = self.config.canvas_gap_y
 
     def generate_canvas_data(
         self, tree: "DocumentTree", store: "DiskChunkStore | None" = None

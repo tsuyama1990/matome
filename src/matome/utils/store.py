@@ -60,7 +60,17 @@ class DiskChunkStore:
         # Use standard SQLite URL
         # Security: db_path is constructed safely via tempfile or passed explicitly by trusted caller.
         db_url = f"sqlite:///{self.db_path}"
-        self.engine = create_engine(db_url)
+
+        # Configure connection pooling for performance
+        # SQLite handles concurrency poorly with multiple writers, but we use WAL mode.
+        # Pool size and timeout help manage contention.
+        self.engine = create_engine(
+            db_url,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_recycle=1800
+        )
         self._setup_db()
 
     def _setup_db(self) -> None:

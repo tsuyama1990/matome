@@ -20,7 +20,9 @@ def test_add_chunks_streaming(tmp_path: Path) -> None:
 
     # Verify storage
     with store.engine.connect() as conn:
-        result = conn.execute(text(f"SELECT COUNT(*) FROM {TABLE_NODES} WHERE type='chunk'"))  # noqa: S608
+        result = conn.execute(
+            text(f"SELECT COUNT(*) FROM {TABLE_NODES} WHERE type=:type"), {"type": "chunk"}  # noqa: S608
+        )
         assert result.scalar() == 5
 
     store.close()
@@ -75,7 +77,7 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
     # Verify separation in DB
     with store.engine.connect() as conn:
         row = conn.execute(
-            text(f"SELECT content, embedding FROM {TABLE_NODES} WHERE id='1'")  # noqa: S608
+            text(f"SELECT content, embedding FROM {TABLE_NODES} WHERE id=:id"), {"id": "1"}  # noqa: S608
         ).fetchone()
         assert row is not None
         content_json, embedding_json = row

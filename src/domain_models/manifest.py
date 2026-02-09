@@ -45,6 +45,9 @@ class Chunk(BaseModel):
         Validate that text is present and indices form a valid range.
         Also check embedding validity if present.
         """
+        # Ensure text is not just whitespace and not empty
+        # We strip to check, but we don't modify the actual text field here as it might be intentional?
+        # No, RAPTOR chunks should contain meaningful content.
         if not self.text or not self.text.strip():
             msg = "Chunk text cannot be empty or whitespace only."
             logger.error(msg)

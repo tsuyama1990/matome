@@ -107,6 +107,16 @@ class ProcessingConfig(BaseModel):
         ge=10,
         description="Height of nodes in Obsidian Canvas export.",
     )
+    canvas_gap_x: int = Field(
+        default=50,
+        ge=0,
+        description="Horizontal gap between nodes in Obsidian Canvas export.",
+    )
+    canvas_gap_y: int = Field(
+        default=300,
+        ge=0,
+        description="Vertical gap between nodes in Obsidian Canvas export.",
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(
