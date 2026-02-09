@@ -1,4 +1,5 @@
 import os
+from enum import Enum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -8,6 +9,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 DEFAULT_TOKENIZER = "cl100k_base"
 DEFAULT_EMBEDDING = "intfloat/multilingual-e5-large"
 DEFAULT_SUMMARIZER = "gpt-4o"
+
+class ClusteringAlgorithm(Enum):
+    GMM = "gmm"
 
 class ProcessingConfig(BaseModel):
     """
@@ -49,8 +53,8 @@ class ProcessingConfig(BaseModel):
     )
 
     # Clustering Configuration
-    clustering_algorithm: str = Field(
-        default="gmm", description="Algorithm to use (e.g., 'gmm'). Currently only 'gmm' is supported."
+    clustering_algorithm: ClusteringAlgorithm = Field(
+        default=ClusteringAlgorithm.GMM, description="Algorithm to use (e.g., 'gmm'). Currently only 'gmm' is supported."
     )
     n_clusters: int | None = Field(
         default=None, description="Fixed number of clusters (if applicable)."

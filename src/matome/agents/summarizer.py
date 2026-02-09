@@ -32,23 +32,14 @@ class SummarizationAgent:
         Args:
             config: Processing configuration containing model name, retries, etc.
         """
-        # Retrieve API key securely from environment via config utility
         api_key = get_openrouter_api_key()
         base_url = get_openrouter_base_url()
 
-        # Determine model name
         self.model_name = config.summarization_model
-
         self.api_key = api_key
         self.llm: ChatOpenAI | None = None
 
-        # Initialize LLM only if API key is present (or if we want to allow failure later)
-        # Check for 'mock' value explicitly to enable testing mode without real calls
         if api_key and api_key != "mock":
-            # langchain_openai handles retries internally if max_retries > 0,
-            # but we also wrap calls with tenacity for more control if needed.
-            # Here we set max_retries to 0 in the client to let tenacity handle it,
-            # or we rely on the client. Let's use config.max_retries in client.
             self.llm = ChatOpenAI(
                 model=self.model_name,
                 api_key=api_key,
@@ -60,16 +51,6 @@ class SummarizationAgent:
     def summarize(self, text: str, config: ProcessingConfig) -> str:
         """
         Summarize the provided text using the Chain of Density strategy.
-
-        Args:
-            text: The text to summarize.
-            config: Configuration parameters.
-
-        Returns:
-            The generated summary.
-
-        Raises:
-            SummarizationError: If summarization fails or API key is missing.
         """
         request_id = str(uuid.uuid4())
 
@@ -83,7 +64,6 @@ class SummarizationAgent:
         # Sanitize prompt injection
         safe_text = self._sanitize_prompt_injection(text)
 
-        # Mock Mode Check
         if self.api_key == "mock":
             logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
             return f"Summary of {safe_text[:20]}..."
@@ -97,10 +77,6 @@ class SummarizationAgent:
              logger.debug(f"[{request_id}] Config model {config.summarization_model} differs from agent model {self.model_name}. Using agent model.")
 
         try:
-            # We assume COD_TEMPLATE treats context as data block or we should verify it.
-            # Using prompt templates usually handles escaping if the underlying library supports it.
-            # But standard f-string format doesn't escape for LLM context instructions.
-            # Here we rely on sanitization.
             prompt = COD_TEMPLATE.format(context=safe_text)
             messages = [HumanMessage(content=prompt)]
 
@@ -108,36 +84,32 @@ class SummarizationAgent:
             return self._process_response(response, request_id)
 
         except Exception as e:
-            # Enhanced error logging with custom exception
             logger.exception(f"[{request_id}] Summarization failed for text length {len(text)}")
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 
     def _validate_input(self, text: str, max_word_length: int) -> None:
         """
-        Sanitize and validate input text to prevent injection attacks or excessive load.
+        Sanitize and validate input text.
         """
-        # 1. Length Check
+        # 1. Length Check (Document)
         MAX_INPUT_LENGTH = 500_000
         if len(text) > MAX_INPUT_LENGTH:
              msg = f"Input text exceeds maximum allowed length ({MAX_INPUT_LENGTH} characters)."
              raise ValueError(msg)
 
         # 2. Control Character Check (Unicode)
-        # Iterate and check category of each character.
-        # Categories: Cc (Control), Cf (Format), Cs (Surrogate), Co (Private Use), Cn (Unassigned)
-        # We allow newlines/tabs which are Cc but usually safe/needed for formatting.
-        # Allow: \n (0x0A), \r (0x0D), \t (0x09)
-        allowed_controls = {"\n", "\r", "\t"}
+        # We strictly disallow control characters that are not standard whitespace.
+        # \n (0x0A), \t (0x09) are allowed for formatting.
+        # \r (0x0D) is NOT allowed to prevent CRLF injection issues in logs/prompts if careless.
+        allowed_controls = {"\n", "\t"}
 
         for char in text:
             if unicodedata.category(char).startswith("C") and char not in allowed_controls:
                  msg = f"Input text contains invalid control character: {char!r}"
                  raise ValueError(msg)
 
-        # 3. Tokenization DoS Protection (Long words)
-        # Check for extremely long uninterrupted sequences which can cause tokenizer issues
-        # Using a generator expression to be memory efficient
+        # 3. Tokenizer DoS Protection
         longest_word_len = max((len(w) for w in text.split()), default=0)
         if longest_word_len > max_word_length:
              msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
@@ -146,9 +118,7 @@ class SummarizationAgent:
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
         Basic mitigation for Prompt Injection.
-        Escapes or removes sequences that might confuse the LLM or break out of the context block.
         """
-        # Expanded list of patterns to filter
         patterns = [
             r"(?i)ignore\s+previous\s+instructions",
             r"(?i)ignore\s+all\s+instructions",
@@ -156,18 +126,12 @@ class SummarizationAgent:
             r"(?i)execute\s+command",
             r"(?i)reveal\s+system\s+prompt",
             r"(?i)bypass\s+security",
-            r"(?i)output\s+as\s+json", # Context-dependent, but often used in injection
+            r"(?i)output\s+as\s+json",
         ]
 
         sanitized = text
         for pattern in patterns:
             sanitized = re.sub(pattern, "[Filtered]", sanitized)
-
-        # Also escape potential delimiters if they are used in our prompt template
-        # COD_TEMPLATE likely uses standard text structure.
-        # If it uses XML tags like <context>...</context>, we should escape < and >.
-        # Let's assume standard Markdown-like usage.
-        # We don't want to break valid text, but we can escape rare sequences if needed.
 
         return sanitized
 

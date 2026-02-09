@@ -93,7 +93,7 @@ class GMMClusterer:
                      path.unlink()
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
-        if config.clustering_algorithm != "gmm":
+        if config.clustering_algorithm.value != "gmm":
             msg = f"Unsupported clustering algorithm: {config.clustering_algorithm}. Only 'gmm' is supported."
             raise ValueError(msg)
 

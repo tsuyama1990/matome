@@ -56,7 +56,7 @@ def test_config_factory_methods() -> None:
     assert default_config.max_tokens == 500
     assert default_config.overlap == 0
     assert default_config.embedding_model == "intfloat/multilingual-e5-large"
-    assert default_config.clustering_algorithm == "gmm"
+    assert default_config.clustering_algorithm.value == "gmm"
 
     # Test high_precision()
     hp_config = ProcessingConfig.high_precision()

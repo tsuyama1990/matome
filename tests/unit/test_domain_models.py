@@ -116,7 +116,7 @@ def test_config_validation() -> None:
 
     # Test new fields
     config_default = ProcessingConfig.default()
-    assert config_default.clustering_algorithm == "gmm"
+    assert config_default.clustering_algorithm.value == "gmm"
     assert config_default.summarization_model == "gpt-4o"
     # Test semantic chunking defaults
     assert config_default.semantic_chunking_mode is False

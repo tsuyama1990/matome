@@ -1,5 +1,4 @@
 import logging
-import pickle
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -11,7 +10,7 @@ logger = logging.getLogger(__name__)
 class DiskChunkStore:
     """
     A temporary disk-based store for Chunks and SummaryNodes to avoid O(N) RAM usage.
-    Uses SQLite with binary serialization (pickle) for efficiency.
+    Uses SQLite with JSON serialization for security and interoperability.
     """
 
     def __init__(self) -> None:
@@ -24,19 +23,19 @@ class DiskChunkStore:
         cursor = self._conn.cursor()
         # Enable WAL mode for performance
         cursor.execute("PRAGMA journal_mode=WAL;")
-        # Store serialized objects as BLOB
+        # Store serialized objects as TEXT (JSON)
         cursor.execute("""
             CREATE TABLE nodes (
                 id TEXT PRIMARY KEY,
                 type TEXT,
-                data BLOB
+                data TEXT
             )
         """)
         self._conn.commit()
 
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
-        data = pickle.dumps(chunk, protocol=pickle.HIGHEST_PROTOCOL)
+        data = chunk.model_dump_json()
         self._conn.execute(
             "INSERT OR REPLACE INTO nodes (id, type, data) VALUES (?, ?, ?)",
             (str(chunk.index), "chunk", data)
@@ -44,7 +43,7 @@ class DiskChunkStore:
 
     def add_summary(self, node: SummaryNode) -> None:
         """Store a summary node."""
-        data = pickle.dumps(node, protocol=pickle.HIGHEST_PROTOCOL)
+        data = node.model_dump_json()
         self._conn.execute(
             "INSERT OR REPLACE INTO nodes (id, type, data) VALUES (?, ?, ?)",
             (node.id, "summary", data)
@@ -61,18 +60,16 @@ class DiskChunkStore:
             return None
 
         node_type, data = row
-        obj = pickle.loads(data)  # noqa: S301
 
-        if node_type == "chunk":
-            if not isinstance(obj, Chunk):
-                 logger.error(f"Retrieved object for {node_id} is not a Chunk.")
-                 return None
-            return obj
-        if node_type == "summary":
-            if not isinstance(obj, SummaryNode):
-                 logger.error(f"Retrieved object for {node_id} is not a SummaryNode.")
-                 return None
-            return obj
+        try:
+            if node_type == "chunk":
+                return Chunk.model_validate_json(data)
+            if node_type == "summary":
+                return SummaryNode.model_validate_json(data)
+        except Exception:
+            logger.exception(f"Failed to deserialize node {node_id}")
+            return None
+
         return None
 
     def commit(self) -> None:

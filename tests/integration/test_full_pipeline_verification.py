@@ -36,7 +36,7 @@ def test_configuration_flow() -> None:
     config = ProcessingConfig(max_tokens=500)
     assert config.max_tokens == 500
     assert config.overlap == 0  # Default value
-    assert config.clustering_algorithm == "gmm"  # Default
+    assert config.clustering_algorithm.value == "gmm"  # Default
 
 def test_full_pipeline_flow() -> None:
     """
