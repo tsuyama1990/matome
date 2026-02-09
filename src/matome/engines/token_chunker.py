@@ -132,6 +132,14 @@ class JapaneseTokenChunker:
         if model_name is None:
             model_name = os.getenv("TIKTOKEN_MODEL_NAME", "cl100k_base")
 
+        if model_name not in ALLOWED_MODELS:
+            msg = (
+                f"Model name '{model_name}' is not in the allowed list. "
+                f"Allowed models: {sorted(ALLOWED_MODELS)}"
+            )
+            logger.error(msg)
+            raise ValueError(msg)
+
         # Strict validation: This will raise ValueError if invalid.
         # No fallback here - caller must handle or ensure config is correct.
         self.tokenizer = get_cached_tokenizer(model_name)

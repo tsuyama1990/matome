@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -61,7 +60,7 @@ class ObsidianCanvasExporter:
         self.nodes: list[CanvasNode] = []
         self.edges: list[CanvasEdge] = []
         self._subtree_widths: dict[str, int] = {}
-        self._chunk_map: dict[int, "Chunk"] = {}
+        self._chunk_map: dict[int, Chunk] = {}
 
     def generate_canvas_data(self, tree: "DocumentTree") -> CanvasFile:
         """Generates the canvas data structure from the document tree."""

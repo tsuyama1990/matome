@@ -36,18 +36,34 @@ class DiskChunkStore:
 
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
-        data = chunk.model_dump_json()
-        self._conn.execute(
+        self.add_chunks([chunk])
+
+    def add_chunks(self, chunks: list[Chunk]) -> None:
+        """Store multiple chunks in a batch."""
+        if not chunks:
+            return
+        params = [
+            (str(c.index), "chunk", c.model_dump_json()) for c in chunks
+        ]
+        self._conn.executemany(
             "INSERT OR REPLACE INTO nodes (id, type, data) VALUES (?, ?, ?)",
-            (str(chunk.index), "chunk", data),
+            params,
         )
 
     def add_summary(self, node: SummaryNode) -> None:
         """Store a summary node."""
-        data = node.model_dump_json()
-        self._conn.execute(
+        self.add_summaries([node])
+
+    def add_summaries(self, nodes: list[SummaryNode]) -> None:
+        """Store multiple summary nodes in a batch."""
+        if not nodes:
+            return
+        params = [
+            (n.id, "summary", n.model_dump_json()) for n in nodes
+        ]
+        self._conn.executemany(
             "INSERT OR REPLACE INTO nodes (id, type, data) VALUES (?, ?, ?)",
-            (node.id, "summary", data),
+            params,
         )
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:

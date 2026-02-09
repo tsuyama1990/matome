@@ -41,6 +41,7 @@ class RaptorEngine:
         current_level_ids: list[NodeID] = []
 
         def l0_embedding_generator() -> Iterator[list[float]]:
+            chunk_buffer: list[Chunk] = []
             for chunk in self.embedder.embed_chunks(initial_chunks):
                 if chunk.embedding is None:
                     msg = f"Chunk {chunk.index} missing embedding."
@@ -51,8 +52,15 @@ class RaptorEngine:
                 # Store chunk (without embedding)
                 store_chunk = chunk.model_copy()
                 store_chunk.embedding = None
-                store.add_chunk(store_chunk)
+                chunk_buffer.append(store_chunk)
                 current_level_ids.append(store_chunk.index)
+
+                if len(chunk_buffer) >= 100:
+                    store.add_chunks(chunk_buffer)
+                    chunk_buffer.clear()
+
+            if chunk_buffer:
+                store.add_chunks(chunk_buffer)
 
         if len(initial_chunks) > 1:
             clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
@@ -99,8 +107,8 @@ class RaptorEngine:
                 )
 
                 current_level_ids = []
+                store.add_summaries(new_nodes)
                 for node in new_nodes:
-                    store.add_summary(node)
                     all_summaries[node.id] = node
                     current_level_ids.append(node.id)
                 store.commit()

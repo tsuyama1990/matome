@@ -85,7 +85,9 @@ def test_scenario_15_visual_hierarchy(uat_tree: DocumentTree) -> None:
     canvas = exporter.generate_canvas_data(uat_tree)
 
     # Helper to get node by ID
-    def get_node(nid: str):
+    from matome.exporters.obsidian import CanvasNode
+
+    def get_node(nid: str) -> CanvasNode | None:
         return next((n for n in canvas.nodes if n.id == nid), None)
 
     root = get_node("root")
@@ -95,7 +97,12 @@ def test_scenario_15_visual_hierarchy(uat_tree: DocumentTree) -> None:
     chunk_2 = get_node("chunk_2")
     chunk_3 = get_node("chunk_3")
 
-    assert root and node_a and node_b and chunk_1 and chunk_2 and chunk_3
+    assert root is not None
+    assert node_a is not None
+    assert node_b is not None
+    assert chunk_1 is not None
+    assert chunk_2 is not None
+    assert chunk_3 is not None
 
     # 1. Root is at the top
     assert root.y == 0

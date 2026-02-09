@@ -52,9 +52,11 @@ class EmbeddingService:
         # Use batched utility for memory-safe batching
         for batch in batched(texts, batch_size):
             # batch is a tuple of strings
-            yield from self._process_batch(list(batch))
+            yield from self._process_batch(batch)
 
-    def _process_batch(self, batch_texts: list[str]) -> Iterator[list[float]]:
+    def _process_batch(
+        self, batch_texts: list[str] | tuple[str, ...]
+    ) -> Iterator[list[float]]:
         """Helper to process a single batch."""
         if not batch_texts:
             return
@@ -62,7 +64,7 @@ class EmbeddingService:
         try:
             # Access self.model (property) to trigger lazy load if needed
             batch_embeddings = self.model.encode(
-                batch_texts,
+                batch_texts,  # type: ignore[arg-type]
                 batch_size=len(batch_texts),  # We already batched it manually
                 convert_to_numpy=True,
                 show_progress_bar=False,
@@ -91,13 +93,12 @@ class EmbeddingService:
         # Use batched utility to stream chunks in batches
         for batch_chunks in batched(chunks, batch_size):
             # batch_chunks is a tuple of Chunk objects
-            chunk_list = list(batch_chunks)
-            texts = [c.text for c in chunk_list]
+            texts = [c.text for c in batch_chunks]
 
             # Embed batch (returns iterator, consumed immediately)
             embeddings = list(self._process_batch(texts))
 
             # Assign and yield
-            for chunk, embedding in zip(chunk_list, embeddings, strict=True):
+            for chunk, embedding in zip(batch_chunks, embeddings, strict=True):
                 chunk.embedding = embedding
                 yield chunk

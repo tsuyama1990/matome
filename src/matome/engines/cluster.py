@@ -92,19 +92,16 @@ class GMMClusterer:
             # Use batched utility to iterate in chunks
             # batched() consumes the iterator lazily, ensuring we only hold 'batch_size' items in RAM.
             for batch_tuple in batched(embeddings, batch_size):
-                # batched returns a tuple of items
-                batch_list = list(batch_tuple)
-
                 # Validation on first item of first batch
                 if n_samples == 0:
-                    dim = len(batch_list[0])
+                    dim = len(batch_tuple[0])
                     if dim == 0:
                         msg = "Embedding dimension cannot be zero."
                         raise ValueError(msg)
 
                 # Check dimensions and content for the batch
                 try:
-                    np_batch = np.array(batch_list, dtype="float32")
+                    np_batch = np.array(batch_tuple, dtype="float32")
                 except ValueError as e:
                     # Likely inhomogeneous shape if lengths differ
                     msg = f"Failed to create batch array: {e}"
@@ -120,7 +117,7 @@ class GMMClusterer:
 
                 # Write to disk
                 np_batch.tofile(f)
-                n_samples += len(batch_list)
+                n_samples += len(batch_tuple)
 
         return n_samples, dim
 
