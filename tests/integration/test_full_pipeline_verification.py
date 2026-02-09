@@ -1,13 +1,17 @@
-import numpy as np
-import pytest
+from collections.abc import Iterable
+from typing import Any
 from unittest.mock import MagicMock, patch
 
+import numpy as np
+import pytest
+
 from domain_models.config import ProcessingConfig
-from matome.engines.token_chunker import JapaneseTokenChunker
+from matome.agents.summarizer import SummarizationAgent
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
-from matome.agents.summarizer import SummarizationAgent
+from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.interfaces import Chunker, Clusterer, Summarizer
+
 
 def test_interface_compliance() -> None:
     """Verify that all components strictly adhere to their interfaces."""
@@ -57,9 +61,11 @@ def test_full_pipeline_flow() -> None:
         # Mock encode to return dummy vectors of size 10
         # The service calls encode with convert_to_numpy=True
         # We need to simulate that behavior
-        def side_effect(texts, **kwargs):
+        def side_effect(texts: Iterable[str], **kwargs: Any) -> np.ndarray:
              # Return random vectors for each text
-             return np.random.rand(len(texts), 10)
+             # texts is a list because embedder batches it
+             text_list = list(texts)
+             return np.random.rand(len(text_list), 10)
 
         mock_model.encode.side_effect = side_effect
 
@@ -68,52 +74,61 @@ def test_full_pipeline_flow() -> None:
         # Mock SummarizationAgent
         # Use a fake key that is NOT 'mock' so we enter the real logic path
         # Also patch ChatOpenAI so we don't try to connect
-        with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-fake-key"):
-            with patch("matome.agents.summarizer.ChatOpenAI") as MockChatOpenAI:
-                # Setup the mock instance
-                mock_llm_instance = MagicMock()
-                MockChatOpenAI.return_value = mock_llm_instance
+        with (
+            patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-fake-key"),
+            patch("matome.agents.summarizer.ChatOpenAI") as MockChatOpenAI
+        ):
+            # Setup the mock instance
+            mock_llm_instance = MagicMock()
+            MockChatOpenAI.return_value = mock_llm_instance
 
-                # Mock invoke response
-                mock_response = MagicMock()
-                mock_response.content = "Summary of the cluster."
-                mock_llm_instance.invoke.return_value = mock_response
+            # Mock invoke response
+            mock_response = MagicMock()
+            mock_response.content = "Summary of the cluster."
+            mock_llm_instance.invoke.return_value = mock_response
 
-                summarizer = SummarizationAgent()
+            summarizer = SummarizationAgent()
 
-                # Act
+            # Act
 
-                # 1. Chunking
-                chunks = chunker.split_text(text, config)
-                assert len(chunks) > 1, "Should have produced multiple chunks"
+            # 1. Chunking
+            chunks = chunker.split_text(text, config)
+            assert len(chunks) > 1, "Should have produced multiple chunks"
 
-                # 2. Embedding
-                chunks = embedder.embed_chunks(chunks)
-                assert all(c.embedding is not None for c in chunks)
-                assert all(len(c.embedding) == 10 for c in chunks) # Verify dimension
+            # 2. Embedding
+            chunks = embedder.embed_chunks(chunks)
+            assert all(c.embedding is not None for c in chunks)
+            # Help mypy understand embedding is not None
+            valid_embeddings: list[list[float]] = []
+            for c in chunks:
+                if c.embedding is None:
+                    pytest.fail("Embedding should not be None")
+                valid_embeddings.append(c.embedding)
+                assert len(c.embedding) == 10 # Verify dimension
 
-                # 3. Clustering
-                # Clusterer expects embeddings list[list[float]]
-                embeddings = [c.embedding for c in chunks]
+            # 3. Clustering
+            # Clusterer expects embeddings list[list[float]]
 
-                clusters = clusterer.cluster_nodes(embeddings, config)
+            clusters = clusterer.cluster_nodes(valid_embeddings, config)
 
-                # Since we have random embeddings and small data, clustering might return 1 or more clusters.
-                # We just verify the contract: returns List[Cluster]
-                assert isinstance(clusters, list)
-                assert len(clusters) > 0
+            # Since we have random embeddings and small data, clustering might return 1 or more clusters.
+            # We just verify the contract: returns List[Cluster]
+            assert isinstance(clusters, list)
+            assert len(clusters) > 0
 
-                # 4. Summarization
-                # Pick the first cluster and summarize its chunks
-                cluster = clusters[0]
-                cluster_text = " ".join([
-                    # Find chunk text by index.
-                    # Cluster.node_indices contains indices relative to the input list.
-                    chunks[idx].text
-                    for idx in cluster.node_indices
-                ])
+            # 4. Summarization
+            # Pick the first cluster and summarize its chunks
+            cluster = clusters[0]
+            cluster_text_parts = []
+            for idx in cluster.node_indices:
+                if not isinstance(idx, int):
+                    # Should be int indices relative to input list for GMMClusterer
+                     pytest.fail(f"Expected int index, got {type(idx)}")
+                cluster_text_parts.append(chunks[idx].text)
 
-                summary = summarizer.summarize(cluster_text, config)
+            cluster_text = " ".join(cluster_text_parts)
 
-                # Assert
-                assert summary == "Summary of the cluster."
+            summary = summarizer.summarize(cluster_text, config)
+
+            # Assert
+            assert summary == "Summary of the cluster."

@@ -1,3 +1,4 @@
+import itertools
 import logging
 from collections.abc import Iterable, Iterator
 
@@ -30,6 +31,7 @@ class EmbeddingService:
         Embeds an iterable of strings and yields their vectors.
 
         This method processes inputs in batches to avoid loading all texts or embeddings into memory.
+        Uses itertools.batched for efficient streaming.
 
         Args:
             texts: Iterable of strings to embed.
@@ -37,28 +39,18 @@ class EmbeddingService:
         Yields:
             Embedding vectors (lists of floats).
         """
-        if not texts:
-            return
-
         batch_size = self.config.embedding_batch_size
-        batch_texts: list[str] = []
 
-        # We use an explicit counter to log progress if needed,
-        # but mostly we just want to fill the batch.
-
-        for text in texts:
-            batch_texts.append(text)
-
-            if len(batch_texts) >= batch_size:
-                yield from self._process_batch(batch_texts)
-                batch_texts = []
-
-        # Process remaining
-        if batch_texts:
-            yield from self._process_batch(batch_texts)
+        # Use itertools.batched (Python 3.12+) for memory-safe batching
+        for batch in itertools.batched(texts, batch_size):
+            # batch is a tuple of strings
+            yield from self._process_batch(list(batch))
 
     def _process_batch(self, batch_texts: list[str]) -> Iterator[list[float]]:
         """Helper to process a single batch."""
+        if not batch_texts:
+            return
+
         try:
             batch_embeddings = self.model.encode(
                 batch_texts,

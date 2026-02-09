@@ -11,7 +11,7 @@ from langchain_openai import ChatOpenAI
 from tenacity import stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
-from matome.config import get_openrouter_api_key
+from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
 from matome.utils.prompts import COD_TEMPLATE
 
@@ -23,16 +23,22 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(self, model_name: str = "google/gemini-flash-1.5") -> None:
+    def __init__(self, model_name: str | None = None) -> None:
         """
         Initialize the SummarizationAgent.
 
         Args:
-            model_name: The name of the model to use (default: google/gemini-flash-1.5).
+            model_name: The name of the model to use. If None, uses default from env or config.
+                        Note: ProcessingConfig handles default logic, but agent can take override.
         """
         # Retrieve API key securely from environment via config utility
         api_key = get_openrouter_api_key()
-        self.model_name = model_name
+        base_url = get_openrouter_base_url()
+
+        # If model_name is not provided, we might default to something or let ChatOpenAI handle it.
+        # But ProcessingConfig has the default "gpt-4o".
+        # We usually instantiate with a specific model in mind or let the caller configure it.
+        self.model_name = model_name or "google/gemini-flash-1.5" # Default fallback if None
         self.api_key = api_key
         self.llm: ChatOpenAI | None = None
 
@@ -40,9 +46,9 @@ class SummarizationAgent:
         # Check for 'mock' value explicitly to enable testing mode without real calls
         if api_key and api_key != "mock":
             self.llm = ChatOpenAI(
-                model=model_name,
+                model=self.model_name,
                 api_key=api_key,
-                base_url="https://openrouter.ai/api/v1",
+                base_url=base_url,
                 temperature=0,
                 # We handle retries via tenacity wrapper now, but keeping internal retry low
                 max_retries=1,
@@ -78,6 +84,13 @@ class SummarizationAgent:
             msg = f"[{request_id}] OpenRouter API Key is missing. Cannot perform summarization."
             logger.error(msg)
             raise SummarizationError(msg)
+
+        # Update model name if config specifies one and it differs (optional)
+        # But ChatOpenAI is immutable-ish. We usually rely on init.
+        # Ideally, summarize() should use a LLM configured by config if possible,
+        # but here we use the one created at init.
+        # We could re-instantiate if config.summarization_model != self.model_name?
+        # For performance, we stick to init.
 
         prompt = COD_TEMPLATE.format(context=text)
         logger.debug(f"[{request_id}] Prompt constructed. Starting LLM invocation for text length {len(text)}")

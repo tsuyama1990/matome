@@ -1,3 +1,4 @@
+import os
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -29,7 +30,8 @@ class ProcessingConfig(BaseModel):
         default=0, ge=0, description="Number of overlapping tokens between chunks."
     )
     tokenizer_model: str = Field(
-        default="cl100k_base", description="Tokenizer model/encoding name to use."
+        default_factory=lambda: os.getenv("TOKENIZER_MODEL", "cl100k_base"),
+        description="Tokenizer model/encoding name to use."
     )
 
     # Semantic Chunking Configuration
@@ -45,7 +47,8 @@ class ProcessingConfig(BaseModel):
 
     # Embedding Configuration
     embedding_model: str = Field(
-        default="intfloat/multilingual-e5-large", description="HuggingFace model name for embeddings."
+        default_factory=lambda: os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-large"),
+        description="HuggingFace model name for embeddings."
     )
     embedding_batch_size: int = Field(
         default=32, ge=1, description="Batch size for embedding generation."
@@ -70,7 +73,8 @@ class ProcessingConfig(BaseModel):
 
     # Summarization Configuration
     summarization_model: str = Field(
-        default="gpt-4o", description="Model to use for summarization."
+        default_factory=lambda: os.getenv("SUMMARIZATION_MODEL", "gpt-4o"),
+        description="Model to use for summarization."
     )
     max_summary_tokens: int = Field(
         default=200, ge=1, description="Target token count for summaries."

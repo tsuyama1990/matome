@@ -1,3 +1,4 @@
+import itertools
 import logging
 
 import numpy as np
@@ -27,7 +28,7 @@ class JapaneseSemanticChunker:
     Chunking engine that splits text based on semantic similarity.
 
     1. Splits text into sentences using Japanese heuristics.
-    2. Embeds sentences.
+    2. Embeds sentences (streaming).
     3. Merges sentences into chunks if their similarity is high,
        respecting the max_tokens limit.
     """
@@ -45,6 +46,9 @@ class JapaneseSemanticChunker:
         """
         Split text into semantic chunks.
 
+        This implementation streams sentences and embeddings to minimize memory usage,
+        avoiding materialization of all sentence embeddings at once.
+
         Args:
             text: Raw input text.
             config: Configuration including semantic_chunking_threshold and max_tokens.
@@ -55,55 +59,65 @@ class JapaneseSemanticChunker:
         if not text:
             return []
 
-        # 1. Normalize and split into sentences
+        # 1. Normalize and stream sentences
         normalized_text = normalize_text(text)
-        sentences = list(iter_sentences(normalized_text))
+        sentences_gen = iter_sentences(normalized_text)
 
-        if not sentences:
+        # Create two iterators: one for embedding, one for content
+        sentences_for_embedding, sentences_for_content = itertools.tee(sentences_gen, 2)
+
+        # 2. Embed sentences (lazy generator)
+        # Ensure we have an iterator (handles mocks returning lists)
+        embeddings_gen = iter(self.embedder.embed_strings(sentences_for_embedding))
+
+        # 3. Stream processing
+        chunks: list[Chunk] = []
+
+        # Initialize state with the first sentence
+        try:
+            first_sentence = next(sentences_for_content)
+            first_embedding = next(embeddings_gen)
+        except StopIteration:
             return []
 
-        # 2. Embed sentences
-        # Note: This might be expensive for very large documents.
-        # Ideally, we should batch this or stream. But for now, we embed all.
-        # Convert iterator to list for indexing
-        embeddings = list(self.embedder.embed_strings(sentences))
-
-        # 3. Merge sentences
-        chunks: list[Chunk] = []
-        current_chunk_sentences: list[str] = [sentences[0]]
-        current_chunk_embeddings: list[list[float]] = [embeddings[0]]
+        current_chunk_sentences: list[str] = [first_sentence]
+        # We only need the latest embedding to compare with the next one
+        # But if we want to calculate centroid later, we might need all.
+        # For simple splitting, we compare adjacent sentences.
+        # RAPTOR/Semantic Chunking usually compares current sentence with *current chunk* or *previous sentence*.
+        # The original implementation compared with *previous sentence embedding*.
+        current_last_embedding = first_embedding
 
         current_start_idx = 0
 
-        for i in range(1, len(sentences)):
-            sentence = sentences[i]
-            embedding = embeddings[i]
+        # Iterate through the rest
+        for sentence, embedding in zip(sentences_for_content, embeddings_gen, strict=True):
+            similarity = cosine_similarity(current_last_embedding, embedding)
 
-            prev_embedding = current_chunk_embeddings[-1]
-            similarity = cosine_similarity(prev_embedding, embedding)
-
-            # Check size constraint (rough estimate: 1 char = 1 token for safety)
+            # Check size constraint (rough estimate: 1 char = 1 token for safety/speed)
             current_text_len = sum(len(s) for s in current_chunk_sentences)
 
+            # Determine whether to merge the current sentence into the existing chunk
             if (similarity >= config.semantic_chunking_threshold) and (current_text_len + len(sentence) < config.max_tokens):
                 current_chunk_sentences.append(sentence)
-                current_chunk_embeddings.append(embedding)
+                current_last_embedding = embedding
             else:
-                # Create chunk
+                # Create chunk from accumulated sentences
                 chunk_text = "".join(current_chunk_sentences)
                 chunks.append(Chunk(
                     index=len(chunks),
                     text=chunk_text,
                     start_char_idx=current_start_idx,
                     end_char_idx=current_start_idx + len(chunk_text),
-                    # We can optionally set the embedding of the chunk to the centroid of sentences
+                    # We don't store sentence embeddings to save memory.
+                    # If chunk embedding is needed, it should be calculated for the whole chunk later.
                     embedding=None
                 ))
                 current_start_idx += len(chunk_text)
 
-                # Start new chunk
+                # Start new chunk with current sentence
                 current_chunk_sentences = [sentence]
-                current_chunk_embeddings = [embedding]
+                current_last_embedding = embedding
 
         # Final chunk
         if current_chunk_sentences:
