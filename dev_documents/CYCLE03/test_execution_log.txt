@@ -1,0 +1,36 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+plugins: cov-7.0.0, langsmith-0.6.9, anyio-4.12.1
+collected 11 items
+
+tests/unit/test_summarizer.py ........                                   [ 72%]
+tests/uat/test_cycle03_uat.py ...                                        [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+
+Name                                  Stmts   Miss  Cover   Missing
+-------------------------------------------------------------------
+src/domain_models/__init__.py             3      0   100%
+src/domain_models/config.py              20      2    90%   51, 58
+src/domain_models/manifest.py            54     17    69%   55-82
+src/matome/__init__.py                    0      0   100%
+src/matome/agents/__init__.py             0      0   100%
+src/matome/agents/summarizer.py          37      0   100%
+src/matome/config.py                      8      0   100%
+src/matome/engines/__init__.py            0      0   100%
+src/matome/engines/chunker.py             3      3     0%   1-5
+src/matome/engines/cluster.py            61     61     0%   1-148
+src/matome/engines/embedder.py           28     28     0%   1-69
+src/matome/engines/token_chunker.py      67     67     0%   1-166
+src/matome/interfaces.py                 12     12     0%   1-71
+src/matome/utils/__init__.py              0      0   100%
+src/matome/utils/io.py                   15     15     0%   1-31
+src/matome/utils/text.py                 23     23     0%   1-79
+-------------------------------------------------------------------
+TOTAL                                   331    228    31%
+============================= 11 passed in 10.12s ==============================
+/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
