@@ -3,7 +3,6 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 from domain_models.config import ProcessingConfig
 from matome.agents.summarizer import SummarizationAgent
@@ -89,8 +88,7 @@ def test_full_pipeline_flow() -> None:
 
         valid_embeddings: list[list[float]] = []
         for c in chunks_with_embeddings:
-            if c.embedding is None:
-                pytest.fail("Embedding should not be None")
+            assert c.embedding is not None, "Embedding should not be None"
             valid_embeddings.append(c.embedding)
 
         clusters = clusterer.cluster_nodes(valid_embeddings, config)

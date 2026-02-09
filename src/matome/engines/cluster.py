@@ -1,5 +1,9 @@
+import contextlib
 import logging
+import os
+import tempfile
 from collections.abc import Iterable
+from pathlib import Path
 
 import numpy as np
 from sklearn.mixture import GaussianMixture
@@ -16,6 +20,8 @@ class GMMClusterer:
     """
     Engine for clustering text chunks/nodes using UMAP and GMM.
     Implements the Clusterer protocol.
+
+    Uses memory mapping to handle large datasets without loading everything into RAM.
     """
 
     def cluster_nodes(
@@ -35,38 +41,60 @@ class GMMClusterer:
         """
         self._validate_algorithm(config)
 
-        # Materialize iterator to check size and content
-        embeddings_list = list(embeddings)
-        n_samples = len(embeddings_list)
+        n_samples = 0
+        dim = 0
 
-        if n_samples == 0:
-            return []
+        # Create temp file for memory mapping
+        fd, tf_name = tempfile.mkstemp()
+        os.close(fd)
 
-        # Validate dimensions and content
-        # Check first element for dimension
-        dim = len(embeddings_list[0])
-        if dim == 0:
-            msg = "Embedding dimension cannot be zero."
-            raise ValueError(msg)
+        try:
+            # First pass: Write to binary file
+            # We iterate once to stream data to disk
+            path_obj = Path(tf_name)
+            with path_obj.open('wb') as f:
+                for i, emb in enumerate(embeddings):
+                    if i == 0:
+                        dim = len(emb)
+                        if dim == 0:
+                             msg = "Embedding dimension cannot be zero."
+                             raise ValueError(msg)
+                    elif len(emb) != dim:
+                         msg = f"Embedding dimension mismatch at index {i}."
+                         raise ValueError(msg)
 
-        # Check all
-        for i, emb in enumerate(embeddings_list):
-            if len(emb) != dim:
-                msg = f"Embedding dimension mismatch at index {i}."
-                raise ValueError(msg)
-            if any(np.isnan(x) or np.isinf(x) for x in emb):
-                msg = "Embeddings contain NaN or Infinity values."
-                raise ValueError(msg)
+                    if any(np.isnan(x) or np.isinf(x) for x in emb):
+                         msg = "Embeddings contain NaN or Infinity values."
+                         raise ValueError(msg)
 
-        # Handle edge cases (small datasets)
-        edge_case_result = self._handle_edge_cases(n_samples)
-        if edge_case_result:
-            return edge_case_result
+                    # tofile writes C-order floats directly
+                    np.array(emb, dtype='float32').tofile(f)
+                    n_samples += 1
 
-        # Convert to numpy array for processing
-        data = np.array(embeddings_list, dtype='float32')
+            if n_samples == 0:
+                return []
 
-        return self._perform_clustering(data, n_samples, config)
+            # Handle edge cases (small datasets)
+            edge_case_result = self._handle_edge_cases(n_samples)
+            if edge_case_result:
+                return edge_case_result
+
+            # Open as memmap
+            # This allows us to access the data as if it were in memory, backed by disk
+            mm_array = np.memmap(tf_name, dtype='float32', mode='r', shape=(n_samples, dim))
+
+            try:
+                return self._perform_clustering(mm_array, n_samples, config)
+            finally:
+                # Close memmap logic (explicit delete to be safe, though GC usually handles it)
+                del mm_array
+
+        finally:
+             # Cleanup temp file
+             path = Path(tf_name)
+             if path.exists():
+                 with contextlib.suppress(OSError):
+                     path.unlink()
 
     def _validate_algorithm(self, config: ProcessingConfig) -> None:
         algo = config.clustering_algorithm
@@ -94,7 +122,7 @@ class GMMClusterer:
         return None
 
     def _perform_clustering(self, data: np.ndarray, n_samples: int, config: ProcessingConfig) -> list[Cluster]:
-        """Helper to run UMAP and GMM on the data."""
+        """Helper to run UMAP and GMM on the data (memmap or array)."""
         # UMAP Parameters
         n_neighbors = config.umap_n_neighbors
         min_dist = config.umap_min_dist

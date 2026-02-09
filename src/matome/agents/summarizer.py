@@ -45,7 +45,6 @@ class SummarizationAgent:
         api_key = get_openrouter_api_key()
         base_url = get_openrouter_base_url()
 
-        self.api_key = api_key # Store for legacy check if needed
         self.mock_mode = (api_key == "mock")
 
         self.llm: ChatOpenAI | None = None
@@ -118,6 +117,9 @@ class SummarizationAgent:
         Checks:
         1. Maximum overall length to prevent processing extremely large inputs.
         2. Control characters (Unicode 'C' category) to prevent injection or formatting issues.
+           Note: Newline (\\n) and Tab (\\t) are explicitly allowed as they are standard text formatting
+           characters often found in documents, and stripping them would destroy structure.
+           Other control characters (like \\r, null bytes, backspaces) are rejected.
         3. Word length to prevent tokenizer Denial of Service (DoS) attacks.
 
         Args:

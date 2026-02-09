@@ -1,5 +1,6 @@
 import itertools
 import logging
+from collections.abc import Iterator
 
 import numpy as np
 
@@ -62,9 +63,7 @@ class JapaneseSemanticChunker:
         Raises:
             ValueError: If input text is not a string.
         """
-        if not isinstance(text, str):
-            msg = f"Input text must be a string, got {type(text)}."
-            raise TypeError(msg)
+        self._validate_input(text)
 
         if not text:
             return []
@@ -84,67 +83,96 @@ class JapaneseSemanticChunker:
         sentences_for_embedding, sentences_for_content = itertools.tee(sentences_gen, 2)
 
         # 2. Embed sentences (lazy generator)
-        embeddings_gen = iter(self.embedder.embed_strings(sentences_for_embedding))
+        embeddings_gen = self._get_embeddings_generator(sentences_for_embedding)
 
         # 3. Stream processing
+        try:
+            return self._process_stream(
+                sentences_for_content,
+                embeddings_gen,
+                config
+            )
+
+        except Exception:
+            logger.exception("Error during semantic chunking process.")
+            raise
+
+    def _validate_input(self, text: str) -> None:
+        if not isinstance(text, str):
+            msg = f"Input text must be a string, got {type(text)}."
+            raise TypeError(msg)
+
+    def _get_embeddings_generator(self, sentences: Iterator[str]) -> Iterator[list[float]]:
+        # embed_strings is expected to be a generator.
+        embeddings_gen = self.embedder.embed_strings(sentences)
+
+        # If embed_strings returned a list (e.g. mock), turn it into iterator
+        # Pydantic/Mypy strict mode might complain about lambda or generator types
+        if not isinstance(embeddings_gen, Iterator):
+             return iter(embeddings_gen)
+        return embeddings_gen
+
+    def _process_stream(
+        self,
+        sentences_gen: Iterator[str],
+        embeddings_gen: Iterator[list[float]],
+        config: ProcessingConfig
+    ) -> list[Chunk]:
+        """
+        Process the parallel streams of sentences and embeddings to form chunks.
+        """
         chunks: list[Chunk] = []
 
+        # Initialize state with the first sentence
         try:
-            # Initialize state with the first sentence
-            try:
-                first_sentence = next(sentences_for_content)
-                first_embedding = next(embeddings_gen)
-            except StopIteration:
-                # Text contained no sentences (e.g. only punctuation/whitespace that normalize stripped?)
-                # If original text was not empty but normalized is empty or no sentences found.
-                return []
+            first_sentence = next(sentences_gen)
+            first_embedding = next(embeddings_gen)
+        except StopIteration:
+            # Text contained no sentences (e.g. only punctuation/whitespace that normalize stripped?)
+            return []
 
-            current_chunk_sentences: list[str] = [first_sentence]
-            current_chunk_len = len(first_sentence)
-            current_last_embedding = first_embedding
-            current_start_idx = 0
+        current_chunk_sentences: list[str] = [first_sentence]
+        current_chunk_len = len(first_sentence)
+        current_last_embedding = first_embedding
+        current_start_idx = 0
 
-            # Iterate through the rest
-            for sentence, embedding in zip(sentences_for_content, embeddings_gen, strict=True):
-                similarity = cosine_similarity(current_last_embedding, embedding)
-                sentence_len = len(sentence)
+        # Iterate through the rest
+        for sentence, embedding in zip(sentences_gen, embeddings_gen, strict=True):
+            similarity = cosine_similarity(current_last_embedding, embedding)
+            sentence_len = len(sentence)
 
-                # Check size constraint (rough estimate: 1 char = 1 token for safety/speed)
-                # If adding this sentence exceeds max_tokens, force split.
-                if (similarity >= config.semantic_chunking_threshold) and (current_chunk_len + sentence_len < config.max_tokens):
-                    current_chunk_sentences.append(sentence)
-                    current_chunk_len += sentence_len
-                    current_last_embedding = embedding
-                else:
-                    # Create chunk from accumulated sentences
-                    chunk_text = "".join(current_chunk_sentences)
-                    chunks.append(Chunk(
-                        index=len(chunks),
-                        text=chunk_text,
-                        start_char_idx=current_start_idx,
-                        end_char_idx=current_start_idx + len(chunk_text),
-                        embedding=None # We don't use the sentence embeddings for the chunk
-                    ))
-                    current_start_idx += len(chunk_text)
-
-                    # Start new chunk with current sentence
-                    current_chunk_sentences = [sentence]
-                    current_chunk_len = sentence_len
-                    current_last_embedding = embedding
-
-            # Final chunk
-            if current_chunk_sentences:
+            # Check size constraint (rough estimate: 1 char = 1 token for safety/speed)
+            # If adding this sentence exceeds max_tokens, force split.
+            if (similarity >= config.semantic_chunking_threshold) and (current_chunk_len + sentence_len < config.max_tokens):
+                current_chunk_sentences.append(sentence)
+                current_chunk_len += sentence_len
+                current_last_embedding = embedding
+            else:
+                # Create chunk from accumulated sentences
                 chunk_text = "".join(current_chunk_sentences)
                 chunks.append(Chunk(
                     index=len(chunks),
                     text=chunk_text,
                     start_char_idx=current_start_idx,
                     end_char_idx=current_start_idx + len(chunk_text),
-                    embedding=None
+                    embedding=None # We don't use the sentence embeddings for the chunk
                 ))
+                current_start_idx += len(chunk_text)
 
-        except Exception:
-            logger.exception("Error during semantic chunking process.")
-            raise
-        else:
-            return chunks
+                # Start new chunk with current sentence
+                current_chunk_sentences = [sentence]
+                current_chunk_len = sentence_len
+                current_last_embedding = embedding
+
+        # Final chunk
+        if current_chunk_sentences:
+            chunk_text = "".join(current_chunk_sentences)
+            chunks.append(Chunk(
+                index=len(chunks),
+                text=chunk_text,
+                start_char_idx=current_start_idx,
+                end_char_idx=current_start_idx + len(chunk_text),
+                embedding=None
+            ))
+
+        return chunks
