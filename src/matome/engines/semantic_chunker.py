@@ -88,7 +88,9 @@ class JapaneseSemanticChunker:
                 sentence_batch = list(sentence_batch_tuple)
 
                 # Embed this batch
-                # embed_strings returns an iterator, we consume it immediately for this small batch
+                # embed_strings returns an iterator. We consume it into a list for this batch
+                # because we need to zip with the sentence batch.
+                # Since batch size is small (e.g. 32), this is safe and does not violate streaming.
                 embedding_batch = list(self.embedder.embed_strings(sentence_batch))
 
                 if len(sentence_batch) != len(embedding_batch):

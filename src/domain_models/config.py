@@ -100,21 +100,25 @@ class ProcessingConfig(BaseModel):
     canvas_node_width: int = Field(
         default=400,
         ge=10,
+        le=5000,
         description="Width of nodes in Obsidian Canvas export.",
     )
     canvas_node_height: int = Field(
         default=200,
         ge=10,
+        le=5000,
         description="Height of nodes in Obsidian Canvas export.",
     )
     canvas_gap_x: int = Field(
         default=50,
         ge=0,
+        le=2000,
         description="Horizontal gap between nodes in Obsidian Canvas export.",
     )
     canvas_gap_y: int = Field(
         default=300,
         ge=0,
+        le=2000,
         description="Vertical gap between nodes in Obsidian Canvas export.",
     )
 

@@ -132,40 +132,75 @@ class ObsidianCanvasExporter:
             return f"chunk_{node_id}"
         return node_id
 
-    def _calculate_subtree_width(self, node_id: int | str, tree: "DocumentTree") -> int:
-        """Recursively calculates the width of the subtree rooted at node_id."""
-        node_id_str = self._get_node_id_str(node_id)
+    def _calculate_subtree_width(self, root_id: int | str, tree: "DocumentTree") -> int:
+        """
+        Iteratively calculates the width of the subtree rooted at node_id using a stack.
+        Avoids recursion depth limits.
+        """
+        # Post-order traversal preparation
+        processing_order = self._get_traversal_order(root_id, tree)
 
-        # If it's a Chunk (leaf)
-        if isinstance(node_id, int):
-            width = self.NODE_WIDTH
-            self._subtree_widths[node_id_str] = width
-            return width
+        # Process in reverse (bottom-up) to calculate widths
+        for curr_id in reversed(processing_order):
+            self._process_node_width(curr_id, tree)
 
-        # If it's a SummaryNode
-        summary_node = tree.all_nodes.get(str(node_id)) if str(node_id) != tree.root_node.id else tree.root_node
-        if str(node_id) == tree.root_node.id:
-            summary_node = tree.root_node
+        return self._subtree_widths[self._get_node_id_str(root_id)]
 
-        if not summary_node:
-            # Should not happen if tree is consistent
+    def _get_traversal_order(self, root_id: int | str, tree: "DocumentTree") -> list[int | str]:
+        """Helper to get processing order for nodes."""
+        stack = [root_id]
+        processing_order: list[int | str] = []
+
+        while stack:
+            curr_id = stack.pop()
+            processing_order.append(curr_id)
+
+            if isinstance(curr_id, str):
+                self._append_children_to_stack(curr_id, stack, tree)
+        return processing_order
+
+    def _append_children_to_stack(
+        self, curr_id: str, stack: list[int | str], tree: "DocumentTree"
+    ) -> None:
+        """Helper to push children to stack."""
+        node = tree.all_nodes.get(curr_id)
+        if curr_id == tree.root_node.id:
+            node = tree.root_node
+
+        if node:
+            for child_idx in node.children_indices:
+                stack.append(child_idx)
+
+    def _process_node_width(self, curr_id: int | str, tree: "DocumentTree") -> None:
+        """Helper to calculate width for a single node."""
+        node_id_str = self._get_node_id_str(curr_id)
+
+        # If Chunk
+        if isinstance(curr_id, int):
             self._subtree_widths[node_id_str] = self.NODE_WIDTH
-            return self.NODE_WIDTH
+            return
+
+        # If SummaryNode
+        node = tree.all_nodes.get(str(curr_id))
+        if str(curr_id) == tree.root_node.id:
+            node = tree.root_node
+
+        if not node:
+            self._subtree_widths[node_id_str] = self.NODE_WIDTH
+            return
 
         children_widths = [
-            self._calculate_subtree_width(child_idx, tree)
-            for child_idx in summary_node.children_indices
+            self._subtree_widths.get(self._get_node_id_str(child_idx), self.NODE_WIDTH)
+            for child_idx in node.children_indices
         ]
 
         if not children_widths:
             width = self.NODE_WIDTH
         else:
             total_children_width = sum(children_widths) + self.GAP_X * (len(children_widths) - 1)
-            # Parent width is at least NODE_WIDTH, but subtree width is determined by children spread
             width = max(self.NODE_WIDTH, total_children_width)
 
         self._subtree_widths[node_id_str] = width
-        return width
 
     def _assign_positions(self, node_id: int | str, center_x: int, y: int, tree: "DocumentTree") -> None:
         """Recursively assigns (x, y) positions to nodes and creates edges."""

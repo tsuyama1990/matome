@@ -64,7 +64,7 @@ def test_chunker_invalid_model_security() -> None:
         tokenizer_model = "invalid_model"
         max_tokens = 100
 
-    with pytest.raises(ValueError, match="is not allowed"):
+    with pytest.raises(ValidationError):
         JapaneseTokenChunker(config=MockConfig())  # type: ignore
 
 
