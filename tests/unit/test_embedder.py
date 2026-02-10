@@ -67,7 +67,7 @@ def test_embed_strings_generator() -> None:
         # The first call should be with the first batch
         # We now pass tuples to avoid list materialization
         mock_instance.encode.assert_any_call(
-                ["text1", "text2"], batch_size=2, convert_to_numpy=True, show_progress_bar=False
+            ["text1", "text2"], batch_size=2, convert_to_numpy=True, show_progress_bar=False
         )
         # The second call with the remainder
         mock_instance.encode.assert_any_call(
