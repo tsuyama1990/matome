@@ -4,7 +4,7 @@ import os
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import BinaryIO
 
 import numpy as np
 from sklearn.cluster import MiniBatchKMeans
@@ -15,7 +15,6 @@ from umap import UMAP
 from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from domain_models.manifest import Cluster
 from domain_models.types import NodeID
-from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 

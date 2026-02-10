@@ -48,6 +48,7 @@ packages = ["src/matome", "src/domain_models"]
 target-version = "py311"
 line-length = 100
 fix = true
+exclude = ["tutorials"]
 
 [tool.ruff.lint]
 # E/F/I: Basic, B: Bugbear, S: Bandit, UP: pyupgrade

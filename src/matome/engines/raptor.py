@@ -128,66 +128,86 @@ class RaptorEngine:
             # Capture L0 IDs for later reconstruction
             l0_ids = list(current_level_ids)
 
-            level = 0
-            while True:
-                node_count = len(current_level_ids)
-                logger.info(f"Processing Level {level}. Node count: {node_count}")
-
-                if node_count <= 1:
-                    break
-
-                # Force reduction if clustering returns same number of clusters as nodes
-                if len(clusters) == node_count and node_count > 1:
-                    logger.warning(
-                        f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
-                    )
-                    # Fallback: Merge all into one cluster if node_count is small, else break?
-                    # If we break, we stop summarization.
-                    # Let's collapse to 1 cluster if small enough.
-                    if node_count < 20:
-                        clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
-                    else:
-                        # Just proceed, maybe next level will cluster better?
-                        # No, if we don't reduce, we loop forever or just summarize 1-to-1?
-                        # Summarize 1-to-1 is useless.
-                        # We MUST reduce.
-                        # Let's break for safety to avoid infinite loops if we can't reduce.
-                        logger.error("Could not reduce nodes. Stopping recursion.")
-                        break
-
-                logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
-
-                # Summarization
-                level += 1
-                new_nodes_iter = self._summarize_clusters(
-                    clusters, current_level_ids, active_store, level
-                )
-
-                current_level_ids = []
-
-                # Process summary nodes in batches
-                summary_buffer: list[SummaryNode] = []
-                BATCH_SIZE = self.config.chunk_buffer_size
-
-                for node in new_nodes_iter:
-                    all_summaries[node.id] = node
-                    current_level_ids.append(node.id)
-                    summary_buffer.append(node)
-
-                    if len(summary_buffer) >= BATCH_SIZE:
-                        active_store.add_summaries(summary_buffer)
-                        summary_buffer.clear()
-
-                if summary_buffer:
-                    active_store.add_summaries(summary_buffer)
-
-                if len(current_level_ids) > 1:
-                    # Embed and Cluster for next level
-                    clusters = self._embed_and_cluster_next_level(current_level_ids, active_store)
-                else:
-                    clusters = []
+            current_level_ids = self._process_recursion(
+                clusters, current_level_ids, active_store, all_summaries
+            )
 
             return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
+
+    def _process_recursion(
+        self,
+        clusters: list[Cluster],
+        current_level_ids: list[NodeID],
+        store: DiskChunkStore,
+        all_summaries: dict[str, SummaryNode],
+        start_level: int = 0,
+    ) -> list[NodeID]:
+        """
+        Execute the recursive summarization loop.
+
+        Iteratively clusters and summarizes nodes until a single root node is reached
+        or no further reduction is possible.
+        """
+        level = start_level
+        while True:
+            node_count = len(current_level_ids)
+            logger.info(f"Processing Level {level}. Node count: {node_count}")
+
+            if node_count <= 1:
+                break
+
+            # Force reduction if clustering returns same number of clusters as nodes
+            if len(clusters) == node_count and node_count > 1:
+                logger.warning(
+                    f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
+                )
+                # Fallback: Merge all into one cluster if node_count is small, else break?
+                # If we break, we stop summarization.
+                # Let's collapse to 1 cluster if small enough.
+                if node_count < 20:
+                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+                else:
+                    # Just proceed, maybe next level will cluster better?
+                    # No, if we don't reduce, we loop forever or just summarize 1-to-1?
+                    # Summarize 1-to-1 is useless.
+                    # We MUST reduce.
+                    # Let's break for safety to avoid infinite loops if we can't reduce.
+                    logger.error("Could not reduce nodes. Stopping recursion.")
+                    break
+
+            logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
+
+            # Summarization
+            level += 1
+            new_nodes_iter = self._summarize_clusters(
+                clusters, current_level_ids, store, level
+            )
+
+            current_level_ids = []
+
+            # Process summary nodes in batches
+            summary_buffer: list[SummaryNode] = []
+            BATCH_SIZE = self.config.chunk_buffer_size
+
+            for node in new_nodes_iter:
+                all_summaries[node.id] = node
+                current_level_ids.append(node.id)
+                summary_buffer.append(node)
+
+                if len(summary_buffer) >= BATCH_SIZE:
+                    store.add_summaries(summary_buffer)
+                    summary_buffer.clear()
+
+            if summary_buffer:
+                store.add_summaries(summary_buffer)
+
+            if len(current_level_ids) > 1:
+                # Embed and Cluster for next level
+                clusters = self._embed_and_cluster_next_level(current_level_ids, store)
+            else:
+                clusters = []
+
+        return current_level_ids
 
     def _embed_and_cluster_next_level(
         self, current_level_ids: list[NodeID], store: DiskChunkStore

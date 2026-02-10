@@ -1,6 +1,5 @@
 import logging
-import itertools
-from collections.abc import Iterator, Iterable
+from collections.abc import Iterable, Iterator
 
 import numpy as np
 
