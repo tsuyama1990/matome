@@ -75,7 +75,7 @@ class EmbeddingService:
                 chunk_texts = batch_texts[i : i + MINI_BATCH_SIZE]  # slice works on list/tuple
 
                 chunk_embeddings = self.model.encode(
-                    chunk_texts,
+                    list(chunk_texts),
                     batch_size=len(chunk_texts),
                     convert_to_numpy=True,
                     show_progress_bar=False,
