@@ -193,10 +193,7 @@ class ProcessingConfig(BaseModel):
     def validate_llm_model(cls, v: str) -> str:
         """Validate LLM model name against whitelist."""
         if v not in ALLOWED_SUMMARIZATION_MODELS:
-            msg = (
-                f"LLM model '{v}' is not allowed. "
-                f"Allowed: {sorted(ALLOWED_SUMMARIZATION_MODELS)}"
-            )
+            msg = f"LLM model '{v}' is not allowed. Allowed: {sorted(ALLOWED_SUMMARIZATION_MODELS)}"
             raise ValueError(msg)
         return v
 

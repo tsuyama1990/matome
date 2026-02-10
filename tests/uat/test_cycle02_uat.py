@@ -20,10 +20,7 @@ def test_scenario_05_embedding_vector_generation() -> None:
         mock_st.return_value = mock_instance
         # Use fixed vectors instead of random
         # Vector dim 4 for simplicity
-        fixed_vecs = [
-            [0.1, 0.2, 0.3, 0.4],
-            [0.5, 0.6, 0.7, 0.8]
-        ]
+        fixed_vecs = [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]]
         mock_instance.encode.return_value = np.array(fixed_vecs)
 
         config = ProcessingConfig()
@@ -62,10 +59,9 @@ def test_scenario_06_clustering_logic() -> None:
         # predict_proba returns (N, K) probabilities
         # Deterministic probabilities
         # A -> Cluster 0, B -> Cluster 1
-        probs = np.array([
-            [0.99, 0.01], [0.99, 0.01], [0.99, 0.01],
-            [0.01, 0.99], [0.01, 0.99], [0.01, 0.99]
-        ])
+        probs = np.array(
+            [[0.99, 0.01], [0.99, 0.01], [0.99, 0.01], [0.01, 0.99], [0.01, 0.99], [0.01, 0.99]]
+        )
         mock_gmm_instance.predict_proba.return_value = probs
         mock_gmm_instance.predict.return_value = np.array([0, 0, 0, 1, 1, 1])
         mock_gmm_instance.n_components = 2  # Simulate BIC finding 2

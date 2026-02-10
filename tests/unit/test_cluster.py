@@ -36,14 +36,16 @@ def test_clustering_with_gmm_soft(
     # 3,4,5 -> Cluster 1 (Prob ~0.1, 0.9)
     # Node 2 is ambiguous -> (Prob 0.45, 0.55). Max is 1, but if threshold is 0.4, both selected.
     # Let's test that logic.
-    probs = np.array([
-        [0.9, 0.1],
-        [0.9, 0.1],
-        [0.45, 0.55], # Ambiguous
-        [0.1, 0.9],
-        [0.1, 0.9],
-        [0.1, 0.9]
-    ])
+    probs = np.array(
+        [
+            [0.9, 0.1],
+            [0.9, 0.1],
+            [0.45, 0.55],  # Ambiguous
+            [0.1, 0.9],
+            [0.1, 0.9],
+            [0.1, 0.9],
+        ]
+    )
     mock_gmm_instance.predict_proba.return_value = probs
 
     # Mock BIC scores to select 2 clusters

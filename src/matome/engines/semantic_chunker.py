@@ -1,6 +1,5 @@
 import logging
-import itertools
-from collections.abc import Iterator, Iterable
+from collections.abc import Iterable, Iterator
 
 import numpy as np
 
@@ -198,9 +197,6 @@ class JapaneseSemanticChunker:
 
     def _validate_dimensions(self, prev: np.ndarray, current: np.ndarray) -> None:
         if current.shape != prev.shape:
-            msg = (
-                f"Embedding dimension mismatch: prev {prev.shape}, "
-                f"current {current.shape}"
-            )
+            msg = f"Embedding dimension mismatch: prev {prev.shape}, current {current.shape}"
             logger.error(msg)
             raise ValueError(msg)
