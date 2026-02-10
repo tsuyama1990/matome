@@ -55,9 +55,7 @@ class GMMClusterer:
         try:
             # Stream write embeddings to disk.
             # This ensures we never hold the full list of embeddings in Python memory.
-            n_samples, dim = self._stream_write_embeddings(
-                embeddings, path_obj, write_batch_size
-            )
+            n_samples, dim = self._stream_write_embeddings(embeddings, path_obj, write_batch_size)
 
             if n_samples == 0:
                 return []
@@ -158,8 +156,8 @@ class GMMClusterer:
         algo = config.clustering_algorithm
         # Strict Enum comparison
         if algo != ClusteringAlgorithm.GMM:
-             msg = f"Unsupported clustering algorithm: {algo}. Only '{ClusteringAlgorithm.GMM.value}' is supported."
-             raise ValueError(msg)
+            msg = f"Unsupported clustering algorithm: {algo}. Only '{ClusteringAlgorithm.GMM.value}' is supported."
+            raise ValueError(msg)
 
     def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
         """
@@ -250,7 +248,9 @@ class GMMClusterer:
 
             # 3. Soft Clustering (Probabilistic Assignment)
             probs = gmm.predict_proba(reduced_embeddings)
-            return self._form_clusters_soft(probs, gmm_n_components, config.clustering_probability_threshold)
+            return self._form_clusters_soft(
+                probs, gmm_n_components, config.clustering_probability_threshold
+            )
 
         except Exception as e:
             logger.exception("Clustering process failed during UMAP/GMM execution.")
@@ -306,13 +306,7 @@ class GMMClusterer:
         clusters: list[Cluster] = []
         for cluster_id, node_indices in cluster_map.items():
             if node_indices:
-                clusters.append(
-                    Cluster(
-                        id=cluster_id,
-                        level=0,
-                        node_indices=node_indices
-                    )
-                )
+                clusters.append(Cluster(id=cluster_id, level=0, node_indices=node_indices))
 
         return clusters
 

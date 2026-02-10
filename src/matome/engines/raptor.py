@@ -179,9 +179,7 @@ class RaptorEngine:
 
             # Summarization
             level += 1
-            new_nodes_iter = self._summarize_clusters(
-                clusters, current_level_ids, store, level
-            )
+            new_nodes_iter = self._summarize_clusters(clusters, current_level_ids, store, level)
 
             current_level_ids = []
 
