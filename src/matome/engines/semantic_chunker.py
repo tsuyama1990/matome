@@ -1,4 +1,5 @@
 import logging
+import itertools
 from collections.abc import Iterable, Iterator
 
 import numpy as np
@@ -6,6 +7,7 @@ import numpy as np
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.embedder import EmbeddingService
+from matome.utils.compat import batched
 from matome.utils.text import iter_normalized_sentences
 
 # Configure logger
@@ -14,11 +16,9 @@ logger = logging.getLogger(__name__)
 
 class JapaneseSemanticChunker:
     """
-    Chunking engine that splits text based on semantic similarity using a Global Percentile Strategy.
-    Optimized for memory safety by using a two-pass approach to avoid loading full text.
-
-    Pass 1: Stream sentences -> Embed -> Calculate Distances (store floats only).
-    Pass 2: Stream sentences -> Chunk based on stored distances and threshold.
+    Chunking engine that splits text based on semantic similarity.
+    Supports a "Global Percentile Strategy" for re-iterable inputs (calculating dynamic threshold),
+    and a "Static Threshold Strategy" for single-pass streams to ensure memory safety.
     """
 
     def __init__(self, embedder: EmbeddingService) -> None:
@@ -30,55 +30,163 @@ class JapaneseSemanticChunker:
         """
         self.embedder = embedder
 
-    def split_text(self, text: str, config: ProcessingConfig) -> Iterator[Chunk]:
+    def split_text(
+        self, text: str | Iterable[str], config: ProcessingConfig
+    ) -> Iterator[Chunk]:
         """
-        Split text into semantic chunks using global percentile strategy.
+        Split text into semantic chunks.
 
         Args:
-            text: Raw input text.
+            text: Raw input text or iterable of strings (streaming).
             config: Configuration including semantic_chunking_percentile and max_tokens.
 
         Yields:
             Chunk objects.
-
-        Raises:
-            ValueError: If input text is not a string.
         """
-        self._validate_input(text)
-
         if not text:
             return
 
-        # Pass 1: Calculate Distances (Consumes text stream once)
-        # We need to recreate the iterator for each pass
-        distances = self._calculate_semantic_distances(iter_normalized_sentences(text))
+        # Helper to get fresh iterator
+        def get_sentence_iter() -> Iterator[str]:
+            if isinstance(text, str):
+                yield from iter_normalized_sentences(text)
+            else:
+                for item in text:
+                    yield from iter_normalized_sentences(item)
 
-        if not distances:
-            # Handle single sentence or empty case
-            # We need to peek at least one sentence to be sure
-            sentences_iter = iter_normalized_sentences(text)
-            first_sentence = next(sentences_iter, None)
-            if first_sentence:
-                yield Chunk(
-                    index=0,
-                    text=first_sentence,
-                    start_char_idx=0,
-                    end_char_idx=len(first_sentence),
-                    embedding=None,
-                )
+        # Check if input is re-iterable (str, list, tuple)
+        is_reiterable = isinstance(text, (str, list, tuple))
+
+        if is_reiterable:
+            # Pass 1: Calculate Distances
+            sentences_iter_1 = get_sentence_iter()
+            distances = self._calculate_semantic_distances(sentences_iter_1)
+
+            if not distances:
+                # Handle single/empty case
+                sentences_iter_single = get_sentence_iter()
+                first = next(sentences_iter_single, None)
+                if first:
+                    yield Chunk(
+                        index=0, text=first, start_char_idx=0, end_char_idx=len(first)
+                    )
+                return
+
+            # Calc Threshold
+            percentile_val = config.semantic_chunking_percentile
+            threshold = float(np.percentile(distances, percentile_val))
+
+            logger.info(
+                f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile."
+            )
+
+            # Pass 2: Chunking
+            sentences_iter_2 = get_sentence_iter()
+            yield from self._create_chunks(
+                sentences_iter_2, distances, threshold, config
+            )
+
+        else:
+            # Input is a single-pass stream. Use static threshold to avoid buffering.
+            # Using strict static threshold derived from config.semantic_chunking_threshold (similarity).
+            # dist = 1.0 - sim.
+            # threshold (dist) = 1.0 - threshold (sim).
+
+            logger.info(
+                "Input text is a stream; using static threshold instead of global percentile."
+            )
+
+            static_thresh_dist = 1.0 - config.semantic_chunking_threshold
+
+            yield from self._stream_chunk_static(
+                get_sentence_iter(), static_thresh_dist, config
+            )
+
+    def _stream_chunk_static(
+        self,
+        sentences: Iterator[str],
+        threshold_dist: float,
+        config: ProcessingConfig,
+    ) -> Iterator[Chunk]:
+        """
+        Chunk sentences using a static threshold in a single pass.
+        Uses batched embedding to reduce API calls overhead while maintaining stream.
+        """
+        try:
+            first_sentence = next(sentences)
+        except StopIteration:
             return
 
-        # Calculate Threshold
-        percentile_val = config.semantic_chunking_percentile
-        threshold = float(np.percentile(distances, percentile_val))
+        current_chunk_sentences: list[str] = [first_sentence]
+        current_chunk_len = len(first_sentence)
+        current_start_idx = 0
+        current_chunk_index = 0
 
-        logger.info(
-            f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile."
-        )
+        BATCH_SIZE = config.embedding_batch_size
 
-        # Pass 2: Chunking (Consumes text stream again)
-        sentences_iter_2 = iter_normalized_sentences(text)
-        yield from self._create_chunks(sentences_iter_2, distances, threshold, config)
+        # Initial embedding
+        # We process the first sentence separately to establish baseline
+        first_emb_list = list(self.embedder.embed_strings([first_sentence]))
+        if not first_emb_list:
+            return
+        prev_embedding = np.array(first_emb_list[0])
+
+        # Stream the rest in batches
+        for batch in batched(sentences, BATCH_SIZE):
+            # batch is tuple of strings
+            embeddings = self.embedder.embed_strings(batch)
+
+            # Using strict=True for safety as requested by Ruff
+            for sent, emb_list in zip(batch, embeddings, strict=True):
+                curr_embedding = np.array(emb_list)
+
+                # Calculate distance
+                norm_a = np.linalg.norm(prev_embedding)
+                norm_b = np.linalg.norm(curr_embedding)
+
+                if norm_a == 0 or norm_b == 0:
+                    sim = 0.0
+                else:
+                    sim = float(np.dot(prev_embedding, curr_embedding) / (norm_a * norm_b))
+
+                # Clamp and convert to distance
+                dist = 1.0 - max(-1.0, min(1.0, sim))
+
+                next_len = len(sent)
+                is_semantic_break = dist > threshold_dist
+                is_token_overflow = (current_chunk_len + next_len) > config.max_tokens
+
+                if is_semantic_break or is_token_overflow:
+                    # Yield current
+                    chunk_text = "".join(current_chunk_sentences)
+                    yield Chunk(
+                        index=current_chunk_index,
+                        text=chunk_text,
+                        start_char_idx=current_start_idx,
+                        end_char_idx=current_start_idx + len(chunk_text),
+                        embedding=None,
+                    )
+
+                    current_chunk_index += 1
+                    current_start_idx += len(chunk_text)
+                    current_chunk_sentences = [sent]
+                    current_chunk_len = next_len
+                else:
+                    current_chunk_sentences.append(sent)
+                    current_chunk_len += next_len
+
+                prev_embedding = curr_embedding
+
+        # Final flush
+        if current_chunk_sentences:
+            chunk_text = "".join(current_chunk_sentences)
+            yield Chunk(
+                index=current_chunk_index,
+                text=chunk_text,
+                start_char_idx=current_start_idx,
+                end_char_idx=current_start_idx + len(chunk_text),
+                embedding=None,
+            )
 
     def _calculate_semantic_distances(self, sentences: Iterable[str]) -> list[float]:
         """
@@ -97,7 +205,7 @@ class JapaneseSemanticChunker:
                     # Validate Dimension Consistency
                     self._validate_dimensions(prev_embedding, current_embedding)
 
-                    # Calculate Cosine Distance = 1 - Cosine Similarity
+                    # Calculate Cosine Distance
                     norm_a = np.linalg.norm(prev_embedding)
                     norm_b = np.linalg.norm(current_embedding)
 
@@ -137,15 +245,6 @@ class JapaneseSemanticChunker:
         current_chunk_len = len(first_sentence)
         current_start_idx = 0
         current_chunk_index = 0
-
-        # Zip distances with the *gaps* between sentences.
-        # Sentences: S0, S1, S2...
-        # Distances: D0 (S0-S1), D1 (S1-S2)...
-        # We iterate through distances and pull the *next* sentence (S1, S2...)
-
-        # Validation: We expect distances to correspond exactly to gaps.
-        # Since we use iterator for sentences, we can't check length upfront.
-        # But we consume one distance per next_sentence.
 
         for dist in distances:
             try:
@@ -189,11 +288,6 @@ class JapaneseSemanticChunker:
                 end_char_idx=current_start_idx + len(chunk_text),
                 embedding=None,
             )
-
-    def _validate_input(self, text: str) -> None:
-        if not isinstance(text, str):
-            msg = f"Input text must be a string, got {type(text)}."
-            raise TypeError(msg)
 
     def _validate_dimensions(self, prev: np.ndarray, current: np.ndarray) -> None:
         if current.shape != prev.shape:

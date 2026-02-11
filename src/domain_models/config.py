@@ -2,7 +2,7 @@ import os
 from enum import Enum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
@@ -212,6 +212,19 @@ class ProcessingConfig(BaseModel):
             )
             raise ValueError(msg)
         return v
+
+    @model_validator(mode="after")
+    def validate_clustering_config(self) -> Self:
+        """Ensure n_clusters consistency with algorithm."""
+        # If n_clusters is provided, it must be at least 2 for GMM to work meaningfully.
+        # While 1 cluster is a fallback logic in engine, configuration should ideally not request invalid states.
+        # But wait, 1 cluster is valid if we just want to group everything.
+        # However, scikit-learn GMM requires n_components >= 1.
+        # If the user sets n_clusters=0 or negative, that's invalid.
+        if self.n_clusters is not None and self.n_clusters < 1:
+            msg = f"n_clusters must be at least 1 (got {self.n_clusters})."
+            raise ValueError(msg)
+        return self
 
     @classmethod
     def default(cls) -> Self:

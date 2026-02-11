@@ -1,4 +1,5 @@
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from pydantic import ValidationError
@@ -17,13 +18,14 @@ def test_uat_metadata_validation() -> None:
     Ensure that all new and existing nodes conform to the new metadata schema.
     """
     # 1. Valid Metadata
-    valid_meta = NodeMetadata(dikw_level=DIKWLevel.WISDOM)
+    meta = NodeMetadata(dikw_level=DIKWLevel.WISDOM)
+    # 2. Assign to Node
     node = SummaryNode(
         id="valid_node",
         text="Valid Node Content",
         level=1,
         children_indices=[1],
-        metadata=valid_meta
+        metadata=meta
     )
     # Verify content and structure
     assert node.text == "Valid Node Content"
@@ -31,17 +33,19 @@ def test_uat_metadata_validation() -> None:
     assert node.children_indices == [1]
     assert node.metadata.dikw_level == DIKWLevel.WISDOM
 
-    # 2. Invalid Metadata (should raise ValidationError)
+    # 3. Invalid Metadata (should raise ValidationError)
     with pytest.raises(ValidationError):
         NodeMetadata(dikw_level="super_wisdom")  # type: ignore[arg-type]
 
 
 # UAT Scenario 1.2: Strategy Injection
-class PirateStrategy(PromptStrategy):
+class PirateStrategy:
     """
     Mock Strategy for UAT Scenario 1.2.
     """
-    def create_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+    def create_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
+        if isinstance(text, list):
+            text = " ".join(text)
         return f"Summarize this like a pirate: {text}"
 
 
@@ -50,16 +54,14 @@ def test_uat_strategy_injection() -> None:
     Scenario 1.2: Strategy Injection (The "Brain Swap")
     Confirm that SummarizationAgent effectively delegates prompt generation to the injected strategy.
     """
-    config = ProcessingConfig(summarization_model="mock-model")
+    # Use valid model name
+    config = ProcessingConfig(summarization_model="gpt-4o")
 
     # Instantiate with PirateStrategy
     strategy = PirateStrategy()
     agent = SummarizationAgent(config, strategy=strategy)
 
     # Mock LLM to inspect the prompt
-    # We set mock_mode=False to use the injected LLM or force mock behavior differently?
-    # Actually we can just mock the LLM instance directly.
-    from unittest.mock import MagicMock
     mock_llm = MagicMock()
     mock_llm.invoke.return_value.content = "Yarrr!"
     agent.llm = mock_llm
@@ -84,13 +86,13 @@ def test_uat_regression_safety() -> None:
     Scenario 1.3: Regression Safety (The "Do No Harm")
     Ensure the standard SummarizationAgent still works exactly as before (BaseSummaryStrategy).
     """
-    config = ProcessingConfig(summarization_model="mock-model")
+    # Use valid model name
+    config = ProcessingConfig(summarization_model="gpt-4o")
 
     # Instantiate without strategy (should default to BaseSummaryStrategy)
     agent = SummarizationAgent(config)
 
     # Mock LLM
-    from unittest.mock import MagicMock
     mock_llm = MagicMock()
     mock_llm.invoke.return_value.content = "Standard Summary"
     agent.llm = mock_llm
@@ -100,7 +102,6 @@ def test_uat_regression_safety() -> None:
     agent.summarize(input_text)
 
     # Verify the prompt follows standard COD template
-
     call_args = mock_llm.invoke.call_args
     messages = call_args[0][0]
     prompt_sent = messages[0].content

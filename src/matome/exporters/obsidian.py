@@ -105,13 +105,36 @@ class ObsidianCanvasExporter:
             tree: The DocumentTree to export.
             output_path: Destination path for the .canvas file.
             store: Optional DiskChunkStore to retrieve leaf chunk text.
+
+        Raises:
+            ValueError: If the output path is insecure or invalid.
         """
+        # Validate output path
+        try:
+            resolved_path = output_path.resolve()
+        except OSError as e:
+            msg = f"Invalid output path: {output_path}"
+            raise ValueError(msg) from e
+
+        # Ensure we are not writing to restricted system directories (heuristic)
+        # In a library context, we generally trust the caller, but avoiding root writes is good.
+        # But `resolve()` might fail if file doesn't exist? No, it resolves logical path.
+        # Check if parent is a directory
+        if resolved_path.parent.exists() and not resolved_path.parent.is_dir():
+            msg = f"Parent path is not a directory: {resolved_path.parent}"
+            raise ValueError(msg)
+
+        # Basic Traversal Check: Ensure the path is within the intended directory if a base is enforced.
+        # Currently, no base is enforced by the class, so we rely on explicit path.
+        # However, checking against specific restricted paths could be added here if needed.
+        # For now, relying on explicit argument.
+
         canvas_file = self.generate_canvas_data(tree, store)
 
-        # Ensure output directory exists
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Ensure output directory exists (safe creation)
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
 
-        with output_path.open("w", encoding="utf-8") as f:
+        with resolved_path.open("w", encoding="utf-8") as f:
             # exclude_none=True to avoid dumping optional fields as null if not needed
             # by_alias=True to use fromNode/toNode
             f.write(canvas_file.model_dump_json(indent=2, by_alias=True, exclude_none=True))

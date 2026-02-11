@@ -151,5 +151,34 @@ def test_summarize_long_input_dos_prevention(
         agent.summarize(long_word, config)
 
 
-# We removed test_summarize_retry_behavior as mocking tenacity is complex
-# and integration test covers error handling (test_pipeline_errors.py)
+def test_summarize_with_strategy(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test that injected strategy is used."""
+    mock_strategy = MagicMock()
+    mock_strategy.create_prompt.return_value = "Mock Prompt"
+
+    # Mock LLM to return something
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="Summary")
+
+    agent.summarize("context", strategy=mock_strategy)
+
+    mock_strategy.create_prompt.assert_called_with("context", context={"level": 0})
+
+    args, _ = llm_mock.invoke.call_args
+    assert args[0][0].content == "Mock Prompt"
+
+
+def test_summarize_list_input(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test handling of list input."""
+    context = ["Part 1", "Part 2"]
+
+    mock_strategy = MagicMock()
+    mock_strategy.create_prompt.return_value = "Prompt"
+
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="Summary")
+
+    agent.summarize(context, strategy=mock_strategy)
+
+    # Check that strategy was called with list
+    mock_strategy.create_prompt.assert_called_with(["Part 1", "Part 2"], context={"level": 0})

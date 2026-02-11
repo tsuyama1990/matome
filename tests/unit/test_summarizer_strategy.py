@@ -4,21 +4,22 @@ from unittest.mock import MagicMock
 import pytest
 
 from domain_models.config import ProcessingConfig
-
-# Assuming I will import PromptStrategy here
 from matome.agents.strategies import PromptStrategy
 from matome.agents.summarizer import SummarizationAgent
 
 
-class MockStrategy(PromptStrategy):
+class MockStrategy:
     """Mock strategy for testing."""
-    def create_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+    def create_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
+        if isinstance(text, list):
+            text = " ".join(text)
         return f"Mock Prompt: {text}"
 
 
 @pytest.fixture
 def config() -> ProcessingConfig:
-    return ProcessingConfig(summarization_model="mock-model")
+    # Use a valid model name to pass Pydantic validation
+    return ProcessingConfig(summarization_model="gpt-4o")
 
 
 def test_summarizer_default_strategy(config: ProcessingConfig) -> None:
