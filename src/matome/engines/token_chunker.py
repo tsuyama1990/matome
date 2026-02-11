@@ -149,6 +149,10 @@ class JapaneseTokenChunker:
         Yields:
             Chunk objects.
         """
+        if not isinstance(text, (str, Iterable)):
+            msg = "Input text must be a string or iterable of strings."
+            raise TypeError(msg)
+
         if not text:
             logger.warning("Empty input text provided to split_text. Yielding nothing.")
             return

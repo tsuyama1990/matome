@@ -1,5 +1,5 @@
 import os
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -13,6 +13,15 @@ from domain_models.constants import (
     DEFAULT_TOKENIZER,
     LARGE_SCALE_THRESHOLD,
 )
+
+
+class ProcessingMode(StrEnum):
+    """
+    Mode of processing for the pipeline.
+    """
+
+    DEFAULT = "default"  # Standard summarization (Chain of Density)
+    DIKW = "dikw"  # DIKW Hierarchical Generation (Action -> Knowledge -> Wisdom)
 
 
 class ClusteringAlgorithm(Enum):
@@ -35,7 +44,13 @@ class ProcessingConfig(BaseModel):
     Securely handles environment variables.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
+
+    # Processing Mode
+    processing_mode: ProcessingMode = Field(
+        default=ProcessingMode.DEFAULT,
+        description="Mode of processing: 'default' or 'dikw'.",
+    )
 
     # Chunking Configuration
     max_tokens: int = Field(default=500, ge=1, description="Maximum number of tokens per chunk.")
@@ -72,6 +87,11 @@ class ProcessingConfig(BaseModel):
     embedding_batch_size: int = Field(
         default=32, ge=1, description="Batch size for embedding generation."
     )
+    embedding_mini_batch_size: int = Field(
+        default=8,
+        ge=1,
+        description="Internal mini-batch size for model encoding to control memory usage.",
+    )
 
     # Clustering Configuration
     clustering_algorithm: ClusteringAlgorithm = Field(
@@ -97,6 +117,16 @@ class ProcessingConfig(BaseModel):
         default=1000,
         ge=1,
         description="Batch size for writing vectors to disk during clustering.",
+    )
+    store_batch_size: int = Field(
+        default=1000,
+        ge=1,
+        description="Batch size for database inserts in DiskChunkStore.",
+    )
+    min_clusters_for_recursion: int = Field(
+        default=20,
+        ge=2,
+        description="Minimum node count to attempt clustering during recursion fallback.",
     )
     clustering_probability_threshold: float = Field(
         default=0.1,
@@ -210,6 +240,20 @@ class ProcessingConfig(BaseModel):
             msg = (
                 f"Tokenizer model '{v}' is not allowed. Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
             )
+            raise ValueError(msg)
+        return v
+
+    @field_validator(
+        "canvas_node_width", "canvas_node_height", "canvas_gap_x", "canvas_gap_y", mode="after"
+    )
+    @classmethod
+    def validate_canvas_dimensions(cls, v: int) -> int:
+        """Validate canvas dimensions are positive and within reasonable bounds."""
+        if v < 0:
+            msg = "Canvas dimension must be non-negative."
+            raise ValueError(msg)
+        if v > 10000:
+            msg = f"Canvas dimension {v} is excessively large (> 10000)."
             raise ValueError(msg)
         return v
 

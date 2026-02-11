@@ -40,3 +40,15 @@ def test_tokenizer_model_validation() -> None:
     with pytest.raises(ValidationError) as exc:
         ProcessingConfig(tokenizer_model="invalid_model")
     assert "not allowed" in str(exc.value)
+
+
+def test_summarization_model_validation() -> None:
+    """Test summarization model validation against whitelist."""
+    # Valid
+    config = ProcessingConfig(summarization_model="gpt-4o")
+    assert config.summarization_model == "gpt-4o"
+
+    # Invalid
+    with pytest.raises(ValidationError) as exc:
+        ProcessingConfig(summarization_model="evil-model")
+    assert "not allowed" in str(exc.value)

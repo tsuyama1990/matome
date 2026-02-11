@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import SummaryNode

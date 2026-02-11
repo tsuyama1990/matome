@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk
+from domain_models.manifest import Chunk, SummaryNode
 
 if TYPE_CHECKING:
     from domain_models.manifest import DocumentTree
@@ -54,6 +54,7 @@ class ObsidianCanvasExporter:
         self.edges: list[CanvasEdge] = []
         self._subtree_widths: dict[str, int] = {}
         self._chunk_map: dict[int, Chunk] = {}
+        self._store: DiskChunkStore | None = None  # Temporary ref during generation
         self.config = config or ProcessingConfig()
         self.NODE_WIDTH = self.config.canvas_node_width
         self.NODE_HEIGHT = self.config.canvas_node_height
@@ -75,6 +76,7 @@ class ObsidianCanvasExporter:
         self.edges = []
         self._subtree_widths = {}
         self._chunk_map = {}
+        self._store = store
 
         # Populate chunk map from store if available
         if store and tree.leaf_chunk_ids:
@@ -92,6 +94,9 @@ class ObsidianCanvasExporter:
         # 2. Assign positions (Pre-order)
         # Root starts at (0, 0)
         self._assign_positions(tree.root_node.id, 0, 0, tree)
+
+        # Clear reference
+        self._store = None
 
         return CanvasFile(nodes=self.nodes, edges=self.edges)
 
@@ -124,10 +129,26 @@ class ObsidianCanvasExporter:
             msg = f"Parent path is not a directory: {resolved_path.parent}"
             raise ValueError(msg)
 
-        # Basic Traversal Check: Ensure the path is within the intended directory if a base is enforced.
-        # Currently, no base is enforced by the class, so we rely on explicit path.
-        # However, checking against specific restricted paths could be added here if needed.
-        # For now, relying on explicit argument.
+        # Security: Prevent writing to sensitive system directories
+        sensitive_roots = [
+            Path("/etc"),
+            Path("/usr"),
+            Path("/bin"),
+            Path("/sbin"),
+            Path("/var"),
+            Path("/boot"),
+            Path("/sys"),
+            Path("/proc"),
+            Path("/dev"),
+        ]
+        # On Windows this might be different, but for this environment (Linux) it covers basics.
+        # Checking if resolved_path is relative to any sensitive root.
+        for sensitive in sensitive_roots:
+            if sensitive.exists() and (
+                resolved_path == sensitive or sensitive in resolved_path.parents
+            ):
+                msg = f"Output path is restricted (system directory): {sensitive}"
+                raise ValueError(msg)
 
         canvas_file = self.generate_canvas_data(tree, store)
 
@@ -144,6 +165,19 @@ class ObsidianCanvasExporter:
         if isinstance(node_id, int):
             return f"chunk_{node_id}"
         return node_id
+
+    def _get_node_obj(self, node_id: str, tree: "DocumentTree") -> SummaryNode | None:
+        """Retrieve SummaryNode from tree or store."""
+        if node_id == tree.root_node.id:
+            return tree.root_node
+        node = tree.all_nodes.get(node_id)
+        if node:
+            return node
+        if self._store:
+            fetched = self._store.get_node(node_id)
+            if isinstance(fetched, SummaryNode):
+                return fetched
+        return None
 
     def _calculate_subtree_width(self, root_id: int | str, tree: "DocumentTree") -> int:
         """
@@ -176,9 +210,7 @@ class ObsidianCanvasExporter:
         self, curr_id: str, stack: list[int | str], tree: "DocumentTree"
     ) -> None:
         """Helper to push children to stack."""
-        node = tree.all_nodes.get(curr_id)
-        if curr_id == tree.root_node.id:
-            node = tree.root_node
+        node = self._get_node_obj(curr_id, tree)
 
         if node:
             for child_idx in node.children_indices:
@@ -194,9 +226,7 @@ class ObsidianCanvasExporter:
             return
 
         # If SummaryNode
-        node = tree.all_nodes.get(str(curr_id))
-        if str(curr_id) == tree.root_node.id:
-            node = tree.root_node
+        node = self._get_node_obj(str(curr_id), tree)
 
         if not node:
             self._subtree_widths[node_id_str] = self.NODE_WIDTH
@@ -229,9 +259,7 @@ class ObsidianCanvasExporter:
             text = f"Chunk {node_id}\n\n{chunk_content}"
         else:
             # Summary Node
-            node = tree.all_nodes.get(str(node_id))
-            if str(node_id) == tree.root_node.id:
-                node = tree.root_node
+            node = self._get_node_obj(str(node_id), tree)
             text = node.text if node else "Missing Node"
 
         # Position: center_x is the center of the node.
@@ -254,9 +282,7 @@ class ObsidianCanvasExporter:
             return
 
         # If SummaryNode, process children
-        summary_node = tree.all_nodes.get(str(node_id))
-        if str(node_id) == tree.root_node.id:
-            summary_node = tree.root_node
+        summary_node = self._get_node_obj(str(node_id), tree)
 
         if not summary_node:
             return

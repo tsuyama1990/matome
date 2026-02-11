@@ -1,5 +1,4 @@
 import logging
-import itertools
 from collections.abc import Iterable, Iterator
 
 import numpy as np
@@ -43,6 +42,10 @@ class JapaneseSemanticChunker:
         Yields:
             Chunk objects.
         """
+        if not isinstance(text, (str, Iterable)):
+            msg = "Input text must be a string or iterable of strings."
+            raise TypeError(msg)
+
         if not text:
             return
 

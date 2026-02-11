@@ -7,6 +7,7 @@ from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.cluster import GMMClusterer
 from matome.engines.raptor import RaptorEngine
+from matome.utils.store import DiskChunkStore
 
 
 class UATEmbedder:
@@ -110,14 +111,21 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     summarizer.summarize.return_value = "Summary Node"
 
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
-    tree = engine.run("Long doc")
+    with DiskChunkStore() as store:
+        tree = engine.run("Long doc", store=store)
 
-    # 50 chunks -> Multiple clusters -> Multiple Summaries (L1).
-    # Multiple Summaries -> ... -> Root (L2+).
-    assert tree.root_node.level >= 2
-    assert len(tree.leaf_chunk_ids) == 50
-    # Check that we have intermediate summaries
-    assert len(tree.all_nodes) > 1
+        # 50 chunks -> Multiple clusters -> Multiple Summaries (L1).
+        # Multiple Summaries -> ... -> Root (L2+).
+        assert tree.root_node.level >= 2
+        assert len(tree.leaf_chunk_ids) == 50
+        # Check that we have intermediate summaries in store
+        count = 0
+        from domain_models.manifest import SummaryNode
+
+        for node in store.iter_nodes(node_type="summary"):
+            if isinstance(node, SummaryNode):
+                count += 1
+        assert count > 1
 
 
 def test_uat_scenario_13_summary_coherence() -> None:

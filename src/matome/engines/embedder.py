@@ -69,10 +69,10 @@ class EmbeddingService:
             # Process in strict mini-batches to avoid any large memory allocation
             # SentenceTransformer.encode internally batches, but returns full result.
             # We must call encode on smaller chunks if we want to avoid full result in memory.
-            MINI_BATCH_SIZE = 8
+            mini_batch_size = self.config.embedding_mini_batch_size
 
-            for i in range(0, len(batch_texts), MINI_BATCH_SIZE):
-                chunk_texts = batch_texts[i : i + MINI_BATCH_SIZE]  # slice works on list/tuple
+            for i in range(0, len(batch_texts), mini_batch_size):
+                chunk_texts = batch_texts[i : i + mini_batch_size]  # slice works on list/tuple
 
                 chunk_embeddings = self.model.encode(
                     list(chunk_texts),

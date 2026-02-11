@@ -3,10 +3,15 @@ import logging
 import uuid
 from collections.abc import Iterable, Iterator
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ProcessingConfig, ProcessingMode
 from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel, NodeID
-from matome.agents.strategies import ActionStrategy, KnowledgeStrategy, WisdomStrategy
+from matome.agents.strategies import (
+    ActionStrategy,
+    BaseSummaryStrategy,
+    KnowledgeStrategy,
+    WisdomStrategy,
+)
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, PromptStrategy, Summarizer
 from matome.utils.compat import batched
@@ -112,7 +117,9 @@ class RaptorEngine:
         # Use provided store or create a temporary one
         # If provided, we wrap it in a nullcontext so it doesn't close on exit
         store_ctx: contextlib.AbstractContextManager[DiskChunkStore] = (
-            DiskChunkStore() if store is None else contextlib.nullcontext(store)
+            DiskChunkStore(batch_size=self.config.store_batch_size)
+            if store is None
+            else contextlib.nullcontext(store)
         )
 
         with store_ctx as active_store:
@@ -138,12 +145,25 @@ class RaptorEngine:
         start_level: int = 0,
     ) -> list[NodeID]:
         """
-        Execute the recursive summarization loop.
+        Execute the recursive summarization loop until the tree is reduced to a single root node.
+
+        Args:
+            clusters: The clusters generated from the current level's nodes.
+            current_level_ids: List of NodeIDs at the current level.
+            store: The persistent store for retrieving and saving nodes.
+            start_level: The starting level index (usually 0).
+
+        Returns:
+            The list of NodeIDs for the final level (usually a single root).
         """
         level = start_level
+        iteration = 0
         while True:
+            iteration += 1
             node_count = len(current_level_ids)
-            logger.info(f"Processing Level {level}. Node count: {node_count}")
+            logger.info(
+                f"Processing Level {level} (Iteration {iteration}). Node count: {node_count}"
+            )
 
             if node_count <= 1:
                 break
@@ -153,7 +173,7 @@ class RaptorEngine:
                 logger.warning(
                     f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
                 )
-                if node_count < 20:
+                if node_count < self.config.min_clusters_for_recursion:
                     clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
                 else:
                     logger.error("Could not reduce nodes. Stopping recursion.")
@@ -186,6 +206,13 @@ class RaptorEngine:
     ) -> list[Cluster]:
         """
         Perform embedding and clustering for the next level (summaries).
+
+        Args:
+            current_level_ids: List of NodeIDs to embed and cluster.
+            store: The persistent store.
+
+        Returns:
+            A list of newly generated clusters.
         """
 
         def lx_embedding_generator() -> Iterator[list[float]]:
@@ -259,7 +286,15 @@ class RaptorEngine:
         l0_ids: list[NodeID],
     ) -> DocumentTree:
         """
-        Construct the final DocumentTree.
+        Construct the final DocumentTree object from the processed nodes.
+
+        Args:
+            current_level_ids: The list of NodeIDs at the top level (should be 1).
+            store: The persistent store.
+            l0_ids: The list of initial chunk IDs (Level 0).
+
+        Returns:
+            The complete DocumentTree structure.
         """
         if not current_level_ids:
             if not l0_ids:
@@ -296,11 +331,8 @@ class RaptorEngine:
         else:
             root_node = root_node_obj
 
-        # Populate all_summaries from store
-        all_summaries = {}
-        for node in store.iter_nodes(node_type="summary"):
-            if isinstance(node, SummaryNode):
-                all_summaries[node.id] = node
+        # Scalability: Do NOT populate all_nodes in memory. Exporters must use store.
+        all_summaries: dict[str, SummaryNode] = {}
 
         return DocumentTree(
             root_node=root_node,
@@ -317,7 +349,16 @@ class RaptorEngine:
         level: int,
     ) -> Iterator[SummaryNode]:
         """
-        Process clusters to generate summaries (streaming).
+        Summarize the content of each cluster into a SummaryNode.
+
+        Args:
+            clusters: List of clusters to summarize.
+            current_level_ids: List of NodeIDs available at the current level.
+            store: The persistent store.
+            level: The target level for the new summaries.
+
+        Yields:
+            Generated SummaryNode objects.
         """
         for cluster in clusters:
             children_indices, cluster_texts = self._get_cluster_content(
@@ -350,7 +391,17 @@ class RaptorEngine:
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
     ) -> tuple[list[NodeID], list[str]]:
-        """Retrieve content for a single cluster."""
+        """
+        Retrieve text content and IDs for all nodes in a cluster.
+
+        Args:
+            cluster: The cluster to process.
+            current_level_ids: List of NodeIDs corresponding to cluster indices.
+            store: The persistent store.
+
+        Returns:
+            A tuple containing (list of child NodeIDs, list of text contents).
+        """
         children_indices: list[NodeID] = []
         cluster_texts: list[str] = []
 
@@ -372,7 +423,16 @@ class RaptorEngine:
         return children_indices, cluster_texts
 
     def _truncate_cluster_text(self, cluster_id: NodeID, texts: list[str]) -> list[str]:
-        """Truncate list of texts if total length exceeds limit."""
+        """
+        Truncate list of texts to ensure total length does not exceed config limit.
+
+        Args:
+            cluster_id: ID of the cluster (for logging).
+            texts: List of text strings.
+
+        Returns:
+            Truncated list of text strings.
+        """
         total_chars = sum(len(t) for t in texts)
         if total_chars <= self.config.max_input_length:
             return texts
@@ -391,8 +451,13 @@ class RaptorEngine:
 
     def _get_strategy_for_level(self, level: int) -> tuple[PromptStrategy, DIKWLevel]:
         """Determine strategy and DIKW level based on recursion depth."""
-        if level == 1:
-            return ActionStrategy(), DIKWLevel.INFORMATION
-        if level == 2:
-            return KnowledgeStrategy(), DIKWLevel.KNOWLEDGE
-        return WisdomStrategy(), DIKWLevel.WISDOM
+        if self.config.processing_mode == ProcessingMode.DIKW:
+            if level == 1:
+                return ActionStrategy(), DIKWLevel.INFORMATION
+            if level == 2:
+                return KnowledgeStrategy(), DIKWLevel.KNOWLEDGE
+            return WisdomStrategy(), DIKWLevel.WISDOM
+
+        # Default / Legacy Mode: Use BaseSummaryStrategy
+        # We classify all summaries as INFORMATION (or generic summaries)
+        return BaseSummaryStrategy(), DIKWLevel.INFORMATION

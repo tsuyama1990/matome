@@ -1,18 +1,15 @@
-import shutil
-import tempfile
-from collections.abc import Generator, Iterator, Iterable
-from pathlib import Path
+from collections.abc import Generator, Iterable, Iterator
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
 from domain_models.config import ClusteringAlgorithm, ProcessingConfig
+from matome.agents.summarizer import SummarizationAgent
 from matome.engines.chunker import JapaneseTokenChunker
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
-from matome.agents.summarizer import SummarizationAgent
 from matome.utils.store import DiskChunkStore
+
 
 @pytest.fixture
 def temp_store() -> Generator[DiskChunkStore, None, None]:

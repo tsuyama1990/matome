@@ -77,8 +77,8 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         assert tree.root_node is not None
         assert len(tree.leaf_chunk_ids) == 10
         assert tree.root_node.level >= 1
-        if tree.root_node.level > 1:
-            assert len(tree.all_nodes) > 1
+        # all_nodes is now lazy/empty by default for scalability
+        assert not tree.all_nodes
 
         # Verify embeddings are present in store
         first_chunk = store.get_node(tree.leaf_chunk_ids[0])
@@ -94,5 +94,14 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
 
         assert tree.root_node.embedding is not None, "Root node object must have an embedding."
 
-        for node in tree.all_nodes.values():
+        # Verify all summary nodes in store have embeddings
+        summary_count = 0
+        from domain_models.manifest import SummaryNode
+
+        for node in store.iter_nodes(node_type="summary"):
+            assert isinstance(node, SummaryNode)
             assert node.embedding is not None, f"Summary node {node.id} must have an embedding."
+            summary_count += 1
+
+        if tree.root_node.level > 1:
+            assert summary_count > 1
