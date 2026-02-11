@@ -53,6 +53,11 @@ class InteractiveRaptorEngine:
 
         logger.info(f"Refining node {node_id} with instruction: {instruction}")
 
+        # Note: We do NOT check `node.metadata.is_user_edited` here because this method
+        # implements explicit user-driven refinement. If the user calls refine_node,
+        # they intend to overwrite any previous version, whether manual or automated.
+        # `is_user_edited` acts as a lock for automated batch processes, not for the user.
+
         # Create RefinementStrategy
         strategy = RefinementStrategy(instruction)
 

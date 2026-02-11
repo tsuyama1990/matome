@@ -177,10 +177,9 @@ class SummarizationAgent:
         # 2. Control Character Check (Unicode)
         # We strictly disallow control characters that are not standard whitespace.
         # Allow standard whitespace controls: \n (newline).
-        # We allow \t (tab) but we consider it safe enough or we can sanitize it if needed.
-        # The prompt injection sanitization handles explicit patterns.
-        # Here we block dangerous binary/control codes.
-        allowed_controls = {"\n", "\t"}
+        # \t (tab) is disallowed to prevent potential formatting obfuscation or injection.
+        # \r (carriage return) is disallowed to prevent CRLF injection.
+        allowed_controls = {"\n"}
 
         for char in text:
             # Check for control characters (Cc, Cf, Cs, Co, Cn)
