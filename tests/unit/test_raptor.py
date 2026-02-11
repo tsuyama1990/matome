@@ -8,6 +8,7 @@ from domain_models.manifest import Chunk, Cluster, DocumentTree
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.interfaces import Chunker, Clusterer, Summarizer
+from matome.utils.store import DiskChunkStore
 
 
 @pytest.fixture
@@ -73,19 +74,21 @@ def test_raptor_run_short_text(
     clusterer.cluster_nodes.side_effect = side_effect_cluster
 
     # Run
-    tree = engine.run("Short text")
+    with DiskChunkStore() as store:
+        tree = engine.run("Short text", store=store)
 
-    # Verify
-    embedder.embed_chunks.assert_called()
-    clusterer.cluster_nodes.assert_called()
-    summarizer.summarize.assert_not_called()
+        # Verify
+        embedder.embed_chunks.assert_called()
+        clusterer.cluster_nodes.assert_called()
+        summarizer.summarize.assert_not_called()
 
-    assert isinstance(tree, DocumentTree)
-    assert len(tree.leaf_chunk_ids) == 1
-    assert tree.root_node.level == 1
-    assert tree.root_node.text == "Short text"
-    assert tree.root_node.children_indices == [0]
-    assert len(tree.all_nodes) == 1
+        assert isinstance(tree, DocumentTree)
+        assert len(tree.leaf_chunk_ids) == 1
+        assert tree.root_node.level == 1
+        assert tree.root_node.text == "Short text"
+        assert tree.root_node.children_indices == [0]
+        # all_nodes is empty for scalability
+        assert len(tree.all_nodes) == 0
 
 
 def test_raptor_run_recursive(
@@ -166,18 +169,25 @@ def test_raptor_run_recursive(
 
     clusterer.cluster_nodes.side_effect = consuming_side_effect
 
-    tree = engine.run("Long text")
+    with DiskChunkStore() as store:
+        tree = engine.run("Long text", store=store)
 
-    # Verify
-    assert isinstance(tree, DocumentTree)
-    assert tree.root_node.text == "Root Summary"
-    assert tree.root_node.level == 2  # L0 -> L1 -> L2 (Root)
+        # Verify
+        assert isinstance(tree, DocumentTree)
+        assert tree.root_node.text == "Root Summary"
+        assert tree.root_node.level == 2  # L0 -> L1 -> L2 (Root)
 
-    # Check L1 nodes
-    root_children_ids = tree.root_node.children_indices
-    assert len(root_children_ids) == 2
-    assert all(isinstance(uid, str) for uid in root_children_ids)
+        # Check L1 nodes
+        root_children_ids = tree.root_node.children_indices
+        assert len(root_children_ids) == 2
+        assert all(isinstance(uid, str) for uid in root_children_ids)
 
-    # Verify we have all nodes
-    # Root + 2 L1 nodes = 3 nodes
-    assert len(tree.all_nodes) == 3
+        # Verify we have all nodes in store
+        # Root + 2 L1 nodes = 3 summary nodes
+        count = 0
+        from domain_models.manifest import SummaryNode
+
+        for node in store.iter_nodes(node_type="summary"):
+            if isinstance(node, SummaryNode):
+                count += 1
+        assert count == 3

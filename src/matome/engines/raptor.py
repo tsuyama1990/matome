@@ -331,11 +331,8 @@ class RaptorEngine:
         else:
             root_node = root_node_obj
 
-        # Populate all_summaries from store
-        all_summaries = {}
-        for node in store.iter_nodes(node_type="summary"):
-            if isinstance(node, SummaryNode):
-                all_summaries[node.id] = node
+        # Scalability: Do NOT populate all_nodes in memory. Exporters must use store.
+        all_summaries: dict[str, SummaryNode] = {}
 
         return DocumentTree(
             root_node=root_node,

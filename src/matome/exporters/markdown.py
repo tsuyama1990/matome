@@ -15,6 +15,36 @@ def _format_summary(node: SummaryNode, depth: int) -> tuple[str, str]:
     return f"{heading} {node.text.strip()}", ""
 
 
+def _get_chunk_for_export(
+    node_id: int, chunk_map: dict[int, Chunk], store: DiskChunkStore | None
+) -> Chunk | None:
+    """Retrieve chunk from map or store."""
+    chunk = chunk_map.get(node_id)
+    if chunk:
+        return chunk
+    if store:
+        node = store.get_node(node_id)
+        if isinstance(node, Chunk):
+            return node
+    return None
+
+
+def _get_summary_for_export(
+    node_id: str, tree: DocumentTree, store: DiskChunkStore | None
+) -> SummaryNode | None:
+    """Retrieve summary from tree or store."""
+    if node_id == tree.root_node.id:
+        return tree.root_node
+    node = tree.all_nodes.get(node_id)
+    if node:
+        return node
+    if store:
+        fetched = store.get_node(node_id)
+        if isinstance(fetched, SummaryNode):
+            return fetched
+    return None
+
+
 def _process_node(
     node_id: str | int,
     is_chunk: bool,
@@ -22,19 +52,19 @@ def _process_node(
     tree: DocumentTree,
     chunk_map: dict[int, Chunk],
     lines: list[str],
+    store: DiskChunkStore | None = None,
 ) -> None:
     """Recursively process nodes for Markdown export."""
     if is_chunk:
         if isinstance(node_id, int):
-            chunk = chunk_map.get(node_id)
+            chunk = _get_chunk_for_export(node_id, chunk_map, store)
             if chunk:
                 lines.append(_format_chunk(chunk, depth))
         return
 
     # It's a SummaryNode
     if isinstance(node_id, str):
-        node = tree.root_node if node_id == tree.root_node.id else tree.all_nodes.get(node_id)
-
+        node = _get_summary_for_export(node_id, tree, store)
         if not node:
             return
 
@@ -46,11 +76,9 @@ def _process_node(
         # Process Children
         for child_idx in node.children_indices:
             if isinstance(child_idx, str):
-                # Child is SummaryNode
-                _process_node(child_idx, False, depth + 1, tree, chunk_map, lines)
+                _process_node(child_idx, False, depth + 1, tree, chunk_map, lines, store)
             elif isinstance(child_idx, int):
-                # Child is Chunk
-                _process_node(child_idx, True, depth + 1, tree, chunk_map, lines)
+                _process_node(child_idx, True, depth + 1, tree, chunk_map, lines, store)
 
 
 def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) -> str:
@@ -77,6 +105,6 @@ def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) 
                 chunk_map[node.index] = node
 
     if tree.root_node:
-        _process_node(tree.root_node.id, False, 0, tree, chunk_map, lines)
+        _process_node(tree.root_node.id, False, 0, tree, chunk_map, lines, store)
 
     return "\n".join(lines)

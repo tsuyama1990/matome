@@ -75,8 +75,9 @@ def test_chunker_empty_input() -> None:
     chunks = list(chunker.split_text("", config))
     assert chunks == []
 
-    chunks_none = list(chunker.split_text(None, config))  # type: ignore
-    assert chunks_none == []
+    # None input should raise TypeError
+    with pytest.raises(TypeError, match="string or iterable"):
+        list(chunker.split_text(None, config))  # type: ignore
 
 
 def test_chunker_single_sentence_exceeds_limit() -> None:

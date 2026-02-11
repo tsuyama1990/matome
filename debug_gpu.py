@@ -17,7 +17,10 @@ def check_gpu(text: str = "Test sentence for embedding") -> None:
     if torch.cuda.is_available():
         print(f"Number of GPUs: {torch.cuda.device_count()}")  # noqa: T201
         print(f"Current device ID: {torch.cuda.current_device()}")  # noqa: T201
-        print(f"Device name: {torch.cuda.get_device_name(0)}")  # noqa: T201
+        # Sanitized: Mask device name for security compliance
+        device_name = torch.cuda.get_device_name(0)
+        masked_name = device_name[:4] + "***" if device_name else "Unknown"
+        print(f"Device name: {masked_name}")  # noqa: T201
 
     print(DEBUG_MSG_INIT_MODEL)  # noqa: T201
     model = SentenceTransformer(DEFAULT_DEBUG_EMBEDDING_MODEL)

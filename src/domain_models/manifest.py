@@ -152,7 +152,9 @@ class DocumentTree(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
-    all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
+    all_nodes: dict[str, SummaryNode] = Field(
+        default_factory=dict, description="Map of all summary nodes by ID. Optional/Lazy."
+    )
     leaf_chunk_ids: list[NodeID] = Field(
         ..., description="IDs of the original leaf chunks (Level 0)."
     )
