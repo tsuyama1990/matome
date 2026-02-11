@@ -9,6 +9,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import BaseSummaryStrategy
 from matome.agents.summarizer import SummarizationAgent
 
 
@@ -62,7 +63,8 @@ def test_scenario_09_cod_behavior_mocked() -> None:
         )
 
         config = ProcessingConfig()
-        agent = SummarizationAgent(config)
+        # Explicitly use BaseSummaryStrategy to test CoD behavior
+        agent = SummarizationAgent(config, prompt_strategy=BaseSummaryStrategy())
 
         summary = agent.summarize(verbose_text, config)
 
