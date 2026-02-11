@@ -1,15 +1,16 @@
 from collections.abc import Iterator
-from unittest.mock import MagicMock, create_autospec, ANY
+from typing import Any
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.manifest import Chunk, Cluster
 from domain_models.types import DIKWLevel
 from matome.agents.strategies import ActionStrategy, KnowledgeStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
-from matome.interfaces import Chunker, Clusterer, Summarizer
+from matome.interfaces import Chunker, Clusterer, Summarizer, PromptStrategy
 
 
 @pytest.fixture
@@ -26,9 +27,9 @@ def config() -> ProcessingConfig:
     return ProcessingConfig()
 
 
-def make_cluster_side_effect(return_values_list):
+def make_cluster_side_effect(return_values_list: list[list[Cluster]]) -> Any:
     iterator = iter(return_values_list)
-    def side_effect(embeddings, config):
+    def side_effect(embeddings: Any, config: ProcessingConfig) -> list[Cluster]:
         if isinstance(embeddings, Iterator):
             list(embeddings) # consume
         try:
@@ -95,13 +96,13 @@ def test_uat_full_dikw_hierarchy(
     ])
 
     # 5. Mock Summarizer to capture strategies
-    captured_strategies = {
+    captured_strategies: dict[int, list[PromptStrategy | None]] = {
         1: [],
         2: [],
         3: []
     }
 
-    def summarize_side_effect(text, config, level=0, strategy=None):
+    def summarize_side_effect(text: str | list[str], config: ProcessingConfig, level: int = 0, strategy: PromptStrategy | None = None) -> str:
         if level in captured_strategies:
             captured_strategies[level].append(strategy)
         return f"Summary Level {level}"

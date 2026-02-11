@@ -57,7 +57,24 @@ class JapaneseSemanticChunker:
         # Check if input is re-iterable (str, list, tuple)
         is_reiterable = isinstance(text, (str, list, tuple))
 
+        # For re-iterable inputs (lists/strings), check size first to avoid O(N) distance storage
+        # if N is massive. If too large, fall back to streaming (static threshold).
+        use_global_strategy = is_reiterable
         if is_reiterable:
+            # Attempt to check length if possible
+            input_len = 0
+            if hasattr(text, "__len__"):
+                input_len = len(text)  # type: ignore[arg-type]
+
+            # If it's a huge list of strings, treating it as a stream is safer
+            if input_len > config.large_scale_threshold:
+                logger.info(
+                    f"Input size ({input_len}) exceeds large scale threshold ({config.large_scale_threshold}). "
+                    "Forcing Static Threshold strategy to ensure memory safety."
+                )
+                use_global_strategy = False
+
+        if use_global_strategy:
             # Pass 1: Calculate Distances
             sentences_iter_1 = get_sentence_iter()
             distances = self._calculate_semantic_distances(sentences_iter_1)

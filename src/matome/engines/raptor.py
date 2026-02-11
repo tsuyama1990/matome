@@ -100,11 +100,11 @@ class RaptorEngine:
             if not text:
                 msg = "Input text must be a non-empty string."
                 raise ValueError(msg)
-            # Length validation for single string
+            # Only validate length if text is a single string to avoid memory issues
+            # For streaming input (iterable), validation happens during consumption
             if len(text) > self.config.max_input_length:
                 msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
                 raise ValueError(msg)
-        # If iterable, validation happens during consumption or assumed safe (chunked)
 
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
