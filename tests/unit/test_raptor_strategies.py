@@ -5,7 +5,7 @@ import pytest
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster
-from matome.agents.strategies import ActionStrategy, KnowledgeStrategy, WisdomStrategy
+from matome.agents.strategies import ActionStrategy, KnowledgeStrategy
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.interfaces import Chunker, Clusterer, Summarizer

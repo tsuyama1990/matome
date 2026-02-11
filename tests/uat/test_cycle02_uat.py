@@ -10,7 +10,7 @@ from domain_models.types import DIKWLevel
 from matome.agents.strategies import ActionStrategy, KnowledgeStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
-from matome.interfaces import Chunker, Clusterer, Summarizer, PromptStrategy
+from matome.interfaces import Chunker, Clusterer, PromptStrategy, Summarizer
 
 
 @pytest.fixture

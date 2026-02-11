@@ -114,7 +114,11 @@ def test_real_pipeline_small() -> None:
 
         mock_instance.encode.side_effect = side_effect
 
-        embedder = EmbeddingService(config)
+        # Ensure we don't accidentally use the real model if mock fails
+        with patch.object(EmbeddingService, "model", mock_instance):
+             embedder = EmbeddingService(config)
+             # Explicitly set the private model attribute to avoid property lookup logic firing if it wasn't mocked
+             embedder._model = mock_instance
         embeddings_gen = embedder.embed_strings(texts)
         embeddings = list(embeddings_gen)
 

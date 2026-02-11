@@ -206,6 +206,9 @@ class ProcessingConfig(BaseModel):
     @classmethod
     def validate_tokenizer_model(cls, v: str) -> str:
         """Validate tokenizer model against whitelist."""
+        if not v or not v.strip():
+            msg = "Tokenizer model name cannot be empty."
+            raise ValueError(msg)
         if v not in ALLOWED_TOKENIZER_MODELS:
             msg = (
                 f"Tokenizer model '{v}' is not allowed. Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
