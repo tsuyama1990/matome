@@ -216,17 +216,14 @@ class ProcessingConfig(BaseModel):
     @model_validator(mode="after")
     def validate_clustering_config(self) -> Self:
         """Ensure n_clusters consistency with algorithm."""
-        # Note: GMM supports automatic cluster determination (n_clusters=None).
-        # However, if some future algo strictly required it, we'd check here.
-        # Currently GMMClusterer handles None by sweeping BIC.
-        # So we don't strictly enforce n_clusters is not None for GMM.
-        # But if we wanted to enforce it for some specific logic as requested by audit:
-        # "GMMClusturer doesn't handle this case properly" -> I checked, it DOES handle it (auto-BIC).
-        # So I will NOT force it to be set, but I will ensure if it IS set, it is valid (>1).
-        if self.n_clusters is not None and self.n_clusters < 2:
-             # Actually field `n_clusters: int | None` has no ge constraint in Field?
-             # I should add it there or here.
-             pass
+        # If n_clusters is provided, it must be at least 2 for GMM to work meaningfully.
+        # While 1 cluster is a fallback logic in engine, configuration should ideally not request invalid states.
+        # But wait, 1 cluster is valid if we just want to group everything.
+        # However, scikit-learn GMM requires n_components >= 1.
+        # If the user sets n_clusters=0 or negative, that's invalid.
+        if self.n_clusters is not None and self.n_clusters < 1:
+            msg = f"n_clusters must be at least 1 (got {self.n_clusters})."
+            raise ValueError(msg)
         return self
 
     @classmethod

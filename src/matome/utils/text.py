@@ -32,6 +32,7 @@ def iter_sentences(text: str) -> Iterator[str]:
         return
 
     last_idx = 0
+    # Use finditer to lazily find delimiters
     for match in SENTENCE_SPLIT_PATTERN.finditer(text):
         sep_start = match.start()
         sep_end = match.end()
@@ -52,6 +53,7 @@ def iter_sentences(text: str) -> Iterator[str]:
 def split_sentences(text: str) -> list[str]:
     """
     Split text into sentences based on Japanese punctuation and newlines.
+    Not recommended for large texts; use iter_sentences instead.
     """
     return list(iter_sentences(text))
 
