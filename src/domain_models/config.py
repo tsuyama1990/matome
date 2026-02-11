@@ -118,6 +118,11 @@ class ProcessingConfig(BaseModel):
         ge=1,
         description="Buffer size for batch database writes in Raptor engine.",
     )
+    clustering_force_reduction_threshold: int = Field(
+        default=20,
+        ge=1,
+        description="Node count threshold below which clustering is forced to reduce to a single cluster if standard reduction fails.",
+    )
     canvas_node_width: int = Field(
         default=DEFAULT_CANVAS_NODE_WIDTH,
         ge=10,

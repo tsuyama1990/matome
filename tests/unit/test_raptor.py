@@ -1,10 +1,11 @@
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.interfaces import Chunker, Clusterer, Summarizer
@@ -188,3 +189,42 @@ def test_raptor_run_recursive(
     arg_text = call_args_3[0][0]
     assert isinstance(arg_text, list)
     assert arg_text == ["Summary L1-0", "Summary L1-1"]
+
+
+def test_embed_and_cluster_next_level_streaming(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
+    """Test that _embed_and_cluster_next_level uses a generator for embeddings."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+    # Setup store mock
+    store_mock = MagicMock()
+    # Mock get_node to return a dummy node with text
+    store_mock.get_node.side_effect = lambda nid: MagicMock(text=f"Text {nid}")
+
+    current_level_ids: list[NodeID] = ["node1", "node2", "node3"]
+
+    # Mock embed_strings to be a generator
+    def embed_strings_gen(texts: Iterable[str]) -> Iterator[list[float]]:
+        # This confirms that input is iterable (not necessarily list)
+        for _ in texts:
+            yield [0.1] * 768
+
+    embedder.embed_strings.side_effect = embed_strings_gen
+
+    # Mock clusterer to consume the generator
+    def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        # Verify it is an iterator
+        assert isinstance(embeddings, Iterator)
+        # Consume it
+        count = sum(1 for _ in embeddings)
+        return [Cluster(id=0, level=1, node_indices=list(range(count)))]
+
+    clusterer.cluster_nodes.side_effect = cluster_side_effect
+
+    # Call private method directly for unit testing
+    engine._embed_and_cluster_next_level(current_level_ids, store_mock)
+
+    # Verification handled by assertions inside cluster_side_effect
+    assert clusterer.cluster_nodes.called

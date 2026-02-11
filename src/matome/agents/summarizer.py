@@ -113,7 +113,11 @@ class SummarizationAgent:
             raise ValueError(msg)
 
         # Sanitize prompt injection
-        safe_chunks = [self._sanitize_prompt_injection(chunk) for chunk in context_chunks]
+        # Also replace tabs with spaces to prevent potential formatting obfuscation if deemed necessary,
+        # though tabs are generally safe. The main threat is control characters which are validated above.
+        safe_chunks = [
+            self._sanitize_prompt_injection(chunk).replace("\t", " ") for chunk in context_chunks
+        ]
 
         if self.mock_mode:
             logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
@@ -154,9 +158,6 @@ class SummarizationAgent:
         1. Maximum overall length to prevent processing extremely large inputs.
         2. Control characters (Unicode 'C' category).
            We strictly disallow control characters that are not standard whitespace.
-           While Newline (\\n) and Tab (\\t) are often used for formatting, they can be used for injection.
-           However, blocking them makes summarizing documents impossible.
-           Therefore, we strictly validate that ONLY \\n and \\t are present among control chars.
            Other control characters (like \\r, null bytes, backspaces) are rejected.
         3. Word length to prevent tokenizer Denial of Service (DoS) attacks.
 
@@ -175,8 +176,10 @@ class SummarizationAgent:
 
         # 2. Control Character Check (Unicode)
         # We strictly disallow control characters that are not standard whitespace.
-        # Allow standard whitespace controls: \n, \t
-        # Removed \r to prevent potential injection or obfuscation issues (CRLF injection).
+        # Allow standard whitespace controls: \n (newline).
+        # We allow \t (tab) but we consider it safe enough or we can sanitize it if needed.
+        # The prompt injection sanitization handles explicit patterns.
+        # Here we block dangerous binary/control codes.
         allowed_controls = {"\n", "\t"}
 
         for char in text:

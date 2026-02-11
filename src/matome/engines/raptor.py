@@ -172,7 +172,7 @@ class RaptorEngine:
                 # Fallback: Merge all into one cluster if node_count is small, else break?
                 # If we break, we stop summarization.
                 # Let's collapse to 1 cluster if small enough.
-                if node_count < 20:
+                if node_count < self.config.clustering_force_reduction_threshold:
                     clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
                 else:
                     # Just proceed, maybe next level will cluster better?
