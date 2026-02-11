@@ -81,3 +81,11 @@ ALLOWED_SUMMARIZATION_MODELS: Final[frozenset[str]] = frozenset(
 
 # Regex Patterns
 SENTENCE_SPLIT_PATTERN: Final[str] = r"(?<=[。！？])\s*|\n+"  # noqa: RUF001
+
+# Debug Messages
+DEBUG_MSG_CUDA_AVAILABLE: Final[str] = "CUDA available: {}"
+DEBUG_MSG_CUDA_COUNT: Final[str] = "CUDA device count: {}"
+DEBUG_MSG_CURRENT_DEVICE: Final[str] = "Current device: {}"
+DEBUG_MSG_DEVICE_NAME: Final[str] = "Device name: {}"
+DEBUG_MSG_INIT_MODEL: Final[str] = "\nInitializing SentenceTransformer (auto-detect)..."
+DEBUG_MSG_MODEL_DEVICE: Final[str] = "Model device: {}"

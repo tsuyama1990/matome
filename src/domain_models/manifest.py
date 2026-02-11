@@ -68,12 +68,16 @@ class Chunk(BaseModel):
         # If the schema allows None, we accept None.
         # However, if it's NOT None, we strictly validate content.
         if self.embedding is not None:
+            if not isinstance(self.embedding, list):
+                msg = "Embedding must be a list."
+                raise ValueError(msg)
             if len(self.embedding) == 0:
                 msg = "Embedding cannot be an empty list if provided."
                 logger.error(msg)
                 raise ValueError(msg)
-            if any(not isinstance(x, (float, int)) for x in self.embedding):
-                msg = "Embedding must contain only numeric values."
+            # Strictly enforce float values (no ints)
+            if any(not isinstance(x, float) for x in self.embedding):
+                msg = "Embedding must contain only float values."
                 logger.error(msg)
                 raise ValueError(msg)
 
