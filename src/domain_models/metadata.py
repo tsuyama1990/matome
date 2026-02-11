@@ -49,6 +49,14 @@ class NodeMetadata(BaseModel):
         default_factory=list,
         description="List of user instructions applied to this node."
     )
+    cluster_id: str | int | None = Field(
+        default=None,
+        description="ID of the cluster this node summarizes (if applicable)."
+    )
+    type: str | None = Field(
+        default=None,
+        description="Type of the node (e.g. 'single_chunk_root')."
+    )
 
     # Allow extra fields for backward compatibility with existing unstructured metadata
     model_config = ConfigDict(extra="allow")

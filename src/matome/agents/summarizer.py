@@ -238,11 +238,8 @@ class SummarizationAgent:
                     )
 
                 # Check if LLM is chat model or simple LLM (though typed as ChatOpenAI)
-                if hasattr(self.llm, "invoke"):
-                    response = self.llm.invoke(messages)
-                else:
-                    # Fallback for mock objects that might not have invoke
-                    response = self.llm(messages)
+                # We enforce 'invoke' method usage for compatibility with LangChain Runnables
+                response = self.llm.invoke(messages)
 
         if not response:
             msg = f"[{request_id}] No response received from LLM."
