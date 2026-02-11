@@ -23,6 +23,8 @@ dependencies = [
     "sentence-transformers>=2.7.0",
     "mypy>=1.19.1",
     "matplotlib>=3.10.8",
+    "panel>=1.4.0",
+    "watchfiles>=0.21.0",
 ]
 
 [project.scripts]
@@ -87,7 +89,7 @@ select = [
 ]
 
 ignore = [
-    # "ANN101", # Removed as deprecated
+    "ANN101", # Type hint for self is unnecessary (deprecated)
     "ANN002", # Type hint for *args can be omitted
     "ANN003", # Type hint for **kwargs can be omitted
     "ANN001", # Missing type annotation for function arguments
@@ -103,14 +105,15 @@ ignore = [
     "PLC0415", # Import should be at top-level
     "BLE001", # Blind exception catch
     "PT019",  # Fixture without value injection
-    "RUF001", # Ambiguous characters (Japanese)
-    "RUF002", # Ambiguous characters (Japanese)
-    "RUF003", # Ambiguous characters (Japanese)
+    "RUF003", # Ambiguous multiplication sign
     "ARG002", # Unused method argument
     "RUF043", # Pattern metacharacters not escaped in match
     "RUF059", # Unused unpacked variable
     "PLR0913", # Too many arguments in function definition
-    "ANN202"  # Missing return type annotation for private functions
+    "ANN202", # Missing return type annotation for private functions
+    # Japanese Specific Ignores
+    "RUF001", # Ambiguous characters (Japanese)
+    "RUF002", # Ambiguous characters (Japanese)
 ]
 
 [tool.ruff.lint.per-file-ignores]
