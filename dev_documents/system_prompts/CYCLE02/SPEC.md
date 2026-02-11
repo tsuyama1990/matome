@@ -26,6 +26,11 @@ src/
     -   `DIKWHierarchyStrategy`: A composite strategy or factory that selects one of the above based on context.
 2.  **`src/matome/engines/raptor.py`**:
     -   Update the recursive summarization loop. When calling `summarizer.summarize`, pass the current tree `level` in the context.
+3.  **`src/domain_models/config.py`**:
+    -   Add `ProcessingMode` Enum (`default`, `dikw`).
+    -   Add `processing_mode` field to `ProcessingConfig`.
+4.  **`src/matome/cli.py`**:
+    -   Add `--mode` argument to the `run` command to select `ProcessingMode`.
 
 ## 3. Design Architecture
 
@@ -60,6 +65,8 @@ The `RaptorEngine` typically processes from leaves (L0) up to the root.
 -   `tree_level == 2` -> Use `KnowledgeStrategy`
 -   `tree_level >= 3` (Root) -> Use `WisdomStrategy`
 
+This mapping is applied ONLY when `ProcessingMode` is `DIKW`.
+
 ## 4. Implementation Approach
 
 ### Step 1: Implement Strategies
@@ -72,7 +79,9 @@ The `RaptorEngine` typically processes from leaves (L0) up to the root.
 
 ### Step 3: Integrate with RaptorEngine
 1.  In `RaptorEngine._process_level` (or equivalent loop), determine the strategy to use based on the current `level`.
-2.  Instantiate the appropriate strategy (e.g., `strategy = strategies.get_strategy_for_level(level)`).
+2.  Check `config.processing_mode`.
+    - If `DIKW`: Instantiate the appropriate strategy (e.g., `strategy = strategies.get_strategy_for_level(level)`).
+    - If `DEFAULT`: Use `BaseSummaryStrategy`.
 3.  Pass this strategy to the `summarizer`.
 
 ## 5. Test Strategy
@@ -92,5 +101,5 @@ The `RaptorEngine` typically processes from leaves (L0) up to the root.
     -   Nodes at Level 1 should have text "- Do laundry."
 
 ### 5.3. Manual Quality Check
--   **Run on Sample:** Run the real CLI with a sample text (e.g., the "Seasonal Report" example).
+-   **Run on Sample:** Run the real CLI with a sample text (e.g., the "Seasonal Report" example) and `--mode dikw`.
 -   **Read Output:** Open `summary.md` (if it dumps all nodes) or `chunks.db` and manually verify that the root node is indeed "Wisdom" and lower nodes are "Actions".

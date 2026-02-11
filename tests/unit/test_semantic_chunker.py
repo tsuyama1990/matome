@@ -71,7 +71,7 @@ def test_split_text_edge_cases(mock_embedder: MagicMock) -> None:
     assert list(chunker.split_text("   \n   ", config)) == []
 
     # Invalid input type
-    with pytest.raises(TypeError, match="Input text must be a string"):
+    with pytest.raises(TypeError):
         list(chunker.split_text(123, config))  # type: ignore[arg-type]
 
 

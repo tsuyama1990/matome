@@ -14,7 +14,8 @@
 
 ## Features
 
--   **Hierarchical Summarization:** Generates a multi-level tree of summaries (Wisdom -> Knowledge -> Information -> Data).
+-   **Semantic Zooming (DIKW Generation):** Automatically generates content tailored to each level of abstraction: Wisdom (Principles), Knowledge (Frameworks), and Information (Action Items).
+-   **Hierarchical Summarization:** Generates a multi-level tree of summaries using recursive clustering.
 -   **Source Verification:** Includes a verification agent that checks summaries against source text to detect hallucinations.
 -   **Local Storage:** Uses SQLite and local file storage for processing artifacts, ensuring privacy and offline capability.
 -   **Obsidian Export:** Exports the generated summary tree directly to Obsidian Canvas format for visual exploration.
@@ -61,12 +62,17 @@ uv run matome run data/my_book.txt
 
 **Options:**
 -   `--output-dir`, `-o`: Directory to save results (default: `results`).
--   `--model`, `-m`: Summarization model (default: `openai/gpt-4o-mini`).
+-   `--model`, `-m`: Summarization model (default: `gpt-4o-mini`).
+-   `--mode`: Processing mode. Use `dikw` for Semantic Zooming (Wisdom/Knowledge/Action) or `default` for standard summaries (default: `default`).
 -   `--verify/--no-verify`: Enable/Disable hallucination verification (default: Enabled).
 
 **Example:**
 ```bash
-uv run matome run document.txt -o my_summary --model openai/gpt-4o
+# Standard Summarization
+uv run matome run document.txt -o my_summary --model gpt-4o
+
+# DIKW Generation (Semantic Zooming)
+uv run matome run document.txt -o my_dikw_summary --mode dikw
 ```
 
 ## Architecture

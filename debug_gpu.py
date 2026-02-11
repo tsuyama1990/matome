@@ -25,6 +25,7 @@ def check_gpu() -> None:
         print(DEBUG_MSG_DEVICE_NAME.format(torch.cuda.get_device_name(0)))  # noqa: T201
 
     print(DEBUG_MSG_INIT_MODEL)  # noqa: T201
+    # Use constant from domain_models.constants instead of hardcoded string
     model = SentenceTransformer(DEFAULT_DEBUG_EMBEDDING_MODEL)
     print(DEBUG_MSG_MODEL_DEVICE.format(model.device))  # noqa: T201
 

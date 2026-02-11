@@ -37,7 +37,7 @@ def test_embedding_clustering_pipeline(
     mock_embeddings: list[list[float]], sample_chunks: list[str]
 ) -> None:
     """Test the pipeline flow with mocked embeddings."""
-    config = ProcessingConfig(embedding_model="mock-model", n_clusters=3, random_state=42)
+    config = ProcessingConfig(embedding_model="all-MiniLM-L6-v2", n_clusters=3, random_state=42)
 
     # Mock SentenceTransformer
     with patch("matome.engines.embedder.SentenceTransformer") as MockST:
@@ -46,7 +46,10 @@ def test_embedding_clustering_pipeline(
 
         # Configure encode to return our mock embeddings
         config = ProcessingConfig(
-            embedding_model="mock-model", n_clusters=3, random_state=42, embedding_batch_size=100
+            embedding_model="all-MiniLM-L6-v2",
+            n_clusters=3,
+            random_state=42,
+            embedding_batch_size=100,
         )
 
         def side_effect(texts: Any, **kwargs: Any) -> np.ndarray:
@@ -91,7 +94,7 @@ def test_real_pipeline_small() -> None:
     Test using mocked SentenceTransformer but real UMAP/GMM.
     """
     config = ProcessingConfig(
-        embedding_model="mock-model",
+        embedding_model="all-MiniLM-L6-v2",
         n_clusters=2,
         random_state=42,
         umap_n_neighbors=5,  # Small neighbors for small dataset
@@ -111,7 +114,11 @@ def test_real_pipeline_small() -> None:
 
         mock_instance.encode.side_effect = side_effect
 
-        embedder = EmbeddingService(config)
+        # Ensure we don't accidentally use the real model if mock fails
+        with patch.object(EmbeddingService, "model", mock_instance):
+             embedder = EmbeddingService(config)
+             # Explicitly set the private model attribute to avoid property lookup logic firing if it wasn't mocked
+             embedder._model = mock_instance
         embeddings_gen = embedder.embed_strings(texts)
         embeddings = list(embeddings_gen)
 

@@ -1,6 +1,5 @@
 import logging
-import itertools
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 
 import numpy as np
 
@@ -54,53 +53,80 @@ class JapaneseSemanticChunker:
                 for item in text:
                     yield from iter_normalized_sentences(item)
 
-        # Check if input is re-iterable (str, list, tuple)
         is_reiterable = isinstance(text, (str, list, tuple))
+        use_global_strategy = self._should_use_global_strategy(
+            text, is_reiterable, config.large_scale_threshold
+        )
 
-        if is_reiterable:
-            # Pass 1: Calculate Distances
-            sentences_iter_1 = get_sentence_iter()
-            distances = self._calculate_semantic_distances(sentences_iter_1)
-
-            if not distances:
-                # Handle single/empty case
-                sentences_iter_single = get_sentence_iter()
-                first = next(sentences_iter_single, None)
-                if first:
-                    yield Chunk(
-                        index=0, text=first, start_char_idx=0, end_char_idx=len(first)
-                    )
-                return
-
-            # Calc Threshold
-            percentile_val = config.semantic_chunking_percentile
-            threshold = float(np.percentile(distances, percentile_val))
-
-            logger.info(
-                f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile."
+        if use_global_strategy:
+            yield from self._chunk_with_global_percentile(
+                get_sentence_iter, config
             )
-
-            # Pass 2: Chunking
-            sentences_iter_2 = get_sentence_iter()
-            yield from self._create_chunks(
-                sentences_iter_2, distances, threshold, config
-            )
-
         else:
-            # Input is a single-pass stream. Use static threshold to avoid buffering.
-            # Using strict static threshold derived from config.semantic_chunking_threshold (similarity).
-            # dist = 1.0 - sim.
-            # threshold (dist) = 1.0 - threshold (sim).
-
             logger.info(
-                "Input text is a stream; using static threshold instead of global percentile."
+                "Using static threshold strategy for memory safety (input is stream or too large)."
             )
-
             static_thresh_dist = 1.0 - config.semantic_chunking_threshold
-
             yield from self._stream_chunk_static(
                 get_sentence_iter(), static_thresh_dist, config
             )
+
+    def _should_use_global_strategy(
+        self, text: str | Iterable[str], is_reiterable: bool, threshold: int
+    ) -> bool:
+        """Determine if global strategy should be used based on input type and size."""
+        if not is_reiterable:
+            return False
+
+        # If it's a huge list of strings, treating it as a stream is safer
+        input_len = 0
+        if hasattr(text, "__len__"):
+            input_len = len(text)  # type: ignore[arg-type]
+
+        if input_len > threshold:
+            logger.info(
+                f"Input size ({input_len}) exceeds large scale threshold ({threshold}). "
+                "Forcing Static Threshold strategy."
+            )
+            return False
+
+        return True
+
+    def _chunk_with_global_percentile(
+        self, get_sentence_iter: Callable[[], Iterator[str]], config: ProcessingConfig
+    ) -> Iterator[Chunk]:
+        """
+        Execute chunking using global percentile threshold strategy.
+        Requires iterating over sentences twice (once for distances, once for chunking).
+        """
+        # Pass 1: Calculate Distances
+        # Note: get_sentence_iter is a callable returning iterator
+        sentences_iter_1 = get_sentence_iter()
+        distances = self._calculate_semantic_distances(sentences_iter_1)
+
+        if not distances:
+            # Handle single/empty case
+            sentences_iter_single = get_sentence_iter()
+            first = next(sentences_iter_single, None)
+            if first:
+                yield Chunk(
+                    index=0, text=first, start_char_idx=0, end_char_idx=len(first)
+                )
+            return
+
+        # Calc Threshold
+        percentile_val = config.semantic_chunking_percentile
+        threshold = float(np.percentile(distances, percentile_val))
+
+        logger.info(
+            f"Global Semantic Chunking: Calculated threshold {threshold:.4f} at {percentile_val}th percentile."
+        )
+
+        # Pass 2: Chunking
+        sentences_iter_2 = get_sentence_iter()
+        yield from self._create_chunks(
+            sentences_iter_2, distances, threshold, config
+        )
 
     def _stream_chunk_static(
         self,

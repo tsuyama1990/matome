@@ -4,7 +4,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from domain_models.config import ProcessingConfig
-from matome.agents.strategies import PromptStrategy
 from matome.agents.summarizer import SummarizationAgent
 
 

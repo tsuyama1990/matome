@@ -4,7 +4,7 @@ from typing import Annotated
 
 import typer
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ProcessingConfig, ProcessingMode
 from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
@@ -53,14 +53,18 @@ def run(
     ] = Path("results"),
     model: Annotated[
         str, typer.Option("--model", "-m", help="Summarization model to use.")
-    ] = "openai/gpt-4o-mini",
+    ] = "gpt-4o-mini",
     verifier_model: Annotated[
         str, typer.Option("--verifier-model", "-v", help="Verification model to use.")
-    ] = "openai/gpt-4o-mini",
+    ] = "gpt-4o-mini",
     verify: Annotated[
         bool, typer.Option("--verify/--no-verify", help="Enable/Disable verification.")
     ] = True,
     max_tokens: Annotated[int, typer.Option(help="Max tokens per chunk.")] = 500,
+    mode: Annotated[
+        ProcessingMode,
+        typer.Option("--mode", help="Processing mode (default or dikw)."),
+    ] = ProcessingMode.DEFAULT,
 ) -> None:
     """
     Run the full summarization pipeline on a text file.
@@ -78,6 +82,7 @@ def run(
         verification_model=verifier_model,
         verifier_enabled=verify,
         max_tokens=max_tokens,
+        processing_mode=mode,
     )
 
     try:

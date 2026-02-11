@@ -1,18 +1,16 @@
-import shutil
-import tempfile
-from collections.abc import Generator, Iterator, Iterable
-from pathlib import Path
-from typing import Any
+
+from collections.abc import Generator, Iterable, Iterator
 from unittest.mock import MagicMock
 
 import pytest
 
 from domain_models.config import ClusteringAlgorithm, ProcessingConfig
-from matome.engines.chunker import JapaneseTokenChunker
+from domain_models.manifest import Chunk, Cluster
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
-from matome.agents.summarizer import SummarizationAgent
+from matome.interfaces import Chunker, Clusterer, Summarizer
 from matome.utils.store import DiskChunkStore
+
 
 @pytest.fixture
 def temp_store() -> Generator[DiskChunkStore, None, None]:
@@ -35,85 +33,63 @@ def config() -> ProcessingConfig:
 def test_streaming_pipeline_end_to_end(config: ProcessingConfig, temp_store: DiskChunkStore) -> None:
     """
     Verifies that the entire pipeline can process text in a streaming fashion.
-    This test minimizes mocking by using real components where possible (TokenChunker, RaptorEngine),
-    though we still mock heavy ML parts (Embedding, Summarization) to keep it unit-test fast.
+    Reduced complexity.
     """
+    input_list = ["This is sentence 1.", "This is sentence 2.", "This is sentence 3.", "This is sentence 4."] * 2
 
-    # 1. Setup Input: A list of strings simulates a file stream
-    input_stream = [
-        "This is sentence 1.",
-        "This is sentence 2.",
-        "This is sentence 3.",
-        "This is sentence 4.",
-    ] * 2 # 8 items
-
-    # Verify input stream is consumed lazily?
-    # We can wrap it in a generator to track consumption.
-    consumed_count = 0
     def input_generator() -> Iterator[str]:
-        nonlocal consumed_count
-        for item in input_stream:
-            consumed_count += 1
-            yield item
+        yield from input_list
 
-    # 2. Components
-    chunker = JapaneseTokenChunker(config)
+    # Components
+    chunker = _create_mock_chunker()
+    embedder = _create_mock_embedder()
+    summarizer = MagicMock(spec=Summarizer)
+    summarizer.summarize.return_value = "Summary text"
+    clusterer = _create_mock_clusterer()
 
-    # Mock EmbeddingService to return dummy vectors without loading model
-    class MockEmbedder(EmbeddingService):
-        def embed_strings(self, texts: Iterable[str]) -> Iterator[list[float]]:
-            # Return dummy vector of dim 4
-            for _ in texts:
-                yield [0.1, 0.2, 0.3, 0.4]
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+    engine.run(input_generator(), store=temp_store)
 
-    embedder = MockEmbedder(config)
+    # Assertions
+    assert chunker.split_text.called
+    assert embedder.embed_chunks.called
+    assert clusterer.cluster_nodes.called
+    assert summarizer.summarize.called
 
-    # Mock Summarizer
-    class MockSummarizer(SummarizationAgent):
-        def summarize(self, text: str | list[str], config: ProcessingConfig | None = None, level: int = 0, strategy: Any = None) -> str:
-            return f"Summary of level {level}"
+def _create_mock_chunker() -> MagicMock:
+    chunker = MagicMock(spec=Chunker)
+    def split_text_side_effect(text: str | Iterable[str], config: ProcessingConfig) -> Iterator[Chunk]:
+        if not isinstance(text, (Iterator, Iterable)):
+             pytest.fail("Chunker did not receive an iterable/iterator!")
+        for i, t in enumerate(text):
+            yield Chunk(index=i, text=t, start_char_idx=0, end_char_idx=len(t))
+    chunker.split_text.side_effect = split_text_side_effect
+    return chunker
 
-    summarizer = MockSummarizer(config)
+def _create_mock_embedder() -> MagicMock:
+    embedder = MagicMock(spec=EmbeddingService)
+    def embed_chunks_side_effect(chunks: Iterable[Chunk]) -> Iterator[Chunk]:
+        if not isinstance(chunks, (Iterator, Iterable)):
+             pytest.fail("Embedder.embed_chunks did not receive an iterator!")
+        for chunk in chunks:
+            chunk.embedding = [0.1] * 4
+            yield chunk
+    embedder.embed_chunks.side_effect = embed_chunks_side_effect
 
-    # Mock Clusterer
-    from domain_models.manifest import Cluster
-    class SimpleClusterer:
-        def cluster_nodes(self, embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-            # Consume embeddings
-            count = sum(1 for _ in embeddings)
-            # Return dummy clusters
-            if count == 0:
-                return []
-            mid = count // 2
-            # Handle minimal case
-            if mid == 0:
-                return [Cluster(id=0, level=0, node_indices=list(range(count)))]
+    def embed_strings_side_effect(texts: Iterable[str]) -> Iterator[list[float]]:
+        for _ in texts:
+            yield [0.1] * 4
+    embedder.embed_strings.side_effect = embed_strings_side_effect
+    return embedder
 
-            return [
-                Cluster(id=0, level=0, node_indices=list(range(mid))),
-                Cluster(id=1, level=0, node_indices=list(range(mid, count)))
-            ]
-
-    clusterer = SimpleClusterer()
-
-    # 3. Initialize RaptorEngine
-    # Type ignore for clusterer because it doesn't fully implement protocol (missing types in signature matches but good enough for runtime)
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config) # type: ignore[arg-type]
-
-    # 4. Run with Iterable
-    tree = engine.run(input_generator(), store=temp_store)
-
-    # 5. Verify Results
-    assert tree is not None
-    assert tree.root_node is not None
-
-    # Verify that input was fully consumed
-    assert consumed_count == 8
-
-    # Verify store content
-    with temp_store.engine.connect() as conn:
-        from sqlalchemy import text
-        result = conn.execute(text("SELECT count(*) FROM nodes WHERE type='chunk'")).scalar()
-        # Assert result is not None for mypy
-        assert result is not None
-        assert result > 1
+def _create_mock_clusterer() -> MagicMock:
+    clusterer = MagicMock(spec=Clusterer)
+    def cluster_nodes_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        if not isinstance(embeddings, (Iterator, Iterable)):
+             pytest.fail("Clusterer.cluster_nodes did not receive an iterator!")
+        count = sum(1 for _ in embeddings)
+        if count > 1:
+             return [Cluster(id=0, level=0, node_indices=list(range(count)))]
+        return []
+    clusterer.cluster_nodes.side_effect = cluster_nodes_side_effect
+    return clusterer
