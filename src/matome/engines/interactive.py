@@ -50,7 +50,8 @@ class InteractiveRaptorEngine:
             The updated SummaryNode.
 
         Raises:
-            ValueError: If node is not found or is not a SummaryNode.
+            ValueError: If node is not found.
+            TypeError: If node is not a SummaryNode.
         """
         node = self.store.get_node(node_id)
         if not node:
@@ -59,7 +60,7 @@ class InteractiveRaptorEngine:
 
         if not isinstance(node, SummaryNode):
             msg = f"Node {node_id} is a leaf Chunk, not a SummaryNode. Refinement not supported."
-            raise ValueError(msg)
+            raise TypeError(msg)
 
         # Use current text as source for refinement.
         source_text = node.text
@@ -76,7 +77,7 @@ class InteractiveRaptorEngine:
             )
         except Exception as e:
             msg = f"Failed to refine node {node_id}: {e}"
-            logger.error(msg)
+            logger.exception(msg)
             raise ValueError(msg) from e
 
         # Update node metadata and text

@@ -18,6 +18,7 @@ from domain_models.constants import (
 
 def check_gpu() -> None:
     """Print CUDA availability and device info."""
+    # Using format strings as intended by the constants
     print(DEBUG_MSG_CUDA_AVAILABLE.format(torch.cuda.is_available()))  # noqa: T201
     if torch.cuda.is_available():
         print(DEBUG_MSG_CUDA_COUNT.format(torch.cuda.device_count()))  # noqa: T201
