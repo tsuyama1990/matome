@@ -114,9 +114,6 @@ def test_streaming_pipeline_end_to_end(config: ProcessingConfig, temp_store: Dis
     with temp_store.engine.connect() as conn:
         from sqlalchemy import text
         result = conn.execute(text("SELECT count(*) FROM nodes WHERE type='chunk'")).scalar()
-        # With max_tokens=10, we expect chunks.
-        # "This is sentence 1." is ~5 tokens.
-        # If chunks are 5 tokens each -> 8 chunks.
-        # If merged -> fewer.
-        # But we assert > 1 to prove we didn't just get 1 giant chunk.
+        # Assert result is not None for mypy
+        assert result is not None
         assert result > 1

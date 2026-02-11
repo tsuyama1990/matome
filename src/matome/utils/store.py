@@ -212,6 +212,12 @@ class DiskChunkStore:
         """
         Iterate over nodes in the store, optionally filtering by type.
         Streaming safe using server-side cursor.
+
+        Args:
+            node_type: Optional string ('chunk' or 'summary') to filter nodes.
+
+        Yields:
+            Chunk or SummaryNode objects.
         """
         stmt = select(
             self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
