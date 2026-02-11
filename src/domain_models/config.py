@@ -44,7 +44,7 @@ class ProcessingConfig(BaseModel):
     Securely handles environment variables.
     """
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
 
     # Processing Mode
     processing_mode: ProcessingMode = Field(
@@ -87,6 +87,11 @@ class ProcessingConfig(BaseModel):
     embedding_batch_size: int = Field(
         default=32, ge=1, description="Batch size for embedding generation."
     )
+    embedding_mini_batch_size: int = Field(
+        default=8,
+        ge=1,
+        description="Internal mini-batch size for model encoding to control memory usage.",
+    )
 
     # Clustering Configuration
     clustering_algorithm: ClusteringAlgorithm = Field(
@@ -112,6 +117,16 @@ class ProcessingConfig(BaseModel):
         default=1000,
         ge=1,
         description="Batch size for writing vectors to disk during clustering.",
+    )
+    store_batch_size: int = Field(
+        default=1000,
+        ge=1,
+        description="Batch size for database inserts in DiskChunkStore.",
+    )
+    min_clusters_for_recursion: int = Field(
+        default=20,
+        ge=2,
+        description="Minimum node count to attempt clustering during recursion fallback.",
     )
     clustering_probability_threshold: float = Field(
         default=0.1,

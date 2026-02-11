@@ -117,7 +117,9 @@ class RaptorEngine:
         # Use provided store or create a temporary one
         # If provided, we wrap it in a nullcontext so it doesn't close on exit
         store_ctx: contextlib.AbstractContextManager[DiskChunkStore] = (
-            DiskChunkStore() if store is None else contextlib.nullcontext(store)
+            DiskChunkStore(batch_size=self.config.store_batch_size)
+            if store is None
+            else contextlib.nullcontext(store)
         )
 
         with store_ctx as active_store:
@@ -171,7 +173,7 @@ class RaptorEngine:
                 logger.warning(
                     f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
                 )
-                if node_count < 20:
+                if node_count < self.config.min_clusters_for_recursion:
                     clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
                 else:
                     logger.error("Could not reduce nodes. Stopping recursion.")

@@ -104,7 +104,7 @@ def run(
     verifier = VerifierAgent(config) if config.verifier_enabled else None
 
     store_path = output_dir / "chunks.db"
-    store = DiskChunkStore(db_path=store_path)
+    store = DiskChunkStore(db_path=store_path, batch_size=config.store_batch_size)
 
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 

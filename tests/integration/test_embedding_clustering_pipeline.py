@@ -127,3 +127,6 @@ def test_real_pipeline_small() -> None:
 
         assert len(clusters) > 0
         assert isinstance(clusters, list)
+
+        # Verify mock was used
+        MockST.assert_called()

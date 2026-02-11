@@ -43,13 +43,15 @@ class DiskChunkStore:
         embedding: Text (JSON representation of the embedding list, allowing independent updates)
     """
 
-    def __init__(self, db_path: Path | None = None) -> None:
+    def __init__(self, db_path: Path | None = None, batch_size: int = 1000) -> None:
         """
         Initialize the store.
 
         Args:
             db_path: Optional path to the database file. If None, a secure temporary file is created.
+            batch_size: Number of items to process in a single DB transaction.
         """
+        self.batch_size = batch_size
         if db_path:
             self.temp_dir = None
             # Security: Resolve to absolute path to handle relative paths and '..' safely
@@ -116,7 +118,6 @@ class DiskChunkStore:
         Helper to batch insert nodes.
         Streaming safe: processes input iterable in batches without full materialization.
         """
-        BATCH_SIZE = 1000
         # Use Core Insert with REPLACE logic for SQLite
         stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
@@ -124,7 +125,7 @@ class DiskChunkStore:
 
         # Iterate over the input iterable using batched() to handle chunks efficiently
         # without loading the entire dataset into memory.
-        for node_batch in batched(nodes, BATCH_SIZE):
+        for node_batch in batched(nodes, self.batch_size):
             buffer: list[dict[str, Any]] = []
 
             for node in node_batch:
