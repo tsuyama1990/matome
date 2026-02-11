@@ -11,13 +11,14 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from domain_models.constants import PROMPT_INJECTION_PATTERNS
+from matome.agents.strategies import BaseSummaryStrategy, PromptStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +28,23 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(self, config: ProcessingConfig, llm: ChatOpenAI | None = None) -> None:
+    def __init__(
+        self,
+        config: ProcessingConfig,
+        llm: ChatOpenAI | None = None,
+        strategy: PromptStrategy | None = None,
+    ) -> None:
         """
         Initialize the SummarizationAgent.
 
         Args:
             config: Processing configuration containing model name, retries, etc.
             llm: Optional pre-configured LLM instance. If None, it will be initialized from config.
+            strategy: Optional prompt generation strategy. Defaults to BaseSummaryStrategy.
         """
         self.config = config
         self.model_name = config.summarization_model
+        self.strategy = strategy or BaseSummaryStrategy()
 
         # Determine API key and Base URL
         api_key = get_openrouter_api_key()
@@ -54,7 +62,7 @@ class SummarizationAgent:
         elif api_key and not self.mock_mode:
             self.llm = ChatOpenAI(
                 model=self.model_name,
-                api_key=api_key,
+                api_key=SecretStr(api_key),
                 base_url=base_url,
                 temperature=config.llm_temperature,
                 max_retries=config.max_retries,
@@ -100,7 +108,7 @@ class SummarizationAgent:
             )
 
         try:
-            prompt = COD_TEMPLATE.format(context=safe_text)
+            prompt = self.strategy.create_prompt(safe_text)
             messages = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, effective_config, request_id)
@@ -140,10 +148,9 @@ class SummarizationAgent:
 
         # 2. Control Character Check (Unicode)
         # We strictly disallow control characters that are not standard whitespace.
-        # Allow standard whitespace controls: \n, \t, \r
-        # \f and \v are technically whitespace but rare, safer to block if not needed?
-        # Let's align with common definition: \t, \n, \r.
-        allowed_controls = {"\n", "\t", "\r"}
+        # Allow standard whitespace controls: \n, \t.
+        # \r is explicitly disallowed to prevent Carriage Return Injection logs/prompts.
+        allowed_controls = {"\n", "\t"}
 
         for char in text:
             # Check for control characters (Cc, Cf, Cs, Co, Cn)
@@ -182,7 +189,8 @@ class SummarizationAgent:
         for pattern in PROMPT_INJECTION_PATTERNS:
             # We use re.sub for flexible matching (case insensitive, whitespace variations)
             # which are defined in the patterns themselves.
-            sanitized = re.sub(pattern, "[Filtered]", sanitized)
+            # Using re.IGNORECASE as a fallback, although patterns likely have (?i)
+            sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
 
         return sanitized
 
@@ -211,7 +219,11 @@ class SummarizationAgent:
         # Use Tenacity for retries based on config
         for attempt in Retrying(
             stop=stop_after_attempt(config.max_retries),
-            wait=wait_exponential(multiplier=1, min=2, max=10),
+            wait=wait_exponential(
+                multiplier=config.retry_multiplier,
+                min=config.retry_min_wait,
+                max=config.retry_max_wait,
+            ),
             reraise=True,
         ):
             with attempt:

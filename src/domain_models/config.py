@@ -8,10 +8,6 @@ from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
     ALLOWED_SUMMARIZATION_MODELS,
     ALLOWED_TOKENIZER_MODELS,
-    DEFAULT_CANVAS_GAP_X,
-    DEFAULT_CANVAS_GAP_Y,
-    DEFAULT_CANVAS_NODE_HEIGHT,
-    DEFAULT_CANVAS_NODE_WIDTH,
     DEFAULT_EMBEDDING,
     DEFAULT_SUMMARIZER,
     DEFAULT_TOKENIZER,
@@ -119,25 +115,25 @@ class ProcessingConfig(BaseModel):
         description="Buffer size for batch database writes in Raptor engine.",
     )
     canvas_node_width: int = Field(
-        default=DEFAULT_CANVAS_NODE_WIDTH,
+        default=400,
         ge=10,
         le=5000,
         description="Width of nodes in Obsidian Canvas export.",
     )
     canvas_node_height: int = Field(
-        default=DEFAULT_CANVAS_NODE_HEIGHT,
+        default=200,
         ge=10,
         le=5000,
         description="Height of nodes in Obsidian Canvas export.",
     )
     canvas_gap_x: int = Field(
-        default=DEFAULT_CANVAS_GAP_X,
+        default=50,
         ge=0,
         le=2000,
         description="Horizontal gap between nodes in Obsidian Canvas export.",
     )
     canvas_gap_y: int = Field(
-        default=DEFAULT_CANVAS_GAP_Y,
+        default=300,
         ge=0,
         le=2000,
         description="Vertical gap between nodes in Obsidian Canvas export.",
@@ -153,6 +149,15 @@ class ProcessingConfig(BaseModel):
     )
     max_retries: int = Field(
         default=3, ge=0, description="Maximum number of retries for LLM calls."
+    )
+    retry_multiplier: float = Field(
+        default=1.0, ge=0.1, description="Exponential backoff multiplier."
+    )
+    retry_min_wait: int = Field(
+        default=2, ge=0, description="Minimum wait time between retries (seconds)."
+    )
+    retry_max_wait: int = Field(
+        default=10, ge=0, description="Maximum wait time between retries (seconds)."
     )
     llm_temperature: float = Field(
         default=0.0, ge=0.0, le=1.0, description="Sampling temperature for LLM."

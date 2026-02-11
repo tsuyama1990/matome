@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
@@ -41,7 +41,7 @@ def test_scenario_06_clustering_logic() -> None:
     group_b = [[0.9] * 10, [0.91] * 10, [0.89] * 10]
     embeddings = group_a + group_b
 
-    config = ProcessingConfig(clustering_algorithm="gmm")
+    config = ProcessingConfig(clustering_algorithm=ClusteringAlgorithm.GMM)
     engine = GMMClusterer()
 
     with (
@@ -71,18 +71,19 @@ def test_scenario_06_clustering_logic() -> None:
 
         assert len(clusters) == 2
 
-        # Verify grouping
-        cluster_0 = next(c for c in clusters if c.id == 0)
-        cluster_1 = next(c for c in clusters if c.id == 1)
+        # Verify grouping without assuming specific cluster IDs
+        # We expect two clusters, and they should partition the nodes into {0, 1, 2} and {3, 4, 5}
+        assert len(clusters) == 2
 
-        # Assuming cluster 0 and 1 are distinct
-        indices_set_0 = set(cluster_0.node_indices)
-        indices_set_1 = set(cluster_1.node_indices)
-
+        found_sets = [set(c.node_indices) for c in clusters]
         expected_sets = [{0, 1, 2}, {3, 4, 5}]
-        assert indices_set_0 in expected_sets
-        assert indices_set_1 in expected_sets
-        assert indices_set_0 != indices_set_1
+
+        # Check that each expected set is present in the found sets
+        for expected in expected_sets:
+            assert expected in found_sets
+
+        # Ensure no overlap (implicit if they match expected disjoint sets)
+        assert found_sets[0].isdisjoint(found_sets[1])
 
 
 # Scenario 07: Single Cluster Edge Case

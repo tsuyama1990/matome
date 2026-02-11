@@ -2,7 +2,7 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from domain_models.types import Metadata, NodeID
+from domain_models.types import DIKWLevel, Metadata, NodeID
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -68,16 +68,42 @@ class Chunk(BaseModel):
         # If the schema allows None, we accept None.
         # However, if it's NOT None, we strictly validate content.
         if self.embedding is not None:
+            if not isinstance(self.embedding, list):
+                msg = "Embedding must be a list."
+                raise ValueError(msg)
             if len(self.embedding) == 0:
                 msg = "Embedding cannot be an empty list if provided."
                 logger.error(msg)
                 raise ValueError(msg)
-            if any(not isinstance(x, (float, int)) for x in self.embedding):
-                msg = "Embedding must contain only numeric values."
+            # Strictly enforce float values (no ints)
+            if any(not isinstance(x, float) for x in self.embedding):
+                msg = "Embedding must contain only float values."
                 logger.error(msg)
                 raise ValueError(msg)
 
         return self
+
+
+class NodeMetadata(BaseModel):
+    """
+    Standardized metadata for SummaryNodes.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dikw_level: DIKWLevel = Field(
+        default=DIKWLevel.DATA, description="The abstraction level of this node."
+    )
+    is_user_edited: bool = Field(
+        default=False, description="True if the node content was refined by a user."
+    )
+    refinement_history: list[str] = Field(
+        default_factory=list, description="Audit trail of refinement instructions."
+    )
+    cluster_id: int | str | None = Field(
+        default=None, description="The ID of the cluster this node summarizes."
+    )
+    type: str | None = Field(default=None, description="Type of the node (e.g., 'single_chunk_root').")
 
 
 class SummaryNode(BaseModel):
@@ -94,8 +120,8 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        default_factory=NodeMetadata, description="Optional extra info (e.g., cluster ID)."
     )
 
 

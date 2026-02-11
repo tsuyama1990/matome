@@ -23,8 +23,6 @@ dependencies = [
     "sentence-transformers>=2.7.0",
     "mypy>=1.19.1",
     "matplotlib>=3.10.8",
-    "panel>=1.0.0",
-    "watchfiles>=0.21.0",
 ]
 
 [project.scripts]
@@ -51,6 +49,7 @@ packages = ["src/matome", "src/domain_models"]
 target-version = "py311"
 line-length = 100
 fix = true
+exclude = ["tutorials"]
 
 [tool.ruff.lint]
 # E/F/I: Basic, B: Bugbear, S: Bandit, UP: pyupgrade
@@ -113,7 +112,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**/*.py" = ["S101"]  # Allow assert in tests
+"tests/**/*.py" = ["S101", "RUF001"]  # Allow assert and full-width chars in tests
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # Exceeding this prompts function splitting (prevent AI long functions)

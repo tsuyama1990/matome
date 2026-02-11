@@ -5,7 +5,7 @@ from functools import lru_cache
 
 # Pre-compile the sentence splitting pattern
 # Splits AFTER '。', '！', '？' followed by optional whitespace, OR on one or more newlines.
-SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？])\s*|\n+")
+SENTENCE_SPLIT_PATTERN = re.compile(r"(?<=[。！？])\s*|\n+")  # noqa: RUF001
 
 
 @lru_cache(maxsize=1024)

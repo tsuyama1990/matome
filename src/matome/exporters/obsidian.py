@@ -21,7 +21,9 @@ class CanvasNode(BaseModel):
     y: int = Field(..., description="Y coordinate of the node.")
     width: int = Field(..., description="Width of the node.")
     height: int = Field(..., description="Height of the node.")
-    type: Literal["text", "file", "group"] = Field(default="text", description="Type of the node.")
+    type: Literal["text", "file", "group"] = Field(
+        default="text", description="Type of the node."
+    )
     text: str | None = Field(default=None, description="Text content for text nodes.")
 
 
@@ -266,7 +268,7 @@ class ObsidianCanvasExporter:
 
             # Create Edge
             edge = CanvasEdge(
-                id=f"edge_{node_id_str}_{child_id_str}", from_node=node_id_str, to_node=child_id_str
+                id=f"edge_{node_id_str}_{child_id_str}", fromNode=node_id_str, toNode=child_id_str
             )
             self.edges.append(edge)
 
