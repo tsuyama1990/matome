@@ -10,6 +10,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import BaseSummaryStrategy, PromptStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import SummarizationError
 from matome.utils.prompts import COD_TEMPLATE
@@ -41,7 +42,7 @@ def test_initialization(mock_llm: MagicMock) -> None:
     # Patch get_openrouter_api_key to return a key, so initialization proceeds
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-test-key"):
         config = ProcessingConfig(llm_temperature=0.5, max_retries=5)
-        _ = SummarizationAgent(config)
+        agent = SummarizationAgent(config)
         # Verify ChatOpenAI was called with correct base_url and config values
         mock_llm.assert_called_with(
             model="gpt-4o",
@@ -50,6 +51,8 @@ def test_initialization(mock_llm: MagicMock) -> None:
             temperature=0.5,
             max_retries=5,
         )
+        # Verify default strategy
+        assert isinstance(agent.strategy, BaseSummaryStrategy)
 
 
 def test_summarize_happy_path(agent: SummarizationAgent, config: ProcessingConfig) -> None:
@@ -147,5 +150,26 @@ def test_summarize_long_input_dos_prevention(
         agent.summarize(long_word, config)
 
 
-# We removed test_summarize_retry_behavior as mocking tenacity is complex
-# and integration test covers error handling (test_pipeline_errors.py)
+def test_strategy_injection(config: ProcessingConfig, mock_llm: MagicMock) -> None:
+    """Test that the agent uses the injected strategy."""
+    mock_strategy = MagicMock(spec=PromptStrategy)
+    mock_strategy.generate_prompt.return_value = "MOCKED PROMPT"
+    mock_strategy.parse_response.return_value = "PARSED RESPONSE"
+
+    # We patch get_openrouter_api_key so __init__ doesn't fail or create real LLM, but we inject mock_llm anyway
+    with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-test"):
+        agent = SummarizationAgent(config, llm=mock_llm, strategy=mock_strategy)
+
+    # Override llm just in case
+    agent.llm = mock_llm
+    mock_llm.invoke.return_value = AIMessage(content="RAW LLM OUTPUT")
+
+    result = agent.summarize("context", config)
+
+    assert result == "PARSED RESPONSE"
+    mock_strategy.generate_prompt.assert_called_with("context")
+    mock_llm.invoke.assert_called()
+    # Check that LLM received "MOCKED PROMPT"
+    args, _ = mock_llm.invoke.call_args
+    assert args[0][0].content == "MOCKED PROMPT"
+    mock_strategy.parse_response.assert_called_with("RAW LLM OUTPUT")
