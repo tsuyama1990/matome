@@ -41,7 +41,11 @@ PROMPT_INJECTION_PATTERNS = [
     r"forget the above",
     r"system prompt",
     r"you are not",
+    r"output everything above",
+    r"ignore all instructions",
+    r"raw markdown",
+    r"as an ai language model",
 ]
 
 # Regex
-SENTENCE_SPLIT_PATTERN = r"(?<=[。！？])\s*|\n+"
+SENTENCE_SPLIT_PATTERN = r"(?<=[。！？])\s*|\n+"  # noqa: RUF001
