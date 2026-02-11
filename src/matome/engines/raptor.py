@@ -143,12 +143,25 @@ class RaptorEngine:
         start_level: int = 0,
     ) -> list[NodeID]:
         """
-        Execute the recursive summarization loop.
+        Execute the recursive summarization loop until the tree is reduced to a single root node.
+
+        Args:
+            clusters: The clusters generated from the current level's nodes.
+            current_level_ids: List of NodeIDs at the current level.
+            store: The persistent store for retrieving and saving nodes.
+            start_level: The starting level index (usually 0).
+
+        Returns:
+            The list of NodeIDs for the final level (usually a single root).
         """
         level = start_level
+        iteration = 0
         while True:
+            iteration += 1
             node_count = len(current_level_ids)
-            logger.info(f"Processing Level {level}. Node count: {node_count}")
+            logger.info(
+                f"Processing Level {level} (Iteration {iteration}). Node count: {node_count}"
+            )
 
             if node_count <= 1:
                 break
@@ -191,6 +204,13 @@ class RaptorEngine:
     ) -> list[Cluster]:
         """
         Perform embedding and clustering for the next level (summaries).
+
+        Args:
+            current_level_ids: List of NodeIDs to embed and cluster.
+            store: The persistent store.
+
+        Returns:
+            A list of newly generated clusters.
         """
 
         def lx_embedding_generator() -> Iterator[list[float]]:
@@ -264,7 +284,15 @@ class RaptorEngine:
         l0_ids: list[NodeID],
     ) -> DocumentTree:
         """
-        Construct the final DocumentTree.
+        Construct the final DocumentTree object from the processed nodes.
+
+        Args:
+            current_level_ids: The list of NodeIDs at the top level (should be 1).
+            store: The persistent store.
+            l0_ids: The list of initial chunk IDs (Level 0).
+
+        Returns:
+            The complete DocumentTree structure.
         """
         if not current_level_ids:
             if not l0_ids:
@@ -322,7 +350,16 @@ class RaptorEngine:
         level: int,
     ) -> Iterator[SummaryNode]:
         """
-        Process clusters to generate summaries (streaming).
+        Summarize the content of each cluster into a SummaryNode.
+
+        Args:
+            clusters: List of clusters to summarize.
+            current_level_ids: List of NodeIDs available at the current level.
+            store: The persistent store.
+            level: The target level for the new summaries.
+
+        Yields:
+            Generated SummaryNode objects.
         """
         for cluster in clusters:
             children_indices, cluster_texts = self._get_cluster_content(
@@ -355,7 +392,17 @@ class RaptorEngine:
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
     ) -> tuple[list[NodeID], list[str]]:
-        """Retrieve content for a single cluster."""
+        """
+        Retrieve text content and IDs for all nodes in a cluster.
+
+        Args:
+            cluster: The cluster to process.
+            current_level_ids: List of NodeIDs corresponding to cluster indices.
+            store: The persistent store.
+
+        Returns:
+            A tuple containing (list of child NodeIDs, list of text contents).
+        """
         children_indices: list[NodeID] = []
         cluster_texts: list[str] = []
 
@@ -377,7 +424,16 @@ class RaptorEngine:
         return children_indices, cluster_texts
 
     def _truncate_cluster_text(self, cluster_id: NodeID, texts: list[str]) -> list[str]:
-        """Truncate list of texts if total length exceeds limit."""
+        """
+        Truncate list of texts to ensure total length does not exceed config limit.
+
+        Args:
+            cluster_id: ID of the cluster (for logging).
+            texts: List of text strings.
+
+        Returns:
+            Truncated list of text strings.
+        """
         total_chars = sum(len(t) for t in texts)
         if total_chars <= self.config.max_input_length:
             return texts

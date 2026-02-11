@@ -228,6 +228,20 @@ class ProcessingConfig(BaseModel):
             raise ValueError(msg)
         return v
 
+    @field_validator(
+        "canvas_node_width", "canvas_node_height", "canvas_gap_x", "canvas_gap_y", mode="after"
+    )
+    @classmethod
+    def validate_canvas_dimensions(cls, v: int) -> int:
+        """Validate canvas dimensions are positive and within reasonable bounds."""
+        if v < 0:
+            msg = "Canvas dimension must be non-negative."
+            raise ValueError(msg)
+        if v > 10000:
+            msg = f"Canvas dimension {v} is excessively large (> 10000)."
+            raise ValueError(msg)
+        return v
+
     @model_validator(mode="after")
     def validate_clustering_config(self) -> Self:
         """Ensure n_clusters consistency with algorithm."""

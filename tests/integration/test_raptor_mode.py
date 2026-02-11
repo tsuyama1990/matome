@@ -5,7 +5,7 @@ import pytest
 
 from domain_models.config import ProcessingConfig, ProcessingMode
 from domain_models.manifest import Chunk, Cluster, SummaryNode
-from domain_models.types import DIKWLevel
+from domain_models.types import DIKWLevel, NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.interfaces import Chunker, Clusterer, Summarizer
@@ -38,7 +38,7 @@ class MockClusterer(Clusterer):
         count = len(emb_list)
         clusters = []
         for cluster_id, i in enumerate(range(0, count, 2)):
-            indices = [i, i+1] if i+1 < count else [i]
+            indices: list[NodeID] = [i, i + 1] if i + 1 < count else [i]
             clusters.append(Cluster(id=cluster_id, level=0, node_indices=indices))
         return clusters
 

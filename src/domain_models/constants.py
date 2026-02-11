@@ -1,9 +1,4 @@
-DEBUG_MSG_CUDA_AVAILABLE = "CUDA available: {}"
-DEBUG_MSG_CUDA_COUNT = "Number of GPUs: {}"
-DEBUG_MSG_CURRENT_DEVICE = "Current device ID: {}"
-DEBUG_MSG_DEVICE_NAME = "Device name: {}"
 DEBUG_MSG_INIT_MODEL = "Initializing SentenceTransformer model..."
-DEBUG_MSG_MODEL_DEVICE = "Model loaded on device: {}"
 DEFAULT_DEBUG_EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 # Existing constants
