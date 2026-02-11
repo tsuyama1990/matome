@@ -13,6 +13,23 @@ class DIKWLevel(StrEnum):
     INFORMATION = "information"
     DATA = "data"
 
+    @classmethod
+    def from_level(cls, level: int) -> "DIKWLevel":
+        """
+        Maps a RAPTOR tree level to the corresponding DIKW level.
+        Level 0: Data (Chunks)
+        Level 1: Information (Twigs/Action)
+        Level 2: Knowledge (Branches)
+        Level 3+: Wisdom (Root)
+        """
+        if level <= 0:
+            return cls.DATA
+        if level == 1:
+            return cls.INFORMATION
+        if level == 2:
+            return cls.KNOWLEDGE
+        return cls.WISDOM
+
 
 class NodeMetadata(BaseModel):
     """
