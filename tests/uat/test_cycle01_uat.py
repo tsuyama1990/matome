@@ -1,20 +1,23 @@
+from typing import Any
+
 import pytest
 from pydantic import ValidationError
 
-from domain_models.manifest import SummaryNode, NodeMetadata
-from domain_models.types import DIKWLevel
-from matome.agents.summarizer import SummarizationAgent
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
 from matome.agents.strategies import PromptStrategy
+from matome.agents.summarizer import SummarizationAgent
+
 
 # UAT Scenario 1.1: Metadata Validation
-def test_uat_metadata_validation():
+def test_uat_metadata_validation() -> None:
     """
     Scenario 1.1: Metadata Validation (The "Schema Check")
     Ensure that all new and existing nodes conform to the new metadata schema.
     """
     # 1. Valid Metadata
-    valid_meta = NodeMetadata(dikw_level="wisdom")
+    valid_meta = NodeMetadata(dikw_level=DIKWLevel.WISDOM)
     node = SummaryNode(
         id="valid_node",
         text="Valid Node",
@@ -26,7 +29,7 @@ def test_uat_metadata_validation():
 
     # 2. Invalid Metadata (should raise ValidationError)
     with pytest.raises(ValidationError):
-        NodeMetadata(dikw_level="super_wisdom")
+        NodeMetadata(dikw_level="super_wisdom")  # type: ignore[arg-type]
 
 
 # UAT Scenario 1.2: Strategy Injection
@@ -34,11 +37,11 @@ class PirateStrategy(PromptStrategy):
     """
     Mock Strategy for UAT Scenario 1.2.
     """
-    def create_prompt(self, text: str, context: dict | None = None) -> str:
+    def create_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
         return f"Summarize this like a pirate: {text}"
 
 
-def test_uat_strategy_injection():
+def test_uat_strategy_injection() -> None:
     """
     Scenario 1.2: Strategy Injection (The "Brain Swap")
     Confirm that SummarizationAgent effectively delegates prompt generation to the injected strategy.
@@ -72,7 +75,7 @@ def test_uat_strategy_injection():
 
 
 # UAT Scenario 1.3: Regression Safety
-def test_uat_regression_safety():
+def test_uat_regression_safety() -> None:
     """
     Scenario 1.3: Regression Safety (The "Do No Harm")
     Ensure the standard SummarizationAgent still works exactly as before (BaseSummaryStrategy).
@@ -93,8 +96,6 @@ def test_uat_regression_safety():
     agent.summarize(input_text)
 
     # Verify the prompt follows standard COD template
-    from matome.utils.prompts import COD_TEMPLATE
-    expected_prompt_start = COD_TEMPLATE.split("{")[0].strip()  # Get the start of the template
 
     call_args = mock_llm.invoke.call_args
     messages = call_args[0][0]

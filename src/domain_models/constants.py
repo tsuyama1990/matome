@@ -66,4 +66,4 @@ ALLOWED_SUMMARIZATION_MODELS = {
 }
 
 # Regex Patterns
-SENTENCE_SPLIT_PATTERN = r"(?<=[。！？])\s*|\n+"
+SENTENCE_SPLIT_PATTERN = r"(?<=[。！？])\s*|\n+"  # noqa: RUF001

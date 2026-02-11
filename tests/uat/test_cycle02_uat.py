@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
@@ -41,7 +41,7 @@ def test_scenario_06_clustering_logic() -> None:
     group_b = [[0.9] * 10, [0.91] * 10, [0.89] * 10]
     embeddings = group_a + group_b
 
-    config = ProcessingConfig(clustering_algorithm="gmm")
+    config = ProcessingConfig(clustering_algorithm=ClusteringAlgorithm.GMM)
     engine = GMMClusterer()
 
     with (

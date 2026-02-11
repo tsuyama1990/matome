@@ -1,25 +1,27 @@
-import pytest
-from unittest.mock import MagicMock, patch
+from typing import Any
+from unittest.mock import MagicMock
 
-from matome.agents.summarizer import SummarizationAgent
+import pytest
+
 from domain_models.config import ProcessingConfig
 
 # Assuming I will import PromptStrategy here
 from matome.agents.strategies import PromptStrategy
+from matome.agents.summarizer import SummarizationAgent
 
 
 class MockStrategy(PromptStrategy):
     """Mock strategy for testing."""
-    def create_prompt(self, text: str, context: dict | None = None) -> str:
+    def create_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
         return f"Mock Prompt: {text}"
 
 
 @pytest.fixture
-def config():
+def config() -> ProcessingConfig:
     return ProcessingConfig(summarization_model="mock-model")
 
 
-def test_summarizer_default_strategy(config):
+def test_summarizer_default_strategy(config: ProcessingConfig) -> None:
     """Test that SummarizationAgent uses default strategy if none provided."""
     # This assumes we modify __init__
     agent = SummarizationAgent(config)
@@ -29,7 +31,7 @@ def test_summarizer_default_strategy(config):
     assert agent
 
 
-def test_summarizer_injected_strategy(config):
+def test_summarizer_injected_strategy(config: ProcessingConfig) -> None:
     """Test that SummarizationAgent uses injected strategy."""
     mock_strategy = MockStrategy()
     agent = SummarizationAgent(config, strategy=mock_strategy)
@@ -50,9 +52,8 @@ def test_summarizer_injected_strategy(config):
     assert prompt_sent == "Mock Prompt: Hello World"
 
 
-def test_summarizer_strategy_context(config):
+def test_summarizer_strategy_context(config: ProcessingConfig) -> None:
     """Test passing context to strategy via summarize (if supported)."""
     # If summarize() is updated to accept context, we test it here.
     # Currently summarize(text, config) only.
     # Maybe we want summarize(text, config, context=...)?
-    pass

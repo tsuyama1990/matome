@@ -5,15 +5,15 @@ from domain_models.manifest import NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 
 
-def test_dikw_level_enum():
+def test_dikw_level_enum() -> None:
     """Test DIKWLevel enum values."""
-    assert DIKWLevel.WISDOM == "wisdom"
-    assert DIKWLevel.KNOWLEDGE == "knowledge"
-    assert DIKWLevel.INFORMATION == "information"
-    assert DIKWLevel.DATA == "data"
+    assert DIKWLevel.WISDOM.value == "wisdom"
+    assert DIKWLevel.KNOWLEDGE.value == "knowledge"
+    assert DIKWLevel.INFORMATION.value == "information"
+    assert DIKWLevel.DATA.value == "data"
 
 
-def test_node_metadata_defaults():
+def test_node_metadata_defaults() -> None:
     """Test NodeMetadata default values."""
     meta = NodeMetadata()
     assert meta.dikw_level == DIKWLevel.DATA
@@ -21,19 +21,19 @@ def test_node_metadata_defaults():
     assert meta.refinement_history == []
 
 
-def test_node_metadata_validation():
+def test_node_metadata_validation() -> None:
     """Test NodeMetadata validation logic."""
     # Valid
-    meta = NodeMetadata(dikw_level="wisdom", is_user_edited=True)
+    meta = NodeMetadata(dikw_level=DIKWLevel.WISDOM, is_user_edited=True)
     assert meta.dikw_level == DIKWLevel.WISDOM
     assert meta.is_user_edited is True
 
     # Invalid DIKW level
     with pytest.raises(ValidationError):
-        NodeMetadata(dikw_level="invalid_level")
+        NodeMetadata(dikw_level="invalid_level")  # type: ignore[arg-type]
 
 
-def test_summary_node_with_metadata():
+def test_summary_node_with_metadata() -> None:
     """Test SummaryNode creation with NodeMetadata."""
     meta = NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE, cluster_id=123)
     node = SummaryNode(
@@ -47,7 +47,7 @@ def test_summary_node_with_metadata():
     assert node.metadata.cluster_id == 123
 
 
-def test_summary_node_backward_compatibility():
+def test_summary_node_backward_compatibility() -> None:
     """Test SummaryNode creation with dict metadata (auto-converted)."""
     node = SummaryNode(
         id="test_id",

@@ -1,18 +1,16 @@
-import pytest
-from unittest.mock import MagicMock
 
 # These imports will fail until I implement them
-from matome.agents.strategies import PromptStrategy, BaseSummaryStrategy
+from matome.agents.strategies import BaseSummaryStrategy, PromptStrategy
 from matome.utils.prompts import COD_TEMPLATE
 
 
-def test_base_strategy_creation():
+def test_base_strategy_creation() -> None:
     """Test that BaseSummaryStrategy is created correctly."""
     strategy = BaseSummaryStrategy()
     assert isinstance(strategy, PromptStrategy)
 
 
-def test_base_strategy_prompt_generation():
+def test_base_strategy_prompt_generation() -> None:
     """Test that BaseSummaryStrategy generates the expected prompt."""
     strategy = BaseSummaryStrategy()
     text = "Sample text for summarization."
@@ -22,7 +20,7 @@ def test_base_strategy_prompt_generation():
     assert prompt == expected_prompt
 
 
-def test_base_strategy_with_context():
+def test_base_strategy_with_context() -> None:
     """Test that BaseSummaryStrategy ignores context (as it's simple COD for now)."""
     strategy = BaseSummaryStrategy()
     text = "Sample text."

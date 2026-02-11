@@ -2,7 +2,14 @@ import pytest
 from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, Document, DocumentTree, SummaryNode
+from domain_models.manifest import (
+    Chunk,
+    Cluster,
+    Document,
+    DocumentTree,
+    NodeMetadata,
+    SummaryNode,
+)
 
 
 def test_document_validation() -> None:
@@ -37,7 +44,11 @@ def test_summary_node_validation() -> None:
     """Test valid and invalid SummaryNode creation."""
     # Valid
     node = SummaryNode(
-        id="node1", text="Summary of text", level=1, children_indices=[0, 1], metadata={}
+        id="node1",
+        text="Summary of text",
+        level=1,
+        children_indices=[0, 1],
+        metadata=NodeMetadata(),
     )
     assert node.level == 1
     assert node.children_indices == [0, 1]
@@ -49,6 +60,7 @@ def test_summary_node_validation() -> None:
             text="Summary",
             level=0,  # Should be >= 1
             children_indices=[0],
+            metadata=NodeMetadata(),
         )
 
 
@@ -69,7 +81,9 @@ def test_document_tree_validation() -> None:
     # Setup components
     chunk1 = Chunk(index=0, text="A", start_char_idx=0, end_char_idx=1)
     chunk2 = Chunk(index=1, text="B", start_char_idx=1, end_char_idx=2)
-    summary = SummaryNode(id="s1", text="AB", level=1, children_indices=[0, 1])
+    summary = SummaryNode(
+        id="s1", text="AB", level=1, children_indices=[0, 1], metadata=NodeMetadata()
+    )
 
     # Valid DocumentTree
     tree = DocumentTree(
