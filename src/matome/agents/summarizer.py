@@ -11,13 +11,15 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from domain_models.constants import PROMPT_INJECTION_PATTERNS
+from matome.agents.strategies import BaseSummaryStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
+from matome.interfaces import PromptStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +41,10 @@ class SummarizationAgent:
         self.model_name = config.summarization_model
 
         # Determine API key and Base URL
-        api_key = get_openrouter_api_key()
+        api_key_str = get_openrouter_api_key()
         base_url = get_openrouter_base_url()
 
-        self.mock_mode = api_key == "mock"
+        self.mock_mode = api_key_str == "mock"
 
         self.llm: ChatOpenAI | None = None
 
@@ -51,10 +53,10 @@ class SummarizationAgent:
             # If LLM is injected, we disable internal mock mode unless explicitly set via api_key="mock"
             # But the caller provided an LLM, so they probably want to use it.
             # If api_key is "mock", we might still want to short-circuit.
-        elif api_key and not self.mock_mode:
+        elif api_key_str and not self.mock_mode:
             self.llm = ChatOpenAI(
                 model=self.model_name,
-                api_key=api_key,
+                api_key=SecretStr(api_key_str),
                 base_url=base_url,
                 temperature=config.llm_temperature,
                 max_retries=config.max_retries,
@@ -62,13 +64,19 @@ class SummarizationAgent:
         else:
             self.llm = None
 
-    def summarize(self, text: str, config: ProcessingConfig | None = None) -> str:
+    def summarize(
+        self,
+        text: str,
+        config: ProcessingConfig | None = None,
+        strategy: PromptStrategy | None = None,
+    ) -> str:
         """
         Summarize the provided text using the Chain of Density strategy.
 
         Args:
             text: The text to summarize.
             config: Optional config override. Uses self.config if None.
+            strategy: Optional prompt strategy to use.
         """
         effective_config = config or self.config
         request_id = str(uuid.uuid4())
@@ -100,7 +108,8 @@ class SummarizationAgent:
             )
 
         try:
-            prompt = COD_TEMPLATE.format(context=safe_text)
+            effective_strategy = strategy or BaseSummaryStrategy()
+            prompt = effective_strategy.format_prompt(text=safe_text)
             messages = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, effective_config, request_id)

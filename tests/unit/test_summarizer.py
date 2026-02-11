@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
+from pydantic import SecretStr
 
 from domain_models.config import ProcessingConfig
 from matome.agents.summarizer import SummarizationAgent
@@ -45,7 +46,7 @@ def test_initialization(mock_llm: MagicMock) -> None:
         # Verify ChatOpenAI was called with correct base_url and config values
         mock_llm.assert_called_with(
             model="gpt-4o",
-            api_key="sk-test-key",
+            api_key=SecretStr("sk-test-key"),
             base_url="https://openrouter.ai/api/v1",
             temperature=0.5,
             max_retries=5,
