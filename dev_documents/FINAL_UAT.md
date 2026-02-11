@@ -1,80 +1,74 @@
-# Final User Acceptance Testing (UAT) Plan
+# Final User Acceptance Testing (UAT) & Tutorial Plan
 
 ## 1. Tutorial Strategy
 
-The primary goal of this UAT plan is to validate the **Long Context Summarization System**'s ability to process lengthy documents into structured, verifiable summaries. We will achieve this through a series of interactive Jupyter Notebooks that serve both as test cases and as tutorials for new users.
+The goal of the tutorials is not just to test functionality, but to deliver the "Aha! Moment" of Semantic Zooming. We want the user to feel the power of navigating from abstract wisdom down to concrete data.
 
-### 1.1. Dual-Mode Testing
-To ensure the system is robust and testable without incurring constant API costs, all tutorials will support two modes:
-*   **Mock Mode (CI/Default)**: Uses pre-computed embeddings and dummy LLM responses. This allows the logic (chunking, clustering, tree building) to be tested in continuous integration environments.
-*   **Real Mode**: Requires an `OPENROUTER_API_KEY`. This runs the full pipeline with actual LLM calls (Gemini 1.5 Flash / DeepSeek V3) to generate real summaries.
+**Core Concept: "The Knowledge Installation Experience"**
+-   **The 'Grok' Moment (Wisdom):** Instant understanding of the core message.
+-   **The 'Zoom-In' Thrill (Knowledge):** Exploring the "Why" behind the wisdom.
+-   **The 'Action' Payoff (Information):** Walking away with a concrete to-do list.
 
-### 1.2. The "Aha! Moment"
-The core UAT scenario is based on processing the "Emin Style Company Shikiho Reading Method" text. The user should experience the "Aha!" moment when they see a 100-page equivalent document turned into a structured, navigable Obsidian Canvas map.
+**Mock Mode Strategy:**
+To ensure robust CI/CD and easy onboarding, all tutorials should be runnable in "Mock Mode" where possible.
+-   **Real Mode:** Requires `OPENAI_API_KEY`. Uses actual LLM calls.
+-   **Mock Mode:** Does not require API keys. Uses pre-generated data or deterministic mocks.
+    -   *Implementation:* If `OPENAI_API_KEY` is missing, the system should default to Mock Mode or specific tutorial flags should be used.
 
 ## 2. Notebook Plan
 
-We will generate the following notebooks in the `tutorials/` directory.
+We will generate the following Jupyter Notebooks in the `tutorials/` directory.
 
-### 2.1. `tutorials/01_quickstart.ipynb` (The Basics)
-*   **Goal**: Demonstrate text ingestion and semantic chunking.
-*   **Scenario**: Load a sample text, apply the Japanese-optimized regex splitter, and visualize the chunks.
-*   **Key Features**:
-    *   Loading `test_data/sample.txt`.
-    *   Initializing `SemanticChunker`.
-    *   Displaying the first 5 chunks to verify sentence boundaries.
-*   **Mode**: Works in both Mock and Real modes (Mock uses random vectors if embedding is skipped).
+### `tutorials/01_quickstart.ipynb`: The "Aha! Moment"
+**Target Audience:** First-time users.
+**Goal:** Demonstrate the full DIKW flow on a sample text without complex setup.
 
-### 2.2. `tutorials/02_clustering_deep_dive.ipynb` (The Engine)
-*   **Goal**: Show how the system groups related information.
-*   **Scenario**: Take the chunks from step 1, generate embeddings (E5-large), and run UMAP + GMM clustering.
-*   **Key Features**:
-    *   Visualizing the 2D projection of chunks.
-    *   Showing which chunks belong to which cluster.
-    *   Explaining the "Soft Clustering" concept (a chunk can belong to multiple topics).
-*   **Mode**: Real mode required for meaningful embeddings (or load pre-saved vectors in Mock).
+**Content:**
+1.  **Setup:** Install dependencies (if needed) and import `matome`.
+2.  **Load Data:** Load `test_data/sample.txt` (e.g., the "Seasonal Report" or "Emin's Four Seasons").
+3.  **Run (Batch):** execute `matome.run(file, mode="dikw")`.
+4.  **Visualize (Static):** Print the Root Node (Wisdom) and its immediate children (Knowledge).
+5.  **Interactive Demo (Mini):** Launch a simple inline Panel view (if possible in notebook) or static HTML representation of the tree.
 
-### 2.3. `tutorials/03_full_raptor_pipeline.ipynb` (The "Aha!" Moment)
-*   **Goal**: Execute the full recursive summarization process.
-*   **Scenario**:
-    1.  Load `test_data/エミン流「会社四季報」最強の読み方.txt`.
-    2.  Run `RaptorEngine.run()`.
-    3.  Generate `summary_all.md`.
-*   **Success Criteria**:
-    *   The output markdown structure reflects the document's logical hierarchy.
-    *   Key terms from the source text (e.g., "Market Cap", "PSR") are present.
-*   **Mode**: Real mode strongly recommended.
+### `tutorials/02_advanced_usage.ipynb`: Deep Dive & Refinement
+**Target Audience:** Power users and developers.
+**Goal:** Demonstrate the `InteractiveRaptorEngine` API and granular refinement.
 
-### 2.4. `tutorials/04_kj_method_visualization.ipynb` (The Output)
-*   **Goal**: Visualize the result in Obsidian Canvas format.
-*   **Scenario**: Take the `DocumentTree` from the previous step and export it to `summary_kj.json` (Canvas format).
-*   **Key Features**:
-    *   Mapping nodes to canvas coordinates.
-    *   Creating links between parent and child nodes.
-    *   Instructions on how to open this file in Obsidian.
-*   **Mode**: Works in both modes (Mock uses a dummy tree).
+**Content:**
+1.  **Load Existing DB:** Connect to the `chunks.db` generated in Tutorial 01.
+2.  **API Exploration:**
+    -   `engine.get_root()`
+    -   `engine.get_children(root_id)`
+3.  **Refinement (Mock/Real):**
+    -   Select a node.
+    -   Call `engine.refine_node(id, "Make it shorter")`.
+    -   Verify the change.
+4.  **Source Verification:**
+    -   Call `engine.verify_source(id)`.
+    -   Display the raw text chunks.
 
-## 3. Validation Steps
+## 3. Validation Steps (QA Agent Instructions)
 
-The QA Agent (or human reviewer) should perform the following checks:
+When running these notebooks or the full application, the QA Agent should look for the following success criteria:
 
-### 3.1. Automated Checks (Mock Mode)
-1.  Run `pytest` to ensure all unit tests pass.
-2.  Execute `tutorials/01_quickstart.ipynb` without an API key. It should complete without errors.
-3.  Execute `tutorials/04_kj_method_visualization.ipynb` with dummy data. It should generate a valid JSON file.
+### 3.1. DIKW Structure Validation
+-   **Wisdom (L1):** Is the root node abstract? (e.g., "Invest for the long term.")
+-   **Knowledge (L2):** Does the next level explain the mechanism? (e.g., "Compound interest works over time.")
+-   **Information (L3):** Are the leaves actionable? (e.g., "- Buy index funds.")
+-   **Data (L4):** Do the leaf chunks match the original text?
 
-### 3.2. Manual Checks (Real Mode)
-1.  Set `OPENROUTER_API_KEY` in the environment.
-2.  Run `tutorials/03_full_raptor_pipeline.ipynb` with the target text.
-3.  **Content Verification**:
-    *   Open `summary_all.md`.
-    *   Check if the summary covers at least 70% of the topics mentioned in the book's Table of Contents (P8-18).
-    *   Verify that Japanese sentences are natural and not cut off mid-sentence.
-4.  **Structure Verification**:
-    *   Open the generated `.canvas` file in Obsidian.
-    *   Verify that related notes are grouped together visually.
-    *   Verify that clicking a summary note reveals its child chunks (if implemented).
+### 3.2. Interactive Behavior
+-   **Refinement:** When a node is refined, does its text change? Does its ID remain constant?
+-   **Consistency:** Do the children of a refined node remain accessible?
 
-### 3.3. Performance Checks
-*   **Time**: The full pipeline for the test file should complete within 10 minutes.
-*   **Cost**: Monitor OpenRouter usage. It should be minimal (mostly Gemini 1.5 Flash).
+### 3.3. Technical Stability
+-   **Concurrency:** Does the system crash if you try to refine a node while the tree is loading? (It shouldn't).
+-   **Persistence:** If you restart the kernel/app, are the refinements saved?
+
+## 4. User Test Scenarios (from Spec)
+
+These are the high-level scenarios driving the UAT.
+
+-   **Scenario A (Semantic Zooming):** Verify the quality and hierarchy of the generated tree.
+-   **Scenario B (Interactive Refinement):** Verify the ability to rewrite nodes via chat.
+-   **Scenario C (Source Verification):** Verify traceability to original text.
