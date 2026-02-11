@@ -1,33 +1,45 @@
-# Matome: Long Context Summarization System
+# Matome 2.0: Knowledge Installation System
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**Matome** is a next-generation document processing platform that solves the "Lost-in-the-Middle" problem in Large Language Models. By combining **Recursive Abstractive Processing (RAPTOR)** with **Japanese-optimized Semantic Chunking**, it transforms massive documents into structured, navigable, and verifiable knowledge trees.
+**Matome 2.0** is an interactive knowledge acquisition platform designed to solve information overload. Unlike traditional summarizers that simply shorten text, Matome 2.0 employs **Semantic Zooming** based on the DIKW (Data, Information, Knowledge, Wisdom) hierarchy. It transforms massive documents into a navigable "Google Earth" of knowledge, allowing users to zoom from high-level philosophy down to actionable checklists, and interactively refine the content to suit their mental models.
 
-## Overview
+## Key Features
 
-Traditional RAG systems often split text arbitrarily, breaking sentences and losing context. Matome employs a "System Engineering" approach, starting with a robust **Japanese Semantic Chunker** that respects linguistic boundaries (punctuation, quotes) to preserve narrative flow before summarization begins. It then recursively summarizes content into a hierarchical tree and verifies the results against the source text to minimize hallucinations.
+*   **Semantic Zooming (DIKW Engine)**:
+    *   **Wisdom (L1)**: Distills core philosophy and aphorisms (The "Why").
+    *   **Knowledge (L2)**: Explains structural frameworks and mechanisms (The "How").
+    *   **Information (L3)**: Generates actionable checklists and instructions (The "What").
+*   **Matome Canvas (Interactive UI)**: A modern web interface (built with Panel) for exploring the knowledge pyramid and visualizing connections.
+*   **Interactive Refinement**: "Talk to your data." Rewrite any part of the summary tree using natural language instructions (e.g., "Explain this for a 5-year-old").
+*   **Source Verification**: Instantly trace any abstract insight back to the original raw text chunks to prevent hallucinations.
+*   **Recursive Summarization (RAPTOR)**: Uses advanced recursive clustering to ensure no context is lost, even in books of 500+ pages.
 
-## Features
+## Architecture Overview
 
-*   **Recursive Summarization (RAPTOR)**: Builds a hierarchical tree of summaries from leaf chunks to a root node, capturing both high-level themes and granular details.
-*   **Hallucination Verification**: Uses a dedicated **Verifier Agent** to cross-check generated summaries against the source text, flagging unsupported claims with a confidence score.
-*   **Intelligent Clustering**: Uses **UMAP** and **Gaussian Mixture Models (GMM)** to group semantically similar chunks for coherent summarization.
-*   **Command Line Interface (CLI)**: Easy-to-use `matome` command for running the full pipeline on text files with progress tracking.
-*   **Obsidian Canvas Export**: Exports the generated knowledge tree to an **Obsidian Canvas** (`.canvas`) file, allowing for visual inspection and reorganization (KJ Method).
-*   **Markdown Export**: Exports the generated knowledge tree to a hierarchical Markdown format.
-*   **Japanese-Optimized Chunking**: Intelligently splits text at sentence boundaries and merges them into semantically coherent chunks.
-*   **Type-Safe Architecture**: Built with strict Pydantic models for reliable data handling.
+Matome 2.0 is built on a modular architecture separating the generation engine from the interactive session management.
 
-## Requirements
+```mermaid
+graph TD
+    User[User] --> GUI[Matome Canvas (Panel)]
+    GUI --> Session[Interactive Session (ViewModel)]
+    Session --> IRE[Interactive Raptor Engine]
+    IRE --> Store[DiskChunkStore (SQLite)]
+    IRE --> Agent[Summarization Agent]
+    Agent --> Strategy[Prompt Strategies (Wisdom/Knowledge/Action)]
+    Agent --> LLM[LLM (OpenAI/Anthropic)]
+    Store --> Models[Data Models]
+```
+
+## Prerequisites
 
 *   **Python 3.11+**
-*   **UV** (Recommended) or pip.
-*   **OpenRouter API Key** (for summarization and verification).
+*   **uv** (Recommended) or pip.
+*   **OpenRouter API Key** (or OpenAI/Anthropic key) for LLM access.
 
-## Installation
+## Installation & Setup
 
 1.  **Clone the repository**
     ```bash
@@ -46,80 +58,66 @@ Traditional RAG systems often split text arbitrarily, breaking sentences and los
     ```
 
 3.  **Configure Environment**
-    Set your OpenRouter API key:
+    Copy the example environment file and set your API key:
     ```bash
-    export OPENROUTER_API_KEY="your_key_here"
+    cp .env.example .env
+    # Edit .env and set OPENROUTER_API_KEY
     ```
 
 ## Usage
 
-### Command Line Interface (CLI)
+### 1. Batch Processing (CLI)
+Generate the initial knowledge tree from a text file.
 
-Matome provides a robust CLI to process documents.
+```bash
+# Standard summarization
+uv run matome run input.txt
 
-1.  **Run the Pipeline**:
-    Process a text file, generate summaries, verify them, and export results.
+# DIKW Semantic Zooming mode
+uv run matome run input.txt --mode dikw
+```
+
+### 2. Interactive Exploration (GUI)
+Launch the Matome Canvas to explore and refine the results.
+
+```bash
+uv run python -m matome.ui.app
+```
+*   Open your browser at `http://localhost:5006`.
+*   Navigate the tree on the left sidebar.
+*   Click "Refine" to rewrite nodes.
+
+## Development Workflow
+
+We follow a strict 5-cycle development plan.
+
+1.  **Run Tests**:
     ```bash
-    uv run matome run input.txt --output-dir results
+    uv run pytest
+    ```
+2.  **Linting & Formatting**:
+    ```bash
+    uv run ruff check .
+    uv run ruff format .
+    ```
+3.  **Type Checking**:
+    ```bash
+    uv run mypy .
     ```
 
-    **Options**:
-    *   `--model`: Summarization model (default: `openai/gpt-4o-mini`).
-    *   `--verifier-model`: Verification model (default: `openai/gpt-4o-mini`).
-    *   `--verify / --no-verify`: Enable or disable verification step (default: enabled).
-    *   `--max-tokens`: Maximum tokens per chunk (default: 500).
+## Project Structure
 
-2.  **Check Results**:
-    The output directory will contain:
-    *   `summary_all.md`: Full hierarchical summary.
-    *   `summary_kj.canvas`: Visual knowledge graph for Obsidian.
-    *   `verification_result.json`: Detailed verification report.
-    *   `chunks.db`: SQLite database containing all chunks and embeddings.
-
-### Python API
-
-```python
-from pathlib import Path
-from matome.engines.semantic_chunker import JapaneseSemanticChunker
-from matome.engines.embedder import EmbeddingService
-from matome.engines.cluster import GMMClusterer
-from matome.agents.summarizer import SummarizationAgent
-from matome.agents.verifier import VerifierAgent
-from matome.engines.raptor import RaptorEngine
-from matome.utils.store import DiskChunkStore
-from domain_models.config import ProcessingConfig
-
-# 1. Configuration
-config = ProcessingConfig(max_tokens=500)
-
-# 2. Initialize Components
-embedder = EmbeddingService(config)
-chunker = JapaneseSemanticChunker(embedder)
-clusterer = GMMClusterer()
-summarizer = SummarizationAgent(config)
-verifier = VerifierAgent(config)
-
-# 3. Run RAPTOR Pipeline
-store = DiskChunkStore()
-engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
-tree = engine.run("Your long Japanese text here...", store=store)
-
-# 4. Verify Root Summary
-if tree.root_node:
-    root_summary = tree.root_node.text
-    result = verifier.verify(root_summary, "Source text...")
-    print(f"Verification Score: {result.score}")
-```
-
-## Architecture/Structure
-
-```
+```text
 src/
-├── domain_models/      # Data definitions (Document, Chunk, Config, Verification)
-└── matome/             # Core logic
-    ├── agents/         # AI Agents (Summarizer, Verifier)
-    ├── engines/        # Processing engines (Chunker, Clusterer, RAPTOR)
-    ├── exporters/      # Output formatters (Markdown, Obsidian Canvas)
-    ├── utils/          # Utilities (Store, IO, Text)
-    └── cli.py          # Command Line Interface
+├── domain_models/      # Pydantic models (SummaryNode, NodeMetadata)
+├── matome/
+│   ├── agents/         # AI Logic (Summarizer, Verifier, Strategies)
+│   ├── engines/        # Processing (Raptor, Interactive, Chunker)
+│   ├── ui/             # Panel GUI (App, ViewModel, Components)
+│   └── utils/          # DB & IO
+└── tests/              # Unit and Integration tests
 ```
+
+## License
+
+MIT License. See `LICENSE` for details.
