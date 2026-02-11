@@ -21,7 +21,9 @@ class CanvasNode(BaseModel):
     y: int = Field(..., description="Y coordinate of the node.")
     width: int = Field(..., description="Width of the node.")
     height: int = Field(..., description="Height of the node.")
-    type: Literal["text", "file", "group"] = Field(default="text", description="Type of the node.")
+    type: Literal["text", "file", "group"] = Field(
+        default="text", description="Type of the node."
+    )
     text: str | None = Field(default=None, description="Text content for text nodes.")
 
 

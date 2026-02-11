@@ -85,9 +85,7 @@ class NodeMetadata(BaseModel):
     Standardized metadata for SummaryNodes.
     """
 
-    # We allow extra fields for backward compatibility and flexibility in metadata storage.
-    # This overrides the general project rule of extra="forbid".
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="forbid")
 
     dikw_level: DIKWLevel = Field(
         default=DIKWLevel.DATA, description="The abstraction level of this node."

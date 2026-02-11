@@ -63,6 +63,8 @@ class RaptorEngine:
             # But to strictly stream, we should batch manually here and call store.add_chunks on batches.
 
             # Using batched to process small groups of chunks. Use config for buffer size.
+            # We assume store.add_chunks can handle batches efficiently.
+            # While 'batched' loads 'n' items into memory (tuple), n is small (buffer size).
             for chunk_batch_tuple in batched(chunk_stream, self.config.chunk_buffer_size):
                 # Convert tuple to list for store.add_chunks (interface expects Iterable)
                 chunk_batch = list(chunk_batch_tuple)
@@ -362,9 +364,32 @@ class RaptorEngine:
                 logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
                 continue
 
-            # Note: For very large clusters, joining texts might still be memory intensive.
-            # But the summarizer typically takes a string.
-            combined_text = "\n\n".join(cluster_texts)
+            # Determine if we should pass list[str] or joined string to summarizer.
+            # The Summarizer interface now handles list[str] if designed to, but basic agent takes str.
+            # We strictly limit the input size here to prevent OOM/DoS if a cluster is huge.
+            # A huge cluster usually implies bad clustering or very similar repetitive text.
+
+            # Check total length before joining
+            total_chars = sum(len(t) for t in cluster_texts)
+            if total_chars > self.config.max_input_length:
+                logger.warning(
+                    f"Cluster {cluster.id} text size ({total_chars}) exceeds max input length. Truncating."
+                )
+                # Truncate by dropping texts or truncating the joined string?
+                # Truncating joined string is safer for preserving some context from all if possible,
+                # but joining itself causes memory spike.
+                # Better: Join until limit is reached.
+                current_len = 0
+                truncated_texts = []
+                for t in cluster_texts:
+                    if current_len + len(t) > self.config.max_input_length:
+                        break
+                    truncated_texts.append(t)
+                    current_len += len(t)
+                combined_text = "\n\n".join(truncated_texts)
+            else:
+                combined_text = "\n\n".join(cluster_texts)
+
             summary_text = self.summarizer.summarize(combined_text, self.config)
 
             node_id_str = str(uuid.uuid4())

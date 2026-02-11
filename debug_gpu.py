@@ -5,6 +5,8 @@ Check GPU availability for SentenceTransformers.
 import torch
 from sentence_transformers import SentenceTransformer
 
+from domain_models.constants import DEFAULT_DEBUG_EMBEDDING_MODEL
+
 
 def check_gpu() -> None:
     """Print CUDA availability and device info."""
@@ -15,7 +17,7 @@ def check_gpu() -> None:
         print(f"Device name: {torch.cuda.get_device_name(0)}")  # noqa: T201
 
     print("\nInitializing SentenceTransformer (auto-detect)...")  # noqa: T201
-    model = SentenceTransformer("all-MiniLM-L6-v2")
+    model = SentenceTransformer(DEFAULT_DEBUG_EMBEDDING_MODEL)
     print(f"Model device: {model.device}")  # noqa: T201
 
 

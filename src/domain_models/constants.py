@@ -17,6 +17,7 @@ PROMPT_INJECTION_PATTERNS: Final[list[str]] = [
 DEFAULT_TOKENIZER: Final[str] = "cl100k_base"
 DEFAULT_EMBEDDING: Final[str] = "intfloat/multilingual-e5-large"
 DEFAULT_SUMMARIZER: Final[str] = "gpt-4o"
+DEFAULT_DEBUG_EMBEDDING_MODEL: Final[str] = "all-MiniLM-L6-v2"
 
 # Configuration Defaults
 LARGE_SCALE_THRESHOLD: Final[int] = 20000
@@ -26,6 +27,11 @@ DEFAULT_CANVAS_NODE_WIDTH: Final[int] = 400
 DEFAULT_CANVAS_NODE_HEIGHT: Final[int] = 200
 DEFAULT_CANVAS_GAP_X: Final[int] = 50
 DEFAULT_CANVAS_GAP_Y: Final[int] = 300
+
+# Canvas Node Types
+CANVAS_NODE_TYPE_TEXT: Final[str] = "text"
+CANVAS_NODE_TYPE_FILE: Final[str] = "file"
+CANVAS_NODE_TYPE_GROUP: Final[str] = "group"
 
 # Security Whitelists
 ALLOWED_TOKENIZER_MODELS: Final[frozenset[str]] = frozenset(

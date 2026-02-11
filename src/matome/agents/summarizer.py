@@ -148,10 +148,9 @@ class SummarizationAgent:
 
         # 2. Control Character Check (Unicode)
         # We strictly disallow control characters that are not standard whitespace.
-        # Allow standard whitespace controls: \n, \t, \r
-        # \f and \v are technically whitespace but rare, safer to block if not needed?
-        # Let's align with common definition: \t, \n, \r.
-        allowed_controls = {"\n", "\t", "\r"}
+        # Allow standard whitespace controls: \n, \t.
+        # \r is explicitly disallowed to prevent Carriage Return Injection logs/prompts.
+        allowed_controls = {"\n", "\t"}
 
         for char in text:
             # Check for control characters (Cc, Cf, Cs, Co, Cn)
@@ -190,7 +189,8 @@ class SummarizationAgent:
         for pattern in PROMPT_INJECTION_PATTERNS:
             # We use re.sub for flexible matching (case insensitive, whitespace variations)
             # which are defined in the patterns themselves.
-            sanitized = re.sub(pattern, "[Filtered]", sanitized)
+            # Using re.IGNORECASE as a fallback, although patterns likely have (?i)
+            sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
 
         return sanitized
 

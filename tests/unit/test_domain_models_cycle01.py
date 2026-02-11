@@ -49,13 +49,25 @@ def test_summary_node_with_metadata() -> None:
 
 def test_summary_node_backward_compatibility() -> None:
     """Test SummaryNode creation with dict metadata (auto-converted)."""
+    # Note: extra fields are now forbidden, so we test that only valid fields work
+    # or that extra fields raise error if strictly validated.
+    # But SummaryNode expects NodeMetadata. Pydantic coerces dict to NodeMetadata.
+    # If dict has extra fields, it raises ValidationError if extra="forbid".
+    with pytest.raises(ValidationError):
+        SummaryNode(
+            id="test_id",
+            text="Sample summary",
+            level=2,
+            children_indices=[1, 2, 3],
+            metadata={"dikw_level": "wisdom", "extra_field": "forbidden"},  # type: ignore
+        )
+
+    # Valid coercion
     node = SummaryNode(
         id="test_id",
         text="Sample summary",
         level=2,
         children_indices=[1, 2, 3],
-        metadata={"dikw_level": "wisdom", "extra_field": "allowed"},  # type: ignore
+        metadata={"dikw_level": "wisdom"},  # type: ignore
     )
     assert node.metadata.dikw_level == DIKWLevel.WISDOM
-    # Extra fields are allowed in NodeMetadata config
-    assert getattr(node.metadata, "extra_field", None) == "allowed"
