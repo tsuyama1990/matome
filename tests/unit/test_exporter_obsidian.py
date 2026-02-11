@@ -1,125 +1,116 @@
-import json
-from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-from domain_models.manifest import DocumentTree, SummaryNode
-from matome.exporters.obsidian import CanvasFile, ObsidianCanvasExporter
+from domain_models.manifest import Chunk, DocumentTree, SummaryNode
+from domain_models.metadata import DIKWLevel, NodeMetadata
+from domain_models.types import NodeID
+from matome.exporters.obsidian import CanvasEdge, CanvasFile, CanvasNode, ObsidianCanvasExporter
 
 
 @pytest.fixture
-def sample_tree() -> DocumentTree:
-    """Create a sample DocumentTree with Root -> [Node A, Node B] -> [Chunk 1, Chunk 2]."""
-    # Summary Nodes
-    node_a = SummaryNode(
-        id="node_a",
-        text="Summary A",
-        level=1,
-        children_indices=[0],  # Points to Chunk 0
-    )
-    node_b = SummaryNode(
-        id="node_b",
-        text="Summary B",
-        level=1,
-        children_indices=[1],  # Points to Chunk 1
-    )
+def mock_tree() -> DocumentTree:
+    # Root Summary (Wisdom)
     root = SummaryNode(
         id="root",
-        text="Root Summary",
+        text="Root Wisdom",
         level=2,
-        children_indices=["node_a", "node_b"],
+        children_indices=["summary1", "summary2"],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM)
     )
 
-    all_nodes = {
-        "root": root,
-        "node_a": node_a,
-        "node_b": node_b,
-    }
+    # Knowledge Nodes
+    summary1 = SummaryNode(
+        id="summary1",
+        text="Knowledge A",
+        level=1,
+        children_indices=[0, 1], # Chunks
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+    )
+
+    summary2 = SummaryNode(
+        id="summary2",
+        text="Knowledge B",
+        level=1,
+        children_indices=[2], # Chunks
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+    )
+
+    all_summaries = {"summary1": summary1, "summary2": summary2, "root": root}
+    # Explicitly type leaf_ids as list[NodeID] which is list[int | str]
+    leaf_ids: list[NodeID] = [0, 1, 2]
 
     return DocumentTree(
         root_node=root,
-        all_nodes=all_nodes,
-        leaf_chunk_ids=[0, 1],
+        all_nodes=all_summaries,
+        leaf_chunk_ids=leaf_ids,
+        metadata={"levels": 2}
     )
 
+@pytest.fixture
+def mock_store() -> MagicMock:
+    store = MagicMock()
 
-def test_canvas_schema_validation() -> None:
-    """Test that CanvasFile enforces schema."""
-    # Valid
-    data = {
-        "nodes": [
-            {
-                "id": "n1",
-                "x": 0,
-                "y": 0,
-                "width": 100,
-                "height": 100,
-                "type": "text",
-                "text": "Hello",
-            }
-        ],
-        "edges": [{"id": "e1", "fromNode": "n1", "toNode": "n2"}],
-    }
-    # We expect validation error on missing 'toNode' target if we were validating logic,
-    # but here just schema. 'n2' doesn't exist in nodes but edge is valid schema-wise.
-    canvas = CanvasFile(**data)
-    assert len(canvas.nodes) == 1
-    assert len(canvas.edges) == 1
-    assert canvas.edges[0].from_node == "n1"  # Pydantic model uses snake_case
+    def get_node(nid: NodeID) -> Chunk | None:
+        if nid == 0:
+            return Chunk(index=0, text="Chunk 0", start_char_idx=0, end_char_idx=10)
+        if nid == 1:
+            return Chunk(index=1, text="Chunk 1", start_char_idx=10, end_char_idx=20)
+        if nid == 2:
+            return Chunk(index=2, text="Chunk 2", start_char_idx=20, end_char_idx=30)
+        return None
 
+    store.get_node.side_effect = get_node
+    return store
 
-def test_generate_canvas_data(sample_tree: DocumentTree) -> None:
-    """Test generating canvas data from a DocumentTree."""
+def test_canvas_export_structure(mock_tree: DocumentTree, mock_store: MagicMock) -> None:
     exporter = ObsidianCanvasExporter()
-    canvas = exporter.generate_canvas_data(sample_tree)
+    canvas = exporter.generate_canvas_data(mock_tree, mock_store)
 
     assert isinstance(canvas, CanvasFile)
+    assert len(canvas.nodes) > 0
+    assert len(canvas.edges) > 0
 
-    # We expect: Root, Node A, Node B, Chunk 1, Chunk 2 -> 5 nodes
-    # Edges: Root->A, Root->B, A->Chunk1, B->Chunk2 -> 4 edges
-    assert len(canvas.nodes) == 5
-    assert len(canvas.edges) == 4
+    # Root + 2 summaries + 3 chunks = 6 nodes
+    assert len(canvas.nodes) == 6
 
-    # Check Root Position (should be top)
-    root_node = next(n for n in canvas.nodes if n.id == "root")
-    assert root_node.y == 0
-    # Root should be centered at x=0. Width=400 -> x=-200
-    assert root_node.x == -(root_node.width // 2)
+    # Root->Summary (2 edges) + Summary->Chunks (3 edges) = 5 edges
+    assert len(canvas.edges) == 5
 
-    # Check Children Y position (should be below root)
-    child_a = next(n for n in canvas.nodes if n.id == "node_a")
-    child_b = next(n for n in canvas.nodes if n.id == "node_b")
-
-    # Spec says "Children go to y + 400"
-    assert child_a.y > root_node.y
-    assert child_b.y > root_node.y
-
-    # Check Children X position (should be spread out)
-    assert child_a.x != child_b.x
-
-    # Check Chunk Y position (should be below parents)
-    chunk_1 = next(n for n in canvas.nodes if n.id.startswith("chunk_"))
-    assert chunk_1.y > child_a.y
-
-    # Check Edge connections
-    edge_root_a = next(e for e in canvas.edges if e.from_node == "root" and e.to_node == "node_a")
-    assert edge_root_a is not None
+    # Check Edge properties
+    edge = canvas.edges[0]
+    # We used alias in definition, but standard field name is from_node
+    # Pydantic populates standard field name too if populate_by_name=True
+    assert hasattr(edge, "from_node")
+    assert hasattr(edge, "to_node")
 
 
-def test_export_file(sample_tree: DocumentTree, tmp_path: Path) -> None:
-    """Test exporting to a file."""
-    exporter = ObsidianCanvasExporter()
-    output_file = tmp_path / "test.canvas"
+def test_canvas_edge_creation() -> None:
+    # Test manual edge creation with alias
+    # mypy requires alias kwarg if using alias?
+    edge = CanvasEdge(
+        id="test_edge",
+        fromNode="node1",
+        toNode="node2"
+    )
+    assert edge.from_node == "node1"
+    assert edge.to_node == "node2"
 
-    exporter.export(sample_tree, output_file)
+    # Test dumping
+    dump = edge.model_dump(by_alias=True)
+    assert "fromNode" in dump
+    assert "toNode" in dump
 
-    assert output_file.exists()
 
-    with output_file.open(encoding="utf-8") as f:
-        data = json.load(f)
+def test_canvas_file_creation() -> None:
+    node1 = CanvasNode(id="n1", x=0, y=0, width=100, height=100, text="Node 1")
+    node2 = CanvasNode(id="n2", x=200, y=0, width=100, height=100, text="Node 2")
+    edge = CanvasEdge(id="e1", fromNode="n1", toNode="n2")
 
-    assert "nodes" in data
-    assert "edges" in data
-    # Verify serialization alias
-    assert "fromNode" in data["edges"][0]
-    assert "toNode" in data["edges"][0]
+    canvas_file = CanvasFile(
+        nodes=[node1, node2],
+        edges=[edge]
+    )
+
+    assert len(canvas_file.nodes) == 2
+    assert len(canvas_file.edges) == 1

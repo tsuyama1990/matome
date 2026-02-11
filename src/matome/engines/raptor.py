@@ -5,6 +5,7 @@ from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
+from domain_models.metadata import DIKWLevel, NodeMetadata
 from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
@@ -308,12 +309,14 @@ class RaptorEngine:
                     all_summaries[str(root_id)] = root_node_obj
 
         if isinstance(root_node_obj, Chunk):
+            # Create a summary node wrapper for the single chunk
+            metadata = NodeMetadata(dikw_level=DIKWLevel.WISDOM, type="single_chunk_root")  # type: ignore[call-arg]
             root_node = SummaryNode(
                 id=str(uuid.uuid4()),
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata={"type": "single_chunk_root"},
+                metadata=metadata,
             )
             all_summaries[root_node.id] = root_node
         else:
@@ -368,12 +371,16 @@ class RaptorEngine:
             summary_text = self.summarizer.summarize(combined_text, self.config)
 
             node_id_str = str(uuid.uuid4())
+
+            # Use NodeMetadata
+            metadata = NodeMetadata(cluster_id=cluster.id)  # type: ignore[call-arg]
+
             summary_node = SummaryNode(
                 id=node_id_str,
                 text=summary_text,
                 level=level,
                 children_indices=children_indices,
-                metadata={"cluster_id": cluster.id},
+                metadata=metadata,
             )
 
             yield summary_node

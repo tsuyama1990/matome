@@ -1,10 +1,11 @@
-import pytest
+from typing import Any
 from unittest.mock import MagicMock
+
+from domain_models.config import ProcessingConfig
 from domain_models.manifest import SummaryNode
 from domain_models.metadata import DIKWLevel, NodeMetadata
 from matome.agents.summarizer import SummarizationAgent
-from matome.agents.strategies import BaseSummaryStrategy
-from domain_models.config import ProcessingConfig
+
 
 def test_uat_c01_01_data_model_robustness() -> None:
     """
@@ -24,7 +25,7 @@ def test_uat_c01_01_data_model_robustness() -> None:
     # 3. Migration Test
     # Create a dictionary mimicking an old node: {'text': '...', 'metadata': {'source': 'file.txt'}}
     # Pass this to SummaryNode. Verify that node.metadata.dikw_level defaults to 'data' and the source field is preserved.
-    node_data = {
+    node_data: dict[str, Any] = {
         "id": "test_id",
         "text": "test text",
         "level": 1,
@@ -33,7 +34,7 @@ def test_uat_c01_01_data_model_robustness() -> None:
     }
     node = SummaryNode(**node_data)
     assert node.metadata.dikw_level == DIKWLevel.DATA
-    assert getattr(node.metadata, "source") == "file.txt"
+    assert node.metadata.source == "file.txt" # type: ignore[attr-defined]
 
 
 def test_uat_c01_02_strategy_injection() -> None:
@@ -49,8 +50,6 @@ def test_uat_c01_02_strategy_injection() -> None:
     mock_llm.invoke.return_value = MagicMock(content="DEFAULT SUMMARY")
 
     agent_default = SummarizationAgent(config=config, llm=mock_llm)
-    # This assumes we modify Agent to accept prompt_strategy=None by default
-    # and internally sets it to BaseSummaryStrategy
 
     # Run agent.summarize
     summary = agent_default.summarize("test text")
@@ -76,9 +75,8 @@ def test_uat_c01_02_strategy_injection() -> None:
     mock_llm.reset_mock()
     mock_llm.invoke.return_value = MagicMock(content="TREASURE")
 
-    # Mypy will complain because prompt_strategy arg is not yet in init signature
-    # and PirateStrategy might not satisfy Protocol yet (if Protocol is strictly checked and imports fail).
-    agent_pirate = SummarizationAgent(config=config, llm=mock_llm, prompt_strategy=pirate_strategy) # type: ignore[call-arg, arg-type]
+    # Mypy no longer complains about prompt_strategy arg
+    agent_pirate = SummarizationAgent(config=config, llm=mock_llm, prompt_strategy=pirate_strategy)
 
     summary_pirate = agent_pirate.summarize("Island")
 

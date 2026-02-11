@@ -1,8 +1,8 @@
-import pytest
 from unittest.mock import MagicMock
-from matome.agents.summarizer import SummarizationAgent
-from matome.agents.strategies import PromptStrategy
+
 from domain_models.config import ProcessingConfig
+from matome.agents.summarizer import SummarizationAgent
+
 
 class MockStrategy:
     def create_prompt(self, context_chunks: list[str], current_level: int) -> str:
@@ -19,8 +19,8 @@ def test_agent_strategy_injection() -> None:
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = MagicMock(content="LLM OUTPUT")
 
-    # This will fail until `prompt_strategy` is added to __init__
-    agent = SummarizationAgent(config=config, llm=mock_llm, prompt_strategy=strategy) # type: ignore[call-arg, arg-type]
+    # prompt_strategy is now in __init__
+    agent = SummarizationAgent(config=config, llm=mock_llm, prompt_strategy=strategy)
 
     # Summarize single text -> agent usually treats it as list of chunks internally or as context
     summary = agent.summarize("test text")

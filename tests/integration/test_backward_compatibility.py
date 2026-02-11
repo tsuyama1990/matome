@@ -1,6 +1,6 @@
-import pytest
 from domain_models.manifest import SummaryNode
 from domain_models.metadata import DIKWLevel, NodeMetadata
+
 
 def test_load_legacy_summary_node() -> None:
     legacy_json = """
@@ -23,7 +23,7 @@ def test_load_legacy_summary_node() -> None:
     # Check Extra Field Preservation
     # Pydantic V2 allows accessing extra fields via dynamic attribute if configured
     # We check if 'source' is in the attributes
-    assert getattr(node.metadata, "source") == "old_file.txt"
+    assert node.metadata.source == "old_file.txt" # type: ignore[attr-defined]
     # Also check dict access if model_dump is used
     dump = node.metadata.model_dump(exclude_unset=True)
     assert dump["source"] == "old_file.txt"

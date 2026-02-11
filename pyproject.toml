@@ -59,6 +59,7 @@ packages = ["src/matome", "src/domain_models"]
 target-version = "py311"
 line-length = 100
 fix = true
+exclude = ["tutorials", "dev_documents"]
 
 [tool.ruff.lint]
 # E/F/I: Basic, B: Bugbear, S: Bandit, UP: pyupgrade
@@ -117,7 +118,8 @@ ignore = [
     "RUF043", # Pattern metacharacters not escaped in match
     "RUF059", # Unused unpacked variable
     "PLR0913", # Too many arguments in function definition
-    "ANN202"  # Missing return type annotation for private functions
+    "ANN202", # Missing return type annotation for private functions
+    "RUF001"  # Ambiguous unicode character (necessary for Japanese text)
 ]
 
 [tool.ruff.lint.per-file-ignores]
