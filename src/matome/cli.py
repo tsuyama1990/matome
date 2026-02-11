@@ -53,10 +53,10 @@ def run(
     ] = Path("results"),
     model: Annotated[
         str, typer.Option("--model", "-m", help="Summarization model to use.")
-    ] = "openai/gpt-4o-mini",
+    ] = "gpt-4o-mini",
     verifier_model: Annotated[
         str, typer.Option("--verifier-model", "-v", help="Verification model to use.")
-    ] = "openai/gpt-4o-mini",
+    ] = "gpt-4o-mini",
     verify: Annotated[
         bool, typer.Option("--verify/--no-verify", help="Enable/Disable verification.")
     ] = True,

@@ -62,7 +62,11 @@ def test_cli_run_success(
     with runner.isolated_filesystem():
         Path("dummy.txt").write_text("Dummy text content")
 
-        result = runner.invoke(app, ["run", "dummy.txt", "--output-dir", "results"])
+        result = runner.invoke(
+            app,
+            ["run", "dummy.txt", "--output-dir", "results"],
+            env={"SUMMARIZATION_MODEL": "gpt-4o"},
+        )
 
         assert result.exit_code == 0
         assert "Starting Matome Pipeline" in result.stdout
@@ -103,7 +107,11 @@ def test_cli_run_success_with_exporters_mocked(
         with runner.isolated_filesystem():
             Path("dummy.txt").write_text("Dummy text content")
 
-            result = runner.invoke(app, ["run", "dummy.txt", "--output-dir", "results"])
+            result = runner.invoke(
+                app,
+                ["run", "dummy.txt", "--output-dir", "results"],
+                env={"SUMMARIZATION_MODEL": "gpt-4o"},
+            )
 
             assert result.exit_code == 0
             assert "Starting Matome Pipeline" in result.stdout

@@ -19,8 +19,8 @@ def test_config_embedding_model() -> None:
     config = ProcessingConfig()
     assert config.embedding_model == "intfloat/multilingual-e5-large"
 
-    config = ProcessingConfig(embedding_model="mock-model")
-    assert config.embedding_model == "mock-model"
+    config = ProcessingConfig(embedding_model="all-MiniLM-L6-v2")
+    assert config.embedding_model == "all-MiniLM-L6-v2"
 
 
 def test_cluster_node_indices() -> None:

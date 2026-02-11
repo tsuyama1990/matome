@@ -25,7 +25,9 @@ def sample_text_file(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def uat_config() -> ProcessingConfig:
-    return ProcessingConfig(max_tokens=20, chunk_buffer_size=5)
+    return ProcessingConfig(
+        max_tokens=20, chunk_buffer_size=5, summarization_model="gpt-4o"
+    )
 
 
 def test_scenario_16_hallucination_detection(uat_config: ProcessingConfig) -> None:
@@ -132,6 +134,7 @@ def test_scenario_18_full_e2e_pipeline(
             "--max-tokens",
             "10",
         ],
+        env={"SUMMARIZATION_MODEL": "gpt-4o"},
     )
 
     # Assert

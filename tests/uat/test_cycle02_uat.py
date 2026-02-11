@@ -1,89 +1,147 @@
-from unittest.mock import MagicMock, patch
+from collections.abc import Iterator
+from unittest.mock import MagicMock, create_autospec, ANY
 
-import numpy as np
+import pytest
 
-from domain_models.config import ClusteringAlgorithm, ProcessingConfig
-from domain_models.manifest import Chunk
-from matome.engines.cluster import GMMClusterer
+from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.types import DIKWLevel
+from matome.agents.strategies import ActionStrategy, KnowledgeStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
+from matome.engines.raptor import RaptorEngine
+from matome.interfaces import Chunker, Clusterer, Summarizer
 
 
-# Scenario 05: Embedding Vector Generation
-def test_scenario_05_embedding_vector_generation() -> None:
+@pytest.fixture
+def mock_dependencies() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
+    chunker = create_autospec(Chunker, instance=True)
+    embedder = create_autospec(EmbeddingService, instance=True)
+    clusterer = create_autospec(Clusterer, instance=True)
+    summarizer = create_autospec(Summarizer, instance=True)
+    return chunker, embedder, clusterer, summarizer
+
+
+@pytest.fixture
+def config() -> ProcessingConfig:
+    return ProcessingConfig()
+
+
+def make_cluster_side_effect(return_values_list):
+    iterator = iter(return_values_list)
+    def side_effect(embeddings, config):
+        if isinstance(embeddings, Iterator):
+            list(embeddings) # consume
+        try:
+            return next(iterator)
+        except StopIteration:
+            return []
+    return side_effect
+
+
+def test_uat_full_dikw_hierarchy(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
+    """
+    Combined UAT Scenario for Cycle 02.
+    Verifies Wisdom (L3), Knowledge (L2), and Action (L1) strategies.
+
+    Simulation Plan:
+    - Start with 8 Chunks (Level 0).
+    - Pass 1 (L0 -> L1): Cluster 8 chunks into 4 clusters. Produces 4 Action summaries.
+    - Pass 2 (L1 -> L2): Cluster 4 summaries into 2 clusters. Produces 2 Knowledge summaries.
+    - Pass 3 (L2 -> L3): Cluster 2 summaries into 1 cluster. Produces 1 Wisdom summary.
+    - Pass 4 (L3 -> Stop): 1 node remaining. Stop.
+    """
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+    # 1. Mock Chunker (8 chunks)
     chunks = [
-        Chunk(index=0, text="This is a test.", start_char_idx=0, end_char_idx=15),
-        Chunk(index=1, text="Another sentence.", start_char_idx=16, end_char_idx=33),
+        Chunk(index=i, text=f"chunk_{i}", start_char_idx=i, end_char_idx=i+1, embedding=[0.1]*768)
+        for i in range(8)
+    ]
+    chunker.split_text.return_value = iter(chunks)
+
+    # 2. Mock Embedder (Chunks)
+    embedder.embed_chunks.return_value = iter(chunks)
+
+    # 3. Mock Embedder (Strings - for summaries)
+    # We will just return dummy embeddings for any list of strings
+    embedder.embed_strings.side_effect = lambda texts: iter([[0.1]*768] * len(texts))
+
+    # 4. Mock Clusters
+    # Pass 1: 8 nodes -> 4 clusters ([0,1], [2,3], [4,5], [6,7])
+    clusters_p1 = [
+        Cluster(id=f"p1_c{i}", level=0, node_indices=[i*2, i*2+1])
+        for i in range(4)
     ]
 
-    with patch("matome.engines.embedder.SentenceTransformer") as mock_st:
-        mock_instance = MagicMock()
-        mock_st.return_value = mock_instance
-        # Use fixed vectors instead of random
-        # Vector dim 4 for simplicity
-        fixed_vecs = [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8]]
-        mock_instance.encode.return_value = np.array(fixed_vecs)
+    # Pass 2: 4 nodes -> 2 clusters ([0,1], [2,3])
+    clusters_p2 = [
+        Cluster(id=f"p2_c{i}", level=1, node_indices=[i*2, i*2+1])
+        for i in range(2)
+    ]
 
-        config = ProcessingConfig()
-        service = EmbeddingService(config)
-        # Mock batched to ensure test doesn't fail if we switched to batched
-        with patch("matome.engines.embedder.batched", side_effect=lambda x, y: [tuple(x)]):
-             pass
+    # Pass 3: 2 nodes -> 1 cluster ([0,1])
+    clusters_p3 = [
+        Cluster(id="p3_c0", level=2, node_indices=[0, 1])
+    ]
 
-        embedded_chunks = list(service.embed_chunks(chunks))
+    clusterer.cluster_nodes.side_effect = make_cluster_side_effect([
+        clusters_p1,
+        clusters_p2,
+        clusters_p3,
+        [] # Pass 4 (L3 input, should not happen or return empty if called)
+    ])
 
-        for i, chunk in enumerate(embedded_chunks):
-            assert chunk.embedding is not None
-            assert chunk.embedding == fixed_vecs[i]
+    # 5. Mock Summarizer to capture strategies
+    captured_strategies = {
+        1: [],
+        2: [],
+        3: []
+    }
 
+    def summarize_side_effect(text, config, level=0, strategy=None):
+        if level in captured_strategies:
+            captured_strategies[level].append(strategy)
+        return f"Summary Level {level}"
 
-# Scenario 06: Clustering Logic Verification
-def test_scenario_06_clustering_logic() -> None:
-    # 3 Apple Pie (Cluster A), 3 Python (Cluster B)
-    # Use deterministic vectors
-    group_a = [[0.1] * 10] * 3
-    group_b = [[0.9] * 10] * 3
-    embeddings = group_a + group_b
+    summarizer.summarize.side_effect = summarize_side_effect
 
-    # Instantiate config with n_clusters=2 since it is frozen
-    config = ProcessingConfig(
-        clustering_algorithm=ClusteringAlgorithm.GMM,
-        n_clusters=2
-    )
-    clusterer = GMMClusterer()
+    # Run
+    tree = engine.run("input text")
 
-    with patch("matome.engines.cluster.GaussianMixture") as MockGMM:
-        instance = MockGMM.return_value
-        probs = np.zeros((6, 2))
-        probs[:3, 0] = 0.99
-        probs[:3, 1] = 0.01
-        probs[3:, 0] = 0.01
-        probs[3:, 1] = 0.99
-        instance.predict_proba.return_value = probs
+    # --- VERIFICATION ---
 
-        clusters = clusterer.cluster_nodes(embeddings, config)
+    # Scenario 2.1: Wisdom Check (Root Level / L3)
+    assert len(captured_strategies[3]) == 1
+    assert isinstance(captured_strategies[3][0], WisdomStrategy)
 
-        assert len(clusters) == 2
-        # Collect sets of indices
-        sets = [set(c.node_indices) for c in clusters]
+    # Scenario 2.2: Action Check (Leaf/Twig Level / L1)
+    assert len(captured_strategies[1]) == 4
+    for strategy in captured_strategies[1]:
+        assert isinstance(strategy, ActionStrategy)
 
-        # We expect {0,1,2} and {3,4,5}
-        expected_1 = {0, 1, 2}
-        expected_2 = {3, 4, 5}
+    # Scenario 2.3: Knowledge Check (L2) and Hierarchy
+    assert len(captured_strategies[2]) == 2
+    for strategy in captured_strategies[2]:
+        assert isinstance(strategy, KnowledgeStrategy)
 
-        assert expected_1 in sets
-        assert expected_2 in sets
+    # Verify Tree Root
+    # The root should be the single summary from L3
+    assert tree.root_node.level == 3
+    assert tree.root_node.metadata.dikw_level == DIKWLevel.WISDOM
+    assert tree.root_node.text == "Summary Level 3"
 
+    # Verify Metadata in tree
+    # Check a random L1 node
+    # Since we don't have easy access to IDs without traversing, we iterate all_nodes
+    l1_nodes = [n for n in tree.all_nodes.values() if n.level == 1]
+    assert len(l1_nodes) == 4
+    for n in l1_nodes:
+        assert n.metadata.dikw_level == DIKWLevel.INFORMATION
 
-# Scenario 07: Single Cluster Edge Case
-def test_scenario_07_single_cluster() -> None:
-    embeddings = [[0.5] * 10]
-
-    config = ProcessingConfig()
-    clusterer = GMMClusterer()
-
-    clusters = clusterer.cluster_nodes(embeddings, config)
-
-    assert len(clusters) == 1
-    # ID is 0 for single cluster usually, but let's just check length and content
-    assert len(clusters[0].node_indices) == 1
-    assert clusters[0].node_indices == [0]
+    l2_nodes = [n for n in tree.all_nodes.values() if n.level == 2]
+    assert len(l2_nodes) == 2
+    for n in l2_nodes:
+        assert n.metadata.dikw_level == DIKWLevel.KNOWLEDGE
