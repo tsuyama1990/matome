@@ -8,7 +8,6 @@ from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, S
 from domain_models.types import DIKWLevel, NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
-from matome.utils.compat import batched
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
@@ -231,54 +230,61 @@ class RaptorEngine:
         """
 
         def lx_embedding_generator() -> Iterator[list[float]]:
-            # Generator that yields (id, text) tuples
-            def node_text_generator() -> Iterator[tuple[NodeID, str]]:
-                for nid in current_level_ids:
-                    node = store.get_node(nid)
-                    if node:
-                        yield nid, node.text
-                    else:
-                        logger.warning(
-                            f"Node {nid} not found in store during next level clustering."
-                        )
-
-            # Strategy: Batched processing manually
-            # We process in batches to avoid loading all texts.
-            # batch is a tuple of (NodeID, str) tuples.
-            # batched is lazy, so we don't load everything.
-            for batch in batched(node_text_generator(), self.config.embedding_batch_size):
-                # batch is tuple of (id, text)
-                # To efficiently use embed_strings and keep synchronization with IDs,
-                # we unzip the batch into two iterators.
-
-                # unzip: zip(*batch) returns two tuples: (id1, id2...), (text1, text2...)
-                unzipped = list(zip(*batch, strict=True))
-                if not unzipped:
-                    continue
-
-                ids_tuple = unzipped[0]
-                texts_tuple = unzipped[1]
-
-                # Embed batch (returns iterator)
-                try:
-                    # embed_strings takes Iterable[str], so tuple is fine.
-                    embeddings = self.embedder.embed_strings(texts_tuple)
-
-                    # We iterate embeddings and match with IDs
-                    # zip ensures lock-step iteration
-                    for nid, embedding in zip(ids_tuple, embeddings, strict=True):
-                        store.update_node_embedding(nid, embedding)
-                        yield embedding
-                except Exception as e:
-                    logger.exception("Failed to embed batch during next level clustering.")
-                    msg = "Embedding failed during recursion."
-                    raise RuntimeError(msg) from e
+            return self._batched_embedding_generator(current_level_ids, store)
 
         try:
             return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
         except Exception as e:
             logger.exception("Clustering failed during recursion.")
             msg = "Clustering failed during recursion."
+            raise RuntimeError(msg) from e
+
+    def _batched_embedding_generator(
+        self, current_level_ids: list[NodeID], store: DiskChunkStore
+    ) -> Iterator[list[float]]:
+        """Yields embeddings in batches, processing from store."""
+        ids_buffer: list[NodeID] = []
+        texts_buffer: list[str] = []
+        BATCH_SIZE = self.config.embedding_batch_size
+
+        def node_text_generator() -> Iterator[tuple[NodeID, str]]:
+            for nid in current_level_ids:
+                node = store.get_node(nid)
+                if node:
+                    yield nid, node.text
+                else:
+                    logger.warning(f"Node {nid} not found in store during next level clustering.")
+
+        for nid, text in node_text_generator():
+            ids_buffer.append(nid)
+            texts_buffer.append(text)
+
+            if len(ids_buffer) >= BATCH_SIZE:
+                yield from self._process_embedding_batch(ids_buffer, texts_buffer, store)
+                ids_buffer.clear()
+                texts_buffer.clear()
+
+        # Flush
+        if ids_buffer:
+            yield from self._process_embedding_batch(ids_buffer, texts_buffer, store)
+            ids_buffer.clear()
+            texts_buffer.clear()
+
+    def _process_embedding_batch(
+        self,
+        ids_buffer: list[NodeID],
+        texts_buffer: list[str],
+        store: DiskChunkStore,
+    ) -> Iterator[list[float]]:
+        """Process a single batch of embeddings."""
+        try:
+            embeddings = self.embedder.embed_strings(texts_buffer)
+            for nid_out, embedding in zip(ids_buffer, embeddings, strict=True):
+                store.update_node_embedding(nid_out, embedding)
+                yield embedding
+        except Exception as e:
+            logger.exception("Failed to embed batch during next level clustering.")
+            msg = "Embedding failed during recursion."
             raise RuntimeError(msg) from e
 
     def _finalize_tree(
