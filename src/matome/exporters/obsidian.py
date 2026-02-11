@@ -84,12 +84,11 @@ class ObsidianCanvasExporter:
         if not tree.root_node:
             return CanvasFile(nodes=[], edges=[])
 
-        # 1. Calculate subtree widths (Post-order)
-        self._calculate_subtree_width(tree.root_node.id, tree)
+        # 1. Calculate subtree widths (Post-order) - Iterative approach via recursion optimization
+        self._calculate_subtree_width_iterative(tree.root_node.id, tree)
 
-        # 2. Assign positions (Pre-order)
-        # Root starts at (0, 0)
-        self._assign_positions(tree.root_node.id, 0, 0, tree)
+        # 2. Assign positions (Pre-order) - Iterative
+        self._assign_positions_iterative(tree.root_node.id, 0, 0, tree)
 
         return CanvasFile(nodes=self.nodes, edges=self.edges)
 
@@ -120,66 +119,62 @@ class ObsidianCanvasExporter:
             return f"chunk_{node_id}"
         return node_id
 
-    def _calculate_subtree_width(self, root_id: int | str, tree: "DocumentTree") -> int:
+    def _calculate_subtree_width_iterative(self, root_id: int | str, tree: "DocumentTree") -> int:
         """
-        Iteratively calculates the width of the subtree rooted at node_id using a stack.
-        Avoids recursion depth limits.
+        Iterative post-order traversal to calculate subtree widths.
+        Uses a single stack with state tracking to avoid storing full traversal history.
+        State: (node_id, children_processed_flag)
         """
-        # Post-order traversal preparation
-        processing_order = self._get_traversal_order(root_id, tree)
-
-        # Process in reverse (bottom-up) to calculate widths
-        for curr_id in reversed(processing_order):
-            self._process_node_width(curr_id, tree)
-
-        return self._subtree_widths[self._get_node_id_str(root_id)]
-
-    def _get_traversal_order(self, root_id: int | str, tree: "DocumentTree") -> list[int | str]:
-        """Helper to get processing order for nodes."""
-        stack = [root_id]
-        processing_order: list[int | str] = []
+        # Stack contains tuples: (node_id, visited_children)
+        # visited_children = False means we need to push children.
+        # visited_children = True means we process this node (calculate width).
+        stack: list[tuple[int | str, bool]] = [(root_id, False)]
 
         while stack:
-            curr_id = stack.pop()
-            processing_order.append(curr_id)
+            curr_id, children_visited = stack.pop()
 
-            if isinstance(curr_id, str):
-                self._append_children_to_stack(curr_id, stack, tree)
-        return processing_order
+            if children_visited:
+                # Process the node (calculate width)
+                self._process_node_width(curr_id, tree)
+            else:
+                # Push back with visited=True
+                stack.append((curr_id, True))
 
-    def _append_children_to_stack(
-        self, curr_id: str, stack: list[int | str], tree: "DocumentTree"
-    ) -> None:
-        """Helper to push children to stack."""
-        node = tree.all_nodes.get(curr_id)
-        if curr_id == tree.root_node.id:
+                # Push children to stack
+                children = self._get_children(curr_id, tree)
+                for child_idx in reversed(children):
+                    stack.append((child_idx, False))
+
+        return self._subtree_widths.get(self._get_node_id_str(root_id), self.NODE_WIDTH)
+
+    def _get_children(self, node_id: int | str, tree: "DocumentTree") -> list[int | str]:
+        """Helper to get children IDs."""
+        if isinstance(node_id, int):
+            return []
+
+        node = tree.all_nodes.get(str(node_id))
+        if str(node_id) == tree.root_node.id:
             node = tree.root_node
 
         if node:
-            for child_idx in node.children_indices:
-                stack.append(child_idx)
+            return node.children_indices
+        return []
 
     def _process_node_width(self, curr_id: int | str, tree: "DocumentTree") -> None:
         """Helper to calculate width for a single node."""
         node_id_str = self._get_node_id_str(curr_id)
 
-        # If Chunk
+        # If Chunk, constant width
         if isinstance(curr_id, int):
             self._subtree_widths[node_id_str] = self.NODE_WIDTH
             return
 
         # If SummaryNode
-        node = tree.all_nodes.get(str(curr_id))
-        if str(curr_id) == tree.root_node.id:
-            node = tree.root_node
-
-        if not node:
-            self._subtree_widths[node_id_str] = self.NODE_WIDTH
-            return
+        children = self._get_children(curr_id, tree)
 
         children_widths = [
             self._subtree_widths.get(self._get_node_id_str(child_idx), self.NODE_WIDTH)
-            for child_idx in node.children_indices
+            for child_idx in children
         ]
 
         if not children_widths:
@@ -190,27 +185,75 @@ class ObsidianCanvasExporter:
 
         self._subtree_widths[node_id_str] = width
 
-    def _assign_positions(
+    def _assign_positions_iterative(
+        self, root_id: int | str, start_x: int, start_y: int, tree: "DocumentTree"
+    ) -> None:
+        """
+        Iterative pre-order traversal to assign positions.
+        Stack stores (node_id, center_x, y).
+        """
+        stack: list[tuple[int | str, int, int]] = [(root_id, start_x, start_y)]
+
+        while stack:
+            curr_id, center_x, y = stack.pop()
+            node_id_str = self._get_node_id_str(curr_id)
+
+            # Create Node
+            self._create_canvas_node(curr_id, center_x, y, tree)
+
+            # Calculate children positions
+            children = self._get_children(curr_id, tree)
+            if not children:
+                continue
+
+            children_widths = [self._subtree_widths[self._get_node_id_str(c)] for c in children]
+            children_block_width = sum(children_widths) + self.GAP_X * (len(children_widths) - 1)
+
+            curr_child_start_x = center_x - (children_block_width / 2)
+            next_y = y + self.NODE_HEIGHT + self.GAP_Y
+
+            # We need to calculate x for all children first.
+            child_positions = []
+
+            temp_x = curr_child_start_x
+            for i, child_idx in enumerate(children):
+                child_width = children_widths[i]
+                child_center_x = temp_x + (child_width / 2)
+
+                child_positions.append((child_idx, int(child_center_x), next_y))
+
+                # create edge immediately
+                child_id_str = self._get_node_id_str(child_idx)
+                edge = CanvasEdge(
+                    id=f"edge_{node_id_str}_{child_id_str}",
+                    fromNode=node_id_str,
+                    toNode=child_id_str,
+                )
+                self.edges.append(edge)
+
+                temp_x += child_width + self.GAP_X
+
+            # Push to stack in reverse
+            for item in reversed(child_positions):
+                stack.append(item)
+
+    def _create_canvas_node(
         self, node_id: int | str, center_x: int, y: int, tree: "DocumentTree"
     ) -> None:
-        """Recursively assigns (x, y) positions to nodes and creates edges."""
+        """Create and append a CanvasNode."""
         node_id_str = self._get_node_id_str(node_id)
 
-        # Create the node
         text = ""
         if isinstance(node_id, int):
             chunk = self._chunk_map.get(node_id)
             chunk_content = chunk.text if chunk else "Missing Chunk"
             text = f"Chunk {node_id}\n\n{chunk_content}"
         else:
-            # Summary Node
             node = tree.all_nodes.get(str(node_id))
             if str(node_id) == tree.root_node.id:
                 node = tree.root_node
             text = node.text if node else "Missing Node"
 
-        # Position: center_x is the center of the node.
-        # Canvas x is the top-left corner.
         x = center_x - (self.NODE_WIDTH // 2)
 
         canvas_node = CanvasNode(
@@ -223,52 +266,3 @@ class ObsidianCanvasExporter:
             text=text,
         )
         self.nodes.append(canvas_node)
-
-        # If Chunk, we are done
-        if isinstance(node_id, int):
-            return
-
-        # If SummaryNode, process children
-        summary_node = tree.all_nodes.get(str(node_id))
-        if str(node_id) == tree.root_node.id:
-            summary_node = tree.root_node
-
-        if not summary_node:
-            return
-
-        children = summary_node.children_indices
-        if not children:
-            return
-
-        # Calculate starting x for children
-        # We want to center the children block under the parent
-        # The children block width is what we calculated in _calculate_subtree_width
-        # But wait, subtree_width logic in step 1 was: max(NODE_WIDTH, children_total_width)
-        # So we need the actual children total width to center them.
-
-        children_widths = [self._subtree_widths[self._get_node_id_str(c)] for c in children]
-        children_block_width = sum(children_widths) + self.GAP_X * (len(children_widths) - 1)
-
-        start_x = center_x - (children_block_width / 2)
-        current_x = start_x
-
-        next_y = y + self.NODE_HEIGHT + self.GAP_Y
-
-        for child_idx in children:
-            child_id_str = self._get_node_id_str(child_idx)
-            child_width = self._subtree_widths[child_id_str]
-
-            # Child center
-            child_center_x = current_x + (child_width / 2)
-
-            # Recurse
-            self._assign_positions(child_idx, int(child_center_x), next_y, tree)
-
-            # Create Edge
-            edge = CanvasEdge(
-                id=f"edge_{node_id_str}_{child_id_str}", from_node=node_id_str, to_node=child_id_str
-            )
-            self.edges.append(edge)
-
-            # Advance x
-            current_x += child_width + self.GAP_X

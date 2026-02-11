@@ -1,37 +1,88 @@
+from typing import Any
+from unittest.mock import MagicMock
+
 from domain_models.config import ProcessingConfig
-from matome.engines.token_chunker import JapaneseTokenChunker
-from matome.utils.text import normalize_text, split_sentences
+from domain_models.manifest import SummaryNode
+from domain_models.metadata import DIKWLevel, NodeMetadata
+from matome.agents.summarizer import SummarizationAgent
 
 
-def test_uat_scenario_02_ingestion_cleaning() -> None:
-    """Scenario 02: Text Ingestion & Cleaning."""
-    text = "１２３ＡＢＣ"
-    cleaned = normalize_text(text)
-    assert cleaned == "123ABC"
+def test_uat_c01_01_data_model_robustness() -> None:
+    """
+    Scenario ID: C01-01 (Data Model Robustness)
+    Objective: Verify that the new NodeMetadata schema correctly handles data integrity and backward compatibility.
+    """
+    # 1. Positive Test
+    node_meta = NodeMetadata(dikw_level=DIKWLevel.WISDOM)
+    assert node_meta.dikw_level == DIKWLevel.WISDOM
+
+    # 2. Serialization check
+    json_str = node_meta.model_dump_json()
+    assert "wisdom" in json_str
+    restored = NodeMetadata.model_validate_json(json_str)
+    assert restored.dikw_level == DIKWLevel.WISDOM
+
+    # 3. Migration Test
+    # Create a dictionary mimicking an old node: {'text': '...', 'metadata': {'source': 'file.txt'}}
+    # Pass this to SummaryNode. Verify that node.metadata.dikw_level defaults to 'data' and the source field is preserved.
+    node_data: dict[str, Any] = {
+        "id": "test_id",
+        "text": "test text",
+        "level": 1,
+        "children_indices": [0],
+        "metadata": {"source": "file.txt"}
+    }
+    node = SummaryNode(**node_data)
+    assert node.metadata.dikw_level == DIKWLevel.DATA
+    assert node.metadata.source == "file.txt" # type: ignore[attr-defined]
 
 
-def test_uat_scenario_03_sentence_splitting() -> None:
-    """Scenario 03: Japanese Sentence Splitting."""
-    text = "「これはテストです。」と彼は言った。次の文です！"
-    sentences = split_sentences(text)
+def test_uat_c01_02_strategy_injection() -> None:
+    """
+    Scenario ID: C01-02 (Strategy Injection)
+    Objective: Verify that the SummarizationAgent functionality remains unchanged while using the new Strategy pattern.
+    """
+    config = ProcessingConfig()
 
-    # Ideally:
-    # 1. 「これはテストです。」と彼は言った。
-    # 2. 次の文です！
+    # 1. Initialize SummarizationAgent without arguments (should default to BaseStrategy)
+    # Using mock LLM to avoid API call
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = MagicMock(content="DEFAULT SUMMARY")
 
-    # Cycle 01 spec accepts simple splitting even if it breaks inside quotes.
-    # We assert that "次の文です！" is a separate sentence at the end.
-    assert sentences[-1] == "次の文です！"
+    agent_default = SummarizationAgent(config=config, llm=mock_llm)
 
+    # Run agent.summarize
+    summary = agent_default.summarize("test text")
+    assert summary == "DEFAULT SUMMARY"
 
-def test_uat_scenario_04_chunk_size() -> None:
-    """Scenario 04: Chunk Size Management."""
-    # Long text
-    sentence = "これは長い文章のテストです。" * 10
-    text = sentence * 10
+    # Verify default strategy was used -> BaseSummaryStrategy uses COD template
+    # We inspect the call args to see if COD template was used
+    # Messages is the first argument to invoke
+    args, _ = mock_llm.invoke.call_args
+    assert "high-density summary" in args[0][0].content.lower()
 
-    chunker = JapaneseTokenChunker()
-    config = ProcessingConfig(max_tokens=50)  # Small limit to force chunking
-    chunks = list(chunker.split_text(text, config))
+    # 2. Initialize SummarizationAgent with a custom TestStrategy
+    class PirateStrategy:
+        def create_prompt(self, context_chunks: list[str], current_level: int) -> str:
+            return "Ahoy matey: " + " ".join(context_chunks)
 
-    assert len(chunks) > 1
+        def parse_output(self, llm_output: str) -> str:
+            return "PIRATE SAYS: " + llm_output
+
+    pirate_strategy = PirateStrategy()
+
+    # Reset mock
+    mock_llm.reset_mock()
+    mock_llm.invoke.return_value = MagicMock(content="TREASURE")
+
+    # Mypy no longer complains about prompt_strategy arg
+    agent_pirate = SummarizationAgent(config=config, llm=mock_llm, prompt_strategy=pirate_strategy)
+
+    summary_pirate = agent_pirate.summarize("Island")
+
+    # Verify custom prompt
+    args, _ = mock_llm.invoke.call_args
+    assert "Ahoy matey: Island" in args[0][0].content
+
+    # Verify custom parsing
+    assert summary_pirate == "PIRATE SAYS: TREASURE"

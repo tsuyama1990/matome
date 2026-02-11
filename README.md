@@ -80,16 +80,15 @@ graph TD
 ### 1. Generate a Knowledge Tree
 Process a raw text file into a DIKW database.
 ```bash
-# Using the new DIKW mode
-uv run matome run data/my_book.txt --mode dikw
+# Basic usage (Uses default COD summarization strategy)
+uv run matome run data/my_book.txt
 ```
 
-### 2. Launch the Canvas
+### 2. Launch the Canvas (Coming Soon)
 Open the interactive GUI to explore and refine the knowledge.
 ```bash
-uv run matome canvas results/chunks.db
+# uv run matome canvas results/chunks.db
 ```
-This will start a local server (typically at `http://localhost:5006`).
 
 ## Development Workflow
 

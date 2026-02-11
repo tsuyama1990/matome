@@ -5,6 +5,7 @@ from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
+from domain_models.metadata import DIKWLevel, NodeMetadata
 from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
@@ -112,8 +113,6 @@ class RaptorEngine:
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
 
-        all_summaries: dict[str, SummaryNode] = {}
-
         # Use provided store or create a temporary one
         # If provided, we wrap it in a nullcontext so it doesn't close on exit
         store_ctx: contextlib.AbstractContextManager[DiskChunkStore] = (
@@ -129,17 +128,16 @@ class RaptorEngine:
             l0_ids = list(current_level_ids)
 
             current_level_ids = self._process_recursion(
-                clusters, current_level_ids, active_store, all_summaries
+                clusters, current_level_ids, active_store
             )
 
-            return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
+            return self._finalize_tree(current_level_ids, active_store, l0_ids)
 
     def _process_recursion(
         self,
         clusters: list[Cluster],
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
         start_level: int = 0,
     ) -> list[NodeID]:
         """
@@ -158,20 +156,8 @@ class RaptorEngine:
 
             # Force reduction if clustering returns same number of clusters as nodes
             if len(clusters) == node_count and node_count > 1:
-                logger.warning(
-                    f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
-                )
-                # Fallback: Merge all into one cluster if node_count is small, else break?
-                # If we break, we stop summarization.
-                # Let's collapse to 1 cluster if small enough.
-                if node_count < 20:
-                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
-                else:
-                    # Just proceed, maybe next level will cluster better?
-                    # No, if we don't reduce, we loop forever or just summarize 1-to-1?
-                    # Summarize 1-to-1 is useless.
-                    # We MUST reduce.
-                    # Let's break for safety to avoid infinite loops if we can't reduce.
+                clusters = self._force_reduction(node_count, level, clusters)
+                if not clusters:
                     logger.error("Could not reduce nodes. Stopping recursion.")
                     break
 
@@ -188,7 +174,7 @@ class RaptorEngine:
             BATCH_SIZE = self.config.chunk_buffer_size
 
             for node in new_nodes_iter:
-                all_summaries[node.id] = node
+                # We store summaries in DB instead of keeping them in memory
                 current_level_ids.append(node.id)
                 summary_buffer.append(node)
 
@@ -268,11 +254,29 @@ class RaptorEngine:
             msg = "Clustering failed during recursion."
             raise RuntimeError(msg) from e
 
+    def _force_reduction(
+        self, node_count: int, level: int, original_clusters: list[Cluster]
+    ) -> list[Cluster]:
+        """
+        Handle scenario where clustering fails to reduce the number of nodes.
+        Attempts to force a single cluster if the node count is small.
+        """
+        logger.warning(
+            f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
+        )
+        # Fallback: Merge all into one cluster if node_count is small enough.
+        # This prevents infinite loops where layers don't reduce.
+        FORCE_REDUCTION_THRESHOLD = 20
+        if node_count < FORCE_REDUCTION_THRESHOLD:
+            return [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+
+        # If too many nodes to force merge, we must stop to prevent infinite recursion
+        return []
+
     def _finalize_tree(
         self,
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
         l0_ids: list[NodeID],
     ) -> DocumentTree:
         """
@@ -304,20 +308,39 @@ class RaptorEngine:
             if embeddings:
                 root_node_obj.embedding = embeddings[0]
                 store.update_node_embedding(root_id, embeddings[0])
-                if isinstance(root_node_obj, SummaryNode):
-                    all_summaries[str(root_id)] = root_node_obj
 
         if isinstance(root_node_obj, Chunk):
+            # Create a summary node wrapper for the single chunk
+            metadata = NodeMetadata(dikw_level=DIKWLevel.WISDOM, type="single_chunk_root")  # type: ignore[call-arg]
             root_node = SummaryNode(
                 id=str(uuid.uuid4()),
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata={"type": "single_chunk_root"},
+                metadata=metadata,
             )
-            all_summaries[root_node.id] = root_node
+            # We persist this root wrapper too
+            store.add_summaries([root_node])
         else:
             root_node = root_node_obj
+
+        # NOTE: For large trees, loading all nodes into memory for `all_nodes` might be risky.
+        # However, DocumentTree schema expects `all_nodes: dict`.
+        # This is a limitation of the current schema design for very large trees.
+        # But `all_nodes` usually refers to summary nodes, which are much fewer than chunks.
+        # Leaf chunks are not in `all_nodes` dict in DocumentTree (they are in leaf_chunk_ids).
+        # We retrieve all summaries from store.
+        # If we have 100k chunks -> ~10k summaries -> manageable in memory?
+        # A 10k summary dict is fine (few MBs).
+
+        # Retrieve all summary nodes from DB to populate all_nodes
+        # This is necessary because exporters expect it.
+        # Optimized: Only fetch IDs and minimal data? No, exporters need content.
+        # We iterate over all persisted summary nodes.
+        all_summaries = {
+            node.id: node
+            for node in store.get_all_summaries()
+        }
 
         return DocumentTree(
             root_node=root_node,
@@ -340,40 +363,50 @@ class RaptorEngine:
         Yields SummaryNodes for the next level.
         """
         for cluster in clusters:
-            children_indices: list[NodeID] = []
-            cluster_texts: list[str] = []
+            # We need to capture these in variables to pass to SummaryNode
+            children_indices_captured: list[NodeID] = []
 
-            for idx_raw in cluster.node_indices:
-                idx = int(idx_raw)
-                # Check bounds
-                if idx < 0 or idx >= len(current_level_ids):
-                    logger.warning(f"Cluster index {idx} out of bounds for current level nodes.")
-                    continue
+            # Helper to generator texts and populate children_indices_captured as side effect
+            def cluster_text_generator(
+                cluster_obj: Cluster,
+                level_ids: list[NodeID],
+                store_ref: DiskChunkStore,
+                indices_out: list[NodeID]
+            ) -> Iterator[str]:
+                for idx_raw in cluster_obj.node_indices:
+                    idx = int(idx_raw)
+                    if idx < 0 or idx >= len(level_ids):
+                        logger.warning(f"Cluster index {idx} out of bounds.")
+                        continue
 
-                node_id = current_level_ids[idx]
-                node = store.get_node(node_id)
-                if not node:
-                    continue
+                    node_id = level_ids[idx]
+                    node = store_ref.get_node(node_id)
+                    if node:
+                        indices_out.append(node_id)
+                        yield node.text
 
-                children_indices.append(node_id)
-                cluster_texts.append(node.text)
+            # Join texts efficiently
+            combined_text = "\n\n".join(
+                cluster_text_generator(cluster, current_level_ids, store, children_indices_captured)
+            )
 
-            if not cluster_texts:
-                logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
+            if not combined_text:
+                logger.warning(f"Cluster {cluster.id} has no text to summarize.")
                 continue
 
-            # Note: For very large clusters, joining texts might still be memory intensive.
-            # But the summarizer typically takes a string.
-            combined_text = "\n\n".join(cluster_texts)
             summary_text = self.summarizer.summarize(combined_text, self.config)
 
             node_id_str = str(uuid.uuid4())
+
+            # Use NodeMetadata
+            metadata = NodeMetadata(cluster_id=cluster.id)  # type: ignore[call-arg]
+
             summary_node = SummaryNode(
                 id=node_id_str,
                 text=summary_text,
                 level=level,
-                children_indices=children_indices,
-                metadata={"cluster_id": cluster.id},
+                children_indices=children_indices_captured,
+                metadata=metadata,
             )
 
             yield summary_node

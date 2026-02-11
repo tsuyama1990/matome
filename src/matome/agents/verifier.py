@@ -1,14 +1,15 @@
 """
-Verification Agent module.
-This module implements the hallucination verification logic using an LLM.
+Module for verifying the accuracy of generated summaries using an LLM.
 """
 
 import json
 import logging
 import uuid
+from typing import Any
 
-from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr, ValidationError
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 class VerifierAgent:
     """
-    Agent responsible for verifying summary content against source text.
+    Agent responsible for verifying summaries against source text.
     """
 
     def __init__(self, config: ProcessingConfig, llm: ChatOpenAI | None = None) -> None:
@@ -31,27 +32,26 @@ class VerifierAgent:
 
         Args:
             config: Processing configuration.
-            llm: Optional pre-configured LLM instance.
+            llm: Optional LLM instance for testing.
         """
         self.config = config
         self.model_name = config.verification_model
 
+        # Determine API key and Base URL
         api_key = get_openrouter_api_key()
         base_url = get_openrouter_base_url()
 
         self.mock_mode = api_key == "mock"
-        self.llm: ChatOpenAI | None = None
 
         if llm:
-            self.llm = llm
+            self.llm: ChatOpenAI | None = llm
         elif api_key and not self.mock_mode:
             self.llm = ChatOpenAI(
                 model=self.model_name,
-                api_key=api_key,
+                api_key=SecretStr(api_key),
                 base_url=base_url,
-                temperature=0.0,  # Strict verification
+                temperature=0.0,  # Deterministic for verification
                 max_retries=config.max_retries,
-                model_kwargs={"response_format": {"type": "json_object"}},  # Enforce JSON
             )
         else:
             self.llm = None
@@ -61,57 +61,55 @@ class VerifierAgent:
         Verify the summary against the source text.
 
         Args:
-            summary: The generated summary.
-            source_text: The original source text (or combined chunks).
+            summary: The generated summary to verify.
+            source_text: The original text chunks used to generate the summary.
 
         Returns:
-            VerificationResult containing score and details.
+            VerificationResult object containing score and details.
+
+        Raises:
+            VerificationError: If verification fails.
         """
         request_id = str(uuid.uuid4())
 
-        if not summary or not source_text:
-            logger.warning(f"[{request_id}] Empty summary or source text. Skipping verification.")
-            return VerificationResult(
-                score=0.0, model_name="Skipped", unsupported_claims=["Empty Input"]
-            )
-
         if self.mock_mode:
-            logger.info(f"[{request_id}] Mock mode enabled. Returning passed verification.")
-            return VerificationResult(
-                score=1.0, model_name="Mock", details=[], unsupported_claims=[]
-            )
+            logger.info(f"[{request_id}] Mock mode enabled. Returning perfect verification.")
+            return VerificationResult(score=1.0, details=[], unsupported_claims=[], model_name="mock")
 
         if not self.llm:
-            msg = f"[{request_id}] LLM not initialized. Cannot perform verification."
+            msg = "LLM not initialized (missing API Key?). Cannot perform verification."
             logger.error(msg)
             raise VerificationError(msg)
 
+        # Truncate source text if too long (naive approach, but better than crashing)
+        # Using 100k chars as reasonable limit for typical LLM context windows
+        MAX_VERIFICATION_CHARS = 100_000
+        if len(source_text) > MAX_VERIFICATION_CHARS:
+            logger.warning(
+                f"Source text too long for verification ({len(source_text)} chars). "
+                f"Truncating to {MAX_VERIFICATION_CHARS}."
+            )
+            source_text = source_text[:MAX_VERIFICATION_CHARS]
+
+        prompt = VERIFICATION_TEMPLATE.format(source_text=source_text, summary_text=summary)
+        messages = [HumanMessage(content=prompt)]
+
         try:
-            prompt = VERIFICATION_TEMPLATE.format(source_text=source_text, summary_text=summary)
-            messages = [HumanMessage(content=prompt)]
-
-            response = self._invoke_llm(messages, self.config, request_id)
-            return self._process_response(response, request_id)
-
+            response_content = self._invoke_llm(messages, request_id)
+            return self._parse_response(response_content, request_id)
         except Exception as e:
             logger.exception(f"[{request_id}] Verification failed.")
-            if isinstance(e, VerificationError):
-                raise
-
-            # Basic error categorization
-            err_str = str(e).lower()
-            if "context_length_exceeded" in err_str:
-                msg = f"Verification failed: Context length exceeded. (Source length: {len(source_text)})"
-            elif "rate_limit" in err_str:
-                msg = "Verification failed: Rate limit exceeded."
-            else:
-                msg = f"Verification failed: {e}"
-
+            error_str = str(e).lower()
+            if "context_length_exceeded" in error_str:
+                msg = "Context length exceeded during verification."
+                raise VerificationError(msg) from e
+            if "rate_limit" in error_str:
+                msg = "Rate limit exceeded during verification."
+                raise VerificationError(msg) from e
+            msg = f"Verification failed: {e}"
             raise VerificationError(msg) from e
 
-    def _invoke_llm(
-        self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str
-    ) -> BaseMessage:
+    def _invoke_llm(self, messages: list[HumanMessage], request_id: str) -> str:
         """Invoke LLM with retries."""
         if not self.llm:
             msg = "LLM not initialized"
@@ -119,7 +117,7 @@ class VerifierAgent:
 
         response = None
         for attempt in Retrying(
-            stop=stop_after_attempt(config.max_retries),
+            stop=stop_after_attempt(self.config.max_retries),
             wait=wait_exponential(multiplier=1, min=2, max=10),
             reraise=True,
         ):
@@ -128,44 +126,33 @@ class VerifierAgent:
                     logger.warning(
                         f"[{request_id}] Retrying Verification LLM call (Attempt {attempt.retry_state.attempt_number})"
                     )
-
-                # Check invoke capability (standard ChatOpenAI has it)
-                if hasattr(self.llm, "invoke"):
-                    response = self.llm.invoke(messages)
-                else:
-                    response = self.llm(messages)  # type: ignore[operator]
+                response = self.llm.invoke(messages)
 
         if not response:
-            msg = f"[{request_id}] No response received from LLM."
+            msg = "No response from LLM"
             raise VerificationError(msg)
 
-        return response
-
-    def _process_response(self, response: BaseMessage, request_id: str) -> VerificationResult:
-        """Parse JSON response from LLM."""
         content = response.content
-        if not isinstance(content, str):
-            content = str(content)
+        if isinstance(content, str):
+            return content
+        return str(content)
 
-        # Basic cleanup for JSON
-        content = content.strip()
-        if content.startswith("```json"):
-            content = content[7:]
-        if content.endswith("```"):
-            content = content[:-3]
+    def _parse_response(self, content: str, request_id: str) -> VerificationResult:
+        """Parse JSON response from LLM."""
+        clean_content = content.strip()
+        if clean_content.startswith("```json"):
+            clean_content = clean_content[7:]
+        if clean_content.startswith("```"):
+            clean_content = clean_content[3:]
+        if clean_content.endswith("```"):
+            clean_content = clean_content[:-3]
 
         try:
-            data = json.loads(content)
-            # Ensure model name is set
-            if "model_name" not in data:
-                data["model_name"] = self.model_name
-
+            # Parse into dict first to inject model_name
+            data: dict[str, Any] = json.loads(clean_content.strip())
+            data["model_name"] = self.model_name
             return VerificationResult(**data)
-        except json.JSONDecodeError as e:
-            logger.exception(f"[{request_id}] Failed to parse JSON response: {content}")
-            msg = f"Verification failed: Model returned invalid JSON. Response was: {content[:100]}..."
-            raise VerificationError(msg) from e
-        except Exception as e:
-            logger.exception(f"[{request_id}] Validation failed for response data.")
-            msg = f"Invalid verification result structure: {e}"
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.exception(f"[{request_id}] Failed to parse verification result: {content}")
+            msg = f"Invalid JSON response from verification model: {e}"
             raise VerificationError(msg) from e

@@ -1,7 +1,9 @@
 import logging
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from domain_models.metadata import NodeMetadata
 from domain_models.types import Metadata, NodeID
 
 # Configure logger
@@ -46,15 +48,11 @@ class Chunk(BaseModel):
         Also check embedding validity if present.
         """
         # Ensure text is not just whitespace and not empty
-        # We strip to check, but we don't modify the actual text field here as it might be intentional?
-        # No, RAPTOR chunks should contain meaningful content.
         if not self.text or not self.text.strip():
             msg = "Chunk text cannot be empty or whitespace only."
             logger.error(msg)
             raise ValueError(msg)
 
-        # Simplified validation as requested by feedback
-        # Empty text is already rejected above, so we can be strict about range
         if self.start_char_idx > self.end_char_idx:
             msg = (
                 f"Invalid character range: start ({self.start_char_idx}) cannot be greater than "
@@ -63,10 +61,6 @@ class Chunk(BaseModel):
             logger.error(msg)
             raise ValueError(msg)
 
-        # Embedding Validation
-        # Explicit check for None is implied by logic: if self.embedding is not None, we validate it.
-        # If the schema allows None, we accept None.
-        # However, if it's NOT None, we strictly validate content.
         if self.embedding is not None:
             if len(self.embedding) == 0:
                 msg = "Embedding cannot be an empty list if provided."
@@ -94,9 +88,45 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        default_factory=NodeMetadata, description="Optional extra info (e.g., cluster ID)."
     )
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def convert_dict_to_metadata(cls, v: Any) -> Any:
+        """
+        Convert dictionary to NodeMetadata for backward compatibility.
+        """
+        if isinstance(v, dict):
+            return NodeMetadata(**v)
+        return v
+
+    @field_validator("children_indices")
+    @classmethod
+    def validate_children_indices(cls, v: list[NodeID]) -> list[NodeID]:
+        """Validate children indices are valid NodeIDs (int or str) and not empty."""
+        if not v:
+            # A summary node MUST have children by definition (it summarizes them).
+            # Except maybe a root node of a single-chunk doc?
+            # RaptorEngine._finalize_tree creates single_chunk_root with children_indices=[0].
+            # So empty is likely invalid state.
+            msg = "SummaryNode must have at least one child."
+            raise ValueError(msg)
+
+        for idx in v:
+            if isinstance(idx, int):
+                if idx < 0:
+                    msg = f"Child Chunk index {idx} cannot be negative."
+                    raise ValueError(msg)
+            elif isinstance(idx, str):
+                if not idx.strip():
+                    msg = "Child Node ID cannot be empty string."
+                    raise ValueError(msg)
+            else:
+                msg = f"Invalid child index type: {type(idx)}. Must be int or str."
+                raise TypeError(msg)
+        return v
 
 
 class Cluster(BaseModel):
