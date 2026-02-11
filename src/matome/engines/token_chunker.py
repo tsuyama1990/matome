@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from functools import lru_cache
 
 import tiktoken
@@ -47,7 +47,9 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
         raise ValueError(msg) from e
 
 
-def _perform_chunking(text: str, max_tokens: int, model_name: str) -> Iterator[Chunk]:
+def _perform_chunking(
+    text: str | Iterable[str], max_tokens: int, model_name: str
+) -> Iterator[Chunk]:
     """
     Core chunking logic using streaming.
     """
@@ -68,8 +70,15 @@ def _perform_chunking(text: str, max_tokens: int, model_name: str) -> Iterator[C
             metadata={},
         )
 
-    # Use iterator for normalized sentences to allow streaming
-    for sentence in iter_normalized_sentences(text):
+    # Helper to iterate sentences from stream or string
+    def sentence_iterator(source: str | Iterable[str]) -> Iterator[str]:
+        if isinstance(source, str):
+            yield from iter_normalized_sentences(source)
+        else:
+            for item in source:
+                yield from iter_normalized_sentences(item)
+
+    for sentence in sentence_iterator(text):
         sentence_tokens = len(tokenizer.encode(sentence))
 
         if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:
@@ -110,13 +119,9 @@ class JapaneseTokenChunker:
             config = ProcessingConfig()
 
         # Ensure full Pydantic validation runs even if manually instantiated
-        # This catches any other invalid fields beyond just tokenizer_model
         if not isinstance(config, ProcessingConfig):
-            # Try to validate/coerce
             config = ProcessingConfig.model_validate(config)
 
-        # Explicitly validate against whitelist before usage, ensuring security
-        # even if config validation was somehow bypassed (though ProcessingConfig enforces it).
         if config.tokenizer_model not in ALLOWED_TOKENIZER_MODELS:
             msg = (
                 f"Tokenizer model '{config.tokenizer_model}' is not allowed. "
@@ -133,12 +138,12 @@ class JapaneseTokenChunker:
             return 0
         return len(self.tokenizer.encode(text))
 
-    def split_text(self, text: str, config: ProcessingConfig) -> Iterator[Chunk]:
+    def split_text(self, text: str | Iterable[str], config: ProcessingConfig) -> Iterator[Chunk]:
         """
         Split text into chunks (streaming).
 
         Args:
-            text: Raw input text.
+            text: Raw input text or iterable of text segments.
             config: Configuration including max_tokens and tokenizer_model.
 
         Yields:
@@ -147,8 +152,6 @@ class JapaneseTokenChunker:
         if not text:
             logger.warning("Empty input text provided to split_text. Yielding nothing.")
             return
-
-        logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
 
         chunking_model_name = self.tokenizer.name  # e.g. "cl100k_base"
 

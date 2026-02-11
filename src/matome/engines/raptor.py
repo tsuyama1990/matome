@@ -80,25 +80,31 @@ class RaptorEngine:
 
         return clusters, current_level_ids
 
-    def run(self, text: str, store: DiskChunkStore | None = None) -> DocumentTree:
+    def run(self, text: str | Iterable[str], store: DiskChunkStore | None = None) -> DocumentTree:
         """
         Execute the RAPTOR pipeline.
 
         Args:
-            text: Input text to process.
+            text: Input text (string or iterable of chunks/lines).
             store: Optional persistent store. If None, a temporary store is used (and closed on exit).
 
         Raises:
             ValueError: If input text is empty or invalid.
         """
-        if not text or not isinstance(text, str):
-            msg = "Input text must be a non-empty string."
+        # Validate text input
+        if text is None:
+            msg = "Input text must be non-None."
             raise ValueError(msg)
 
-        # Length validation
-        if len(text) > self.config.max_input_length:
-            msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
-            raise ValueError(msg)
+        if isinstance(text, str):
+            if not text:
+                msg = "Input text must be a non-empty string."
+                raise ValueError(msg)
+            # Length validation for single string
+            if len(text) > self.config.max_input_length:
+                msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
+                raise ValueError(msg)
+        # If iterable, validation happens during consumption or assumed safe (chunked)
 
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)

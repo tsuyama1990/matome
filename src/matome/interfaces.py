@@ -36,7 +36,9 @@ class Chunker(Protocol):
     manageable segments (chunks) while preserving semantic meaning as much as possible.
     """
 
-    def split_text(self, text: str, config: ProcessingConfig) -> Iterable[Chunk]:
+    def split_text(
+        self, text: str | Iterable[str], config: ProcessingConfig
+    ) -> Iterable[Chunk]:
         """
         Split text into chunks.
 
@@ -44,7 +46,7 @@ class Chunker(Protocol):
         the configuration provided (e.g., max_tokens).
 
         Args:
-            text: The full input text to be processed. If empty, should yield nothing.
+            text: The full input text or an iterable of strings (streaming input).
             config: Configuration parameters including `max_tokens` and `overlap`.
 
         Yields:
