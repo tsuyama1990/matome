@@ -96,6 +96,8 @@ def test_refine_node_store_failure(store: DiskChunkStore, agent: SummarizationAg
 
     # Mock store.add_summary to raise Exception
     # We use patch.object for cleaner and safer mocking that mypy accepts
-    with patch.object(store, "add_summary", side_effect=Exception("DB Error")):
-        with pytest.raises(Exception, match="DB Error"):
-            engine.refine_node(node_id, "instruction")
+    with (
+        patch.object(store, "add_summary", side_effect=Exception("DB Error")),
+        pytest.raises(Exception, match="DB Error"),
+    ):
+        engine.refine_node(node_id, "instruction")
