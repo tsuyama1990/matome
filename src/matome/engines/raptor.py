@@ -4,8 +4,8 @@ import uuid
 from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
-from domain_models.types import NodeID
+from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel, NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
 from matome.utils.compat import batched
@@ -313,7 +313,7 @@ class RaptorEngine:
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata={"type": "single_chunk_root"},
+                metadata=NodeMetadata(dikw_level=DIKWLevel.DATA, type="single_chunk_root"),
             )
             all_summaries[root_node.id] = root_node
         else:
@@ -373,7 +373,7 @@ class RaptorEngine:
                 text=summary_text,
                 level=level,
                 children_indices=children_indices,
-                metadata={"cluster_id": cluster.id},
+                metadata=NodeMetadata(cluster_id=cluster.id),
             )
 
             yield summary_node

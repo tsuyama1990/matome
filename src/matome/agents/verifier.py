@@ -9,6 +9,7 @@ import uuid
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
@@ -47,7 +48,7 @@ class VerifierAgent:
         elif api_key and not self.mock_mode:
             self.llm = ChatOpenAI(
                 model=self.model_name,
-                api_key=api_key,
+                api_key=SecretStr(api_key),
                 base_url=base_url,
                 temperature=0.0,  # Strict verification
                 max_retries=config.max_retries,

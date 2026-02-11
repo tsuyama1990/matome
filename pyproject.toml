@@ -23,8 +23,6 @@ dependencies = [
     "sentence-transformers>=2.7.0",
     "mypy>=1.19.1",
     "matplotlib>=3.10.8",
-    "panel>=1.0.0",
-    "watchfiles>=0.21.0",
 ]
 
 [project.scripts]

@@ -11,13 +11,14 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from domain_models.constants import PROMPT_INJECTION_PATTERNS
+from matome.agents.strategies import BaseSummaryStrategy, PromptStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +28,23 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(self, config: ProcessingConfig, llm: ChatOpenAI | None = None) -> None:
+    def __init__(
+        self,
+        config: ProcessingConfig,
+        llm: ChatOpenAI | None = None,
+        strategy: PromptStrategy | None = None,
+    ) -> None:
         """
         Initialize the SummarizationAgent.
 
         Args:
             config: Processing configuration containing model name, retries, etc.
             llm: Optional pre-configured LLM instance. If None, it will be initialized from config.
+            strategy: Optional prompt generation strategy. Defaults to BaseSummaryStrategy.
         """
         self.config = config
         self.model_name = config.summarization_model
+        self.strategy = strategy or BaseSummaryStrategy()
 
         # Determine API key and Base URL
         api_key = get_openrouter_api_key()
@@ -54,7 +62,7 @@ class SummarizationAgent:
         elif api_key and not self.mock_mode:
             self.llm = ChatOpenAI(
                 model=self.model_name,
-                api_key=api_key,
+                api_key=SecretStr(api_key),
                 base_url=base_url,
                 temperature=config.llm_temperature,
                 max_retries=config.max_retries,
@@ -100,7 +108,7 @@ class SummarizationAgent:
             )
 
         try:
-            prompt = COD_TEMPLATE.format(context=safe_text)
+            prompt = self.strategy.create_prompt(safe_text)
             messages = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, effective_config, request_id)

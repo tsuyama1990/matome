@@ -1,6 +1,7 @@
+import time
+
 import torch
 from sentence_transformers import SentenceTransformer
-import time
 
 print(f"CUDA available: {torch.cuda.is_available()}")
 if torch.cuda.is_available():
