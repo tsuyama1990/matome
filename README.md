@@ -63,11 +63,16 @@ uv run matome run data/my_book.txt
 **Options:**
 -   `--output-dir`, `-o`: Directory to save results (default: `results`).
 -   `--model`, `-m`: Summarization model (default: `gpt-4o-mini`).
+-   `--mode`: Processing mode. Use `dikw` for Semantic Zooming (Wisdom/Knowledge/Action) or `default` for standard summaries (default: `default`).
 -   `--verify/--no-verify`: Enable/Disable hallucination verification (default: Enabled).
 
 **Example:**
 ```bash
+# Standard Summarization
 uv run matome run document.txt -o my_summary --model gpt-4o
+
+# DIKW Generation (Semantic Zooming)
+uv run matome run document.txt -o my_dikw_summary --mode dikw
 ```
 
 ## Architecture

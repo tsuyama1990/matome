@@ -1,89 +1,123 @@
-from collections.abc import Iterator
+from typing import cast
 from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
-from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster
-from matome.agents.strategies import ActionStrategy, KnowledgeStrategy
+from domain_models.config import ProcessingConfig, ProcessingMode
+from domain_models.manifest import Cluster
+from matome.agents.strategies import (
+    ActionStrategy,
+    BaseSummaryStrategy,
+    KnowledgeStrategy,
+    WisdomStrategy,
+)
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.interfaces import Chunker, Clusterer, Summarizer
 
 
 @pytest.fixture
-def mock_dependencies() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
-    chunker = create_autospec(Chunker, instance=True)
-    embedder = create_autospec(EmbeddingService, instance=True)
-    clusterer = create_autospec(Clusterer, instance=True)
-    summarizer = create_autospec(Summarizer, instance=True)
-    return chunker, embedder, clusterer, summarizer
+def mock_dependencies() -> tuple[Chunker, EmbeddingService, Clusterer, Summarizer]:
+    return (
+        create_autospec(Chunker, instance=True),
+        create_autospec(EmbeddingService, instance=True),
+        create_autospec(Clusterer, instance=True),
+        create_autospec(Summarizer, instance=True),
+    )
 
 
-@pytest.fixture
-def config() -> ProcessingConfig:
-    return ProcessingConfig()
-
-
-def test_raptor_strategies_and_levels(
-    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+def test_strategy_selection_dikw(
+    mock_dependencies: tuple[Chunker, EmbeddingService, Clusterer, Summarizer],
 ) -> None:
+    """Verify DIKW strategy selection logic."""
     chunker, embedder, clusterer, summarizer = mock_dependencies
+    config = ProcessingConfig(processing_mode=ProcessingMode.DIKW)
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
-    # Setup 3 chunks
-    chunks = [
-        Chunk(
-            index=i, text=f"Chunk {i}", start_char_idx=i, end_char_idx=i + 1, embedding=[0.1]
-        )
-        for i in range(3)
-    ]
-    chunker.split_text.return_value = iter(chunks)
-    embedder.embed_chunks.return_value = iter(chunks)
+    # Test Level 1 -> Action
+    s, _ = engine._get_strategy_for_level(1)
+    assert isinstance(s, ActionStrategy)
 
-    cluster_l0_0 = Cluster(id=0, level=0, node_indices=[0, 1])
-    cluster_l0_1 = Cluster(id=1, level=0, node_indices=[2])
-    cluster_l1_0 = Cluster(id=0, level=1, node_indices=[0, 1])
+    # Test Level 2 -> Knowledge
+    s, _ = engine._get_strategy_for_level(2)
+    assert isinstance(s, KnowledgeStrategy)
 
-    # Mock clusterer side effect
-    call_count = 0
+    # Test Level 3 -> Wisdom
+    s, _ = engine._get_strategy_for_level(3)
+    assert isinstance(s, WisdomStrategy)
 
-    def cluster_side_effect(
-        embeddings: Iterator[list[float]], config: ProcessingConfig
-    ) -> list[Cluster]:
-        nonlocal call_count
-        call_count += 1
-        _ = list(embeddings)  # consume
-        if call_count == 1:
-            return [cluster_l0_0, cluster_l0_1]
-        if call_count == 2:
-            return [cluster_l1_0]
-        return []
 
-    clusterer.cluster_nodes.side_effect = cluster_side_effect
+def test_strategy_selection_default(
+    mock_dependencies: tuple[Chunker, EmbeddingService, Clusterer, Summarizer],
+) -> None:
+    """Verify Default strategy selection logic (preserves backward compatibility)."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    config = ProcessingConfig(processing_mode=ProcessingMode.DEFAULT)
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
-    # Mock summarizer
-    summarizer.summarize.return_value = "Summary"
+    # Test Level 1 -> Base
+    s, _ = engine._get_strategy_for_level(1)
+    assert isinstance(s, BaseSummaryStrategy)
 
-    # Mock embed_strings for summaries (needs to yield for each summary generated)
-    embedder.embed_strings.side_effect = lambda texts: iter([[0.2]] * len(texts))
+    # Test Level 3 -> Base
+    s, _ = engine._get_strategy_for_level(3)
+    assert isinstance(s, BaseSummaryStrategy)
 
-    engine.run("text")
 
-    # Expect 3 summarizer calls
-    assert summarizer.summarize.call_count == 3
-    calls = summarizer.summarize.call_args_list
+def test_summarize_clusters_integration(
+    mock_dependencies: tuple[Chunker, EmbeddingService, Clusterer, Summarizer],
+) -> None:
+    """Verify _summarize_clusters calls summarizer with correct strategy."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
 
-    # Level 1 calls
-    args1, kwargs1 = calls[0]
-    assert kwargs1['level'] == 1
-    assert isinstance(kwargs1['strategy'], ActionStrategy)
+    # Cast summarizer.summarize to MagicMock to satisfy mypy
+    mock_summarize = cast(MagicMock, summarizer.summarize)
+    mock_summarize.return_value = "summary text"
 
-    args2, kwargs2 = calls[1]
-    assert kwargs2['level'] == 1
-    assert isinstance(kwargs2['strategy'], ActionStrategy)
+    store = MagicMock()
 
-    # Level 2 call
-    args3, kwargs3 = calls[2]
-    assert kwargs3['level'] == 2
-    assert isinstance(kwargs3['strategy'], KnowledgeStrategy)
+    # Setup mock node
+    store.get_node.return_value = MagicMock(text="content")
+    cluster = Cluster(id="c1", level=0, node_indices=[0])
+
+    # 1. DIKW Mode
+    config_dikw = ProcessingConfig(processing_mode=ProcessingMode.DIKW)
+    engine_dikw = RaptorEngine(chunker, embedder, clusterer, summarizer, config_dikw)
+
+    # Consume generator
+    list(engine_dikw._summarize_clusters([cluster], [0], store, level=1))
+
+    # Check call
+    _, kwargs = mock_summarize.call_args
+    assert isinstance(kwargs['strategy'], ActionStrategy)
+
+    # 2. Default Mode
+    config_default = ProcessingConfig(processing_mode=ProcessingMode.DEFAULT)
+    engine_default = RaptorEngine(chunker, embedder, clusterer, summarizer, config_default)
+
+    list(engine_default._summarize_clusters([cluster], [0], store, level=1))
+
+    _, kwargs = mock_summarize.call_args
+    assert isinstance(kwargs['strategy'], BaseSummaryStrategy)
+
+
+def test_summarize_clusters_empty_content(
+    mock_dependencies: tuple[Chunker, EmbeddingService, Clusterer, Summarizer],
+) -> None:
+    """Verify _summarize_clusters handles clusters with no content gracefully."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    store = MagicMock()
+
+    # Setup mock store to return None for node (missing node)
+    store.get_node.return_value = None
+    cluster = Cluster(id="c1", level=0, node_indices=[0])
+
+    config = ProcessingConfig()
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+    # Consume generator - should yield nothing as content is missing
+    results = list(engine._summarize_clusters([cluster], [0], store, level=1))
+
+    assert len(results) == 0
+    # Summarizer should NOT be called
+    cast(MagicMock, summarizer.summarize).assert_not_called()

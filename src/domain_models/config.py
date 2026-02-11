@@ -1,5 +1,5 @@
 import os
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -17,6 +17,13 @@ from domain_models.constants import (
 
 class ClusteringAlgorithm(Enum):
     GMM = "gmm"
+
+
+class ProcessingMode(StrEnum):
+    """Mode of processing for the pipeline."""
+
+    DEFAULT = "default"
+    DIKW = "dikw"
 
 
 def _safe_getenv(key: str, default: str) -> str:
@@ -45,6 +52,12 @@ class ProcessingConfig(BaseModel):
     tokenizer_model: str = Field(
         default_factory=lambda: _safe_getenv("TOKENIZER_MODEL", DEFAULT_TOKENIZER),
         description="Tokenizer model/encoding name to use.",
+    )
+
+    # Processing Mode
+    processing_mode: ProcessingMode = Field(
+        default=ProcessingMode.DEFAULT,
+        description="Mode of processing: 'default' (standard summarization) or 'dikw' (Data-Information-Knowledge-Wisdom hierarchy).",
     )
 
     # Semantic Chunking Configuration

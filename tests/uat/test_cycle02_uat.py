@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ProcessingConfig, ProcessingMode
 from domain_models.manifest import Chunk, Cluster
 from domain_models.types import DIKWLevel
 from matome.agents.strategies import ActionStrategy, KnowledgeStrategy, WisdomStrategy
@@ -24,7 +24,7 @@ def mock_dependencies() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
 
 @pytest.fixture
 def config() -> ProcessingConfig:
-    return ProcessingConfig()
+    return ProcessingConfig(processing_mode=ProcessingMode.DIKW)
 
 
 def make_cluster_side_effect(return_values_list: list[list[Cluster]]) -> Any:

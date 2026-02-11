@@ -69,10 +69,10 @@ ACTION_TEMPLATE = """
 The following text contains detailed information:
 {context}
 
-Please extract actionable steps, rules, and procedures.
+Extract 'Information' as a checklist of actionable steps.
+What should the reader DO tomorrow? Use bullet points.
 Format the output as a clear "How-to" guide or a checklist.
 Focus on immediate utility and execution.
-Avoid abstract theory; focus on "What to do".
 """
 
 # Knowledge Template (L2)
@@ -80,8 +80,8 @@ KNOWLEDGE_TEMPLATE = """
 The following text contains specific information and actions:
 {context}
 
-Please synthesize the underlying logic, frameworks, and mechanisms.
-Explain "Why" this works, rather than just "What" happens.
+Identify the 'Knowledge' or framework that supports the core message.
+Explain 'Why' this is true. Use analogies or logical steps.
 Avoid specific examples unless necessary to illustrate a structural concept.
 Focus on the mental model or system dynamics.
 """
@@ -91,10 +91,10 @@ WISDOM_TEMPLATE = """
 The following text contains knowledge and frameworks:
 {context}
 
-Please distill the core philosophy, lesson, or truth into a SINGLE, profound message.
-The message should be extremely concise (ideally 20-40 characters).
+Extract the core philosophical message or 'Wisdom' from this text.
+It should be a single, profound statement (20-50 chars).
+Do not use specific names or numbers.
 Strip away all context and specific details.
-Return only the aphorism or key insight.
 """
 
 # Verification Prompt Template
