@@ -1,4 +1,5 @@
 import logging
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -80,6 +81,35 @@ class Chunk(BaseModel):
         return self
 
 
+class DIKWLevel(StrEnum):
+    """Enumeration of Data, Information, Knowledge, Wisdom levels."""
+
+    WISDOM = "wisdom"
+    KNOWLEDGE = "knowledge"
+    INFORMATION = "information"
+    DATA = "data"
+
+
+class NodeMetadata(BaseModel):
+    """Metadata for a SummaryNode, tracking DIKW level and refinement."""
+
+    model_config = ConfigDict(extra="allow")
+
+    dikw_level: DIKWLevel | None = Field(
+        default=None, description="The DIKW abstraction level of this node."
+    )
+    is_user_edited: bool = Field(
+        default=False, description="Whether this node has been manually refined by a user."
+    )
+    refinement_history: list[str] = Field(
+        default_factory=list, description="History of refinement instructions applied to this node."
+    )
+    cluster_id: NodeID | None = Field(
+        default=None, description="The ID of the cluster this node summarizes."
+    )
+    type: str | None = Field(default=None, description="Type of the node (legacy support).")
+
+
 class SummaryNode(BaseModel):
     """Represents a summary node in the RAPTOR tree."""
 
@@ -94,8 +124,9 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        default_factory=NodeMetadata,
+        description="Metadata with DIKW level and refinement history.",
     )
 
 

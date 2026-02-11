@@ -9,9 +9,12 @@
 ## Key Features
 
 -   **Semantic Zooming Engine**: Automatically restructures text into a 4-layer abstraction hierarchy (Wisdom, Knowledge, Information, Data).
+-   **Prompt Strategy Pattern**: Modular summarization strategies including:
+    -   **Wisdom**: Distills text into profound aphorisms.
+    -   **Knowledge**: Extracts mental models and frameworks.
+    -   **Information**: Generates actionable checklists.
 -   **Interactive Knowledge Canvas**: A GUI (built with Panel) that allows users to explore the knowledge tree using a "Pyramid Navigation" interface.
 -   **Chat-Based Refinement**: Users can "talk" to any node in the tree to rewrite it (e.g., "Explain this for a 5-year-old"), updating the knowledge base in real-time.
--   **Reverse-DIKW Logic**: Unlike traditional summaries that lose detail, Matome preserves structure, allowing you to zoom in from an abstract aphorism down to raw evidence.
 -   **RAPTOR-Powered**: Built on the robust Recursive Abstractive Processing engine for handling long contexts.
 
 ## Architecture Overview
@@ -71,10 +74,11 @@ graph TD
 ## Usage
 
 ### Batch Generation (CLI)
-To generate a DIKW tree from a text file:
+To generate a summarization tree from a text file:
 ```bash
-uv run matome run input.txt --mode dikw
+uv run matome run input.txt
 ```
+*(Note: DIKW mode flag `--mode dikw` will be enabled in Cycle 02)*
 
 ### Interactive Canvas (GUI)
 To launch the interactive knowledge explorer:

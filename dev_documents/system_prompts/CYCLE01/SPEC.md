@@ -14,7 +14,7 @@ We will introduce a new module for strategies and refactor the existing agent.
 ```
 src/
 ├── domain_models/
-│   └── **schema.py**         # Modify: Add DIKWLevel enum and update NodeMetadata
+│   └── **manifest.py**       # Modify: Add DIKWLevel enum and update NodeMetadata
 └── matome/
     ├── agents/
     │   ├── **strategies.py** # Create: Define PromptStrategy and implementations
@@ -26,7 +26,7 @@ src/
 
 ## 3. Design Architecture
 
-### 3.1. Domain Models (`src/domain_models/schema.py`)
+### 3.1. Domain Models (`src/domain_models/manifest.py`)
 
 We need to formalize the DIKW levels and track user interactions.
 
@@ -92,7 +92,7 @@ class SummarizationAgent:
 ## 4. Implementation Approach
 
 1.  **Update Schema**:
-    - Modify `src/domain_models/schema.py` to include `DIKWLevel` and updated `NodeMetadata`.
+    - Modify `src/domain_models/manifest.py` to include `DIKWLevel` and updated `NodeMetadata`.
     - Ensure backward compatibility (fields should be optional or have defaults).
 
 2.  **Define Protocol**:
@@ -118,7 +118,7 @@ class SummarizationAgent:
     - Test `WisdomStrategy.format_prompt()`: Ensure the output string contains key constraints (e.g., "aphorism", "20-50 characters").
     - Test `KnowledgeStrategy` and `InformationStrategy` prompts similarly.
 - **Schema Tests**:
-    - Create `tests/unit/test_schema.py`.
+    - Create `tests/unit/test_store_schema.py` or similar.
     - Verify `NodeMetadata` accepts valid `DIKWLevel` values.
     - Verify validation fails for invalid levels.
 
