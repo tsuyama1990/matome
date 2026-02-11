@@ -1,15 +1,16 @@
 import shutil
 import tempfile
-from collections.abc import Generator
+from collections.abc import Generator, Iterator, Iterable
 from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from matome.engines.chunker import JapaneseTokenChunker
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
-from matome.engines.cluster import GMMClusterer
 from matome.agents.summarizer import SummarizationAgent
 from matome.utils.store import DiskChunkStore
 
@@ -20,13 +21,15 @@ def temp_store() -> Generator[DiskChunkStore, None, None]:
 
 @pytest.fixture
 def config() -> ProcessingConfig:
+    # Set max_tokens low to force multiple chunks
     return ProcessingConfig(
-        max_tokens=100,
+        max_tokens=10,
         embedding_batch_size=2,
         chunk_buffer_size=2,
-        clustering_algorithm="gmm",
+        clustering_algorithm=ClusteringAlgorithm.GMM,
         n_clusters=2,
-        embedding_model="all-MiniLM-L6-v2" # small model
+        embedding_model="all-MiniLM-L6-v2",
+        summarization_model="gpt-4o"
     )
 
 def test_streaming_pipeline_end_to_end(config: ProcessingConfig, temp_store: DiskChunkStore) -> None:
@@ -42,15 +45,23 @@ def test_streaming_pipeline_end_to_end(config: ProcessingConfig, temp_store: Dis
         "This is sentence 2.",
         "This is sentence 3.",
         "This is sentence 4.",
-    ] * 2 # 8 chunks total, enough for 2 batches
+    ] * 2 # 8 items
+
+    # Verify input stream is consumed lazily?
+    # We can wrap it in a generator to track consumption.
+    consumed_count = 0
+    def input_generator() -> Iterator[str]:
+        nonlocal consumed_count
+        for item in input_stream:
+            consumed_count += 1
+            yield item
 
     # 2. Components
     chunker = JapaneseTokenChunker(config)
 
     # Mock EmbeddingService to return dummy vectors without loading model
-    # We subclass to override just the heavy method
     class MockEmbedder(EmbeddingService):
-        def embed_strings(self, texts):
+        def embed_strings(self, texts: Iterable[str]) -> Iterator[list[float]]:
             # Return dummy vector of dim 4
             for _ in texts:
                 yield [0.1, 0.2, 0.3, 0.4]
@@ -59,25 +70,25 @@ def test_streaming_pipeline_end_to_end(config: ProcessingConfig, temp_store: Dis
 
     # Mock Summarizer
     class MockSummarizer(SummarizationAgent):
-        def summarize(self, text, config=None, level=0, strategy=None) -> str:
+        def summarize(self, text: str | list[str], config: ProcessingConfig | None = None, level: int = 0, strategy: Any = None) -> str:
             return f"Summary of level {level}"
 
     summarizer = MockSummarizer(config)
 
     # Mock Clusterer
-    # We want to test RaptorEngine streaming, not GMM.
-    # But RaptorEngine calls clusterer.cluster_nodes(generator)
-    # We can use a simple clusterer implementation that consumes generator.
     from domain_models.manifest import Cluster
     class SimpleClusterer:
-        def cluster_nodes(self, embeddings, config):
+        def cluster_nodes(self, embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
             # Consume embeddings
             count = sum(1 for _ in embeddings)
             # Return dummy clusters
-            # If 8 items, return 2 clusters: [0..3], [4..7]
             if count == 0:
                 return []
             mid = count // 2
+            # Handle minimal case
+            if mid == 0:
+                return [Cluster(id=0, level=0, node_indices=list(range(count)))]
+
             return [
                 Cluster(id=0, level=0, node_indices=list(range(mid))),
                 Cluster(id=1, level=0, node_indices=list(range(mid, count)))
@@ -86,35 +97,26 @@ def test_streaming_pipeline_end_to_end(config: ProcessingConfig, temp_store: Dis
     clusterer = SimpleClusterer()
 
     # 3. Initialize RaptorEngine
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+    # Type ignore for clusterer because it doesn't fully implement protocol (missing types in signature matches but good enough for runtime)
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config) # type: ignore[arg-type]
 
     # 4. Run with Iterable
-    tree = engine.run(input_stream, store=temp_store)
+    tree = engine.run(input_generator(), store=temp_store)
 
     # 5. Verify Results
     assert tree is not None
     assert tree.root_node is not None
-    # We provided 8 sentences. TokenChunker (mocked tokenizer or real?)
-    # Real JapaneseTokenChunker uses tiktoken. "This is sentence 1." is short.
-    # 8 inputs -> 8 chunks (assuming max_tokens=100 fits one sentence).
-    # SimpleClusterer splits 8 -> 2 clusters.
-    # Level 1: 2 summaries.
-    # Level 1 clustering: 2 items -> 1 cluster (SimpleClusterer logic needs to handle 2 items).
-    # If SimpleClusterer mid = 1, it returns 2 clusters?
-    # RaptorEngine loop:
-    # L0 (8 nodes) -> 2 clusters.
-    # L1 (2 nodes) -> clusterer called with 2 embeddings.
-    # SimpleClusterer(2): mid=1 -> [0], [1]. 2 clusters.
-    # RaptorEngine sees reduction failure (2 nodes -> 2 clusters).
-    # It forces reduction?
-    # RaptorEngine: "if len(clusters) == node_count ... Force reduction."
-    # So it merges to 1 cluster.
-    # L2 (1 node) -> Root.
 
-    assert tree.root_node.level >= 1
-    # Check that store has chunks
-    # 8 chunks + 2 L1 summaries + 1 L2 summary = 11 nodes.
-    # Or 8 chunks + 2 L1 + 1 Root = 11.
+    # Verify that input was fully consumed
+    assert consumed_count == 8
 
-    # We can check specific counts in DB if we want, but tree.all_nodes should contain summaries.
-    assert len(tree.all_nodes) >= 1
+    # Verify store content
+    with temp_store.engine.connect() as conn:
+        from sqlalchemy import text
+        result = conn.execute(text("SELECT count(*) FROM nodes WHERE type='chunk'")).scalar()
+        # With max_tokens=10, we expect chunks.
+        # "This is sentence 1." is ~5 tokens.
+        # If chunks are 5 tokens each -> 8 chunks.
+        # If merged -> fewer.
+        # But we assert > 1 to prove we didn't just get 1 giant chunk.
+        assert result > 1

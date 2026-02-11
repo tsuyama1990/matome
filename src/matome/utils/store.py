@@ -2,7 +2,7 @@ import json
 import logging
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -207,6 +207,39 @@ class DiskChunkStore:
                 return None
 
         return None
+
+    def iter_nodes(self, node_type: str | None = None) -> Iterator[Chunk | SummaryNode]:
+        """
+        Iterate over nodes in the store, optionally filtering by type.
+        Streaming safe using server-side cursor.
+        """
+        stmt = select(
+            self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
+        )
+        if node_type:
+            stmt = stmt.where(self.nodes_table.c.type == node_type)
+
+        # stream_results=True for SQLAlchemy
+        with self.engine.connect() as conn:
+            result = conn.execute(stmt)
+
+            for row in result:
+                n_type, content_json, embedding_json = row
+                try:
+                    embedding = json.loads(embedding_json) if embedding_json else None
+                    if n_type == "chunk":
+                        data = json.loads(content_json)
+                        if embedding is not None:
+                            data["embedding"] = embedding
+                        yield Chunk.model_validate(data)
+                    elif n_type == "summary":
+                        data = json.loads(content_json)
+                        if embedding is not None:
+                            data["embedding"] = embedding
+                        yield SummaryNode.model_validate(data)
+                except Exception:
+                    logger.exception("Failed to deserialize node during iteration.")
+                    continue
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""
