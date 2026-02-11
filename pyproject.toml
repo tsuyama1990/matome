@@ -113,6 +113,7 @@ ignore = [
     "BLE001", # Blind exception catch
     "PT019",  # Fixture without value injection
     "RUF003", # Ambiguous multiplication sign
+    "RUF001", # Ambiguous characters (Japanese vs ASCII)
     "ARG002", # Unused method argument
     "RUF043", # Pattern metacharacters not escaped in match
     "RUF059", # Unused unpacked variable
@@ -122,6 +123,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101"]  # Allow assert in tests
+"tutorials/**/*.ipynb" = ["T201", "PTH123", "ERA001", "ANN204", "SIM108"] # Allow print, open, commented code in notebooks
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # Exceeding this prompts function splitting (prevent AI long functions)
