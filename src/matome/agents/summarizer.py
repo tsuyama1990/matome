@@ -16,7 +16,7 @@ from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from domain_models.constants import PROMPT_INJECTION_PATTERNS
-from matome.agents.strategies import BaseSummaryStrategy, PromptStrategy
+from matome.agents.strategies import DIKWHierarchyStrategy, PromptStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
 
@@ -40,11 +40,11 @@ class SummarizationAgent:
         Args:
             config: Processing configuration containing model name, retries, etc.
             llm: Optional pre-configured LLM instance. If None, it will be initialized from config.
-            prompt_strategy: Strategy to use for prompt generation. Defaults to BaseSummaryStrategy.
+        prompt_strategy: Strategy to use for prompt generation. Defaults to DIKWHierarchyStrategy.
         """
         self.config = config
         self.model_name = config.summarization_model
-        self.prompt_strategy = prompt_strategy or BaseSummaryStrategy()
+        self.prompt_strategy = prompt_strategy or DIKWHierarchyStrategy()
 
         # Determine API key and Base URL
         api_key = get_openrouter_api_key()
@@ -238,11 +238,8 @@ class SummarizationAgent:
                     )
 
                 # Check if LLM is chat model or simple LLM (though typed as ChatOpenAI)
-                if hasattr(self.llm, "invoke"):
-                    response = self.llm.invoke(messages)
-                else:
-                    # Fallback for mock objects that might not have invoke
-                    response = self.llm(messages)  # type: ignore[operator]
+                # We enforce 'invoke' method usage for compatibility with LangChain Runnables
+                response = self.llm.invoke(messages)
 
         if not response:
             msg = f"[{request_id}] No response received from LLM."

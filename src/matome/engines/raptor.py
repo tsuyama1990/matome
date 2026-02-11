@@ -5,7 +5,7 @@ from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
-from domain_models.metadata import NodeMetadata
+from domain_models.metadata import DIKWLevel, NodeMetadata
 from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
@@ -329,7 +329,7 @@ class RaptorEngine:
                 level=1,
                 children_indices=[root_node_obj.index],
                 # Using kwargs for extra fields requires type ignore in static analysis
-                metadata=NodeMetadata(type="single_chunk_root"),  # type: ignore
+                metadata=NodeMetadata(type="single_chunk_root"),
             )
             all_summaries[root_node.id] = root_node
         else:
@@ -383,6 +383,9 @@ class RaptorEngine:
             combined_text = "\n\n".join(cluster_texts)
             summary_text = self.summarizer.summarize(combined_text, self.config, level=level)
 
+            # Determine DIKW Level
+            dikw_level = DIKWLevel.from_level(level)
+
             node_id_str = str(uuid.uuid4())
             summary_node = SummaryNode(
                 id=node_id_str,
@@ -390,7 +393,7 @@ class RaptorEngine:
                 level=level,
                 children_indices=children_indices,
                 # Using kwargs for extra fields requires type ignore in static analysis
-                metadata=NodeMetadata(cluster_id=cluster.id),  # type: ignore
+                metadata=NodeMetadata(cluster_id=cluster.id, dikw_level=dikw_level),
             )
 
             yield summary_node

@@ -14,7 +14,7 @@ from domain_models.config import ProcessingConfig
 from matome.agents.strategies import PromptStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
+from matome.utils.prompts import ACTION_PROMPT
 
 
 @pytest.fixture
@@ -74,7 +74,8 @@ def test_summarize_happy_path(agent: SummarizationAgent, config: ProcessingConfi
     prompt_content = messages[0].content
 
     # Check if prompt matches the template structure
-    expected_prompt_start = COD_TEMPLATE.format(context=context)
+    # Default strategy is DIKWHierarchyStrategy, and default level is 1 -> ActionStrategy -> ACTION_PROMPT
+    expected_prompt_start = ACTION_PROMPT.format(context=context)
     assert prompt_content == expected_prompt_start
 
 
