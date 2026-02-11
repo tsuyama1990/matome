@@ -3,10 +3,15 @@ import logging
 import uuid
 from collections.abc import Iterable, Iterator
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ProcessingConfig, ProcessingMode
 from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel, NodeID
-from matome.agents.strategies import ActionStrategy, KnowledgeStrategy, WisdomStrategy
+from matome.agents.strategies import (
+    ActionStrategy,
+    BaseSummaryStrategy,
+    KnowledgeStrategy,
+    WisdomStrategy,
+)
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, PromptStrategy, Summarizer
 from matome.utils.compat import batched
@@ -391,8 +396,13 @@ class RaptorEngine:
 
     def _get_strategy_for_level(self, level: int) -> tuple[PromptStrategy, DIKWLevel]:
         """Determine strategy and DIKW level based on recursion depth."""
-        if level == 1:
-            return ActionStrategy(), DIKWLevel.INFORMATION
-        if level == 2:
-            return KnowledgeStrategy(), DIKWLevel.KNOWLEDGE
-        return WisdomStrategy(), DIKWLevel.WISDOM
+        if self.config.processing_mode == ProcessingMode.DIKW:
+            if level == 1:
+                return ActionStrategy(), DIKWLevel.INFORMATION
+            if level == 2:
+                return KnowledgeStrategy(), DIKWLevel.KNOWLEDGE
+            return WisdomStrategy(), DIKWLevel.WISDOM
+
+        # Default / Legacy Mode: Use BaseSummaryStrategy
+        # We classify all summaries as INFORMATION (or generic summaries)
+        return BaseSummaryStrategy(), DIKWLevel.INFORMATION

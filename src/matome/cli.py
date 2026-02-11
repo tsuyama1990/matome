@@ -4,7 +4,7 @@ from typing import Annotated
 
 import typer
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ProcessingConfig, ProcessingMode
 from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
@@ -53,19 +53,24 @@ def run(
     ] = Path("results"),
     model: Annotated[
         str, typer.Option("--model", "-m", help="Summarization model to use.")
-    ] = "openai/gpt-4o-mini",
+    ] = "gpt-4o-mini",
     verifier_model: Annotated[
         str, typer.Option("--verifier-model", "-v", help="Verification model to use.")
-    ] = "openai/gpt-4o-mini",
+    ] = "gpt-4o-mini",
     verify: Annotated[
         bool, typer.Option("--verify/--no-verify", help="Enable/Disable verification.")
     ] = True,
+    mode: Annotated[
+        ProcessingMode,
+        typer.Option("--mode", "-M", help="Processing mode (default or dikw)."),
+    ] = ProcessingMode.DEFAULT,
     max_tokens: Annotated[int, typer.Option(help="Max tokens per chunk.")] = 500,
 ) -> None:
     """
     Run the full summarization pipeline on a text file.
     """
     typer.echo(f"Starting Matome Pipeline for: {input_file}")
+    typer.echo(f"Mode: {mode}")
 
     # ensure output dir exists
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -77,6 +82,7 @@ def run(
         summarization_model=model,
         verification_model=verifier_model,
         verifier_enabled=verify,
+        processing_mode=mode,
         max_tokens=max_tokens,
     )
 

@@ -1,5 +1,5 @@
 import os
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -13,6 +13,15 @@ from domain_models.constants import (
     DEFAULT_TOKENIZER,
     LARGE_SCALE_THRESHOLD,
 )
+
+
+class ProcessingMode(StrEnum):
+    """
+    Mode of processing for the pipeline.
+    """
+
+    DEFAULT = "default"  # Standard summarization (Chain of Density)
+    DIKW = "dikw"  # DIKW Hierarchical Generation (Action -> Knowledge -> Wisdom)
 
 
 class ClusteringAlgorithm(Enum):
@@ -36,6 +45,12 @@ class ProcessingConfig(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # Processing Mode
+    processing_mode: ProcessingMode = Field(
+        default=ProcessingMode.DEFAULT,
+        description="Mode of processing: 'default' or 'dikw'.",
+    )
 
     # Chunking Configuration
     max_tokens: int = Field(default=500, ge=1, description="Maximum number of tokens per chunk.")
