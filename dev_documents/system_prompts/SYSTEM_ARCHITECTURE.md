@@ -1,167 +1,295 @@
-# System Architecture: Long Context Summarization System
+# System Architecture: Matome 2.0 "Knowledge Installation"
 
 ## 1. Summary
 
-The **Long Context Summarization System** is a next-generation document processing platform designed to overcome the inherent limitations of Large Language Models (LLMs) when dealing with extensive texts. Traditional approaches often suffer from the "Lost-in-the-Middle" phenomenon, where information in the middle of a long context is overlooked, and "Hallucinations," where the model invents facts. This system addresses these challenges by implementing a "System Engineering" approach rather than relying solely on prompt engineering.
+The **Matome 2.0** project represents a significant evolution from a static summarization tool to an interactive "Knowledge Installation" system. In the modern era of information overload, users are drowning in data but starving for wisdom. Traditional summarization tools merely compress text, often losing the nuance and structure required for deep understanding. Matome 2.0 addresses this by shifting the paradigm from "Summarization" to "Semantic Zooming" based on the **DIKW (Data, Information, Knowledge, Wisdom)** hierarchy.
 
-The core philosophy of this system is **"Structure, Abstract, Verify."** Instead of feeding a massive text block into an LLM, the system decomposes the document into semantically meaningful chunks, clusters them based on vector similarity, and recursively summarizes them to build a hierarchical tree of information. This method is known as **RAPTOR (Recursive Abstractive Processing for Tree-Organized Retrieval)**. By combining this with **GraphRAG** concepts, which map relationships between entities, the system ensures a holistic understanding of the document structure.
+The core philosophy of Matome 2.0 is that true understanding comes from the ability to traverse different levels of abstraction. Users should be able to view a document as a single, profound "Wisdom" (L1), expand it into structural "Knowledge" (L2), drill down into actionable "Information" (L3), and finally verify it against the raw "Data" (L4). This process mirrors the cognitive function of the human brain, which constantly switches between high-level pattern recognition and low-level detail processing.
 
-Key innovations include:
-1.  **Japanese-Optimized Semantic Chunking**: Unlike standard splitters that break text at arbitrary character limits, our system uses regex-based logic tailored for Japanese punctuation and sentence structures to preserve semantic integrity.
-2.  **Cost-Effective Routing**: The architecture intelligently routes tasks between lightweight models (e.g., Gemini 1.5 Flash) for bulk processing and reasoning models (e.g., DeepSeek V3 or GPT-4o) for high-level synthesis, optimizing both cost and quality.
-3.  **Iterative Verification**: Through **Chain of Verification (CoVe)** and **Context-Aware Hierarchical Merging (CAHM)**, every summary is cross-referenced with the source text to minimize hallucinations.
-4.  **Human-in-the-Loop KJ Method**: The system outputs data compatible with **Obsidian Canvas**, allowing users to visually inspect, rearrange, and refine the AI-generated structure, mimicking the traditional KJ method for idea organization.
+To achieve this, the system introduces a **Semantic Zooming Engine** powered by a reverse-DIKW logic. Instead of just shortening text, the engine restructures it. The root of the document tree becomes the "Wisdom" layer, capturing the philosophical core. The branches become "Knowledge," explaining the "Why" and "How" of the underlying mechanisms. The leaves (or twigs) become "Information," providing concrete action items. This hierarchical structure is not static; it is a living entity that users can interact with.
 
-This architecture transforms the summarization task from a "black box" generation into a transparent, verifiable, and interactive process, making it suitable for high-stakes domains like financial analysis, legal review, and academic research.
+The **Matome Canvas**, a new interactive GUI built with the Panel library, serves as the cockpit for this experience. It allows users to visualize the knowledge tree as a pyramid or a map. More importantly, it enables **Interactive Refinement**. Users are not passive consumers of AI-generated content. They can challenge the AI, asking it to rewrite specific nodes to better fit their mental models—for example, "Explain this concept using an analogy for a 10-year-old" or "Make this action item more specific to my industry."
+
+Technically, this requires a shift from a batch-processing architecture to an interactive, stateful one. The system must support random access to nodes, granular updates without re-processing the entire tree, and concurrent access to the underlying data store. The architecture leverages the robust **RAPTOR** engine but wraps it in an interactive controller layer, enabling real-time responsiveness while maintaining data integrity.
+
+In summary, Matome 2.0 is not just a tool for reading less; it is a tool for understanding more. It empowers users to "install" knowledge into their brains by aligning the information structure with their cognitive processes, transforming the act of reading into an act of exploration and mastery.
 
 ## 2. System Design Objectives
 
-The primary goal is to build a robust, scalable, and cost-efficient summarization engine that rivals human-level comprehension for long documents.
+The design of Matome 2.0 is guided by several critical objectives that ensure the system is robust, scalable, and user-centric.
 
-### 2.1. Goals
-*   **Overcome Context Limits**: Successfully process documents exceeding 100,000 tokens without losing critical details.
-*   **Mitigate Hallucinations**: Achieve a hallucination rate of less than 5% through rigorous verification steps.
-*   **Preserve Narrative Structure**: Ensure the summary reflects the logical flow and hierarchy of the original document, not just a bag of isolated facts.
-*   **Interactive Usability**: Provide a "Mock Mode" for testing and an "Interactive Mode" where users can refine the intermediate results (KJ Method).
+### 1. Semantic Fidelity and Abstraction Alignment
+The primary objective is to ensure that the generated content at each level of the DIKW hierarchy strictly adheres to its definition.
+- **Wisdom (L1)** must be abstract, philosophical, and concise (20-40 characters). It should capture the "Soul" of the document.
+- **Knowledge (L2)** must be structural and explanatory. It should represent the "Skeleton" or mental model, focusing on relationships and mechanisms rather than isolated facts.
+- **Information (L3)** must be actionable and concrete. It represents the "Muscle" that performs tasks.
+- **Data (L4)** must be the immutable "Ground Truth," traceable and linked.
+The system must enforce these semantic boundaries through rigorous Prompt Engineering and Strategy patterns.
 
-### 2.2. Constraints
-*   **Cost Efficiency**: The processing cost per document must be kept low by leveraging cheaper models for the heavy lifting (chunking/clustering).
-*   **Language Support**: Primary focus on Japanese text, handling specific linguistic nuances (particles, lack of spaces).
-*   **Execution Time**: The full pipeline for a standard book-length PDF should complete within a reasonable timeframe (e.g., under 10 minutes).
-*   **Dependency Management**: Strict adherence to the provided tech stack (LangChain, UMAP, scikit-learn, spacy).
+### 2. Interactive Responsiveness
+Unlike the previous batch-oriented CLI, the new GUI must respond to user actions immediately.
+- **Latency**: Node expansion (drilling down) should be near-instantaneous.
+- **Refinement**: Node regeneration requests (chat interactions) must be processed asynchronously but provide immediate feedback (loading states).
+- **State Management**: The UI must accurately reflect the state of the underlying data, even when multiple operations are happening. This requires a reactive architecture (MVVM) where the View automatically updates in response to Model changes.
 
-### 2.3. Success Criteria
-*   **Table of Contents Coverage**: The generated summary must cover at least 70% of the topics found in the original document's table of contents.
-*   **Structural Integrity**: The recursive tree structure must effectively capture both high-level themes and supporting details.
-*   **User Satisfaction**: The "Aha! Moment" tutorial must demonstrate a clear value proposition to new users.
+### 3. Granular Modularity and Extensibility
+The codebase must be modular to support future enhancements and different processing modes.
+- **Strategy Pattern**: The summarization logic must be decoupled from the execution engine. We should be able to plug in different "Prompt Strategies" (e.g., Academic, Business, Creative) without changing the core engine code.
+- **Engine Wrapper**: The `RaptorEngine` should remain a pure processing engine, while user interaction logic is encapsulated in an `InteractiveRaptorEngine` wrapper. This separation of concerns ensures that the core algorithms remain clean and testable.
+
+### 4. Data Integrity and Concurrency
+With the introduction of an interactive GUI, the system moves from a single-threaded batch process to a potentially multi-threaded environment (or at least one where the UI thread and processing threads interact).
+- **Database Safety**: The SQLite database (`chunks.db`) must be protected against race conditions. We need to implement robust locking mechanisms or transaction management to ensure that user edits and background processing do not corrupt the data.
+- **Traceability**: Every piece of generated content must remain traceable to its source. Updates to a node must preserve these links.
+
+### 5. User-Centric "Aha!" Experience
+The ultimate goal is user satisfaction. The system is designed to facilitate "Aha!" moments.
+- **Visual Clarity**: The UI should not overwhelm the user. It should present information progressively (Progressive Disclosure).
+- **Customizability**: Users should feel like they are building their *own* knowledge base, not just viewing a static report. The ability to edit and refine nodes is crucial for this sense of ownership.
 
 ## 3. System Architecture
 
-The system follows a pipeline architecture, transforming raw text into a structured knowledge tree.
-
-### 3.1. Components
-1.  **Ingestion Layer**: Handles reading of source files (PDF, TXT). It normalizes text and removes artifacts.
-2.  **Chunking Engine**: Splits text into semantic units using Japanese-specific regex and embedding similarity.
-3.  **Embedding & Clustering Service**: Converts chunks into vector embeddings (using `multilingual-e5`) and groups them using UMAP (dimensionality reduction) and GMM (Gaussian Mixture Models).
-4.  **Summarization Agent**: A sophisticated agent that uses the "Chain of Density" prompt technique to generate dense, information-rich summaries for each cluster. It uses OpenRouter to access optimal models.
-5.  **Recursive Controller**: Manages the RAPTOR loop—taking summaries, treating them as new chunks, and repeating the clustering/summarization process until a root node is reached.
-6.  **Verification Module**: Checks for entity overlap and consistency between source and summary.
-7.  **Presentation Layer**: Formats the output into Markdown and Obsidian Canvas JSON.
-
-### 3.2. Data Flow
-1.  **Input**: Raw Document -> **Text Normalizer** -> Clean Text.
-2.  **Process**: Clean Text -> **Semantic Chunker** -> Chunks.
-3.  **Vectorization**: Chunks -> **Embedding Model** -> Vectors.
-4.  **Structure**: Vectors -> **UMAP/GMM** -> Clusters.
-5.  **Synthesis**: Clusters -> **LLM (CoD)** -> Summaries (Level N).
-6.  **Recursion**: Summaries (Level N) -> **Loop back to Vectorization** -> Summaries (Level N+1).
-7.  **Output**: Final Tree -> **Formatter** -> Markdown / JSON.
-
-### 3.3. Architecture Diagram
+The architecture of Matome 2.0 is built upon a layered approach, separating the presentation layer (GUI), the application logic (Interactive Engine), the domain logic (Strategies), and the data persistence layer.
 
 ```mermaid
 graph TD
-    User[User Input] -->|PDF/TXT| Ingest[Ingestion Layer]
-    Ingest -->|Clean Text| Chunk[Chunking Engine]
-    Chunk -->|Semantic Chunks| Embed[Embedding Service]
-    Embed -->|Vectors| Cluster[Clustering (UMAP/GMM)]
-    Cluster -->|Cluster Indices| Summarizer[Summarization Agent (CoD)]
-    Summarizer -->|Cluster Summaries| Recursion{Is Root?}
-    Recursion -- No --> Embed
-    Recursion -- Yes --> Verify[Verification Module]
-    Verify -->|Verified Tree| Format[Presentation Layer]
-    Format -->|Markdown| Out1[summary_all.md]
-    Format -->|Obsidian Canvas| Out2[summary_kj.md]
+    User[User] -->|Interacts| Canvas[Matome Canvas (GUI)]
+
+    subgraph "Presentation Layer (MVVM)"
+        Canvas -->|Binds| VM[InteractiveSession (ViewModel)]
+        VM -->|Updates| Canvas
+    end
+
+    subgraph "Application Layer"
+        VM -->|Calls| IRE[InteractiveRaptorEngine]
+        IRE -->|Manages| SA[SummarizationAgent]
+        IRE -->|Manages| ES[EmbeddingService]
+    end
+
+    subgraph "Domain Logic (Strategies)"
+        SA -->|Uses| PS[<<interface>> PromptStrategy]
+        PS <|..| WS[WisdomStrategy]
+        PS <|..| KS[KnowledgeStrategy]
+        PS <|..| IS[InformationStrategy]
+    end
+
+    subgraph "Data Layer"
+        IRE -->|Reads/Writes| DCS[DiskChunkStore]
+        DCS -->|Persists| DB[(SQLite: chunks.db)]
+        DCS -->|Persists| VecDB[(Vector Store)]
+    end
+
+    User -->|Refinement Request| Canvas
+    Canvas -->|Action| VM
+    VM -->|Refine Node| IRE
+    IRE -->|Select Strategy| SA
+    SA -->|Generate| LLM[LLM Service]
+    LLM -->|Result| SA
+    SA -->|Update| DCS
+    DCS -->|Notify| VM
 ```
+
+### Components Description
+
+1.  **Matome Canvas (GUI)**:
+    - Built using the `Panel` library.
+    - Responsible for rendering the DIKW tree and handling user input (clicks, chat messages).
+    - It observes the `InteractiveSession` ViewModel and updates the display reactively.
+
+2.  **InteractiveSession (ViewModel)**:
+    - Holds the state of the user's session: current view, selected node, navigation history, and edit mode status.
+    - Uses the `param` library to define reactive properties.
+    - Acts as the bridge between the View and the Engine, translating UI events into business logic calls.
+
+3.  **InteractiveRaptorEngine**:
+    - A wrapper around the core processing logic.
+    - Provides methods for **Single Node Refinement** (`refine_node`).
+    - Manages the lifecycle of `SummarizationAgent` and `DiskChunkStore`.
+    - Handles concurrency control (DB locking) to ensure safe updates.
+
+4.  **SummarizationAgent & PromptStrategy**:
+    - The `SummarizationAgent` is refactored to accept a `PromptStrategy`.
+    - `PromptStrategy` is a protocol defining how to construct prompts for different DIKW levels.
+    - `WisdomStrategy`, `KnowledgeStrategy`, and `InformationStrategy` implement this protocol, injecting specific instructions for each level of abstraction.
+
+5.  **DiskChunkStore**:
+    - Manages persistence of `SummaryNode` objects and raw text chunks.
+    - Uses SQLite for metadata/relationships and a vector store (or array) for embeddings.
+    - Enhanced to support transactional updates for single nodes.
 
 ## 4. Design Architecture
 
-The codebase is structured to separate concerns and enforce type safety using Pydantic.
+The project structure is designed to be clean, modular, and strictly typed using Pydantic.
 
-### 4.1. File Structure (ASCII Tree)
+### File Structure
 ```
 .
-├── dev_documents/          # Documentation and Prompts
-├── src/
-│   └── matome/             # Main Package
+├── pyproject.toml
+├── README.md
+├── src
+│   ├── domain_models
+│   │   ├── __init__.py
+│   │   ├── config.py          # Configuration models
+│   │   └── schema.py          # SummaryNode, NodeMetadata (Pydantic)
+│   └── matome
 │       ├── __init__.py
-│       ├── cli.py          # Command Line Interface
-│       ├── config.py       # Configuration & Environment Variables
-│       ├── domain/         # Domain Models (Pydantic)
+│       ├── cli.py             # CLI Entry point
+│       ├── agents
 │       │   ├── __init__.py
-│       │   ├── models.py   # Document, Chunk, Cluster, SummaryNode
-│       │   └── schemas.py  # Input/Output Schemas
-│       ├── engines/        # Core Logic Engines
+│       │   ├── summarizer.py  # SummarizationAgent
+│       │   ├── verifier.py    # VerifierAgent
+│       │   └── strategies.py  # NEW: PromptStrategy implementations
+│       ├── engines
 │       │   ├── __init__.py
-│       │   ├── chunker.py  # Semantic Chunking Logic
-│       │   ├── cluster.py  # UMAP + GMM Logic
-│       │   ├── embedder.py # Embedding Generation
-│       │   └── raptor.py   # Recursive Controller
-│       ├── agents/         # LLM Agents
+│       │   ├── raptor.py      # Core RAPTOR logic
+│       │   ├── interactive.py # NEW: InteractiveRaptorEngine
+│       │   ├── chunker.py
+│       │   ├── embedder.py
+│       │   └── cluster.py
+│       ├── ui
 │       │   ├── __init__.py
-│       │   ├── summarizer.py # CoD Prompts & OpenRouter Client
-│       │   └── verifier.py   # Hallucination Check
-│       ├── utils/          # Utilities
+│       │   ├── canvas.py      # NEW: MatomeCanvas (View)
+│       │   └── session.py     # NEW: InteractiveSession (ViewModel)
+│       ├── utils
 │       │   ├── __init__.py
-│       │   ├── text.py     # Japanese Text Helpers
-│       │   └── io.py       # File Reading/Writing
-│       └── exporters/      # Output Formatters
-│           ├── __init__.py
-│           ├── markdown.py
-│           └── obsidian.py
-├── tests/                  # Unit and Integration Tests
-├── pyproject.toml          # Project Configuration
-└── README.md               # Entry Point
+│       │   └── store.py       # DiskChunkStore
+│       └── interfaces.py      # Protocols
+└── tests
+    ├── unit
+    ├── integration
+    └── uat
 ```
 
-### 4.2. Key Data Models (Pydantic)
-*   `Chunk`: Represents a text segment with metadata (source, index) and its vector embedding.
-*   `Cluster`: A collection of `Chunk` objects identified by the GMM.
-*   `SummaryNode`: A node in the RAPTOR tree containing the summary text, references to child chunks/nodes, and its level in the hierarchy.
-*   `DocumentTree`: The complete hierarchical structure, holding the root node and all levels.
+### Data Models
 
-### 4.3. Class/Function Overview
-*   **`SemanticChunker.split_text(text: str) -> List[Chunk]`**: Implements the regex-based splitting and semantic merging.
-*   **`ClusterEngine.perform_clustering(embeddings: np.ndarray) -> List[int]`**: Runs UMAP reduction followed by GMM to assign cluster labels.
-*   **`SummarizationAgent.summarize(context: str) -> str`**: Sends the prompt to OpenRouter with Chain of Density instructions.
-*   **`RaptorEngine.run(text: str) -> DocumentTree`**: Orchestrates the entire recursive process.
+**NodeMetadata (Updated)**
+The `metadata` field in `SummaryNode` is crucial for the DIKW implementation. It will be enhanced to support:
+
+```python
+from enum import StrEnum
+from pydantic import BaseModel, Field
+
+class DIKWLevel(StrEnum):
+    WISDOM = "wisdom"
+    KNOWLEDGE = "knowledge"
+    INFORMATION = "information"
+    DATA = "data"
+
+class NodeMetadata(BaseModel):
+    dikw_level: DIKWLevel
+    is_user_edited: bool = False
+    refinement_history: list[str] = Field(default_factory=list)
+    # Existing fields...
+    cluster_id: int | None = None
+```
+
+This schema ensures that every node knows its place in the abstraction hierarchy and tracks its modification history, which is essential for the "User-Edited Lock" feature (preventing overwrites during batch updates).
 
 ## 5. Implementation Plan
 
-The development is divided into 6 sequential cycles.
+The development is divided into 5 sequential cycles to ensure stability and iterative value delivery.
 
-*   **CYCLE01: Foundation & Text Processing**
-    *   **Goal**: Establish the project structure and implement the Japanese-optimized chunking logic.
-    *   **Features**: Project skeleton, Pydantic models, Text Ingestion, Semantic Chunking with Regex.
-*   **CYCLE02: Embedding & Clustering Core**
-    *   **Goal**: Implement the mathematical core for organizing text.
-    *   **Features**: `multilingual-e5` integration, UMAP dimensionality reduction, GMM soft clustering.
-*   **CYCLE03: Summarization Engine**
-    *   **Goal**: Connect to LLMs and implement the summarization prompts.
-    *   **Features**: OpenRouter API Client, Chain of Density (CoD) Prompt Templates, Basic Summarization Function.
-*   **CYCLE04: Recursive Summarization (RAPTOR)**
-    *   **Goal**: Build the recursive logic to create the knowledge tree.
-    *   **Features**: RAPTOR loop implementation, linking chunks to summaries, creating the `DocumentTree` structure, generating `summary_all.md`.
-*   **CYCLE05: KJ Method & Visualization**
-    *   **Goal**: Enable visual interaction with the results.
-    *   **Features**: Logic to map the tree to a 2D canvas, Obsidian Canvas JSON exporter, generating `summary_kj.md`.
-*   **CYCLE06: Verification & Final Polish**
-    *   **Goal**: Ensure quality and usability.
-    *   **Features**: Verification module (CoVe), CLI improvements (progress bars, model selection), End-to-End testing.
+### Cycle 01: Core Refactoring & Strategy Pattern
+**Goal**: Decouple prompt logic from the agent to support DIKW levels.
+- **Features**:
+    - Define `PromptStrategy` protocol.
+    - Implement `WisdomStrategy`, `KnowledgeStrategy`, `InformationStrategy`.
+    - Refactor `SummarizationAgent` to accept strategies.
+    - Update `NodeMetadata` schema.
+- **Tasks**:
+    - Create `src/matome/agents/strategies.py`.
+    - Modify `src/matome/agents/summarizer.py`.
+    - Update `src/domain_models/schema.py`.
+    - Write unit tests for each strategy.
+
+### Cycle 02: DIKW Generation Engine
+**Goal**: Implement the logic to generate the full DIKW tree automatically.
+- **Features**:
+    - Update `RaptorEngine` to use different strategies based on tree level.
+    - Logic: Root -> Wisdom, Middle -> Knowledge, Leaves -> Information.
+    - CLI support for `--mode dikw`.
+    - Ensure L4 (Data) linking is preserved.
+- **Tasks**:
+    - Modify `src/matome/engines/raptor.py` to handle the `dikw` mode.
+    - Update `ProcessingConfig` to include mode settings.
+    - Integration test: Generate a tree and verify level assignments.
+
+### Cycle 03: Interactive Engine Backend
+**Goal**: specific backend support for GUI interactions (random access, updates).
+- **Features**:
+    - Create `InteractiveRaptorEngine`.
+    - Implement `refine_node(node_id, instruction)` method.
+    - Implement thread-safe DB access in `DiskChunkStore`.
+- **Tasks**:
+    - Create `src/matome/engines/interactive.py`.
+    - Enhance `src/matome/utils/store.py` with context managers for locking.
+    - Test concurrency by simulating simultaneous read/write operations.
+
+### Cycle 04: GUI Foundation (MVVM)
+**Goal**: Build the reactive foundation for the user interface.
+- **Features**:
+    - Implement `InteractiveSession` (ViewModel) using `param`.
+    - Create basic `MatomeCanvas` layout using `Panel`.
+    - One-way binding: DB -> ViewModel -> View.
+- **Tasks**:
+    - Create `src/matome/ui/session.py`.
+    - Create `src/matome/ui/canvas.py` (skeleton).
+    - Create a test script to launch the basic empty canvas.
+
+### Cycle 05: Semantic Zooming & Polish
+**Goal**: Complete the GUI with navigation and chat features, and release.
+- **Features**:
+    - Pyramid Navigation (Click to drill down).
+    - Interactive Chat Refinement (User talks to node).
+    - Source Traceability (View original chunks).
+    - Final Polish (CSS, Loading states).
+- **Tasks**:
+    - Implement navigation logic in `InteractiveSession`.
+    - Connect Chat interface to `refine_node`.
+    - styling and UX improvements.
+    - End-to-End testing of the full user story.
 
 ## 6. Test Strategy
 
-Testing will be rigorous, focusing on component correctness and system coherence.
+Testing will be rigorous, ensuring both the stability of the core engine and the responsiveness of the new UI.
 
-*   **Unit Testing**:
-    *   Each module (`chunker`, `cluster`, `embedder`) will have dedicated test files.
-    *   We will mock external API calls (OpenAI/OpenRouter) to ensure tests are fast and deterministic.
-    *   Specific tests for Japanese regex patterns to ensure they don't break sentences unnaturally.
-*   **Integration Testing**:
-    *   Test the interaction between Chunker and Embedder.
-    *   Test the RAPTOR loop with a small, synthetic text dataset to verify the tree construction logic without incurring high API costs.
-*   **User Acceptance Testing (UAT)**:
-    *   We will use the "Mock Mode" for initial UAT to verify the flow.
-    *   The "Real Mode" UAT will use the provided "Company Shikiho" text to verify the quality of the summary against the 70% coverage criteria.
-*   **Regression Testing**:
-    *   Ensure that changes in the prompt templates do not degrade the summary quality (checked via manual review of key outputs).
+### Cycle 01: Strategy Unit Tests
+- **Objective**: Verify that strategies produce the correct prompts.
+- **Method**:
+    - Unit tests for `WisdomStrategy`: Check if prompt includes constraints (20-40 chars, abstract).
+    - Unit tests for `KnowledgeStrategy`: Check if prompt asks for "Why/How".
+    - Mock `SummarizationAgent` to ensure it correctly calls the injected strategy.
+
+### Cycle 02: Hierarchy Integration Tests
+- **Objective**: Verify that the engine produces a well-formed DIKW tree.
+- **Method**:
+    - Run the pipeline on a sample text (`test_data/`).
+    - Traverse the resulting tree in the DB.
+    - Assert that Root is `wisdom`, Children are `knowledge`, and Leaves are `information`.
+    - Assert that `dikw_level` metadata is correctly populated.
+
+### Cycle 03: Backend Concurrency Tests
+- **Objective**: Verify that the system handles interactive updates without corruption.
+- **Method**:
+    - Create a test that initializes `InteractiveRaptorEngine`.
+    - Simulate a "Refine" operation while simultaneously trying to read the tree.
+    - Verify that DB locks function correctly and no data is lost.
+    - Verify `refinement_history` is updated.
+
+### Cycle 04: ViewModel Reactive Tests
+- **Objective**: Verify MVVM bindings.
+- **Method**:
+    - Instantiate `InteractiveSession` without the GUI.
+    - Programmatically change the `current_node`.
+    - Assert that derived properties (e.g., `child_nodes`, `breadcrumb`) update automatically.
+    - This allows testing UI logic without a browser.
+
+### Cycle 05: End-to-End (UAT)
+- **Objective**: Verify the full user experience.
+- **Method**:
+    - **Manual/Scripted UAT**: Follow the `USER_TEST_SCENARIO.md`.
+    - Launch the Panel app.
+    - Verify the "Aha!" moment (Wisdom display).
+    - Perform a Semantic Zoom (Drill down).
+    - Perform a Refinement (Chat) and verify the update persists.
+    - Check Source Traceability links.

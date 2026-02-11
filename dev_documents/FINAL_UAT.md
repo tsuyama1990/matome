@@ -1,80 +1,68 @@
-# Final User Acceptance Testing (UAT) Plan
+# Final User Acceptance Test & Tutorial Plan
 
 ## 1. Tutorial Strategy
 
-The primary goal of this UAT plan is to validate the **Long Context Summarization System**'s ability to process lengthy documents into structured, verifiable summaries. We will achieve this through a series of interactive Jupyter Notebooks that serve both as test cases and as tutorials for new users.
+To ensure that **Matome 2.0** delivers on its promise of "Knowledge Installation," we will provide a set of executable Jupyter Notebooks that guide users through the core features. These tutorials serve a dual purpose: they educate new users and act as rigorous User Acceptance Tests (UAT) for the system.
 
-### 1.1. Dual-Mode Testing
-To ensure the system is robust and testable without incurring constant API costs, all tutorials will support two modes:
-*   **Mock Mode (CI/Default)**: Uses pre-computed embeddings and dummy LLM responses. This allows the logic (chunking, clustering, tree building) to be tested in continuous integration environments.
-*   **Real Mode**: Requires an `OPENROUTER_API_KEY`. This runs the full pipeline with actual LLM calls (Gemini 1.5 Flash / DeepSeek V3) to generate real summaries.
+### "Mock Mode" for Reproducibility
+A key challenge in AI development is the variability of LLM outputs. To address this, we will implement a "Mock Mode" for our tutorials.
+- **Real Mode**: Uses actual API keys (OpenRouter/OpenAI) to generate fresh summaries. Used for personal exploration.
+- **Mock Mode**: Uses pre-generated data stored in `tests/data/mock_responses/`. When the API key is set to a dummy value (e.g., "mock"), the system bypasses the LLM and returns deterministic, high-quality responses. This allows users (and CI systems) to experience the "Aha!" moment without incurring costs or waiting for generation.
 
-### 1.2. The "Aha! Moment"
-The core UAT scenario is based on processing the "Emin Style Company Shikiho Reading Method" text. The user should experience the "Aha!" moment when they see a 100-page equivalent document turned into a structured, navigable Obsidian Canvas map.
+### Target Persona
+The tutorials are designed for a "Knowledge Worker" who is overwhelmed by information—a researcher, investor, or student who needs to grasp complex topics quickly.
 
 ## 2. Notebook Plan
 
-We will generate the following notebooks in the `tutorials/` directory.
+We will create two primary notebooks in the `tutorials/` directory.
 
-### 2.1. `tutorials/01_quickstart.ipynb` (The Basics)
-*   **Goal**: Demonstrate text ingestion and semantic chunking.
-*   **Scenario**: Load a sample text, apply the Japanese-optimized regex splitter, and visualize the chunks.
-*   **Key Features**:
-    *   Loading `test_data/sample.txt`.
-    *   Initializing `SemanticChunker`.
-    *   Displaying the first 5 chunks to verify sentence boundaries.
-*   **Mode**: Works in both Mock and Real modes (Mock uses random vectors if embedding is skipped).
+### `tutorials/01_quickstart.ipynb`: The "Aha! Moment"
+**Objective**: Demonstrate the power of **Wisdom Extraction (L1)** in under 30 seconds.
+**Scenario**: The user inputs a dense financial text (`test_data/エミン流「会社四季報」最強の読み方.txt`).
+**Steps**:
+1.  **Initialize**: Setup the environment (install dependencies).
+2.  **Load Data**: Read the text file.
+3.  **Run Pipeline (Mock Mode)**: Execute `matome.cli` with `--mode dikw`.
+4.  **The Reveal**: Display the single-sentence "Wisdom" (L1).
+    - *Expected Output*: "Market distortions appear only in 15-year fixed-point observations; ignore short-term noise." (or similar).
+5.  **Validation**: Verify that the output is concise (<50 chars) and abstract.
 
-### 2.2. `tutorials/02_clustering_deep_dive.ipynb` (The Engine)
-*   **Goal**: Show how the system groups related information.
-*   **Scenario**: Take the chunks from step 1, generate embeddings (E5-large), and run UMAP + GMM clustering.
-*   **Key Features**:
-    *   Visualizing the 2D projection of chunks.
-    *   Showing which chunks belong to which cluster.
-    *   Explaining the "Soft Clustering" concept (a chunk can belong to multiple topics).
-*   **Mode**: Real mode required for meaningful embeddings (or load pre-saved vectors in Mock).
+### `tutorials/02_semantic_zooming.ipynb`: Interactive Knowledge Discovery
+**Objective**: Demonstrate **Semantic Zooming (L2-L3)** and **Interactive Refinement**.
+**Scenario**: The user wants to understand *why* the Wisdom is true and *how* to apply it.
+**Steps**:
+1.  **Load Previous Result**: Load the `chunks.db` generated in Tutorial 01.
+2.  **Initialize Engine**: Create an `InteractiveRaptorEngine` instance.
+3.  **Drill Down (Zoom In)**:
+    - Programmatically select the Root Node.
+    - Retrieve its children (Knowledge Layer).
+    - Display them as a structured list.
+    - *Expected Output*: "Mechanism 1: Time Arbitrage", "Mechanism 2: PSR Contrarianism".
+4.  **Refine Node (Chat)**:
+    - Select a specific "Action" node (L3).
+    - Send a refinement instruction: "Rewrite this for a high school student using a sports analogy."
+    - *Expected Output*: The node text updates to explain PSR using a "batting average" or "popularity contest" analogy.
+5.  **Verify Traceability**:
+    - Call `get_source_chunks(node_id)` to see the original text evidence.
 
-### 2.3. `tutorials/03_full_raptor_pipeline.ipynb` (The "Aha!" Moment)
-*   **Goal**: Execute the full recursive summarization process.
-*   **Scenario**:
-    1.  Load `test_data/エミン流「会社四季報」最強の読み方.txt`.
-    2.  Run `RaptorEngine.run()`.
-    3.  Generate `summary_all.md`.
-*   **Success Criteria**:
-    *   The output markdown structure reflects the document's logical hierarchy.
-    *   Key terms from the source text (e.g., "Market Cap", "PSR") are present.
-*   **Mode**: Real mode strongly recommended.
+## 3. Validation Steps for QA Agent
 
-### 2.4. `tutorials/04_kj_method_visualization.ipynb` (The Output)
-*   **Goal**: Visualize the result in Obsidian Canvas format.
-*   **Scenario**: Take the `DocumentTree` from the previous step and export it to `summary_kj.json` (Canvas format).
-*   **Key Features**:
-    *   Mapping nodes to canvas coordinates.
-    *   Creating links between parent and child nodes.
-    *   Instructions on how to open this file in Obsidian.
-*   **Mode**: Works in both modes (Mock uses a dummy tree).
+When running these notebooks (or their script equivalents), the QA process must verify the following:
 
-## 3. Validation Steps
+### Validation for Tutorial 01 (Wisdom)
+- [ ] **Execution**: Runs without error using "mock" API key.
+- [ ] **Output format**: Result is a single string, not a list or JSON.
+- [ ] **Content Quality**: The Wisdom string length is between 20 and 100 characters. It does not contain bullet points.
+- [ ] **File Creation**: `results/summary_dikw.md` and `results/chunks.db` are created.
 
-The QA Agent (or human reviewer) should perform the following checks:
-
-### 3.1. Automated Checks (Mock Mode)
-1.  Run `pytest` to ensure all unit tests pass.
-2.  Execute `tutorials/01_quickstart.ipynb` without an API key. It should complete without errors.
-3.  Execute `tutorials/04_kj_method_visualization.ipynb` with dummy data. It should generate a valid JSON file.
-
-### 3.2. Manual Checks (Real Mode)
-1.  Set `OPENROUTER_API_KEY` in the environment.
-2.  Run `tutorials/03_full_raptor_pipeline.ipynb` with the target text.
-3.  **Content Verification**:
-    *   Open `summary_all.md`.
-    *   Check if the summary covers at least 70% of the topics mentioned in the book's Table of Contents (P8-18).
-    *   Verify that Japanese sentences are natural and not cut off mid-sentence.
-4.  **Structure Verification**:
-    *   Open the generated `.canvas` file in Obsidian.
-    *   Verify that related notes are grouped together visually.
-    *   Verify that clicking a summary note reveals its child chunks (if implemented).
-
-### 3.3. Performance Checks
-*   **Time**: The full pipeline for the test file should complete within 10 minutes.
-*   **Cost**: Monitor OpenRouter usage. It should be minimal (mostly Gemini 1.5 Flash).
+### Validation for Tutorial 02 (Zooming)
+- [ ] **State Loading**: Successfully connects to the existing `chunks.db`.
+- [ ] **Hierarchy Integrity**:
+    - The Root node has `metadata.dikw_level == "wisdom"`.
+    - Child nodes have `metadata.dikw_level == "knowledge"`.
+    - Leaf nodes (before chunks) have `metadata.dikw_level == "information"`.
+- [ ] **Refinement Persistence**:
+    - After calling `engine.refine_node(id, instruction)`, the `node.text` changes.
+    - `node.metadata.refinement_history` contains the instruction string.
+    - The change is persisted to `chunks.db` (re-loading the DB shows the new text).
+- [ ] **Concurrency**: No "Database Locked" errors occur during rapid read/write operations.
