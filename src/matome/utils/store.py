@@ -170,7 +170,15 @@ class DiskChunkStore:
             conn.execute(stmt)
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
-        """Retrieve a node by ID."""
+        """
+        Retrieve a node by ID.
+
+        Args:
+            node_id: The ID of the node (int for Chunk, str for SummaryNode).
+
+        Returns:
+            The Chunk or SummaryNode object, or None if not found.
+        """
         # Use SQLAlchemy Core expression for parameterized select
         stmt = select(
             self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding

@@ -156,20 +156,8 @@ class RaptorEngine:
 
             # Force reduction if clustering returns same number of clusters as nodes
             if len(clusters) == node_count and node_count > 1:
-                logger.warning(
-                    f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
-                )
-                # Fallback: Merge all into one cluster if node_count is small, else break?
-                # If we break, we stop summarization.
-                # Let's collapse to 1 cluster if small enough.
-                if node_count < 20:
-                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
-                else:
-                    # Just proceed, maybe next level will cluster better?
-                    # No, if we don't reduce, we loop forever or just summarize 1-to-1?
-                    # Summarize 1-to-1 is useless.
-                    # We MUST reduce.
-                    # Let's break for safety to avoid infinite loops if we can't reduce.
+                clusters = self._force_reduction(node_count, level, clusters)
+                if not clusters:
                     logger.error("Could not reduce nodes. Stopping recursion.")
                     break
 
@@ -265,6 +253,25 @@ class RaptorEngine:
             logger.exception("Clustering failed during recursion.")
             msg = "Clustering failed during recursion."
             raise RuntimeError(msg) from e
+
+    def _force_reduction(
+        self, node_count: int, level: int, original_clusters: list[Cluster]
+    ) -> list[Cluster]:
+        """
+        Handle scenario where clustering fails to reduce the number of nodes.
+        Attempts to force a single cluster if the node count is small.
+        """
+        logger.warning(
+            f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
+        )
+        # Fallback: Merge all into one cluster if node_count is small enough.
+        # This prevents infinite loops where layers don't reduce.
+        FORCE_REDUCTION_THRESHOLD = 20
+        if node_count < FORCE_REDUCTION_THRESHOLD:
+            return [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+
+        # If too many nodes to force merge, we must stop to prevent infinite recursion
+        return []
 
     def _finalize_tree(
         self,

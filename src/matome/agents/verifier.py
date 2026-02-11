@@ -81,6 +81,16 @@ class VerifierAgent:
             logger.error(msg)
             raise VerificationError(msg)
 
+        # Truncate source text if too long (naive approach, but better than crashing)
+        # Using 100k chars as reasonable limit for typical LLM context windows
+        MAX_VERIFICATION_CHARS = 100_000
+        if len(source_text) > MAX_VERIFICATION_CHARS:
+            logger.warning(
+                f"Source text too long for verification ({len(source_text)} chars). "
+                f"Truncating to {MAX_VERIFICATION_CHARS}."
+            )
+            source_text = source_text[:MAX_VERIFICATION_CHARS]
+
         prompt = VERIFICATION_TEMPLATE.format(source_text=source_text, summary_text=summary)
         messages = [HumanMessage(content=prompt)]
 

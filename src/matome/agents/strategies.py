@@ -35,15 +35,21 @@ class BaseSummaryStrategy:
 
     def create_prompt(self, context_chunks: list[str], current_level: int) -> str:
         """
+        Constructs the LLM prompt based on the context and tree level.
+
         Uses the existing COD_TEMPLATE.
         Joins chunks with newlines as context.
 
         Args:
             context_chunks: List of text chunks to be summarized.
-            current_level: The level in the tree (1-4). Validated to be >= 0.
+            current_level: The hierarchical level of the summary being generated.
+                           Must be non-negative.
 
         Returns:
-            Formatted prompt string.
+            The formatted prompt string ready to be sent to the LLM.
+
+        Raises:
+            ValueError: If current_level is negative.
         """
         if current_level < 0:
             msg = f"Invalid level: {current_level}. Level must be non-negative."
@@ -55,6 +61,8 @@ class BaseSummaryStrategy:
 
     def parse_output(self, llm_output: str) -> str:
         """
+        Parses the raw LLM output into the final summary string.
+
         Returns the output as-is, matching legacy behavior.
 
         Args:

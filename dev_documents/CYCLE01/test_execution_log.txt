@@ -86,14 +86,14 @@ src/matome/__init__.py                       4      0   100%
 src/matome/agents/__init__.py                0      0   100%
 src/matome/agents/strategies.py             15      0   100%
 src/matome/agents/summarizer.py            102      9    91%   106, 164-165, 171, 220-221, 241, 244-245
-src/matome/agents/verifier.py               84     19    77%   57, 76-77, 80-82, 94-95, 97-98, 105-106, 116, 122-123, 128, 134, 136, 138
+src/matome/agents/verifier.py               88     21    76%   57, 76-77, 80-82, 88-92, 104-105, 107-108, 115-116, 126, 132-133, 138, 144, 146, 148
 src/matome/cli.py                           65      5    92%   85-87, 197, 202
 src/matome/config.py                        10      0   100%
 src/matome/engines/__init__.py               0      0   100%
 src/matome/engines/chunker.py                3      3     0%   1-4
 src/matome/engines/cluster.py              184     28    85%   74, 117-118, 121-122, 144-146, 149-150, 255-258, 299-300, 369-372, 384, 396, 402-412
 src/matome/engines/embedder.py              51      4    92%   57, 65, 88-89
-src/matome/engines/raptor.py               161     27    83%   77-78, 85, 105-106, 110-111, 173-174, 194-195, 226, 242, 257-260, 264-267, 293-294, 372-373, 387-388
+src/matome/engines/raptor.py               166     28    83%   77-78, 85, 105-106, 110-111, 161-162, 182-183, 214, 230, 245-248, 252-255, 274, 300-301, 379-380, 394-395
 src/matome/engines/semantic_chunker.py      86     13    85%   62, 105, 115-117, 133-134, 153-155, 200-202
 src/matome/engines/token_chunker.py         68     10    85%   32-37, 44-47, 121-126
 src/matome/exceptions/__init__.py            4      0   100%
@@ -105,10 +105,10 @@ src/matome/utils/__init__.py                 0      0   100%
 src/matome/utils/compat.py                  17      8    53%   30-31, 39-44
 src/matome/utils/io.py                      15      0   100%
 src/matome/utils/prompts.py                  1      0   100%
-src/matome/utils/store.py                  110     12    89%   58-60, 108, 158, 184, 205-209, 240-242
+src/matome/utils/store.py                  110     12    89%   58-60, 108, 158, 192, 213-217, 248-250
 src/matome/utils/text.py                    30      1    97%   20
 ----------------------------------------------------------------------
-TOTAL                                     1418    174    88%
-================= 113 passed, 13 warnings in 68.58s (0:01:08) ==================
+TOTAL                                     1427    177    88%
+================= 113 passed, 13 warnings in 81.36s (0:01:21) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
