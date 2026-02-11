@@ -5,7 +5,7 @@ Module for verifying the accuracy of generated summaries using an LLM.
 import json
 import logging
 import uuid
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
@@ -26,7 +26,7 @@ class VerifierAgent:
     Agent responsible for verifying summaries against source text.
     """
 
-    def __init__(self, config: ProcessingConfig, llm: Optional[ChatOpenAI] = None) -> None:
+    def __init__(self, config: ProcessingConfig, llm: ChatOpenAI | None = None) -> None:
         """
         Initialize the VerifierAgent.
 

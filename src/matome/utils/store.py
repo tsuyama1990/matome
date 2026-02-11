@@ -2,7 +2,7 @@ import json
 import logging
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -207,6 +207,39 @@ class DiskChunkStore:
                 return None
 
         return None
+
+    def get_all_summaries(self) -> Iterator[SummaryNode]:
+        """
+        Retrieve all summary nodes from the store (streaming).
+        Useful for final tree construction or export.
+        """
+        stmt = select(
+            self.nodes_table.c.content, self.nodes_table.c.embedding
+        ).where(self.nodes_table.c.type == "summary")
+
+        # We keep connection open during iteration?
+        # Standard pattern with engine.connect() allows manual control.
+        # But for generator, we need to yield row by row.
+
+        # We can't keep connection open easily in a simple generator unless we wrap it carefully.
+        # However, fetching all rows might be memory intensive if millions.
+        # But typically summaries are thousands.
+        # If we use `conn.execution_options(stream_results=True)` (if supported by driver) or fetchmany.
+        # SQLite driver usually fetches all unless server-side cursors used?
+        # But standard `result` iterator is usually buffered.
+
+        with self.engine.connect() as conn:
+            result = conn.execute(stmt)
+            for row in result:
+                content_json, embedding_json = row
+                try:
+                    data = json.loads(content_json)
+                    if embedding_json:
+                        data["embedding"] = json.loads(embedding_json)
+                    yield SummaryNode.model_validate(data)
+                except Exception:
+                    logger.exception("Failed to deserialize summary node during iteration.")
+                    continue
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""

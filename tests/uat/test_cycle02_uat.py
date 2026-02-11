@@ -1,14 +1,17 @@
-import pytest
-from unittest.mock import MagicMock
-from domain_models.config import ProcessingConfig, ClusteringAlgorithm
-from domain_models.manifest import SummaryNode, DocumentTree, Chunk
-from matome.engines.raptor import RaptorEngine
-from matome.agents.summarizer import SummarizationAgent
-from matome.utils.store import DiskChunkStore
-from matome.engines.embedder import EmbeddingService
-from matome.interfaces import Chunker
-from matome.engines.cluster import GMMClusterer
 from collections.abc import Iterable
+from unittest.mock import MagicMock
+
+import pytest
+
+from domain_models.config import ClusteringAlgorithm, ProcessingConfig
+from domain_models.manifest import Chunk
+from matome.agents.summarizer import SummarizationAgent
+from matome.engines.cluster import GMMClusterer
+from matome.engines.embedder import EmbeddingService
+from matome.engines.raptor import RaptorEngine
+from matome.interfaces import Chunker
+from matome.utils.store import DiskChunkStore
+
 
 def test_uat_scenario_12_multi_level(tmp_path: pytest.TempPathFactory) -> None:
     """
