@@ -1,8 +1,7 @@
-from unittest.mock import create_autospec
+from typing import cast
+from unittest.mock import MagicMock, create_autospec
 
 import pytest
-
-from unittest.mock import MagicMock
 
 from domain_models.config import ProcessingConfig, ProcessingMode
 from domain_models.manifest import Cluster
@@ -70,7 +69,11 @@ def test_summarize_clusters_integration(
 ) -> None:
     """Verify _summarize_clusters calls summarizer with correct strategy."""
     chunker, embedder, clusterer, summarizer = mock_dependencies
-    summarizer.summarize.return_value = "summary text"
+
+    # Cast summarizer.summarize to MagicMock to satisfy mypy
+    mock_summarize = cast(MagicMock, summarizer.summarize)
+    mock_summarize.return_value = "summary text"
+
     store = MagicMock()
 
     # Setup mock node
@@ -85,7 +88,7 @@ def test_summarize_clusters_integration(
     list(engine_dikw._summarize_clusters([cluster], [0], store, level=1))
 
     # Check call
-    _, kwargs = summarizer.summarize.call_args
+    _, kwargs = mock_summarize.call_args
     assert isinstance(kwargs['strategy'], ActionStrategy)
 
     # 2. Default Mode
@@ -94,5 +97,27 @@ def test_summarize_clusters_integration(
 
     list(engine_default._summarize_clusters([cluster], [0], store, level=1))
 
-    _, kwargs = summarizer.summarize.call_args
+    _, kwargs = mock_summarize.call_args
     assert isinstance(kwargs['strategy'], BaseSummaryStrategy)
+
+
+def test_summarize_clusters_empty_content(
+    mock_dependencies: tuple[Chunker, EmbeddingService, Clusterer, Summarizer],
+) -> None:
+    """Verify _summarize_clusters handles clusters with no content gracefully."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    store = MagicMock()
+
+    # Setup mock store to return None for node (missing node)
+    store.get_node.return_value = None
+    cluster = Cluster(id="c1", level=0, node_indices=[0])
+
+    config = ProcessingConfig()
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+    # Consume generator - should yield nothing as content is missing
+    results = list(engine._summarize_clusters([cluster], [0], store, level=1))
+
+    assert len(results) == 0
+    # Summarizer should NOT be called
+    cast(MagicMock, summarizer.summarize).assert_not_called()

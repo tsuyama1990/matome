@@ -201,6 +201,8 @@ class RaptorEngine:
         self, current_level_ids: list[NodeID], store: DiskChunkStore
     ) -> Iterator[list[float]]:
         """Yields embeddings in batches, processing from store."""
+        total_nodes = len(current_level_ids)
+        processed_count = 0
 
         def node_text_generator() -> Iterator[tuple[NodeID, str]]:
             for nid in current_level_ids:
@@ -217,6 +219,10 @@ class RaptorEngine:
             texts_batch = [item[1] for item in batch]
 
             yield from self._process_embedding_batch(ids_batch, texts_batch, store)
+
+            processed_count += len(ids_batch)
+            if processed_count % 100 == 0 or processed_count == total_nodes:
+                logger.info(f"Embedded {processed_count}/{total_nodes} nodes for next level clustering.")
 
     def _process_embedding_batch(
         self,
@@ -238,6 +244,9 @@ class RaptorEngine:
 
         Yields:
             The generated embedding vectors (list of floats).
+
+        Raises:
+            RuntimeError: If embedding generation fails for the batch.
         """
         try:
             embeddings_iter = self.embedder.embed_strings(texts_buffer)
@@ -248,7 +257,7 @@ class RaptorEngine:
                 yield embedding
         except Exception as e:
             logger.exception("Failed to embed batch during next level clustering.")
-            msg = "Embedding failed during recursion."
+            msg = f"Embedding failed for batch of size {len(texts_buffer)}."
             raise RuntimeError(msg) from e
 
     def _finalize_tree(
