@@ -71,34 +71,54 @@ class SummarizationAgent:
             self.llm = None
 
     def summarize(
-        self, text: str, config: ProcessingConfig | None = None, level: int = 1
+        self,
+        text: str | list[str],
+        config: ProcessingConfig | None = None,
+        level: int = 1,
+        strategy: PromptStrategy | None = None,
     ) -> str:
         """
         Summarize the provided text using the configured strategy.
 
         Args:
-            text: The text to summarize.
+            text: The text to summarize. Can be a single string or a list of chunk strings.
             config: Optional config override. Uses self.config if None.
             level: The abstraction level (1=base summaries, higher=more abstract).
+            strategy: Optional strategy override for this specific call.
         """
         effective_config = config or self.config
+        effective_strategy = strategy or self.prompt_strategy
         request_id = str(uuid.uuid4())
 
-        if not text:
+        # Normalize to list
+        context_chunks: list[str] = [text] if isinstance(text, str) else text
+
+        if not context_chunks or (len(context_chunks) == 1 and not context_chunks[0]):
             logger.debug(f"[{request_id}] Skipping empty text summarization.")
             return ""
 
-        # Validate input for security
-        self._validate_input(
-            text, effective_config.max_input_length, effective_config.max_word_length
-        )
+        # Validate input for security (validate each chunk and total length)
+        total_length = 0
+        for chunk in context_chunks:
+            total_length += len(chunk)
+            self._validate_input(
+                chunk,
+                effective_config.max_input_length,
+                effective_config.max_word_length,
+            )
+
+        # Check total length against max_input_length to prevent context window overflow
+        if total_length > effective_config.max_input_length:
+            msg = f"Total input text exceeds maximum allowed length ({effective_config.max_input_length} characters)."
+            raise ValueError(msg)
 
         # Sanitize prompt injection
-        safe_text = self._sanitize_prompt_injection(text)
+        safe_chunks = [self._sanitize_prompt_injection(chunk) for chunk in context_chunks]
 
         if self.mock_mode:
             logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
-            return f"Summary of {safe_text[:20]}..."
+            preview = safe_chunks[0][:20] if safe_chunks else ""
+            return f"Summary of {preview}..."
 
         if not self.llm:
             msg = f"[{request_id}] LLM not initialized (missing API Key?). Cannot perform summarization."
@@ -112,19 +132,17 @@ class SummarizationAgent:
 
         try:
             # Use Strategy to create prompt
-            # Note: SummarizationAgent usually receives a single combined text block from RaptorEngine.
-            # PromptStrategy expects list[str]. We wrap it.
-            prompt = self.prompt_strategy.create_prompt([safe_text], level)
+            prompt = effective_strategy.create_prompt(safe_chunks, level)
             messages = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, effective_config, request_id)
             raw_summary = self._process_response(response, request_id)
 
             # Use Strategy to parse output
-            return self.prompt_strategy.parse_output(raw_summary)
+            return effective_strategy.parse_output(raw_summary)
 
         except Exception as e:
-            logger.exception(f"[{request_id}] Summarization failed for text length {len(text)}")
+            logger.exception(f"[{request_id}] Summarization failed for text length {total_length}")
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 

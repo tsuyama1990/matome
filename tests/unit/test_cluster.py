@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 
-from domain_models.config import ProcessingConfig
+from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from matome.engines.cluster import GMMClusterer
 
 
@@ -53,7 +53,9 @@ def test_clustering_with_gmm_soft(
 
     # Instantiate engine with threshold 0.4
     engine = GMMClusterer()
-    config = ProcessingConfig(clustering_algorithm="gmm", clustering_probability_threshold=0.4)
+    config = ProcessingConfig(
+        clustering_algorithm=ClusteringAlgorithm.GMM, clustering_probability_threshold=0.4
+    )
 
     # Perform clustering
     clusters = engine.cluster_nodes(iter(sample_embeddings), config)

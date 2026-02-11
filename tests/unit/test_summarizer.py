@@ -187,3 +187,57 @@ def test_custom_strategy(mock_llm: MagicMock, config: ProcessingConfig) -> None:
 
         # Check Result
         assert result == "PARSED: LLM Output"
+
+
+def test_summarize_list_input(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test summarize with a list of strings."""
+    chunks = ["chunk1", "chunk2"]
+    expected_summary = "Summary"
+
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content=expected_summary)
+
+    # Spy on prompt strategy to ensure it received list
+    with patch.object(
+        agent.prompt_strategy, "create_prompt", wraps=agent.prompt_strategy.create_prompt
+    ) as mock_create_prompt:
+        result = agent.summarize(chunks, config)
+
+        assert result == expected_summary
+        mock_create_prompt.assert_called_once()
+        call_args = mock_create_prompt.call_args
+        assert call_args[0][0] == chunks  # First arg is chunks list
+
+
+def test_summarize_strategy_override(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test overriding strategy in summarize call."""
+    override_strategy = MockStrategy()  # defined in the file
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="LLM Output")
+
+    # We spy on override_strategy
+    with patch.object(
+        override_strategy, "create_prompt", wraps=override_strategy.create_prompt
+    ) as mock_create_prompt:
+        result = agent.summarize("text", config, strategy=override_strategy)
+
+        mock_create_prompt.assert_called_once()
+        assert result.startswith("PARSED: ")  # MockStrategy adds PARSED:
+
+
+def test_summarize_list_input_total_length_validation(
+    agent: SummarizationAgent, config: ProcessingConfig
+) -> None:
+    """Test that total length of list input is validated."""
+    # max_input_length minimum is 100
+    config = ProcessingConfig(max_input_length=100)
+    agent.config = config
+
+    # Construct chunks that exceed 100 chars total
+    chunk1 = "a" * 60
+    chunk2 = "b" * 50
+    chunks = [chunk1, chunk2]
+    # Total 110 > 100
+
+    with pytest.raises(ValueError, match="Total input text exceeds"):
+        agent.summarize(chunks, config)

@@ -71,13 +71,18 @@ class Summarizer(Protocol):
     token limits and other configuration parameters.
     """
 
-    def summarize(self, text: str, config: ProcessingConfig, level: int = 1) -> str:
+    def summarize(
+        self,
+        text: str | list[str],
+        config: ProcessingConfig,
+        level: int = 1,
+    ) -> str:
         """
         Summarize the provided text.
 
         Args:
-            text: The text to summarize. If empty, behavior depends on implementation
-                  (may return empty string or raise error).
+            text: The text to summarize. Can be a single string or a list of chunk strings.
+                  If empty, behavior depends on implementation (may return empty string or raise error).
             config: Configuration parameters such as `model_name` and `max_summary_tokens`.
             level: The current level of summarization in the hierarchy (default: 1).
 

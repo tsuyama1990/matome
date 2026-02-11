@@ -62,7 +62,7 @@ def test_canvas_schema_validation() -> None:
     }
     # We expect validation error on missing 'toNode' target if we were validating logic,
     # but here just schema. 'n2' doesn't exist in nodes but edge is valid schema-wise.
-    canvas = CanvasFile(**data)
+    canvas = CanvasFile.model_validate(data)
     assert len(canvas.nodes) == 1
     assert len(canvas.edges) == 1
     assert canvas.edges[0].from_node == "n1"  # Pydantic model uses snake_case

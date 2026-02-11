@@ -53,20 +53,14 @@ class InteractiveRaptorEngine:
 
         logger.info(f"Refining node {node_id} with instruction: {instruction}")
 
-        # Create a temporary agent with RefinementStrategy, reusing the LLM instance
+        # Create RefinementStrategy
         strategy = RefinementStrategy(instruction)
-
-        # We reuse the LLM to avoid re-initialization overhead/cost
-        refinement_agent = SummarizationAgent(
-            config=self.config,
-            llm=self.agent.llm,
-            prompt_strategy=strategy
-        )
 
         try:
             # We pass the current node text as "text" to summarize.
             # The strategy will format it with instruction.
-            new_text = refinement_agent.summarize(node.text, level=node.level)
+            # We inject the strategy directly into the existing agent.
+            new_text = self.agent.summarize(node.text, level=node.level, strategy=strategy)
         except Exception:
             logger.exception(f"Refinement failed for node {node_id}")
             raise

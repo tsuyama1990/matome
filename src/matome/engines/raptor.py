@@ -379,9 +379,8 @@ class RaptorEngine:
                 continue
 
             # Note: For very large clusters, joining texts might still be memory intensive.
-            # But the summarizer typically takes a string.
-            combined_text = "\n\n".join(cluster_texts)
-            summary_text = self.summarizer.summarize(combined_text, self.config, level=level)
+            # We pass the list of texts directly to the summarizer, which handles prompt construction efficiently.
+            summary_text = self.summarizer.summarize(cluster_texts, self.config, level=level)
 
             # Determine DIKW Level
             dikw_level = DIKWLevel.from_level(level)
