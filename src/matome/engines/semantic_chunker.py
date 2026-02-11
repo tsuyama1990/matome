@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 
 import numpy as np
 
@@ -93,7 +93,7 @@ class JapaneseSemanticChunker:
         return True
 
     def _chunk_with_global_percentile(
-        self, get_sentence_iter: Iterable[str], config: ProcessingConfig
+        self, get_sentence_iter: Callable[[], Iterator[str]], config: ProcessingConfig
     ) -> Iterator[Chunk]:
         """
         Execute chunking using global percentile threshold strategy.
@@ -101,12 +101,12 @@ class JapaneseSemanticChunker:
         """
         # Pass 1: Calculate Distances
         # Note: get_sentence_iter is a callable returning iterator
-        sentences_iter_1 = get_sentence_iter()  # type: ignore[call-arg]
+        sentences_iter_1 = get_sentence_iter()
         distances = self._calculate_semantic_distances(sentences_iter_1)
 
         if not distances:
             # Handle single/empty case
-            sentences_iter_single = get_sentence_iter() # type: ignore[call-arg]
+            sentences_iter_single = get_sentence_iter()
             first = next(sentences_iter_single, None)
             if first:
                 yield Chunk(
@@ -123,7 +123,7 @@ class JapaneseSemanticChunker:
         )
 
         # Pass 2: Chunking
-        sentences_iter_2 = get_sentence_iter() # type: ignore[call-arg]
+        sentences_iter_2 = get_sentence_iter()
         yield from self._create_chunks(
             sentences_iter_2, distances, threshold, config
         )

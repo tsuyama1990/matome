@@ -96,10 +96,9 @@ class RaptorEngine:
             msg = "Input text must be non-None."
             raise ValueError(msg)
 
-        if isinstance(text, str):
-            if not text:
-                msg = "Input text must be a non-empty string."
-                raise ValueError(msg)
+        if isinstance(text, str) and not text:
+            msg = "Input text must be a non-empty string."
+            raise ValueError(msg)
 
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
