@@ -15,9 +15,9 @@ from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from domain_models.constants import PROMPT_INJECTION_PATTERNS
+from matome.agents.strategies import BaseSummaryStrategy, PromptStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -27,16 +27,23 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(self, config: ProcessingConfig, llm: ChatOpenAI | None = None) -> None:
+    def __init__(
+        self,
+        config: ProcessingConfig,
+        llm: ChatOpenAI | None = None,
+        strategy: PromptStrategy | None = None,
+    ) -> None:
         """
         Initialize the SummarizationAgent.
 
         Args:
             config: Processing configuration containing model name, retries, etc.
             llm: Optional pre-configured LLM instance. If None, it will be initialized from config.
+            strategy: Optional prompt strategy. Defaults to BaseSummaryStrategy (CoD).
         """
         self.config = config
         self.model_name = config.summarization_model
+        self.strategy = strategy or BaseSummaryStrategy()
 
         # Determine API key and Base URL
         api_key = get_openrouter_api_key()
@@ -64,7 +71,7 @@ class SummarizationAgent:
 
     def summarize(self, text: str, config: ProcessingConfig | None = None) -> str:
         """
-        Summarize the provided text using the Chain of Density strategy.
+        Summarize the provided text using the configured strategy.
 
         Args:
             text: The text to summarize.
@@ -100,11 +107,12 @@ class SummarizationAgent:
             )
 
         try:
-            prompt = COD_TEMPLATE.format(context=safe_text)
+            prompt = self.strategy.generate_prompt(safe_text)
             messages = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, effective_config, request_id)
-            return self._process_response(response, request_id)
+            processed = self._process_response(response, request_id)
+            return self.strategy.parse_response(processed)
 
         except Exception as e:
             logger.exception(f"[{request_id}] Summarization failed for text length {len(text)}")

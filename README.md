@@ -4,58 +4,32 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
-**Transform static documents into interactive Knowledge Trees.**
-Matome 2.0 goes beyond simple summarization. It uses the **RAPTOR** algorithm and a novel **Semantic Zooming** engine to break down complex texts into a **DIKW (Data-Information-Knowledge-Wisdom)** hierarchy. Users can explore high-level philosophical insights ("Wisdom") and drill down into actionable checklists ("Information"), customizing the knowledge to fit their mental models.
+**Transform static documents into structured knowledge with semantic zooming.**
 
-## Key Features
+## Overview
 
-*   **Semantic Zooming Engine:** Automatically generates distinct layers of abstraction:
-    *   **Wisdom (Root):** Profound aphorisms and guiding principles.
-    *   **Knowledge (Branches):** Structural explanations and mental models.
-    *   **Information (Leaves):** Actionable steps and checklists.
-    *   **Data (Source):** Original text chunks for verification.
-*   **Interactive Matome Canvas:** A modern **Panel-based GUI** that allows you to explore the knowledge tree visually, expanding and collapsing branches as needed.
-*   **Real-Time Refinement:** Don't like a summary? Chat with it! Instruct the system to "Make this simpler" or "Add more examples," and watch the tree update instantly.
-*   **Hybrid Architecture:** Fully compatible with both automated batch processing (CLI) and interactive exploration (GUI), powered by a robust SQLite backend.
+**Matome** is an advanced summarization system designed to process long-form text using the RAPTOR algorithm. It breaks down complex documents into a hierarchy of summaries, enabling users to navigate from high-level "Wisdom" down to granular "Data".
 
-## Architecture Overview
+Why use Matome?
+*   **Handle Long Contexts:** Process entire books or reports that exceed typical LLM context windows.
+*   **Structured Knowledge:** Unlike flat summaries, Matome builds a tree of knowledge nodes.
+*   **Extensible Architecture:** Designed with the Strategy Pattern to support custom summarization logic and future interactive refinements.
 
-Matome 2.0 is built on a layered architecture separating the Core Engine from the Presentation Layer.
+## Features
 
-```mermaid
-graph TD
-    subgraph "Presentation Layer"
-        CLI[CLI (Typer)]
-        GUI[GUI (Panel App)]
-    end
+*   **Recursive Summarization (RAPTOR):** Automatically chunks, embeds, clusters, and summarizes text recursively.
+*   **Strategy Pattern Engine:** Decoupled prompt logic allows swapping summarization strategies (e.g., Chain of Density) without changing core code.
+*   **Enhanced Metadata Schema:** Every summary node tracks its Semantic Level (DIKW: Data, Information, Knowledge, Wisdom) and edit history.
+*   **Robust Persistence:** Uses SQLite for efficient storage and retrieval of large document trees.
+*   **CLI Interface:** Simple command-line tool for batch processing.
 
-    subgraph "Application Layer"
-        IRE[InteractiveRaptorEngine]
-        RE[RaptorEngine]
-        SA[SummarizationAgent]
-    end
-
-    subgraph "Data Layer"
-        Store[DiskChunkStore (SQLite)]
-        Models[Domain Models (Pydantic)]
-    end
-
-    CLI --> RE
-    GUI --> IRE
-    IRE --> SA
-    RE --> SA
-    IRE --> Store
-    RE --> Store
-    Store --> Models
-```
-
-## Prerequisites
+## Requirements
 
 *   **Python 3.11+**
-*   **uv** (Recommended for dependency management) or `pip`
-*   **OpenAI API Key** (or OpenRouter) for LLM generation.
+*   **uv** (Recommended) or `pip`
+*   **OpenAI API Key** (or OpenRouter)
 
-## Installation & Setup
+## Installation
 
 1.  **Clone the repository:**
     ```bash
@@ -74,76 +48,46 @@ graph TD
     ```
 
 3.  **Configure Environment:**
-    Copy the example environment file and add your API key.
+    Set your API key (e.g., in `.env` or export):
     ```bash
-    cp .env.example .env
-    # Edit .env and set OPENAI_API_KEY=sk-...
+    export OPENROUTER_API_KEY=sk-...
+    # Or for testing:
+    export OPENROUTER_API_KEY=mock
     ```
 
 ## Usage
 
-### 1. Batch Processing (CLI)
-Generate the initial DIKW tree from a text file.
+### Basic Run
+Process a text file and generate a summary tree.
 
 ```bash
-# Basic run
-python -m matome.cli run path/to/your/document.txt
-
-# Specify model
-python -m matome.cli run document.txt --model openai/gpt-4o
+# Using uv run ensures dependencies are loaded
+uv run matome run path/to/your/document.txt
 ```
-This creates a `results/chunks.db` containing the knowledge tree.
 
-### 2. Interactive Exploration (GUI)
-Launch the Matome Canvas to explore and refine the generated tree.
+### Specify Model
+You can choose a specific LLM model (supported by LiteLLM/LangChain).
 
 ```bash
-# Launch the Panel server
-python -m matome.ui.app results/chunks.db
-```
-Open your browser at `http://localhost:5006`.
-
-## Development Workflow
-
-We follow a 5-Cycle AC-CDD development process.
-
-### Running Tests
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=src
+uv run matome run document.txt --model openai/gpt-4o
 ```
 
-### Linting & Formatting
-Strict code quality is enforced.
-```bash
-# Check code quality
-ruff check .
+The output `chunks.db` and `summary.md` will be saved in the `results/` directory.
 
-# Fix auto-fixable issues
-ruff check --fix .
-
-# Type checking
-mypy src
-```
-
-## Project Structure
+## Architecture
 
 ```ascii
 src/matome/
-├── agents/         # LLM interaction & Prompt Strategies
-├── engines/        # Core logic (RAPTOR, Interactive)
-├── ui/             # Panel GUI components (MVVM)
-├── utils/          # Database & Helper functions
+├── agents/         # LLM Agents (Summarizer, Verifier) & Strategies
+├── engines/        # Core Logic (RAPTOR, Chunker, Clusterer)
+├── utils/          # Database (DiskChunkStore) & Helpers
 └── cli.py          # Command Line Interface
 
-src/domain_models/  # Pydantic schemas (Node, Metadata)
-dev_documents/      # Architecture & Spec documentation
-tests/              # Unit & Integration tests
+src/domain_models/  # Pydantic Schemas (Node, Metadata)
 ```
 
-## License
+## Roadmap
 
-This project is licensed under the MIT License. See `LICENSE` for details.
+*   **Cycle 02:** DIKW Generation Engine (Semantic Zooming)
+*   **Cycle 03:** Interactive Refinement & GUI Foundation
+*   **Cycle 04:** Advanced Clustering & Visualization
