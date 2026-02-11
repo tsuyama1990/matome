@@ -219,7 +219,11 @@ class SummarizationAgent:
         # Use Tenacity for retries based on config
         for attempt in Retrying(
             stop=stop_after_attempt(config.max_retries),
-            wait=wait_exponential(multiplier=1, min=2, max=10),
+            wait=wait_exponential(
+                multiplier=config.retry_multiplier,
+                min=config.retry_min_wait,
+                max=config.retry_max_wait,
+            ),
             reraise=True,
         ):
             with attempt:

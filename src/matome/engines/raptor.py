@@ -62,25 +62,36 @@ class RaptorEngine:
             # We assume store.add_chunks handles lists efficiently.
             # But to strictly stream, we should batch manually here and call store.add_chunks on batches.
 
-            # Using batched to process small groups of chunks. Use config for buffer size.
-            # We assume store.add_chunks can handle batches efficiently.
-            # While 'batched' loads 'n' items into memory (tuple), n is small (buffer size).
-            for chunk_batch_tuple in batched(chunk_stream, self.config.chunk_buffer_size):
-                # Convert tuple to list for store.add_chunks (interface expects Iterable)
-                chunk_batch = list(chunk_batch_tuple)
+            # We manually buffer chunks to avoid loading too many into memory.
+            # We avoid 'batched' utility if it's perceived as opaque regarding memory usage.
+            buffer: list[Chunk] = []
+            BUFFER_SIZE = self.config.chunk_buffer_size
 
-                # 1. Store batch
-                store.add_chunks(chunk_batch)
+            for chunk in chunk_stream:
+                buffer.append(chunk)
+                if len(buffer) >= BUFFER_SIZE:
+                    # 1. Store batch
+                    store.add_chunks(buffer)
+                    # 2. Yield embeddings and collect IDs
+                    for c in buffer:
+                        if c.embedding is None:
+                            msg = f"Chunk {c.index} missing embedding."
+                            raise ValueError(msg)
+                        stats["node_count"] += 1
+                        current_level_ids.append(c.index)
+                        yield c.embedding
+                    buffer.clear()
 
-                # 2. Yield embeddings and collect IDs
-                for chunk in chunk_batch:
-                    if chunk.embedding is None:
-                        msg = f"Chunk {chunk.index} missing embedding."
+            # Flush remaining
+            if buffer:
+                store.add_chunks(buffer)
+                for c in buffer:
+                    if c.embedding is None:
+                        msg = f"Chunk {c.index} missing embedding."
                         raise ValueError(msg)
-
                     stats["node_count"] += 1
-                    current_level_ids.append(chunk.index)
-                    yield chunk.embedding
+                    current_level_ids.append(c.index)
+                    yield c.embedding
 
                 if stats["node_count"] % 100 == 0:
                     logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")

@@ -20,11 +20,15 @@ def test_uat_metadata_validation() -> None:
     valid_meta = NodeMetadata(dikw_level=DIKWLevel.WISDOM)
     node = SummaryNode(
         id="valid_node",
-        text="Valid Node",
+        text="Valid Node Content",
         level=1,
         children_indices=[1],
         metadata=valid_meta
     )
+    # Verify content and structure
+    assert node.text == "Valid Node Content"
+    assert node.level == 1
+    assert node.children_indices == [1]
     assert node.metadata.dikw_level == DIKWLevel.WISDOM
 
     # 2. Invalid Metadata (should raise ValidationError)
