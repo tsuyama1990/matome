@@ -15,6 +15,39 @@ Please generate a high-density summary following these steps:
 Output ONLY the final, densest summary.
 """
 
+# Action / Information Template (L3)
+ACTION_TEMPLATE = """
+The following text contains detailed information:
+{context}
+
+Please extract actionable steps, rules, and procedures.
+Format the output as a clear "How-to" guide or a checklist.
+Focus on immediate utility and execution.
+Avoid abstract theory; focus on "What to do".
+"""
+
+# Knowledge Template (L2)
+KNOWLEDGE_TEMPLATE = """
+The following text contains specific information and actions:
+{context}
+
+Please synthesize the underlying logic, frameworks, and mechanisms.
+Explain "Why" this works, rather than just "What" happens.
+Avoid specific examples unless necessary to illustrate a structural concept.
+Focus on the mental model or system dynamics.
+"""
+
+# Wisdom Template (L1)
+WISDOM_TEMPLATE = """
+The following text contains knowledge and frameworks:
+{context}
+
+Please distill the core philosophy, lesson, or truth into a SINGLE, profound message.
+The message should be extremely concise (ideally 20-40 characters).
+Strip away all context and specific details.
+Return only the aphorism or key insight.
+"""
+
 # Verification Prompt Template
 VERIFICATION_TEMPLATE = """
 You are a meticulous fact-checker. Your task is to verify the following Summary against the provided Source Text.

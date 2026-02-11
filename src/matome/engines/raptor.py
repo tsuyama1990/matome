@@ -6,8 +6,9 @@ from collections.abc import Iterable, Iterator
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel, NodeID
+from matome.agents.strategies import ActionStrategy, KnowledgeStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
-from matome.interfaces import Chunker, Clusterer, Summarizer
+from matome.interfaces import Chunker, Clusterer, PromptStrategy, Summarizer
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
@@ -381,21 +382,14 @@ class RaptorEngine:
                 logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
                 continue
 
-            # Determine if we should pass list[str] or joined string to summarizer.
-            # The Summarizer interface now handles list[str] if designed to, but basic agent takes str.
-            # We strictly limit the input size here to prevent OOM/DoS if a cluster is huge.
-            # A huge cluster usually implies bad clustering or very similar repetitive text.
-
-            # Check total length before joining
+            # Limit total input size. We pass list to summarizer, but we truncate list if total char count is too high.
             total_chars = sum(len(t) for t in cluster_texts)
+            texts_to_pass = cluster_texts
+
             if total_chars > self.config.max_input_length:
                 logger.warning(
                     f"Cluster {cluster.id} text size ({total_chars}) exceeds max input length. Truncating."
                 )
-                # Truncate by dropping texts or truncating the joined string?
-                # Truncating joined string is safer for preserving some context from all if possible,
-                # but joining itself causes memory spike.
-                # Better: Join until limit is reached.
                 current_len = 0
                 truncated_texts = []
                 for t in cluster_texts:
@@ -403,11 +397,25 @@ class RaptorEngine:
                         break
                     truncated_texts.append(t)
                     current_len += len(t)
-                combined_text = "\n\n".join(truncated_texts)
-            else:
-                combined_text = "\n\n".join(cluster_texts)
+                texts_to_pass = truncated_texts
 
-            summary_text = self.summarizer.summarize(combined_text, self.config)
+            # Select strategy based on level
+            strategy: PromptStrategy
+            dikw: DIKWLevel
+
+            if level == 1:
+                strategy = ActionStrategy()
+                dikw = DIKWLevel.INFORMATION
+            elif level == 2:
+                strategy = KnowledgeStrategy()
+                dikw = DIKWLevel.KNOWLEDGE
+            else:
+                strategy = WisdomStrategy()
+                dikw = DIKWLevel.WISDOM
+
+            summary_text = self.summarizer.summarize(
+                texts_to_pass, self.config, level=level, strategy=strategy
+            )
 
             node_id_str = str(uuid.uuid4())
             summary_node = SummaryNode(
@@ -415,7 +423,7 @@ class RaptorEngine:
                 text=summary_text,
                 level=level,
                 children_indices=children_indices,
-                metadata=NodeMetadata(cluster_id=cluster.id),
+                metadata=NodeMetadata(cluster_id=cluster.id, dikw_level=dikw),
             )
 
             yield summary_node
