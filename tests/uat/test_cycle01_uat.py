@@ -1,37 +1,78 @@
+from unittest.mock import MagicMock, patch
+
+from langchain_core.messages import AIMessage
+
 from domain_models.config import ProcessingConfig
-from matome.engines.token_chunker import JapaneseTokenChunker
-from matome.utils.text import normalize_text, split_sentences
+from domain_models.manifest import SummaryNode
+from domain_models.metadata import DIKWLevel, NodeMetadata
+from matome.agents.strategies import PromptStrategy
+from matome.agents.summarizer import SummarizationAgent
 
 
-def test_uat_scenario_02_ingestion_cleaning() -> None:
-    """Scenario 02: Text Ingestion & Cleaning."""
-    text = "１２３ＡＢＣ"
-    cleaned = normalize_text(text)
-    assert cleaned == "123ABC"
+def test_uat_c01_01_metadata_check() -> None:
+    """
+    Scenario C01-01: Data Model Robustness
+    Verify preservation of DIKW metadata and backward compatibility.
+    """
+    # 1. Positive Test: Create Wisdom node, serialize, deserialize
+    node = SummaryNode(
+        id="test_wisdom",
+        text="Wisdom Text",
+        level=1,
+        children_indices=[0],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM),
+    )
+    json_data = node.model_dump_json()
+    loaded_node = SummaryNode.model_validate_json(json_data)
+    assert loaded_node.metadata.dikw_level == DIKWLevel.WISDOM
+
+    # 2. Migration Test: Legacy dictionary
+    legacy_data = {
+        "id": "legacy",
+        "text": "text",
+        "level": 1,
+        "children_indices": [0],
+        "metadata": {"source": "file.txt"},
+    }
+    # Using model_validate (from dict) instead of json
+    legacy_node = SummaryNode.model_validate(legacy_data)
+    assert legacy_node.metadata.dikw_level == DIKWLevel.DATA
+    assert legacy_node.metadata.source == "file.txt"  # type: ignore
 
 
-def test_uat_scenario_03_sentence_splitting() -> None:
-    """Scenario 03: Japanese Sentence Splitting."""
-    text = "「これはテストです。」と彼は言った。次の文です！"
-    sentences = split_sentences(text)
+class PirateStrategy(PromptStrategy):
+    """Custom strategy for UAT."""
 
-    # Ideally:
-    # 1. 「これはテストです。」と彼は言った。
-    # 2. 次の文です！
+    def create_prompt(self, context_chunks: list[str], current_level: int) -> str:
+        return "Ahoy matey: " + " ".join(context_chunks)
 
-    # Cycle 01 spec accepts simple splitting even if it breaks inside quotes.
-    # We assert that "次の文です！" is a separate sentence at the end.
-    assert sentences[-1] == "次の文です！"
+    def parse_output(self, llm_output: str) -> str:
+        return llm_output
 
 
-def test_uat_scenario_04_chunk_size() -> None:
-    """Scenario 04: Chunk Size Management."""
-    # Long text
-    sentence = "これは長い文章のテストです。" * 10
-    text = sentence * 10
+def test_uat_c01_02_strategy_injection() -> None:
+    """
+    Scenario C01-02: Strategy Injection
+    Verify default behavior and custom strategy injection.
+    """
+    config = ProcessingConfig()
 
-    chunker = JapaneseTokenChunker()
-    config = ProcessingConfig(max_tokens=50)  # Small limit to force chunking
-    chunks = list(chunker.split_text(text, config))
+    # 1. Default Strategy
+    with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
+        _ = SummarizationAgent(config)
+        # Verification implies no crash and default behavior (covered by unit tests)
 
-    assert len(chunks) > 1
+    # 2. Custom Strategy
+    strategy = PirateStrategy()
+    with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
+        agent_custom = SummarizationAgent(config, prompt_strategy=strategy)
+        agent_custom.mock_mode = False
+        agent_custom.llm = MagicMock()
+        llm_mock = agent_custom.llm
+        llm_mock.invoke.return_value = AIMessage(content="Treasure found")
+
+        agent_custom.summarize("map", config)
+
+        args, _ = llm_mock.invoke.call_args
+        prompt = args[0][0].content
+        assert prompt.startswith("Ahoy matey")

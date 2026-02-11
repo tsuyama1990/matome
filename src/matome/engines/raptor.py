@@ -5,6 +5,7 @@ from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
+from domain_models.metadata import NodeMetadata
 from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
@@ -44,6 +45,13 @@ class RaptorEngine:
 
         Consumes the initial chunks iterator, embeds them, stores them in the database,
         and then clusters the embeddings. All operations are strictly streaming.
+
+        Args:
+            initial_chunks: Iterator of Chunk objects from the Chunker.
+            store: The persistent store to save chunks to.
+
+        Returns:
+            A tuple containing the list of Clusters and the list of NodeIDs for this level.
         """
         current_level_ids: list[NodeID] = []
         # Use mutable container to track count within generator
@@ -215,6 +223,13 @@ class RaptorEngine:
 
         Retrieves text for the current level nodes from the store, generates embeddings,
         updates the store with new embeddings, and clusters them.
+
+        Args:
+            current_level_ids: List of NodeIDs for the current level.
+            store: The persistent store.
+
+        Returns:
+            List of Cluster objects for the next level.
         """
 
         def lx_embedding_generator() -> Iterator[list[float]]:
@@ -313,7 +328,8 @@ class RaptorEngine:
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata={"type": "single_chunk_root"},
+                # Using kwargs for extra fields requires type ignore in static analysis
+                metadata=NodeMetadata(type="single_chunk_root"),  # type: ignore
             )
             all_summaries[root_node.id] = root_node
         else:
@@ -365,7 +381,7 @@ class RaptorEngine:
             # Note: For very large clusters, joining texts might still be memory intensive.
             # But the summarizer typically takes a string.
             combined_text = "\n\n".join(cluster_texts)
-            summary_text = self.summarizer.summarize(combined_text, self.config)
+            summary_text = self.summarizer.summarize(combined_text, self.config, level=level)
 
             node_id_str = str(uuid.uuid4())
             summary_node = SummaryNode(
@@ -373,7 +389,8 @@ class RaptorEngine:
                 text=summary_text,
                 level=level,
                 children_indices=children_indices,
-                metadata={"cluster_id": cluster.id},
+                # Using kwargs for extra fields requires type ignore in static analysis
+                metadata=NodeMetadata(cluster_id=cluster.id),  # type: ignore
             )
 
             yield summary_node

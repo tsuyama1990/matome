@@ -1,7 +1,9 @@
 import logging
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domain_models.metadata import NodeMetadata
 from domain_models.types import Metadata, NodeID
 
 # Configure logger
@@ -94,9 +96,21 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        default_factory=NodeMetadata, description="Optional extra info (e.g., cluster ID)."
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_metadata_compatibility(cls, data: Any) -> Any:
+        """
+        Ensures metadata is converted to NodeMetadata if it is a dictionary.
+        This handles legacy data loading.
+        """
+        # Pydantic handles automatic coercion from dict to Model,
+        # so explicit conversion logic is minimized here unless we need specific mapping.
+        # This validator serves as a hook for any future migration logic.
+        return data
 
 
 class Cluster(BaseModel):

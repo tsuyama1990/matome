@@ -8,8 +8,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
+from pydantic import SecretStr
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import PromptStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import SummarizationError
 from matome.utils.prompts import COD_TEMPLATE
@@ -45,7 +47,7 @@ def test_initialization(mock_llm: MagicMock) -> None:
         # Verify ChatOpenAI was called with correct base_url and config values
         mock_llm.assert_called_with(
             model="gpt-4o",
-            api_key="sk-test-key",
+            api_key=SecretStr("sk-test-key"),
             base_url="https://openrouter.ai/api/v1",
             temperature=0.5,
             max_retries=5,
@@ -149,3 +151,38 @@ def test_summarize_long_input_dos_prevention(
 
 # We removed test_summarize_retry_behavior as mocking tenacity is complex
 # and integration test covers error handling (test_pipeline_errors.py)
+
+
+class MockStrategy(PromptStrategy):
+    """Mock strategy for testing."""
+
+    def create_prompt(self, context_chunks: list[str], current_level: int) -> str:
+        return f"LEVEL {current_level}: " + " ".join(context_chunks)
+
+    def parse_output(self, llm_output: str) -> str:
+        return f"PARSED: {llm_output}"
+
+
+def test_custom_strategy(mock_llm: MagicMock, config: ProcessingConfig) -> None:
+    """Test using a custom PromptStrategy."""
+    strategy = MockStrategy()
+    # We need to mock get_openrouter_api_key or pass llm to avoid init failure if not mocked globally
+    with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
+        agent = SummarizationAgent(config, prompt_strategy=strategy)
+        agent.mock_mode = False  # Disable mock mode to ensure LLM is invoked
+        # Mock LLM to override the configured one
+        agent.llm = MagicMock()
+        llm_mock = agent.llm
+        llm_mock.invoke.return_value = AIMessage(content="LLM Output")
+
+        result = agent.summarize("Input Text", config, level=5)
+
+        # Check Prompt
+        args, _ = llm_mock.invoke.call_args
+        # args[0] is the list of messages passed to invoke
+        messages = args[0]
+        prompt_content = messages[0].content
+        assert prompt_content == "LEVEL 5: Input Text"
+
+        # Check Result
+        assert result == "PARSED: LLM Output"
