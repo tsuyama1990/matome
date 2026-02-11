@@ -1,80 +1,83 @@
-# Final User Acceptance Testing (UAT) Plan
+# Final User Acceptance Testing (UAT) & Tutorial Master Plan
 
 ## 1. Tutorial Strategy
 
-The primary goal of this UAT plan is to validate the **Long Context Summarization System**'s ability to process lengthy documents into structured, verifiable summaries. We will achieve this through a series of interactive Jupyter Notebooks that serve both as test cases and as tutorials for new users.
+The goal of this strategy is to transform the `USER_TEST_SCENARIO.md` into executable, educational, and verifiable tutorials. We will use Jupyter Notebooks (`.ipynb`) as the primary medium for both UAT and user education. This approach allows users to:
+1.  **Read:** Understand the concept (DIKW, Semantic Zooming).
+2.  **Run:** Execute code blocks to see the system in action.
+3.  **Verify:** Check the output against expected results immediately.
 
-### 1.1. Dual-Mode Testing
-To ensure the system is robust and testable without incurring constant API costs, all tutorials will support two modes:
-*   **Mock Mode (CI/Default)**: Uses pre-computed embeddings and dummy LLM responses. This allows the logic (chunking, clustering, tree building) to be tested in continuous integration environments.
-*   **Real Mode**: Requires an `OPENROUTER_API_KEY`. This runs the full pipeline with actual LLM calls (Gemini 1.5 Flash / DeepSeek V3) to generate real summaries.
+### 1.1. "Mock Mode" vs "Real Mode"
+To ensure the tutorials are accessible to everyone (including CI/CD environments without API keys) and to prevent unnecessary costs, we will implement a dual-mode execution strategy:
 
-### 1.2. The "Aha! Moment"
-The core UAT scenario is based on processing the "Emin Style Company Shikiho Reading Method" text. The user should experience the "Aha!" moment when they see a 100-page equivalent document turned into a structured, navigable Obsidian Canvas map.
+*   **Mock Mode (Default for CI/CD):**
+    *   **Logic:** The system will use pre-generated responses or a `MockLLM` wrapper instead of calling OpenAI.
+    *   **Data:** It will load a pre-populated `chunks.db` (or a small in-memory sample) that represents the "after" state of a summarization.
+    *   **Purpose:** Verifies that the *code* (Python classes, logic) works without crashing. It allows users to explore the *structure* of the data without waiting for generation.
+
+*   **Real Mode (User with API Key):**
+    *   **Logic:** The system calls the actual OpenAI API using `SummarizationAgent` with the user's key.
+    *   **Data:** It starts from raw text and generates the `chunks.db` from scratch.
+    *   **Purpose:** Demonstrates the *quality* of the summarization and the *magic* of the DIKW generation.
+
+### 1.2. Directory Structure
+All tutorials will be placed in the `tutorials/` directory at the project root.
+-   `tutorials/data/`: Contains sample text files (e.g., `emin_shikiho.txt`).
+-   `tutorials/assets/`: Contains images/diagrams for the notebooks.
 
 ## 2. Notebook Plan
 
-We will generate the following notebooks in the `tutorials/` directory.
+We will create three key notebooks, progressing from simple usage to advanced customization.
 
-### 2.1. `tutorials/01_quickstart.ipynb` (The Basics)
-*   **Goal**: Demonstrate text ingestion and semantic chunking.
-*   **Scenario**: Load a sample text, apply the Japanese-optimized regex splitter, and visualize the chunks.
-*   **Key Features**:
-    *   Loading `test_data/sample.txt`.
-    *   Initializing `SemanticChunker`.
-    *   Displaying the first 5 chunks to verify sentence boundaries.
-*   **Mode**: Works in both Mock and Real modes (Mock uses random vectors if embedding is skipped).
+### `tutorials/01_quickstart.ipynb`: The "Aha! Moment" (DIKW Visualization)
+**Goal:** Demonstrate the "Wisdom to Data" hierarchy immediately.
+**Prerequisites:** None (runs in Mock Mode by default).
+**Content:**
+1.  **Introduction:** Briefly explain Matome 2.0 and the DIKW concept.
+2.  **Load Data:** Load a pre-processed `chunks.db` (containing the "Emin Yurumazu" sample).
+3.  **Visualize Wisdom (L1):** Display the root node's "Wisdom" text.
+    *   *Action:* User reads the 30-character insight.
+4.  **Semantic Zoom (L1 -> L2):** Run a cell to "zoom in" and show the children (Knowledge) of that Wisdom.
+    *   *Action:* User sees the supporting frameworks.
+5.  **Interactive Query:** A simple cell where the user can "ask" the system about a specific node (simulating the chat interface).
 
-### 2.2. `tutorials/02_clustering_deep_dive.ipynb` (The Engine)
-*   **Goal**: Show how the system groups related information.
-*   **Scenario**: Take the chunks from step 1, generate embeddings (E5-large), and run UMAP + GMM clustering.
-*   **Key Features**:
-    *   Visualizing the 2D projection of chunks.
-    *   Showing which chunks belong to which cluster.
-    *   Explaining the "Soft Clustering" concept (a chunk can belong to multiple topics).
-*   **Mode**: Real mode required for meaningful embeddings (or load pre-saved vectors in Mock).
+### `tutorials/02_advanced_usage.ipynb`: The "Builder" Experience (Real Mode)
+**Goal:** Show how to generate a DIKW tree from scratch.
+**Prerequisites:** `OPENAI_API_KEY`.
+**Content:**
+1.  **Setup:** Configure the `InteractiveRaptorEngine` and `SummarizationAgent` with `WisdomStrategy`.
+2.  **Process:** Run the pipeline on a raw text file (`tutorials/data/sample.txt`).
+    *   *Observation:* Watch the progress bars as it chunks, embeds, clusters, and summarizes.
+3.  **Inspect Metadata:** Write code to query the `chunks.db` and verify that nodes have `dikw_level="wisdom"`, `dikw_level="knowledge"`, etc.
+4.  **Custom Refinement:** Programmatically call `engine.refine_node(node_id, instruction="Make it funnier")` and verify the change in the DB.
 
-### 2.3. `tutorials/03_full_raptor_pipeline.ipynb` (The "Aha!" Moment)
-*   **Goal**: Execute the full recursive summarization process.
-*   **Scenario**:
-    1.  Load `test_data/エミン流「会社四季報」最強の読み方.txt`.
-    2.  Run `RaptorEngine.run()`.
-    3.  Generate `summary_all.md`.
-*   **Success Criteria**:
-    *   The output markdown structure reflects the document's logical hierarchy.
-    *   Key terms from the source text (e.g., "Market Cap", "PSR") are present.
-*   **Mode**: Real mode strongly recommended.
-
-### 2.4. `tutorials/04_kj_method_visualization.ipynb` (The Output)
-*   **Goal**: Visualize the result in Obsidian Canvas format.
-*   **Scenario**: Take the `DocumentTree` from the previous step and export it to `summary_kj.json` (Canvas format).
-*   **Key Features**:
-    *   Mapping nodes to canvas coordinates.
-    *   Creating links between parent and child nodes.
-    *   Instructions on how to open this file in Obsidian.
-*   **Mode**: Works in both modes (Mock uses a dummy tree).
+### `tutorials/03_interactive_app.ipynb`: The Full GUI Experience
+**Goal:** Launch the Panel application directly from the notebook.
+**Prerequisites:** `panel` library.
+**Content:**
+1.  **Launch:** Run `matome.gui.app.serve()` (or equivalent) to render the Panel app within the notebook output cell.
+2.  **Walkthrough:** Guided steps to:
+    *   Click the Root Node.
+    *   Drill down to Level 3.
+    *   Use the Chat Input to refine a node.
+    *   (Optional) Check the "Source" tab to see original text.
 
 ## 3. Validation Steps
 
-The QA Agent (or human reviewer) should perform the following checks:
+The Quality Assurance (QA) Agent or human tester should perform the following checks when running these notebooks:
 
-### 3.1. Automated Checks (Mock Mode)
-1.  Run `pytest` to ensure all unit tests pass.
-2.  Execute `tutorials/01_quickstart.ipynb` without an API key. It should complete without errors.
-3.  Execute `tutorials/04_kj_method_visualization.ipynb` with dummy data. It should generate a valid JSON file.
+### Validation Checklist
+1.  **Dependencies:** Ensure `uv sync` or `pip install .[dev]` installs all required packages (`panel`, `watchfiles`, `jupyter`).
+2.  **Mock Mode Success:**
+    *   Run `01_quickstart.ipynb` *without* an API key.
+    *   **Pass Criteria:** All cells execute without error. The "Wisdom" text is displayed.
+3.  **Real Mode Success:**
+    *   Set `OPENAI_API_KEY`. Run `02_advanced_usage.ipynb`.
+    *   **Pass Criteria:** The process completes. A new `chunks.db` is created. `refine_node` updates the text in the DB.
+4.  **GUI Rendering:**
+    *   Run `03_interactive_app.ipynb`.
+    *   **Pass Criteria:** The Panel widget appears in the output area. Buttons are clickable.
+5.  **Linting:** The notebooks themselves should be clean (no huge error tracebacks saved in the file).
 
-### 3.2. Manual Checks (Real Mode)
-1.  Set `OPENROUTER_API_KEY` in the environment.
-2.  Run `tutorials/03_full_raptor_pipeline.ipynb` with the target text.
-3.  **Content Verification**:
-    *   Open `summary_all.md`.
-    *   Check if the summary covers at least 70% of the topics mentioned in the book's Table of Contents (P8-18).
-    *   Verify that Japanese sentences are natural and not cut off mid-sentence.
-4.  **Structure Verification**:
-    *   Open the generated `.canvas` file in Obsidian.
-    *   Verify that related notes are grouped together visually.
-    *   Verify that clicking a summary note reveals its child chunks (if implemented).
-
-### 3.3. Performance Checks
-*   **Time**: The full pipeline for the test file should complete within 10 minutes.
-*   **Cost**: Monitor OpenRouter usage. It should be minimal (mostly Gemini 1.5 Flash).
+### Automated Testing
+We will also include a `tests/tutorials/test_notebooks.py` (using `nbval` or similar if possible, otherwise a simple execution script) to automatically run these notebooks in the CI pipeline (in Mock Mode) to prevent regression.
