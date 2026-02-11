@@ -1,7 +1,9 @@
 import logging
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from domain_models.metadata import NodeMetadata
 from domain_models.types import Metadata, NodeID
 
 # Configure logger
@@ -94,9 +96,19 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        default_factory=NodeMetadata, description="Optional extra info (e.g., cluster ID)."
     )
+
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def convert_dict_to_metadata(cls, v: Any) -> Any:
+        """
+        Convert dictionary to NodeMetadata for backward compatibility.
+        """
+        if isinstance(v, dict):
+            return NodeMetadata(**v)
+        return v
 
 
 class Cluster(BaseModel):

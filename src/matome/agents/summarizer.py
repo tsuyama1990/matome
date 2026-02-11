@@ -11,13 +11,14 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from domain_models.constants import PROMPT_INJECTION_PATTERNS
+from matome.agents.strategies import BaseSummaryStrategy, PromptStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
 
 logger = logging.getLogger(__name__)
 
@@ -27,13 +28,19 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
-    def __init__(self, config: ProcessingConfig, llm: ChatOpenAI | None = None) -> None:
+    def __init__(
+        self,
+        config: ProcessingConfig,
+        llm: ChatOpenAI | None = None,
+        prompt_strategy: PromptStrategy | None = None,
+    ) -> None:
         """
         Initialize the SummarizationAgent.
 
         Args:
             config: Processing configuration containing model name, retries, etc.
             llm: Optional pre-configured LLM instance. If None, it will be initialized from config.
+            prompt_strategy: Optional strategy for prompt generation. Defaults to BaseSummaryStrategy.
         """
         self.config = config
         self.model_name = config.summarization_model
@@ -45,6 +52,7 @@ class SummarizationAgent:
         self.mock_mode = api_key == "mock"
 
         self.llm: ChatOpenAI | None = None
+        self.prompt_strategy = prompt_strategy or BaseSummaryStrategy()
 
         if llm:
             self.llm = llm
@@ -54,7 +62,7 @@ class SummarizationAgent:
         elif api_key and not self.mock_mode:
             self.llm = ChatOpenAI(
                 model=self.model_name,
-                api_key=api_key,
+                api_key=SecretStr(api_key),
                 base_url=base_url,
                 temperature=config.llm_temperature,
                 max_retries=config.max_retries,
@@ -64,7 +72,7 @@ class SummarizationAgent:
 
     def summarize(self, text: str, config: ProcessingConfig | None = None) -> str:
         """
-        Summarize the provided text using the Chain of Density strategy.
+        Summarize the provided text using the configured strategy.
 
         Args:
             text: The text to summarize.
@@ -100,11 +108,16 @@ class SummarizationAgent:
             )
 
         try:
-            prompt = COD_TEMPLATE.format(context=safe_text)
-            messages = [HumanMessage(content=prompt)]
+            # Use strategy to create prompt
+            # We pass [safe_text] as context chunks.
+            # Assuming level 1 for now as legacy support doesn't pass level.
+            prompt_content = self.prompt_strategy.create_prompt([safe_text], current_level=1)
+            messages = [HumanMessage(content=prompt_content)]
 
             response = self._invoke_llm(messages, effective_config, request_id)
-            return self._process_response(response, request_id)
+            raw_summary = self._process_response(response, request_id)
+
+            return self.prompt_strategy.parse_output(raw_summary)
 
         except Exception as e:
             logger.exception(f"[{request_id}] Summarization failed for text length {len(text)}")
