@@ -175,10 +175,9 @@ class SummarizationAgent:
 
         # 2. Control Character Check (Unicode)
         # We strictly disallow control characters that are not standard whitespace.
-        # Allow standard whitespace controls: \n, \t, \r
-        # \f and \v are technically whitespace but rare, safer to block if not needed?
-        # Let's align with common definition: \t, \n, \r.
-        allowed_controls = {"\n", "\t", "\r"}
+        # Allow standard whitespace controls: \n, \t
+        # Removed \r to prevent potential injection or obfuscation issues (CRLF injection).
+        allowed_controls = {"\n", "\t"}
 
         for char in text:
             # Check for control characters (Cc, Cf, Cs, Co, Cn)

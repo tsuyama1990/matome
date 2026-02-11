@@ -53,6 +53,16 @@ class ObsidianCanvasExporter:
         self._subtree_widths: dict[str, int] = {}
         self._chunk_map: dict[int, Chunk] = {}
         self.config = config or ProcessingConfig()
+        # Use config values instead of hardcoded defaults if they were hardcoded before
+        # In the provided read_file output, they are already using config.
+        # However, the audit said "Hardcoded constants for canvas dimensions and gaps in ObsidianCanvasExporter".
+        # Checking lines 34-37 in previous read:
+        # self.NODE_WIDTH = self.config.canvas_node_width
+        # ...
+        # It seems they ARE using config now.
+        # Perhaps the audit referred to a version where they were hardcoded?
+        # Or maybe the audit meant I should REMOVE local constants and use config directly?
+        # I will keep them as instance variables for readability but ensure they come from config.
         self.NODE_WIDTH = self.config.canvas_node_width
         self.NODE_HEIGHT = self.config.canvas_node_height
         self.GAP_X = self.config.canvas_gap_x

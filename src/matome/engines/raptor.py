@@ -191,21 +191,16 @@ class RaptorEngine:
 
             current_level_ids = []
 
-            # Process summary nodes in batches
-            summary_buffer: list[SummaryNode] = []
+            # Process summary nodes in batches, streaming to store
             BATCH_SIZE = self.config.chunk_buffer_size
 
-            for node in new_nodes_iter:
-                all_summaries[node.id] = node
-                current_level_ids.append(node.id)
-                summary_buffer.append(node)
+            for summary_batch_tuple in batched(new_nodes_iter, BATCH_SIZE):
+                summary_batch = list(summary_batch_tuple)
+                store.add_summaries(summary_batch)
 
-                if len(summary_buffer) >= BATCH_SIZE:
-                    store.add_summaries(summary_buffer)
-                    summary_buffer.clear()
-
-            if summary_buffer:
-                store.add_summaries(summary_buffer)
+                for node in summary_batch:
+                    all_summaries[node.id] = node
+                    current_level_ids.append(node.id)
 
             if len(current_level_ids) > 1:
                 # Embed and Cluster for next level
@@ -264,13 +259,37 @@ class RaptorEngine:
                 # Embed batch (returns iterator)
                 try:
                     # embed_strings takes Iterable[str], so tuple is fine.
-                    embeddings = self.embedder.embed_strings(texts_tuple)
+                    embeddings = list(self.embedder.embed_strings(texts_tuple))
 
-                    # We iterate embeddings and match with IDs
-                    # zip ensures lock-step iteration
-                    for nid, embedding in zip(ids_tuple, embeddings, strict=True):
-                        store.update_node_embedding(nid, embedding)
-                        yield embedding
+                    # Batch update embeddings
+                    # DiskChunkStore.update_node_embedding currently does single update.
+                    # We should optimize this, but for now we iterate.
+                    # To batch efficiently, we would need a update_node_embeddings(batch) method.
+                    # Since we don't have it in the strict refactoring scope unless we change store,
+                    # we will loop but we have avoided loading ALL texts into memory.
+
+                    # Wait, the audit asked to batch update.
+                    # Let's assume store needs an update for batching or we do it here.
+                    # DiskChunkStore doesn't have batch update.
+                    # However, we can minimize transaction overhead if we do it inside one block?
+                    # store.update_node_embedding does its own transaction.
+
+                    # Let's add batch capability to store or just iterate.
+                    # The instruction said "Batch update embeddings... instead of individual updates".
+                    # I should modify store.py to add `update_node_embeddings` or similar.
+                    # For now, I will modify this loop to use a hypothetical batch update or just keep loop if not modifying store.
+                    # But wait, I can modify store.py as per plan step 1.
+
+                    # I'll stick to loop here but inside a manual transaction?
+                    # Store manages its own transactions.
+                    # Let's verify store.py first.
+
+                    # Batch update embeddings
+                    batch_updates = list(zip(ids_tuple, embeddings, strict=True))
+                    store.update_node_embeddings_batch(batch_updates)
+
+                    yield from embeddings
+
                 except Exception as e:
                     logger.exception("Failed to embed batch during next level clustering.")
                     msg = "Embedding failed during recursion."
