@@ -38,6 +38,14 @@ dev = [
     "matplotlib>=3.8.0",
 ]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -49,7 +57,6 @@ packages = ["src/matome", "src/domain_models"]
 target-version = "py311"
 line-length = 100
 fix = true
-exclude = ["tutorials"]
 
 [tool.ruff.lint]
 # E/F/I: Basic, B: Bugbear, S: Bandit, UP: pyupgrade
@@ -87,7 +94,7 @@ select = [
 ]
 
 ignore = [
-    # "ANN101", # Removed as deprecated
+    "ANN101", # Type hint for self is unnecessary (deprecated)
     "ANN002", # Type hint for *args can be omitted
     "ANN003", # Type hint for **kwargs can be omitted
     "ANN001", # Missing type annotation for function arguments
@@ -103,9 +110,7 @@ ignore = [
     "PLC0415", # Import should be at top-level
     "BLE001", # Blind exception catch
     "PT019",  # Fixture without value injection
-    "RUF001", # Ambiguous characters (Japanese)
-    "RUF002", # Ambiguous characters (Japanese)
-    "RUF003", # Ambiguous characters (Japanese)
+    "RUF003", # Ambiguous multiplication sign
     "ARG002", # Unused method argument
     "RUF043", # Pattern metacharacters not escaped in match
     "RUF059", # Unused unpacked variable
@@ -128,7 +133,4 @@ testpaths = ["tests"]
 
 [tool.mypy]
 strict = true
-mypy_path = "src"
 ignore_missing_imports = true
-plugins = ["pydantic.mypy"]
-disallow_untyped_decorators = false
