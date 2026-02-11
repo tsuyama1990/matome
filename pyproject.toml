@@ -134,3 +134,9 @@ ignore_missing_imports = true
 plugins = ["pydantic.mypy"]
 mypy_path = "src"
 disallow_untyped_decorators = false
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "ruff>=0.15.0",
+]
