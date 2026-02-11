@@ -169,6 +169,39 @@ class DiskChunkStore:
         with self.engine.begin() as conn:
             conn.execute(stmt)
 
+    def update_node_embeddings_batch(self, updates: list[tuple[int | str, list[float]]]) -> None:
+        """
+        Update embeddings for multiple nodes in a single transaction.
+
+        Args:
+            updates: A list of tuples, where each tuple contains (node_id, embedding_list).
+        """
+        if not updates:
+            return
+
+        # Prepare batch data
+        # For SQLite, executemany with UPDATE ... WHERE id = ? is standard.
+        # SQLAlchemy supports this if we bind parameters correctly.
+
+        # We need a list of dicts for executemany
+        params = [
+            {"b_id": str(uid), "b_embedding": json.dumps(emb)}
+            for uid, emb in updates
+            if emb is not None
+        ]
+
+        if not params:
+            return
+
+        stmt = (
+            update(self.nodes_table)
+            .where(self.nodes_table.c.id == text(":b_id"))
+            .values(embedding=text(":b_embedding"))
+        )
+
+        with self.engine.begin() as conn:
+            conn.execute(stmt, params)
+
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
         # Use SQLAlchemy Core expression for parameterized select

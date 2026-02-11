@@ -1,7 +1,7 @@
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage
@@ -79,3 +79,23 @@ def test_refine_node_not_found(store: DiskChunkStore, agent: SummarizationAgent)
 
     with pytest.raises(ValueError, match="not found"):
         engine.refine_node("non-existent", "instr")
+
+
+def test_refine_node_store_failure(store: DiskChunkStore, agent: SummarizationAgent) -> None:
+    """Test error handling when store update fails."""
+    # Setup: Add a node
+    node_id = "node-failure"
+    node = SummaryNode(
+        id=node_id, text="Text", level=1, children_indices=[0],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+    )
+    store.add_summary(node)
+
+    config = ProcessingConfig()
+    engine = InteractiveRaptorEngine(store, agent, config)
+
+    # Mock store.add_summary to raise Exception
+    # We use patch.object for cleaner and safer mocking that mypy accepts
+    with patch.object(store, "add_summary", side_effect=Exception("DB Error")):
+        with pytest.raises(Exception, match="DB Error"):
+            engine.refine_node(node_id, "instruction")

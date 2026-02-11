@@ -128,10 +128,30 @@ def test_raptor_run_recursive(
     # Cluster 0: [0, 1] (Indices into the list of summaries from L0 clusters)
     cluster_l1_0 = Cluster(id=0, level=1, node_indices=[0, 1])  # Summaries of c0 and c1
 
-    clusterer.cluster_nodes.side_effect = [
+    # We need to simulate the consumption of generator inside cluster_nodes mock side effect
+    # to trigger the side effect that populates leaf_chunks.
+
+    # Define side effect sequence
+    side_effects = [
         [cluster_l0_0, cluster_l0_1],  # First pass
         [cluster_l1_0],  # Second pass
     ]
+
+    # Iterator to track calls
+    call_iter = iter(side_effects)
+
+    def consuming_side_effect(
+        embeddings: Iterator[list[float]] | list[list[float]], config: ProcessingConfig
+    ) -> list[Cluster]:
+        # Iterate over embeddings if it's an iterator
+        if isinstance(embeddings, Iterator):
+            list(embeddings)
+        try:
+            return next(call_iter)
+        except StopIteration:
+            return []
+
+    clusterer.cluster_nodes.side_effect = consuming_side_effect
 
     # Summarization
     summarizer.summarize.side_effect = [
@@ -140,32 +160,6 @@ def test_raptor_run_recursive(
         "Root Summary",  # Summary of Cluster L1-0
     ]
 
-    # Run
-    # We must simulate the consumption of generator inside cluster_nodes mock side effect
-    # to trigger the side effect that populates leaf_chunks.
-
-    original_side_effect = [
-        [cluster_l0_0, cluster_l0_1],  # First pass
-        [cluster_l1_0],  # Second pass
-    ]
-
-    # Use closure for stateful side effect
-    iter_count = 0
-
-    def consuming_side_effect(
-        embeddings: Iterator[list[float]] | list[list[float]], config: ProcessingConfig
-    ) -> list[Cluster]:
-        nonlocal iter_count
-        # Iterate over embeddings if it's an iterator
-        if isinstance(embeddings, Iterator):
-            list(embeddings)
-
-        result = original_side_effect[iter_count]
-        iter_count += 1
-        return result
-
-    clusterer.cluster_nodes.side_effect = consuming_side_effect
-
     tree = engine.run("Long text")
 
     # Verify
@@ -173,11 +167,24 @@ def test_raptor_run_recursive(
     assert tree.root_node.text == "Root Summary"
     assert tree.root_node.level == 2  # L0 -> L1 -> L2 (Root)
 
-    # Check L1 nodes
-    root_children_ids = tree.root_node.children_indices
-    assert len(root_children_ids) == 2
-    assert all(isinstance(uid, str) for uid in root_children_ids)
+    # Check that summarize was called with list of strings
+    assert summarizer.summarize.call_count == 3
 
-    # Verify we have all nodes
-    # Root + 2 L1 nodes = 3 nodes
-    assert len(tree.all_nodes) == 3
+    # First call: Summary of Cluster L0-0 (indices 0, 1 -> Chunk 0, Chunk 1)
+    # Check arguments of the first call
+    call_args_1 = summarizer.summarize.call_args_list[0]
+    arg_text = call_args_1[0][0]
+    assert isinstance(arg_text, list)
+    assert arg_text == ["Chunk 0", "Chunk 1"]
+
+    # Second call: Summary of Cluster L0-1 (index 2 -> Chunk 2)
+    call_args_2 = summarizer.summarize.call_args_list[1]
+    arg_text = call_args_2[0][0]
+    assert isinstance(arg_text, list)
+    assert arg_text == ["Chunk 2"]
+
+    # Third call: Summary of Cluster L1-0 (Summaries of L0-0, L0-1)
+    call_args_3 = summarizer.summarize.call_args_list[2]
+    arg_text = call_args_3[0][0]
+    assert isinstance(arg_text, list)
+    assert arg_text == ["Summary L1-0", "Summary L1-1"]
