@@ -1,7 +1,7 @@
 [project]
 name = "matome"
 version = "0.1.0"
-description = "Long Context Summarization System using RAPTOR and Japanese Semantic Chunking"
+description = "Matome 2.0: Long Context Summarization System using RAPTOR and Japanese Semantic Chunking"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

@@ -1,80 +1,52 @@
-# Final User Acceptance Testing (UAT) Plan
+# Final User Acceptance Testing (UAT) & Tutorial Plan
 
 ## 1. Tutorial Strategy
 
-The primary goal of this UAT plan is to validate the **Long Context Summarization System**'s ability to process lengthy documents into structured, verifiable summaries. We will achieve this through a series of interactive Jupyter Notebooks that serve both as test cases and as tutorials for new users.
+The goal of the UAT phase is not just to verify functionality, but to deliver an "Aha! Moment" to the user. We will achieve this by providing executable Jupyter Notebooks that demonstrate the core value proposition: **Semantic Zooming** and **Interactive Refinement**.
 
-### 1.1. Dual-Mode Testing
-To ensure the system is robust and testable without incurring constant API costs, all tutorials will support two modes:
-*   **Mock Mode (CI/Default)**: Uses pre-computed embeddings and dummy LLM responses. This allows the logic (chunking, clustering, tree building) to be tested in continuous integration environments.
-*   **Real Mode**: Requires an `OPENROUTER_API_KEY`. This runs the full pipeline with actual LLM calls (Gemini 1.5 Flash / DeepSeek V3) to generate real summaries.
-
-### 1.2. The "Aha! Moment"
-The core UAT scenario is based on processing the "Emin Style Company Shikiho Reading Method" text. The user should experience the "Aha!" moment when they see a 100-page equivalent document turned into a structured, navigable Obsidian Canvas map.
+### Strategy: "Mock Mode" vs "Real Mode"
+To ensure these tutorials are verifiable in a CI/CD environment (where API costs and latency are concerns), we will implement a "Mock Mode".
+- **Real Mode (Default):** Uses the user's `OPENAI_API_KEY` to generate live summaries.
+- **Mock Mode (CI/Tutorials):** Uses a predefined set of responses (stored in `tests/data/mock_responses/`) when the API key is set to `"mock"`. This guarantees deterministic output for the tutorials.
 
 ## 2. Notebook Plan
 
-We will generate the following notebooks in the `tutorials/` directory.
+We will generate two primary notebooks in the `tutorials/` directory.
 
-### 2.1. `tutorials/01_quickstart.ipynb` (The Basics)
-*   **Goal**: Demonstrate text ingestion and semantic chunking.
-*   **Scenario**: Load a sample text, apply the Japanese-optimized regex splitter, and visualize the chunks.
-*   **Key Features**:
-    *   Loading `test_data/sample.txt`.
-    *   Initializing `SemanticChunker`.
-    *   Displaying the first 5 chunks to verify sentence boundaries.
-*   **Mode**: Works in both Mock and Real modes (Mock uses random vectors if embedding is skipped).
+### Tutorial 01: The "Aha! Moment" (Quickstart)
+**File:** `tutorials/01_quickstart.ipynb`
+**Goal:** Demonstrate the instant extraction of "Wisdom" from a complex text.
+**Scenario:**
+1.  **Setup:** Install dependencies and set API key (or use mock).
+2.  **Load Data:** Load `test_data/emin_shikiho.txt` (or similar sample).
+3.  **Run Engine:** Execute `matome run` with `--mode dikw`.
+4.  **Visualize:** Display the root "Wisdom" node.
+5.  **Zoom:** Programmatically retrieve and display the child "Knowledge" nodes.
+**Expected Outcome:** The user sees a 30-character profound insight derived from 2000 characters of text.
 
-### 2.2. `tutorials/02_clustering_deep_dive.ipynb` (The Engine)
-*   **Goal**: Show how the system groups related information.
-*   **Scenario**: Take the chunks from step 1, generate embeddings (E5-large), and run UMAP + GMM clustering.
-*   **Key Features**:
-    *   Visualizing the 2D projection of chunks.
-    *   Showing which chunks belong to which cluster.
-    *   Explaining the "Soft Clustering" concept (a chunk can belong to multiple topics).
-*   **Mode**: Real mode required for meaningful embeddings (or load pre-saved vectors in Mock).
-
-### 2.3. `tutorials/03_full_raptor_pipeline.ipynb` (The "Aha!" Moment)
-*   **Goal**: Execute the full recursive summarization process.
-*   **Scenario**:
-    1.  Load `test_data/エミン流「会社四季報」最強の読み方.txt`.
-    2.  Run `RaptorEngine.run()`.
-    3.  Generate `summary_all.md`.
-*   **Success Criteria**:
-    *   The output markdown structure reflects the document's logical hierarchy.
-    *   Key terms from the source text (e.g., "Market Cap", "PSR") are present.
-*   **Mode**: Real mode strongly recommended.
-
-### 2.4. `tutorials/04_kj_method_visualization.ipynb` (The Output)
-*   **Goal**: Visualize the result in Obsidian Canvas format.
-*   **Scenario**: Take the `DocumentTree` from the previous step and export it to `summary_kj.json` (Canvas format).
-*   **Key Features**:
-    *   Mapping nodes to canvas coordinates.
-    *   Creating links between parent and child nodes.
-    *   Instructions on how to open this file in Obsidian.
-*   **Mode**: Works in both modes (Mock uses a dummy tree).
+### Tutorial 02: Interactive Refinement (Deep Dive)
+**File:** `tutorials/02_interactive_refinement.ipynb`
+**Goal:** Demonstrate the ability to "talk to your knowledge base."
+**Scenario:**
+1.  **Load Session:** Open the `DiskChunkStore` from Tutorial 01.
+2.  **Select Node:** Pick a specific "Knowledge" node (e.g., about PSR).
+3.  **Refine:** Use `InteractiveRaptorEngine.refine_node()` with the instruction: "Explain this to a 12-year-old."
+4.  **Verify:** Show the old text vs. the new text side-by-side.
+5.  **Trace:** Show the original source chunks for that node.
+**Expected Outcome:** The node's content is rewritten in simple language without regenerating the entire tree.
 
 ## 3. Validation Steps
 
-The QA Agent (or human reviewer) should perform the following checks:
+The Quality Assurance (QA) agent or user should perform the following checks:
 
-### 3.1. Automated Checks (Mock Mode)
-1.  Run `pytest` to ensure all unit tests pass.
-2.  Execute `tutorials/01_quickstart.ipynb` without an API key. It should complete without errors.
-3.  Execute `tutorials/04_kj_method_visualization.ipynb` with dummy data. It should generate a valid JSON file.
+### Automated Validation (CI)
+1.  **Execution:** Run `pytest --nbval tutorials/` (using `nbval` plugin or similar script).
+2.  **Mock Check:** Ensure `OPENAI_API_KEY=mock` is set during CI.
+3.  **Output Check:** Verify that cell outputs contain specific expected strings (e.g., "Wisdom:", "Refined Node:").
 
-### 3.2. Manual Checks (Real Mode)
-1.  Set `OPENROUTER_API_KEY` in the environment.
-2.  Run `tutorials/03_full_raptor_pipeline.ipynb` with the target text.
-3.  **Content Verification**:
-    *   Open `summary_all.md`.
-    *   Check if the summary covers at least 70% of the topics mentioned in the book's Table of Contents (P8-18).
-    *   Verify that Japanese sentences are natural and not cut off mid-sentence.
-4.  **Structure Verification**:
-    *   Open the generated `.canvas` file in Obsidian.
-    *   Verify that related notes are grouped together visually.
-    *   Verify that clicking a summary note reveals its child chunks (if implemented).
-
-### 3.3. Performance Checks
-*   **Time**: The full pipeline for the test file should complete within 10 minutes.
-*   **Cost**: Monitor OpenRouter usage. It should be minimal (mostly Gemini 1.5 Flash).
+### Manual Validation (User)
+1.  **Visual Inspection:** Open `tutorials/01_quickstart.ipynb`.
+2.  **Run All:** Click "Run All Cells".
+3.  **Latent Check:** Confirm that the first summary appears within reasonable time (or instantly in mock mode).
+4.  **Content Quality:** Read the "Wisdom" output. Does it feel profound?
+5.  **Interaction:** In Tutorial 02, change the refinement instruction (e.g., "Make it sarcastic") and verify the AI adapts.
