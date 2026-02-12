@@ -148,5 +148,31 @@ def test_summarize_long_input_dos_prevention(
         agent.summarize(long_word, config)
 
 
-# We removed test_summarize_retry_behavior as mocking tenacity is complex
-# and integration test covers error handling (test_pipeline_errors.py)
+def test_summarize_with_context_and_strategy(
+    agent: SummarizationAgent, config: ProcessingConfig
+) -> None:
+    """Test context passing with a custom strategy."""
+    from matome.agents.strategies import RefinementStrategy
+    from matome.utils.prompts import REFINE_TEMPLATE
+
+    strategy = RefinementStrategy()
+    context = {"instruction": "Make it shorter"}
+    text = "Original text"
+
+    # Mock the LLM response
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="Refined text")
+
+    result = agent.summarize(text, config, strategy=strategy, context=context)
+
+    assert result == "Refined text"
+
+    # Verify prompt
+    args, _ = llm_mock.invoke.call_args
+    messages = args[0]
+    prompt_content = messages[0].content
+
+    expected_prompt = REFINE_TEMPLATE.format(
+        original_content=text, instruction="Make it shorter"
+    )
+    assert prompt_content == expected_prompt

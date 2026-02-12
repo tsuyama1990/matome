@@ -1,30 +1,66 @@
-
 import pytest
 
-# This import will fail until I implement it
-try:
-    from matome.agents.strategies import BaseSummaryStrategy
-except ImportError:
-    pytest.skip("BaseSummaryStrategy not implemented yet", allow_module_level=True)
+from matome.agents.strategies import (
+    BaseSummaryStrategy,
+    InformationStrategy,
+    KnowledgeStrategy,
+    RefinementStrategy,
+    WisdomStrategy,
+)
+from matome.utils.prompts import (
+    COD_TEMPLATE,
+    INFORMATION_TEMPLATE,
+    KNOWLEDGE_TEMPLATE,
+    REFINE_TEMPLATE,
+    WISDOM_TEMPLATE,
+)
 
-from matome.utils.prompts import COD_TEMPLATE
 
-
-def test_base_strategy_format_prompt() -> None:
+def test_base_summary_strategy() -> None:
     strategy = BaseSummaryStrategy()
-    text = "Hello World"
-    # The default strategy should use COD_TEMPLATE
+    text = "Hello world"
     prompt = strategy.format_prompt(text)
+    assert COD_TEMPLATE.format(context=text) in prompt
+    assert strategy.parse_output("Summary") == {"summary": "Summary"}
 
-    # Simple check if text is in prompt
-    assert text in prompt
-    # Check if template is used (might be hard if template changes, but let's assume it follows existing logic)
-    expected = COD_TEMPLATE.format(context=text)
-    assert prompt == expected
 
-def test_base_strategy_parse_output_text() -> None:
-    strategy = BaseSummaryStrategy()
-    # If LLM returns plain text
-    response = "This is a summary."
-    result = strategy.parse_output(response)
-    assert result == {"summary": "This is a summary."}
+def test_wisdom_strategy() -> None:
+    strategy = WisdomStrategy()
+    text = "Philosophical text"
+    prompt = strategy.format_prompt(text)
+    assert WISDOM_TEMPLATE.format(context=text) in prompt
+    assert strategy.parse_output("Wisdom") == {"summary": "Wisdom"}
+
+
+def test_knowledge_strategy() -> None:
+    strategy = KnowledgeStrategy()
+    text = "Scientific text"
+    prompt = strategy.format_prompt(text)
+    assert KNOWLEDGE_TEMPLATE.format(context=text) in prompt
+    assert strategy.parse_output("Knowledge") == {"summary": "Knowledge"}
+
+
+def test_information_strategy() -> None:
+    strategy = InformationStrategy()
+    text = "Instructional text"
+    prompt = strategy.format_prompt(text)
+    assert INFORMATION_TEMPLATE.format(context=text) in prompt
+    assert strategy.parse_output("Information") == {"summary": "Information"}
+
+
+def test_refinement_strategy() -> None:
+    strategy = RefinementStrategy()
+    text = "Original text"
+    instruction = "Make it shorter"
+
+    # Test missing context
+    with pytest.raises(ValueError, match="requires 'instruction'"):
+        strategy.format_prompt(text)
+
+    # Test valid context
+    context = {"instruction": instruction}
+    prompt = strategy.format_prompt(text, context)
+    expected = REFINE_TEMPLATE.format(original_content=text, instruction=instruction)
+    assert expected in prompt
+
+    assert strategy.parse_output("Refined text") == {"summary": "Refined text"}

@@ -3,13 +3,13 @@ from matome.utils.text import iter_sentences, normalize_text, split_sentences
 
 def test_iter_sentences_basic() -> None:
     """Test basic sentence iteration."""
-    text = "文１。文２！文３？文４\n文５"
+    text = "文１。文２！文３？文４\n文５"  # noqa: RUF001
     sentences = list(iter_sentences(text))
 
     assert len(sentences) == 5
     assert sentences[0] == "文１。"
-    assert sentences[1] == "文２！"
-    assert sentences[2] == "文３？"
+    assert sentences[1] == "文２！"  # noqa: RUF001
+    assert sentences[2] == "文３？"  # noqa: RUF001
     # "文４" followed by newline
     assert sentences[3] == "文４"
     assert sentences[4] == "文５"
@@ -31,7 +31,7 @@ def test_iter_sentences_edge_cases() -> None:
     assert sentences[1] == "文２。"
 
     # Consecutive delimiters
-    text_consecutive = "文１。！？\n\n文２"
+    text_consecutive = "文１。！？\n\n文２"  # noqa: RUF001
     # The regex `(?<=[。！？])\s*|\n+` splits after *each* delimiter.
     # 1. Match after `。`. Remainder `！？\n\n文２`. Sentence `文１。`.
     # 2. Match after `！`. Remainder `？\n\n文２`. Sentence `！`.
@@ -42,8 +42,8 @@ def test_iter_sentences_edge_cases() -> None:
     # We expect 4 items because the naive regex treats consecutive punctuation as separate chunks.
     assert len(sentences) == 4
     assert sentences[0] == "文１。"
-    assert sentences[1] == "！"
-    assert sentences[2] == "？"
+    assert sentences[1] == "！"  # noqa: RUF001
+    assert sentences[2] == "？"  # noqa: RUF001
     assert sentences[3] == "文２"
 
     # No punctuation
@@ -66,6 +66,6 @@ def test_split_sentences_compatibility() -> None:
 def test_normalize_text() -> None:
     """Test NFKC normalization."""
     # Full-width 'Ａ' -> Half-width 'A'
-    assert normalize_text("ＡＢＣ") == "ABC"
+    assert normalize_text("ＡＢＣ") == "ABC"  # noqa: RUF001
     # Katakana might stay same?
     assert normalize_text("アイウ") == "アイウ"

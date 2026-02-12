@@ -98,7 +98,7 @@ def test_chunker_single_sentence_exceeds_limit() -> None:
 def test_chunker_unicode() -> None:
     """Test handling of emojis and special unicode characters."""
     chunker = JapaneseTokenChunker()
-    text = "Hello 🌍! This is a test 🧪. 日本語もOKですか？はい。"
+    text = "Hello 🌍! This is a test 🧪. 日本語もOKですか？はい。"  # noqa: RUF001
     config = ProcessingConfig(max_tokens=50)
     chunks = list(chunker.split_text(text, config))
 
