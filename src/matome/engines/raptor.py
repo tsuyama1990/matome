@@ -113,8 +113,6 @@ class RaptorEngine:
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
 
-        all_summaries: dict[str, SummaryNode] = {}
-
         # Use provided store or create a temporary one
         # If provided, we wrap it in a nullcontext so it doesn't close on exit
         store_ctx: contextlib.AbstractContextManager[DiskChunkStore] = (
@@ -130,17 +128,16 @@ class RaptorEngine:
             l0_ids = list(current_level_ids)
 
             current_level_ids = self._process_recursion(
-                clusters, current_level_ids, active_store, all_summaries
+                clusters, current_level_ids, active_store
             )
 
-            return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
+            return self._finalize_tree(current_level_ids, active_store, l0_ids)
 
     def _process_recursion(
         self,
         clusters: list[Cluster],
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
         start_level: int = 0,
     ) -> list[NodeID]:
         """
@@ -195,7 +192,6 @@ class RaptorEngine:
             BATCH_SIZE = self.config.chunk_buffer_size
 
             for node in new_nodes_iter:
-                all_summaries[node.id] = node
                 current_level_ids.append(node.id)
                 summary_buffer.append(node)
 
@@ -279,7 +275,6 @@ class RaptorEngine:
         self,
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
         l0_ids: list[NodeID],
     ) -> DocumentTree:
         """
@@ -311,8 +306,6 @@ class RaptorEngine:
             if embeddings:
                 root_node_obj.embedding = embeddings[0]
                 store.update_node_embedding(root_id, embeddings[0])
-                if isinstance(root_node_obj, SummaryNode):
-                    all_summaries[str(root_id)] = root_node_obj
 
         if isinstance(root_node_obj, Chunk):
             root_node = SummaryNode(
@@ -322,13 +315,16 @@ class RaptorEngine:
                 children_indices=[root_node_obj.index],
                 metadata=NodeMetadata(type="single_chunk_root"),
             )
-            all_summaries[root_node.id] = root_node
+            # Store the synthetic root node
+            store.add_summary(root_node)
         else:
             root_node = root_node_obj
 
+        # For scalability, we do NOT load all nodes into memory.
+        # Consumers should use the store to fetch nodes by ID.
         return DocumentTree(
             root_node=root_node,
-            all_nodes=all_summaries,
+            all_nodes=None,
             leaf_chunk_ids=l0_ids,
             metadata={"levels": root_node.level},
         )

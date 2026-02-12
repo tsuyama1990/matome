@@ -172,6 +172,8 @@ class SummarizationAgent:
 
         allowed_controls = {"\n", "\t", "\r"}
         for char in text:
+            # Check category for control chars.
+            # Also strictly check for null bytes and other dangerous non-printable chars even if category allows.
             if unicodedata.category(char).startswith("C") and char not in allowed_controls:
                 msg = f"Input text contains invalid control character: {char!r} (U+{ord(char):04X})"
                 raise ValueError(msg)

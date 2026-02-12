@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk
+from domain_models.manifest import Chunk, SummaryNode
 
 if TYPE_CHECKING:
     from domain_models.manifest import DocumentTree
@@ -74,6 +74,13 @@ class ObsidianCanvasExporter:
         self._subtree_widths = {}
         self._chunk_map = {}
 
+        # Ensure we have access to nodes.
+        # If tree.all_nodes is missing (scalability mode), we rely on store.
+        # Note: Current logic assumes we can traverse the tree.
+        # If all_nodes is None, we need 'store' to fetch SummaryNodes during traversal.
+        # But _calculate_subtree_width currently uses tree.all_nodes.get().
+        # We need to refactor traversal to use a node getter.
+
         # Populate chunk map from store if available
         # Use batched retrieval to avoid N+1 queries
         if store and tree.leaf_chunk_ids:
@@ -86,13 +93,35 @@ class ObsidianCanvasExporter:
             return CanvasFile(nodes=[], edges=[])
 
         # 1. Calculate subtree widths (Post-order)
-        self._calculate_subtree_width(tree.root_node.id, tree)
+        self._calculate_subtree_width(tree.root_node.id, tree, store)
 
         # 2. Assign positions (Pre-order)
         # Root starts at (0, 0)
-        self._assign_positions(tree.root_node.id, 0, 0, tree)
+        self._assign_positions(tree.root_node.id, 0, 0, tree, store)
 
         return CanvasFile(nodes=self.nodes, edges=self.edges)
+
+    def _get_node(
+        self, node_id: str | int, tree: "DocumentTree", store: "DiskChunkStore | None"
+    ) -> SummaryNode | None:
+        """Helper to retrieve a SummaryNode from tree or store."""
+        if isinstance(node_id, int):
+            return None  # Chunks are handled via _chunk_map
+
+        # Try tree.all_nodes first
+        if tree.all_nodes:
+            node = tree.all_nodes.get(node_id)
+            if node:
+                return node
+
+        # Fallback to store if available
+        if store:
+            # We cast to SummaryNode because we expect it to be one if ID is str
+            node_obj = store.get_node(node_id)
+            if isinstance(node_obj, SummaryNode):
+                return node_obj
+
+        return None
 
     def export(
         self, tree: "DocumentTree", output_path: Path, store: "DiskChunkStore | None" = None
@@ -121,21 +150,25 @@ class ObsidianCanvasExporter:
             return f"chunk_{node_id}"
         return node_id
 
-    def _calculate_subtree_width(self, root_id: int | str, tree: "DocumentTree") -> int:
+    def _calculate_subtree_width(
+        self, root_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None"
+    ) -> int:
         """
         Iteratively calculates the width of the subtree rooted at node_id using a stack.
         Avoids recursion depth limits.
         """
         # Post-order traversal preparation
-        processing_order = self._get_traversal_order(root_id, tree)
+        processing_order = self._get_traversal_order(root_id, tree, store)
 
         # Process in reverse (bottom-up) to calculate widths
         for curr_id in reversed(processing_order):
-            self._process_node_width(curr_id, tree)
+            self._process_node_width(curr_id, tree, store)
 
         return self._subtree_widths[self._get_node_id_str(root_id)]
 
-    def _get_traversal_order(self, root_id: int | str, tree: "DocumentTree") -> list[int | str]:
+    def _get_traversal_order(
+        self, root_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None"
+    ) -> list[int | str]:
         """Helper to get processing order for nodes."""
         stack = [root_id]
         processing_order: list[int | str] = []
@@ -145,14 +178,18 @@ class ObsidianCanvasExporter:
             processing_order.append(curr_id)
 
             if isinstance(curr_id, str):
-                self._append_children_to_stack(curr_id, stack, tree)
+                self._append_children_to_stack(curr_id, stack, tree, store)
         return processing_order
 
     def _append_children_to_stack(
-        self, curr_id: str, stack: list[int | str], tree: "DocumentTree"
+        self,
+        curr_id: str,
+        stack: list[int | str],
+        tree: "DocumentTree",
+        store: "DiskChunkStore | None",
     ) -> None:
         """Helper to push children to stack."""
-        node = tree.all_nodes.get(curr_id)
+        node = self._get_node(curr_id, tree, store)
         if curr_id == tree.root_node.id:
             node = tree.root_node
 
@@ -160,7 +197,9 @@ class ObsidianCanvasExporter:
             for child_idx in node.children_indices:
                 stack.append(child_idx)
 
-    def _process_node_width(self, curr_id: int | str, tree: "DocumentTree") -> None:
+    def _process_node_width(
+        self, curr_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None"
+    ) -> None:
         """Helper to calculate width for a single node."""
         node_id_str = self._get_node_id_str(curr_id)
 
@@ -170,7 +209,7 @@ class ObsidianCanvasExporter:
             return
 
         # If SummaryNode
-        node = tree.all_nodes.get(str(curr_id))
+        node = self._get_node(str(curr_id), tree, store)
         if str(curr_id) == tree.root_node.id:
             node = tree.root_node
 
@@ -192,7 +231,12 @@ class ObsidianCanvasExporter:
         self._subtree_widths[node_id_str] = width
 
     def _assign_positions(
-        self, root_id: int | str, start_x: int, start_y: int, tree: "DocumentTree"
+        self,
+        root_id: int | str,
+        start_x: int,
+        start_y: int,
+        tree: "DocumentTree",
+        store: "DiskChunkStore | None",
     ) -> None:
         """
         Iteratively assigns (x, y) positions to nodes and creates edges using a stack.
@@ -213,7 +257,7 @@ class ObsidianCanvasExporter:
                 text = f"Chunk {curr_id}\n\n{chunk_content}"
             else:
                 # Summary Node
-                node = tree.all_nodes.get(str(curr_id))
+                node = self._get_node(str(curr_id), tree, store)
                 if str(curr_id) == tree.root_node.id:
                     node = tree.root_node
                 text = node.text if node else "Missing Node"
@@ -238,7 +282,7 @@ class ObsidianCanvasExporter:
                 continue
 
             # If SummaryNode, prepare children
-            summary_node = tree.all_nodes.get(str(curr_id))
+            summary_node = self._get_node(str(curr_id), tree, store)
             if str(curr_id) == tree.root_node.id:
                 summary_node = tree.root_node
 

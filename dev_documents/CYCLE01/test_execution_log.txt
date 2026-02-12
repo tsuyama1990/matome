@@ -11,12 +11,12 @@ tests/integration/test_embedding_clustering_pipeline.py ..               [  2%]
 tests/integration/test_full_pipeline_verification.py ....                [  5%]
 tests/integration/test_hallucination_verification.py .                   [  6%]
 tests/integration/test_pipeline_errors.py ....                           [ 10%]
-tests/integration/test_raptor_pipeline.py .                              [ 10%]
+tests/integration/test_raptor_pipeline.py F                              [ 10%]
 tests/integration/test_store_concurrency.py ..                           [ 12%]
 tests/uat/test_cycle01_uat.py ..                                         [ 14%]
 tests/uat/test_cycle02_uat.py ...                                        [ 16%]
 tests/uat/test_cycle03_uat.py ...                                        [ 19%]
-tests/uat/test_cycle04_uat.py ...                                        [ 21%]
+tests/uat/test_cycle04_uat.py .F.                                        [ 21%]
 tests/uat/test_cycle05_uat.py ..                                         [ 23%]
 tests/uat/test_cycle06_uat.py ...                                        [ 26%]
 tests/unit/test_cli.py ....                                              [ 29%]
@@ -44,6 +44,110 @@ tests/unit/test_text_utils.py .....                                      [ 89%]
 tests/unit/test_token_chunker.py ........                                [ 96%]
 tests/unit/test_verifier.py ....                                         [100%]
 
+=================================== FAILURES ===================================
+_______________________ test_raptor_pipeline_integration _______________________
+
+config = ProcessingConfig(max_tokens=500, overlap=0, tokenizer_model='cl100k_base', semantic_chunking_mode=False, semantic_chun...llm_temperature=0.0, max_word_length=1000, max_input_length=500000, verifier_enabled=True, verification_model='gpt-4o')
+
+    def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
+        """
+        Test the RAPTOR pipeline with real Clusterer and mocked other components.
+        Uses proper mock specifications via create_autospec.
+        """
+        # Mock Chunker (Protocol)
+        chunker = create_autospec(Chunker, instance=True)
+        chunks = [
+            Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(10)
+        ]
+        chunker.split_text.return_value = iter(chunks)
+
+        # Real Clusterer (Implementation)
+        clusterer = GMMClusterer()
+
+        # Mock Summarizer (Protocol)
+        summarizer = create_autospec(Summarizer, instance=True)
+        summarizer.summarize.return_value = "Summary Text"
+
+        # Dummy Embedder (Subclass)
+        embedder = DummyEmbedder()
+
+        # Instantiate Engine with strictly typed mocks/objects
+        engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+        # Use a store to verify persistence
+        with DiskChunkStore() as store:
+            tree = engine.run("Dummy text", store=store)
+
+            assert isinstance(tree, DocumentTree)
+            assert tree.root_node is not None
+            assert len(tree.leaf_chunk_ids) == 10
+            assert tree.root_node.level >= 1
+            if tree.root_node.level > 1:
+                assert len(tree.all_nodes) > 1
+
+            # Verify embeddings are present in store
+            first_chunk = store.get_node(tree.leaf_chunk_ids[0])
+            assert first_chunk is not None
+            assert first_chunk.embedding is not None, "Leaf chunks must retain embeddings."
+
+            # Verify root embedding
+            # Root might be in store (SummaryNode) or if level 0, it's chunk.
+            # But get_node works for both.
+            root_fetched = store.get_node(tree.root_node.id)
+            if root_fetched:
+                assert root_fetched.embedding is not None, "Root node must have an embedding in store."
+
+            assert tree.root_node.embedding is not None, "Root node object must have an embedding."
+
+>           for node in tree.all_nodes.values():
+                        ^^^^^^^^^^^^^^^^^^^^^
+E           AttributeError: 'NoneType' object has no attribute 'values'
+
+tests/integration/test_raptor_pipeline.py:97: AttributeError
+------------------------------ Captured log call -------------------------------
+WARNING  matome.engines.raptor:raptor.py:165 Clustering failed to reduce nodes (Count: 10). Forcing reduction.
+_______________________ test_uat_scenario_12_multi_level _______________________
+
+uat_config = ProcessingConfig(max_tokens=500, overlap=0, tokenizer_model='cl100k_base', semantic_chunking_mode=False, semantic_chun...llm_temperature=0.0, max_word_length=1000, max_input_length=500000, verifier_enabled=True, verification_model='gpt-4o')
+
+    def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
+        """
+        Scenario 12: Multi-Level Tree Construction (Priority: High)
+        Goal: Ensure the recursive logic builds a hierarchy for long documents.
+        Expected Outcome: The RAPTOR engine returns a tree with Depth >= 2.
+        """
+        chunker = MagicMock()
+        # 50 chunks
+        # UATEmbedder will create 5 clusters (indices 0-9, 10-19, etc.)
+        chunks = [
+            Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(50)
+        ]
+        chunker.split_text.return_value = chunks
+
+        embedder = UATEmbedder()
+
+        # GMMClusterer should find clusters in 50 orthogonal items?
+        # Actually, UMAP might reduce them to 2D.
+        # If they are orthogonal in high dim, UMAP projects them.
+        # They should form distinct blobs.
+        clusterer = GMMClusterer()
+
+        summarizer = MagicMock()
+        summarizer.summarize.return_value = "Summary Node"
+
+        engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
+        tree = engine.run("Long doc")
+
+        # 50 chunks -> Multiple clusters -> Multiple Summaries (L1).
+        # Multiple Summaries -> ... -> Root (L2+).
+        assert tree.root_node.level >= 2
+        assert len(tree.leaf_chunk_ids) == 50
+        # Check that we have intermediate summaries
+>       assert len(tree.all_nodes) > 1
+               ^^^^^^^^^^^^^^^^^^^
+E       TypeError: object of type 'NoneType' has no len()
+
+tests/uat/test_cycle04_uat.py:120: TypeError
 =============================== warnings summary ===============================
 tests/integration/test_embedding_clustering_pipeline.py::test_embedding_clustering_pipeline
 tests/integration/test_embedding_clustering_pipeline.py::test_real_pipeline_small
@@ -73,16 +177,16 @@ _______________ coverage: platform linux, python 3.12.12-final-0 _______________
 Name                                     Stmts   Miss  Cover   Missing
 ----------------------------------------------------------------------
 src/domain_models/__init__.py                5      0   100%
-src/domain_models/config.py                 74      3    96%   31, 196-197
+src/domain_models/config.py                 75      3    96%   31, 201-202
 src/domain_models/constants.py              14      0   100%
-src/domain_models/data_schema.py            24      1    96%   68
+src/domain_models/data_schema.py            16      0   100%
 src/domain_models/manifest.py               57      9    84%   53-55, 73-75, 77-79
 src/domain_models/types.py                   3      0   100%
 src/domain_models/verification.py           20      1    95%   55
 src/matome/__init__.py                       4      0   100%
 src/matome/agents/__init__.py                0      0   100%
 src/matome/agents/strategies.py             11      2    82%   54-55
-src/matome/agents/summarizer.py            118     16    86%   110, 158-163, 176-177, 181, 200, 227-228, 248, 251-252
+src/matome/agents/summarizer.py            118     16    86%   110, 158-163, 178-179, 183, 202, 230-231, 251, 254-255
 src/matome/agents/verifier.py               92     28    70%   58, 74-75, 80-81, 86-88, 103-111, 118-119, 129, 137, 140-141, 149, 154, 156, 169-172
 src/matome/cli.py                           65      5    92%   85-87, 197, 202
 src/matome/config.py                        10      0   100%
@@ -90,22 +194,25 @@ src/matome/engines/__init__.py               0      0   100%
 src/matome/engines/chunker.py                3      3     0%   1-4
 src/matome/engines/cluster.py              184     21    89%   74, 117-118, 121-122, 144-146, 255-258, 369-372, 384, 396, 406-412
 src/matome/engines/embedder.py              51      4    92%   57, 65, 88-89
-src/matome/engines/raptor.py               162     28    83%   77-78, 85, 105-106, 110-111, 176-177, 197-198, 229, 245, 260-263, 267-270, 297-298, 351-352, 357, 363-364
+src/matome/engines/raptor.py               161     30    81%   77-78, 85, 105-106, 110-111, 152-155, 179-180, 199-200, 231, 247, 262-265, 269-272, 298-299, 353-354, 359, 365-366
 src/matome/engines/semantic_chunker.py      86     13    85%   62, 105, 115-117, 133-134, 153-155, 200-202
 src/matome/engines/token_chunker.py         68     10    85%   32-37, 44-47, 121-126
 src/matome/exceptions/__init__.py            4      0   100%
 src/matome/exporters/__init__.py             3      0   100%
 src/matome/exporters/markdown.py            39      1    97%   39
-src/matome/exporters/obsidian.py           133      6    95%   86, 178-179, 187, 238, 242
+src/matome/exporters/obsidian.py           151      8    95%   93, 109, 124, 217-218, 226, 290, 294
 src/matome/interfaces.py                    17      0   100%
 src/matome/utils/__init__.py                 0      0   100%
 src/matome/utils/compat.py                  17      8    53%   30-31, 39-44
 src/matome/utils/io.py                      15      0   100%
 src/matome/utils/prompts.py                  1      0   100%
-src/matome/utils/store.py                  105     11    90%   58-60, 108, 158, 189, 219-224
+src/matome/utils/store.py                  105     10    90%   58-60, 158, 189, 219-224
 src/matome/utils/text.py                    30      1    97%   20
 ----------------------------------------------------------------------
-TOTAL                                     1415    171    88%
-================= 119 passed, 11 warnings in 83.99s (0:01:23) ==================
+TOTAL                                     1425    173    88%
+=========================== short test summary info ============================
+FAILED tests/integration/test_raptor_pipeline.py::test_raptor_pipeline_integration
+FAILED tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level - Type...
+============ 2 failed, 117 passed, 11 warnings in 77.44s (0:01:17) =============
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
