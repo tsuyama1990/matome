@@ -1,9 +1,10 @@
+import uuid
 from collections.abc import Iterable, Iterator
+from typing import Any
 from unittest.mock import create_autospec
 
 import pytest
 
-import uuid
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, DocumentTree, SummaryNode
 from matome.engines.cluster import GMMClusterer
@@ -62,7 +63,9 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
 
     # Mock Summarizer (Protocol)
     summarizer = create_autospec(Summarizer, instance=True)
-    def summarize_side_effect(text, context=None):
+    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+        if context is None:
+            context = {}
         return SummaryNode(
             id=context.get("id", str(uuid.uuid4())),
             text="Summary Text",

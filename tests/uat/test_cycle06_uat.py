@@ -1,4 +1,3 @@
-import json
 import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -11,6 +10,7 @@ from domain_models.config import ProcessingConfig
 from domain_models.manifest import SummaryNode
 from matome.agents.verifier import VerifierAgent
 from matome.cli import app
+from tests.constants import MOCK_HALLUCINATION_RESPONSE
 
 runner = CliRunner()
 
@@ -38,20 +38,7 @@ def test_scenario_16_hallucination_detection(uat_config: ProcessingConfig) -> No
     # Arrange
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = AIMessage(
-        content=json.dumps(
-            {
-                "score": 0.5,
-                "details": [
-                    {
-                        "claim": "There are 5 planets.",
-                        "verdict": "Contradicted",
-                        "reasoning": "Source says 8.",
-                    }
-                ],
-                "unsupported_claims": ["There are 5 planets."],
-                "model_name": "mock-model",
-            }
-        )
+        content=MOCK_HALLUCINATION_RESPONSE
     )
 
     agent = VerifierAgent(uat_config, llm=mock_llm)

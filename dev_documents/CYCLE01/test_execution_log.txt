@@ -4,40 +4,40 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, langsmith-0.6.9, anyio-4.12.1
-collected 114 items
+collected 117 items
 
 tests/integration/test_chunking_pipeline.py .                            [  0%]
 tests/integration/test_embedding_clustering_pipeline.py ..               [  2%]
-tests/integration/test_full_pipeline_verification.py ....                [  6%]
-tests/integration/test_hallucination_verification.py .                   [  7%]
+tests/integration/test_full_pipeline_verification.py ....                [  5%]
+tests/integration/test_hallucination_verification.py .                   [  6%]
 tests/integration/test_pipeline_errors.py ....                           [ 10%]
 tests/integration/test_raptor_pipeline.py .                              [ 11%]
-tests/integration/test_store_concurrency.py ..                           [ 13%]
+tests/integration/test_store_concurrency.py ..                           [ 12%]
 tests/uat/test_cycle01_uat.py ...                                        [ 15%]
-tests/uat/test_cycle02_uat.py ...                                        [ 18%]
-tests/uat/test_cycle03_uat.py ...                                        [ 21%]
+tests/uat/test_cycle02_uat.py ...                                        [ 17%]
+tests/uat/test_cycle03_uat.py ...                                        [ 20%]
 tests/uat/test_cycle04_uat.py ...                                        [ 23%]
-tests/uat/test_cycle05_uat.py ..                                         [ 25%]
-tests/uat/test_cycle06_uat.py ...                                        [ 28%]
-tests/unit/test_cli.py ....                                              [ 31%]
+tests/uat/test_cycle05_uat.py ..                                         [ 24%]
+tests/uat/test_cycle06_uat.py ...                                        [ 27%]
+tests/unit/test_cli.py ....                                              [ 30%]
 tests/unit/test_cluster.py .....                                         [ 35%]
-tests/unit/test_cluster_edge_cases.py ...                                [ 38%]
-tests/unit/test_cluster_large.py .                                       [ 39%]
-tests/unit/test_config_validation.py ...                                 [ 42%]
-tests/unit/test_domain_models.py ......                                  [ 47%]
-tests/unit/test_domain_models_cycle02.py ......                          [ 52%]
-tests/unit/test_embedder.py ...                                          [ 55%]
-tests/unit/test_exporter_markdown.py .                                   [ 56%]
-tests/unit/test_exporter_obsidian.py ...                                 [ 58%]
-tests/unit/test_interface_compliance.py .                                [ 59%]
-tests/unit/test_io.py ...                                                [ 62%]
-tests/unit/test_raptor.py ...                                            [ 64%]
-tests/unit/test_semantic_chunker.py .....                                [ 69%]
-tests/unit/test_store_schema.py ...                                      [ 71%]
-tests/unit/test_strategies.py ...                                        [ 74%]
-tests/unit/test_streaming_verification.py ..                             [ 76%]
-tests/unit/test_summarizer.py ........                                   [ 83%]
-tests/unit/test_summarizer_dos.py ..                                     [ 85%]
+tests/unit/test_cluster_edge_cases.py ...                                [ 37%]
+tests/unit/test_cluster_large.py .                                       [ 38%]
+tests/unit/test_config_validation.py ...                                 [ 41%]
+tests/unit/test_domain_models.py ......                                  [ 46%]
+tests/unit/test_domain_models_cycle02.py ......                          [ 51%]
+tests/unit/test_embedder.py ...                                          [ 53%]
+tests/unit/test_exporter_markdown.py .                                   [ 54%]
+tests/unit/test_exporter_obsidian.py ...                                 [ 57%]
+tests/unit/test_interface_compliance.py .                                [ 58%]
+tests/unit/test_io.py ...                                                [ 60%]
+tests/unit/test_raptor.py ...                                            [ 63%]
+tests/unit/test_semantic_chunker.py .....                                [ 67%]
+tests/unit/test_store_schema.py ...                                      [ 70%]
+tests/unit/test_strategies.py ...                                        [ 72%]
+tests/unit/test_streaming_verification.py ....                           [ 76%]
+tests/unit/test_summarizer.py ........                                   [ 82%]
+tests/unit/test_summarizer_dos.py ...                                    [ 85%]
 tests/unit/test_text_utils.py .....                                      [ 89%]
 tests/unit/test_token_chunker.py ........                                [ 96%]
 tests/unit/test_verifier.py ....                                         [100%]
@@ -79,7 +79,7 @@ src/domain_models/verification.py           20      1    95%   55
 src/matome/__init__.py                       4      0   100%
 src/matome/agents/__init__.py                0      0   100%
 src/matome/agents/strategies.py              9      0   100%
-src/matome/agents/summarizer.py            127     21    83%   89-92, 119, 150, 152, 154, 192-193, 198, 222-223, 240, 243-244, 256-263
+src/matome/agents/summarizer.py            128     21    84%   89-92, 119, 150, 152, 154, 197-198, 203, 240-241, 258, 261-262, 274-281
 src/matome/agents/verifier.py               91     28    69%   57, 73-74, 79-80, 85-87, 102-110, 117-118, 128, 136, 139-140, 148, 153, 155, 168-171
 src/matome/cli.py                           66      5    92%   86-88, 198, 203
 src/matome/config.py                        10      0   100%
@@ -87,14 +87,14 @@ src/matome/engines/__init__.py               0      0   100%
 src/matome/engines/chunker.py                3      3     0%   1-4
 src/matome/engines/cluster.py              184     21    89%   74, 117-118, 121-122, 144-146, 255-258, 369-372, 384, 396, 406-412
 src/matome/engines/embedder.py              51      4    92%   57, 65, 88-89
-src/matome/engines/raptor.py               161     28    83%   76-77, 84, 104-105, 109-110, 175-176, 196-197, 228, 244, 259-262, 266-269, 296-297, 350-351, 356, 362-363
+src/matome/engines/raptor.py               161     26    84%   84, 104-105, 109-110, 180-181, 204-205, 232, 240, 254-257, 261-264, 286-287, 336-337, 342, 348-349
 src/matome/engines/semantic_chunker.py      86     13    85%   62, 105, 115-117, 133-134, 153-155, 200-202
 src/matome/engines/token_chunker.py         68     10    85%   32-37, 44-47, 121-126
 src/matome/exceptions/__init__.py            4      0   100%
 src/matome/exporters/__init__.py             3      0   100%
 src/matome/exporters/markdown.py            39      1    97%   39
 src/matome/exporters/obsidian.py           133      6    95%   85, 177-178, 186, 237, 241
-src/matome/interfaces.py                    17      0   100%
+src/matome/interfaces.py                    21      0   100%
 src/matome/utils/__init__.py                 0      0   100%
 src/matome/utils/compat.py                  17      8    53%   30-31, 39-44
 src/matome/utils/io.py                      15      0   100%
@@ -102,7 +102,7 @@ src/matome/utils/prompts.py                  1      0   100%
 src/matome/utils/store.py                   96      8    92%   58-60, 108, 158, 205-209
 src/matome/utils/text.py                    30      1    97%   20
 ----------------------------------------------------------------------
-TOTAL                                     1386    170    88%
-====================== 114 passed, 11 warnings in 58.12s =======================
+TOTAL                                     1391    168    88%
+================= 117 passed, 11 warnings in 61.79s (0:01:01) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

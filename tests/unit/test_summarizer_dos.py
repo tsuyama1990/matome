@@ -51,3 +51,9 @@ def test_summarize_token_dos(agent: SummarizationAgent, config: ProcessingConfig
     long_word = "a" * 1001
     with pytest.raises(ValueError, match="potential DoS vector"):
         agent.summarize(long_word, context={"id": "test", "level": 1, "children_indices": []})
+
+def test_summarize_token_dos_multiple_long_words(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test protection against multiple long words."""
+    long_words = ("a" * 1001 + " ") * 3
+    with pytest.raises(ValueError, match="potential DoS vector"):
+        agent.summarize(long_words, context={"id": "test", "level": 1, "children_indices": []})

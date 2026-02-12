@@ -1,11 +1,12 @@
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from matome.engines.raptor import RaptorEngine
 
 
@@ -72,9 +73,10 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     clusterer.cluster_nodes.side_effect = cluster_side_effect
 
     # Summarizer
-    def summarize_side_effect(text, context=None):
+    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
         import uuid
-        from domain_models.manifest import SummaryNode
+        if context is None:
+            context = {}
         return SummaryNode(
             id=context.get("id", str(uuid.uuid4())),
             text="Summary Text",
@@ -106,6 +108,88 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     # checking that children_indices contains 0 and 1
     assert set(tree.root_node.children_indices) == {0, 1}
 
+
+def test_raptor_reconstructs_leaf_chunks_empty(tmp_path: Path) -> None:
+    """Test reconstruction with empty chunk list (should raise or return empty tree)."""
+    chunker = MagicMock()
+    chunker.split_text.return_value = iter([])
+
+    clusterer = MagicMock()
+    # We must ensure cluster_nodes handles empty input correctly if RaptorEngine calls it
+    # RaptorEngine checks generator before calling clusterer? No, it passes it.
+    # So clusterer must consume.
+    def cluster_empty(embeddings: Iterable[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        list(embeddings)
+        return []
+
+    clusterer.cluster_nodes.side_effect = cluster_empty
+
+    engine = RaptorEngine(
+        chunker=chunker,
+        embedder=MagicMock(),
+        clusterer=clusterer,
+        summarizer=MagicMock(),
+        config=ProcessingConfig(),
+    )
+
+    # RaptorEngine checks for empty chunks after clustering loop implicitly or explicitly
+    # With empty chunks, current_level_ids is empty.
+    # _finalize_tree checks if current_level_ids is empty.
+
+    with pytest.raises(ValueError, match="No nodes remaining"):
+        engine.run("empty")
+
+def test_raptor_malformed_chunk_data(tmp_path: Path) -> None:
+    """Test error handling with malformed chunk data (e.g. missing embedding)."""
+    chunker = MagicMock()
+    # Chunk missing embedding
+    # Note: embed_chunks usually adds embedding.
+    # But if embed_chunks yields a chunk WITHOUT embedding, Raptor raises ValueError.
+
+    chunks = [Chunk(index=0, text="text", start_char_idx=0, end_char_idx=4)]
+    chunker.split_text.return_value = iter(chunks)
+
+    # Embedder returns chunk without embedding
+    embedder = MagicMock()
+    embedder.embed_chunks.return_value = iter(chunks)
+
+    engine = RaptorEngine(
+        chunker=chunker,
+        embedder=embedder,
+        clusterer=MagicMock(),
+        summarizer=MagicMock(),
+        config=ProcessingConfig(),
+    )
+
+    # The error happens when RaptorEngine iterates over embedder.embed_chunks output
+    # Since embed_chunks yields one by one, _process_level_zero catches it inside batched loop
+    # or inside store.add_chunks/loop.
+    # Actually, RaptorEngine checks "if chunk.embedding is None" inside the loop.
+
+    # However, if clustering returns empty list because of exception, flow might proceed differently.
+    # In this mock setup, cluster_nodes side effect is default (MagicMock returns MagicMock, which is iterable?)
+    # MagicMock returns MagicMock by default. list(MagicMock()) is empty list?
+    # No, iterating MagicMock does not yield. It might fail or yield nothing.
+    # We should mock clusterer to return valid result to ensure flow reaches embedding check?
+    # No, the embedding check is BEFORE clustering call consumes generator.
+
+    # If clusterer is a MagicMock, it won't consume the generator!
+    # So the generator logic inside _process_level_zero (checking embedding) never runs.
+    # We must mock clusterer to consume input.
+
+    def consume_input(embeddings: Iterable[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        list(embeddings) # Trigger generator
+        return []
+
+    # Use cast to satisfy mypy that clusterer (MagicMock) has side_effect attribute
+    # or just set it if typed correctly. Here engine.clusterer is defined as Clusterer protocol in engine
+    # but at runtime it's MagicMock.
+    from unittest.mock import Mock
+    if isinstance(engine.clusterer, Mock):
+        engine.clusterer.cluster_nodes.side_effect = consume_input
+
+    with pytest.raises(ValueError, match="missing embedding"):
+        engine.run("text")
 
 def test_raptor_empty_iterator_error() -> None:
     """Verify error handling when chunker yields nothing."""

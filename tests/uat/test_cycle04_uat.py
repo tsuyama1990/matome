@@ -1,9 +1,10 @@
+import uuid
 from collections.abc import Iterator
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
 
-import uuid
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, SummaryNode
 from matome.engines.cluster import GMMClusterer
@@ -73,7 +74,9 @@ def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
     clusterer = GMMClusterer()
 
     summarizer = MagicMock()
-    def summarize_side_effect(text, context=None):
+    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+        if context is None:
+            context = {}
         return SummaryNode(
             id=context.get("id", str(uuid.uuid4())),
             text="Summary Root",
@@ -116,7 +119,9 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     clusterer = GMMClusterer()
 
     summarizer = MagicMock()
-    def summarize_side_effect(text, context=None):
+    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+        if context is None:
+            context = {}
         return SummaryNode(
             id=context.get("id", str(uuid.uuid4())),
             text="Summary Node",
@@ -156,7 +161,9 @@ def test_uat_scenario_13_summary_coherence() -> None:
     clusterer = GMMClusterer()
 
     summarizer = MagicMock()
-    def summarize_side_effect(text, context=None):
+    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+        if context is None:
+            context = {}
         return SummaryNode(
             id=context.get("id", str(uuid.uuid4())),
             text="Global Warming Summary",

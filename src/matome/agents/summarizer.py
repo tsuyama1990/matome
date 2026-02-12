@@ -176,15 +176,20 @@ class SummarizationAgent:
         """
         Sanitize and validate input text.
         """
+        # 0. Unicode Normalization (NFKC)
+        # Convert compatibility characters to their canonical form.
+        # This prevents bypassing checks using weird Unicode variants.
+        normalized_text = unicodedata.normalize("NFKC", text)
+
         # 1. Length Check (Document)
-        if len(text) > max_input_length:
+        if len(normalized_text) > max_input_length:
             msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
             raise ValueError(msg)
 
         # 2. Control Character Check (Unicode)
         allowed_controls = {"\n", "\t", "\r"}
 
-        for char in text:
+        for char in normalized_text:
             if (
                 unicodedata.category(char).startswith("C")
                 and char not in allowed_controls
@@ -193,7 +198,7 @@ class SummarizationAgent:
                 raise ValueError(msg)
 
         # 3. Tokenizer DoS Protection
-        words = text.split()
+        words = normalized_text.split()
         if not words:
             return
 
@@ -204,11 +209,24 @@ class SummarizationAgent:
 
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
-        Basic mitigation for Prompt Injection.
+        Basic mitigation for Prompt Injection using case folding.
         """
         sanitized = text
         for pattern in PROMPT_INJECTION_PATTERNS:
-            sanitized = re.sub(pattern, "[Filtered]", sanitized)
+            # PROMPT_INJECTION_PATTERNS usually are strings.
+            # We iterate and check if the pattern exists (case-folded)
+            # Or better, use re.sub with IGNORECASE which handles case folding effectively for ASCII.
+            # For robust Unicode case folding, regex support might vary.
+            # Assuming PROMPT_INJECTION_PATTERNS are regex strings.
+
+            # Using re.IGNORECASE handles basic casing.
+            # For strict security, we could casefold both and check, but we need to replace in original.
+            # Matome's existing pattern was re.sub(pattern, ...)
+
+            # The audit requested explicit case folding.
+            # However, re.sub already takes flags.
+            # If pattern is a regex string, we use re.IGNORECASE.
+            sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
 
         return sanitized
 

@@ -11,6 +11,7 @@ from langchain_core.messages import AIMessage
 from domain_models.config import ProcessingConfig
 from matome.agents.strategies import BaseSummaryStrategy
 from matome.agents.summarizer import SummarizationAgent
+from tests.constants import MOCK_DENSE_RESPONSE, MOCK_SUMMARY_RESPONSE
 
 
 @pytest.fixture
@@ -28,7 +29,7 @@ def test_scenario_08_openrouter_connection_mocked(mock_env_key: None) -> None:
     """
     with patch("matome.agents.summarizer.ChatOpenAI") as MockLLM:
         mock_instance = MockLLM.return_value
-        mock_instance.invoke.return_value = AIMessage(content="Hello! How can I help you?")
+        mock_instance.invoke.return_value = AIMessage(content=MOCK_SUMMARY_RESPONSE)
 
         config = ProcessingConfig()
         agent = SummarizationAgent(config, strategy=BaseSummaryStrategy())
@@ -43,7 +44,7 @@ def test_scenario_08_openrouter_connection_mocked(mock_env_key: None) -> None:
 
         summary_node = agent.summarize("Hello, world!", context={"id": "test", "level": 1, "children_indices": []})
 
-        assert summary_node.text == "Hello! How can I help you?"
+        assert summary_node.text == MOCK_SUMMARY_RESPONSE
         MockLLM.assert_called()
 
 
@@ -59,7 +60,7 @@ def test_scenario_09_cod_behavior_mocked() -> None:
         mock_instance = MockLLM.return_value
         # Mock a "dense" response
         mock_instance.invoke.return_value = AIMessage(
-            content="iPhone (2007, Steve Jobs) revolutionized phones."
+            content=MOCK_DENSE_RESPONSE
         )
 
         config = ProcessingConfig()
