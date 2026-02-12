@@ -2,6 +2,7 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domain_models.data_schema import NodeMetadata
 from domain_models.types import Metadata, NodeID
 
 # Configure logger
@@ -94,8 +95,9 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        default_factory=NodeMetadata,
+        description="Optional extra info (e.g., cluster ID).",
     )
 
 
@@ -126,7 +128,10 @@ class DocumentTree(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
-    all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
+    all_nodes: dict[str, SummaryNode] | None = Field(
+        default=None,
+        description="Map of all summary nodes by ID. Optional for scalability.",
+    )
     leaf_chunk_ids: list[NodeID] = Field(
         ..., description="IDs of the original leaf chunks (Level 0)."
     )

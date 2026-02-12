@@ -4,6 +4,7 @@ import uuid
 from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
+from domain_models.data_schema import NodeMetadata
 from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
@@ -112,8 +113,6 @@ class RaptorEngine:
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
 
-        all_summaries: dict[str, SummaryNode] = {}
-
         # Use provided store or create a temporary one
         # If provided, we wrap it in a nullcontext so it doesn't close on exit
         store_ctx: contextlib.AbstractContextManager[DiskChunkStore] = (
@@ -129,17 +128,16 @@ class RaptorEngine:
             l0_ids = list(current_level_ids)
 
             current_level_ids = self._process_recursion(
-                clusters, current_level_ids, active_store, all_summaries
+                clusters, current_level_ids, active_store
             )
 
-            return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
+            return self._finalize_tree(current_level_ids, active_store, l0_ids)
 
     def _process_recursion(
         self,
         clusters: list[Cluster],
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
         start_level: int = 0,
     ) -> list[NodeID]:
         """
@@ -150,6 +148,12 @@ class RaptorEngine:
         """
         level = start_level
         while True:
+            if level > self.config.max_recursion_depth:
+                logger.warning(
+                    f"Max recursion depth ({self.config.max_recursion_depth}) reached. Stopping."
+                )
+                break
+
             node_count = len(current_level_ids)
             logger.info(f"Processing Level {level}. Node count: {node_count}")
 
@@ -188,7 +192,6 @@ class RaptorEngine:
             BATCH_SIZE = self.config.chunk_buffer_size
 
             for node in new_nodes_iter:
-                all_summaries[node.id] = node
                 current_level_ids.append(node.id)
                 summary_buffer.append(node)
 
@@ -272,7 +275,6 @@ class RaptorEngine:
         self,
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
         l0_ids: list[NodeID],
     ) -> DocumentTree:
         """
@@ -304,8 +306,6 @@ class RaptorEngine:
             if embeddings:
                 root_node_obj.embedding = embeddings[0]
                 store.update_node_embedding(root_id, embeddings[0])
-                if isinstance(root_node_obj, SummaryNode):
-                    all_summaries[str(root_id)] = root_node_obj
 
         if isinstance(root_node_obj, Chunk):
             root_node = SummaryNode(
@@ -313,15 +313,18 @@ class RaptorEngine:
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata={"type": "single_chunk_root"},
+                metadata=NodeMetadata(type="single_chunk_root"),
             )
-            all_summaries[root_node.id] = root_node
+            # Store the synthetic root node
+            store.add_summary(root_node)
         else:
             root_node = root_node_obj
 
+        # For scalability, we do NOT load all nodes into memory.
+        # Consumers should use the store to fetch nodes by ID.
         return DocumentTree(
             root_node=root_node,
-            all_nodes=all_summaries,
+            all_nodes=None,
             leaf_chunk_ids=l0_ids,
             metadata={"levels": root_node.level},
         )
@@ -362,10 +365,9 @@ class RaptorEngine:
                 logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
                 continue
 
-            # Note: For very large clusters, joining texts might still be memory intensive.
-            # But the summarizer typically takes a string.
-            combined_text = "\n\n".join(cluster_texts)
-            summary_text = self.summarizer.summarize(combined_text, self.config)
+            # Pass list of texts to summarizer to allow strategy-based handling
+            # and avoid creating a huge string in memory here.
+            summary_text = self.summarizer.summarize(cluster_texts, self.config)
 
             node_id_str = str(uuid.uuid4())
             summary_node = SummaryNode(
@@ -373,7 +375,7 @@ class RaptorEngine:
                 text=summary_text,
                 level=level,
                 children_indices=children_indices,
-                metadata={"cluster_id": cluster.id},
+                metadata=NodeMetadata(cluster_id=cluster.id),
             )
 
             yield summary_node

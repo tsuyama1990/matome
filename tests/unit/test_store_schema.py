@@ -86,3 +86,23 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
         assert embedding_json == "[0.9, 0.9]"
 
     store.close()
+
+def test_get_nodes_batched(tmp_path: Path) -> None:
+    """Test retrieving multiple nodes in batches."""
+    store = DiskChunkStore(tmp_path / "batch.db")
+    chunks = [
+        Chunk(index=i, text=f"C{i}", start_char_idx=0, end_char_idx=1)
+        for i in range(10)
+    ]
+    store.add_chunks(chunks)
+
+    # Retrieve subset
+    ids = [0, 2, 5, 9]
+    nodes = store.get_nodes(ids)
+
+    assert len(nodes) == 4
+    # Order isn't guaranteed by SQL IN, but results should contain all
+    retrieved_indices = sorted([n.index for n in nodes if isinstance(n, Chunk)])
+    assert retrieved_indices == ids
+
+    store.close()

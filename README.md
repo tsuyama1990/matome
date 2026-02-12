@@ -6,36 +6,13 @@
 
 **"Don't just summarize. Install Knowledge."**
 
-Matome 2.0 transforms long, complex documents into a structured **Data-Information-Knowledge-Wisdom (DIKW)** hierarchy. Unlike traditional summarizers that simply shorten text, Matome helps you restructure information into a mental model that fits your brain, allowing you to "zoom" from profound philosophical truths down to actionable checklists and raw evidence.
+Matome 2.0 transforms long, complex documents into structured summaries. It uses a recursive summarization approach (RAPTOR) to build a hierarchical tree of information.
 
-## Key Features
+## Current Capabilities (Cycle 01)
 
-*   **Semantic Zooming Engine:** Automatically generates a 4-layer hierarchy (Wisdom -> Knowledge -> Information -> Data) from any text.
-*   **Interactive Refinement:** Don't like a summary? Chat with it! Refine any node using natural language instructions (e.g., "Explain this like I'm 5").
-*   **Matome Canvas (GUI):** A modern, responsive interface built with Panel to explore and edit your knowledge base visually.
-*   **Source Traceability:** Every insight is linked back to the original text chunks, ensuring you can always verify the source.
-*   **Prompt Strategy Pattern:** Extensible architecture allowing for custom prompt engineering strategies.
-
-## Architecture Overview
-
-Matome 2.0 uses a layered architecture to separate the interactive GUI from the robust RAPTOR-based backend.
-
-```mermaid
-graph TD
-    User((User))
-    GUI[Matome Canvas]
-    CLI[CLI]
-    Engine[InteractiveRaptorEngine]
-    Agent[SummarizationAgent]
-    DB[(SQLite: chunks.db)]
-
-    User --> GUI
-    User --> CLI
-    GUI <--> Engine
-    CLI --> Engine
-    Engine --> Agent
-    Engine <--> DB
-```
+*   **Recursive Summarization:** Automatically generates a hierarchical summary tree from text documents.
+*   **Prompt Strategy Pattern:** Extensible architecture allowing for custom prompt engineering strategies (Internal API).
+*   **Strict Schema Validation:** Robust data models ensuring data integrity.
 
 ## Prerequisites
 
@@ -54,60 +31,59 @@ graph TD
 2.  **Install dependencies:**
     ```bash
     uv sync
-    # Or with pip: pip install -e .[dev]
     ```
 
 3.  **Configure Environment:**
+    Create a `.env` file in the root directory:
     ```bash
-    cp .env.example .env
-    # Edit .env and add your OPENAI_API_KEY
+    OPENAI_API_KEY=your_api_key_here
+    # Optional:
+    # OPENROUTER_API_KEY=your_openrouter_key
     ```
 
 ## Usage
 
-### 1. Ingest & Generate (CLI)
-Process a text file to generate the initial DIKW tree.
+### Ingest & Generate (CLI)
+Process a text file to generate the summary tree.
 ```bash
-uv run matome run your_document.txt --mode dikw
+uv run matome run your_document.txt
+```
+This will output a summary to `summary.md` (or configured output).
+
+## Architecture Overview
+
+Matome 2.0 uses a layered architecture to separate the interactive GUI from the robust RAPTOR-based backend.
+
+```mermaid
+graph TD
+    User((User))
+    CLI[CLI]
+    Engine[RaptorEngine]
+    Agent[SummarizationAgent]
+    DB[(SQLite: chunks.db)]
+
+    User --> CLI
+    CLI --> Engine
+    Engine --> Agent
+    Engine <--> DB
 ```
 
-### 2. Explore & Refine (GUI)
-Launch the Matome Canvas to explore the generated knowledge.
-```bash
-uv run matome canvas
-```
-*   Open your browser at `http://localhost:5006`.
-*   Click the **Wisdom** node to drill down.
-*   Select any node and use the **Refine** chat to edit it.
+## Roadmap
 
-## Development Workflow
-
-We follow a cycle-based development process (AC-CDD).
-
-**Running Tests:**
-```bash
-uv run pytest
-```
-
-**Linting & Formatting:**
-```bash
-uv run ruff check .
-uv run mypy .
-```
+*   **Cycle 02:** DIKW (Data-Information-Knowledge-Wisdom) Engine Implementation.
+*   **Cycle 03:** Interactive Backend & Refinement.
+*   **Cycle 04:** GUI Foundation (Matome Canvas).
+*   **Cycle 05:** Semantic Zooming & Full Release.
 
 ## Project Structure
 
 ```ascii
 .
 ├── dev_documents/          # Architecture, Specs, UATs
-│   ├── system_prompts/     # Cycle-specific documentation
-│   ├── ALL_SPEC.md         # Raw requirements
-│   └── SYSTEM_ARCHITECTURE.md
 ├── src/
 │   ├── matome/             # Main package
 │   │   ├── agents/         # LLM logic & Strategies
-│   │   ├── canvas/         # GUI (Panel)
-│   │   ├── engines/        # RAPTOR & Interactive engines
+│   │   ├── engines/        # RAPTOR engine
 │   │   └── cli.py          # CLI entry point
 │   └── domain_models/      # Pydantic schemas
 ├── tests/                  # Test suite

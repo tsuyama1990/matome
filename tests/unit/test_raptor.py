@@ -85,7 +85,8 @@ def test_raptor_run_short_text(
     assert tree.root_node.level == 1
     assert tree.root_node.text == "Short text"
     assert tree.root_node.children_indices == [0]
-    assert len(tree.all_nodes) == 1
+    # all_nodes is now None for scalability
+    assert tree.all_nodes is None
 
 
 def test_raptor_run_recursive(
@@ -178,6 +179,5 @@ def test_raptor_run_recursive(
     assert len(root_children_ids) == 2
     assert all(isinstance(uid, str) for uid in root_children_ids)
 
-    # Verify we have all nodes
-    # Root + 2 L1 nodes = 3 nodes
-    assert len(tree.all_nodes) == 3
+    # Verify all_nodes is None (scalability)
+    assert tree.all_nodes is None

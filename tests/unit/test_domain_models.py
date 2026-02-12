@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
+from domain_models.data_schema import NodeMetadata
 from domain_models.manifest import Chunk, Cluster, Document, DocumentTree, SummaryNode
 
 
@@ -37,7 +38,11 @@ def test_summary_node_validation() -> None:
     """Test valid and invalid SummaryNode creation."""
     # Valid
     node = SummaryNode(
-        id="node1", text="Summary of text", level=1, children_indices=[0, 1], metadata={}
+        id="node1",
+        text="Summary of text",
+        level=1,
+        children_indices=[0, 1],
+        metadata=NodeMetadata(),
     )
     assert node.level == 1
     assert node.children_indices == [0, 1]
