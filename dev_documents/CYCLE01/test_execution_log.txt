@@ -1,0 +1,111 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0, langsmith-0.6.9, anyio-4.12.1
+collected 118 items
+
+tests/integration/test_chunking_pipeline.py .                            [  0%]
+tests/integration/test_embedding_clustering_pipeline.py ..               [  2%]
+tests/integration/test_full_pipeline_verification.py ....                [  5%]
+tests/integration/test_hallucination_verification.py .                   [  6%]
+tests/integration/test_pipeline_errors.py ....                           [ 10%]
+tests/integration/test_raptor_pipeline.py .                              [ 11%]
+tests/integration/test_store_concurrency.py ..                           [ 12%]
+tests/uat/test_cycle01_uat.py ..                                         [ 14%]
+tests/uat/test_cycle02_uat.py ...                                        [ 16%]
+tests/uat/test_cycle03_uat.py ...                                        [ 19%]
+tests/uat/test_cycle04_uat.py ...                                        [ 22%]
+tests/uat/test_cycle05_uat.py ..                                         [ 23%]
+tests/uat/test_cycle06_uat.py ...                                        [ 26%]
+tests/unit/test_cli.py ....                                              [ 29%]
+tests/unit/test_cluster.py .....                                         [ 33%]
+tests/unit/test_cluster_edge_cases.py ...                                [ 36%]
+tests/unit/test_cluster_large.py .                                       [ 37%]
+tests/unit/test_config_validation.py ...                                 [ 39%]
+tests/unit/test_domain_models.py ......                                  [ 44%]
+tests/unit/test_domain_models_cycle01.py ....                            [ 48%]
+tests/unit/test_domain_models_cycle02.py ......                          [ 53%]
+tests/unit/test_embedder.py ...                                          [ 55%]
+tests/unit/test_exporter_markdown.py .                                   [ 56%]
+tests/unit/test_exporter_obsidian.py ...                                 [ 59%]
+tests/unit/test_interface_compliance.py .                                [ 60%]
+tests/unit/test_io.py ...                                                [ 62%]
+tests/unit/test_raptor.py ...                                            [ 65%]
+tests/unit/test_semantic_chunker.py .....                                [ 69%]
+tests/unit/test_store_schema.py ...                                      [ 72%]
+tests/unit/test_strategies.py ..                                         [ 73%]
+tests/unit/test_streaming_verification.py ..                             [ 75%]
+tests/unit/test_summarizer.py .........                                  [ 83%]
+tests/unit/test_summarizer_dos.py ..                                     [ 84%]
+tests/unit/test_summarizer_strategy.py .                                 [ 85%]
+tests/unit/test_text_utils.py .....                                      [ 89%]
+tests/unit/test_token_chunker.py ........                                [ 96%]
+tests/unit/test_verifier.py ....                                         [100%]
+
+=============================== warnings summary ===============================
+tests/integration/test_embedding_clustering_pipeline.py::test_embedding_clustering_pipeline
+tests/integration/test_embedding_clustering_pipeline.py::test_real_pipeline_small
+tests/integration/test_full_pipeline_verification.py::test_full_pipeline_flow
+tests/integration/test_full_pipeline_verification.py::test_pipeline_streaming_logic
+tests/integration/test_raptor_pipeline.py::test_raptor_pipeline_integration
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+  /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+    warn(
+
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+  /app/.venv/lib/python3.12/site-packages/umap/spectral.py:548: UserWarning: Spectral initialisation failed! The eigenvector solver
+  failed. This is likely due to too small an eigengap. Consider
+  adding some noise or jitter to your data.
+
+  Falling back to random initialisation!
+    warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+
+Name                                     Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------
+src/domain_models/__init__.py                5      0   100%
+src/domain_models/config.py                 74      3    96%   31, 196-197
+src/domain_models/constants.py              13      0   100%
+src/domain_models/data_schema.py            15      0   100%
+src/domain_models/manifest.py               57      9    84%   53-55, 73-75, 77-79
+src/domain_models/types.py                   3      0   100%
+src/domain_models/verification.py           20      1    95%   55
+src/matome/__init__.py                       4      0   100%
+src/matome/agents/__init__.py                0      0   100%
+src/matome/agents/strategies.py              7      0   100%
+src/matome/agents/summarizer.py            104      9    91%   109, 172-173, 179, 228-229, 249, 252-253
+src/matome/agents/verifier.py               92     28    70%   58, 74-75, 80-81, 86-88, 103-111, 118-119, 129, 137, 140-141, 149, 154, 156, 169-172
+src/matome/cli.py                           65      5    92%   85-87, 197, 202
+src/matome/config.py                        10      0   100%
+src/matome/engines/__init__.py               0      0   100%
+src/matome/engines/chunker.py                3      3     0%   1-4
+src/matome/engines/cluster.py              184     21    89%   74, 117-118, 121-122, 144-146, 255-258, 369-372, 384, 396, 406-412
+src/matome/engines/embedder.py              51      4    92%   57, 65, 88-89
+src/matome/engines/raptor.py               163     28    83%   77-78, 85, 105-106, 110-111, 176-177, 197-198, 229, 245, 260-263, 267-270, 297-298, 351-352, 357, 363-364
+src/matome/engines/semantic_chunker.py      86     13    85%   62, 105, 115-117, 133-134, 153-155, 200-202
+src/matome/engines/token_chunker.py         68     10    85%   32-37, 44-47, 121-126
+src/matome/exceptions/__init__.py            4      0   100%
+src/matome/exporters/__init__.py             3      0   100%
+src/matome/exporters/markdown.py            39      1    97%   39
+src/matome/exporters/obsidian.py           133      6    95%   85, 177-178, 186, 237, 241
+src/matome/interfaces.py                    17      0   100%
+src/matome/utils/__init__.py                 0      0   100%
+src/matome/utils/compat.py                  17      8    53%   30-31, 39-44
+src/matome/utils/io.py                      15      0   100%
+src/matome/utils/prompts.py                  1      0   100%
+src/matome/utils/store.py                   96      8    92%   58-60, 108, 158, 205-209
+src/matome/utils/text.py                    30      1    97%   20
+----------------------------------------------------------------------
+TOTAL                                     1379    158    89%
+================= 118 passed, 11 warnings in 62.91s (0:01:02) ==================
+/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

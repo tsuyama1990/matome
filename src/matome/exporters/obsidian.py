@@ -266,7 +266,7 @@ class ObsidianCanvasExporter:
 
             # Create Edge
             edge = CanvasEdge(
-                id=f"edge_{node_id_str}_{child_id_str}", from_node=node_id_str, to_node=child_id_str
+                id=f"edge_{node_id_str}_{child_id_str}", fromNode=node_id_str, toNode=child_id_str
             )
             self.edges.append(edge)
 

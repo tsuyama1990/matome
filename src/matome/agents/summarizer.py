@@ -11,13 +11,15 @@ from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_openai import ChatOpenAI
+from pydantic import SecretStr
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from domain_models.constants import PROMPT_INJECTION_PATTERNS
+from matome.agents.strategies import BaseSummaryStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
+from matome.interfaces import PromptStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +56,7 @@ class SummarizationAgent:
         elif api_key and not self.mock_mode:
             self.llm = ChatOpenAI(
                 model=self.model_name,
-                api_key=api_key,
+                api_key=SecretStr(api_key),
                 base_url=base_url,
                 temperature=config.llm_temperature,
                 max_retries=config.max_retries,
@@ -62,15 +64,24 @@ class SummarizationAgent:
         else:
             self.llm = None
 
-    def summarize(self, text: str, config: ProcessingConfig | None = None) -> str:
+    def summarize(
+        self,
+        text: str,
+        config: ProcessingConfig | None = None,
+        strategy: PromptStrategy | None = None,
+    ) -> str:
         """
         Summarize the provided text using the Chain of Density strategy.
 
         Args:
             text: The text to summarize.
             config: Optional config override. Uses self.config if None.
+            strategy: Optional summarization strategy. Defaults to BaseSummaryStrategy (Chain of Density).
         """
         effective_config = config or self.config
+        # Use provided strategy or default
+        effective_strategy = strategy or BaseSummaryStrategy()
+
         request_id = str(uuid.uuid4())
 
         if not text:
@@ -100,11 +111,21 @@ class SummarizationAgent:
             )
 
         try:
-            prompt = COD_TEMPLATE.format(context=safe_text)
-            messages = [HumanMessage(content=prompt)]
+            # Use Strategy to format prompt
+            prompt_str = effective_strategy.format_prompt(safe_text)
+            messages = [HumanMessage(content=prompt_str)]
 
             response = self._invoke_llm(messages, effective_config, request_id)
-            return self._process_response(response, request_id)
+            response_text = self._process_response(response, request_id)
+
+            # Use Strategy to parse output
+            parsed_output = effective_strategy.parse_output(response_text)
+
+            # Return the summary part.
+            # BaseSummaryStrategy returns {"summary": text}.
+            # If strategy returns dict without summary key, fallback to raw text?
+            # Or raise error? For now, fallback to raw text if empty.
+            return str(parsed_output.get("summary", response_text))
 
         except Exception as e:
             logger.exception(f"[{request_id}] Summarization failed for text length {len(text)}")
