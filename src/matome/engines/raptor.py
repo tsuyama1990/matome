@@ -85,6 +85,8 @@ class RaptorEngine:
 
         # cluster_nodes consumes the generator.
         # This will drive the loop above, which drives storage and counting.
+        # NOTE: GMMClusterer might need to materialize the list internally if the algorithm requires it,
+        # but we pass a generator to adhere to interface and allow for algorithms that support partial fit.
         clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
 
         return clusters, current_level_ids
@@ -217,6 +219,7 @@ class RaptorEngine:
                         )
 
             # Strategy: Batched processing manually
+            # Using config.embedding_batch_size to bound memory usage per batch.
             for batch in batched(node_text_generator(), self.config.embedding_batch_size):
                 unzipped = list(zip(*batch, strict=True))
                 if not unzipped:

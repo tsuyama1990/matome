@@ -32,45 +32,76 @@ def _process_chunk_node(
 def _process_summary_node(
     node_id: str, depth: int, root_node: SummaryNode, store: DiskChunkStore | None, lines: list[str]
 ) -> None:
-    """Process a summary node."""
-    node: SummaryNode | None = None
+    """
+    Process a summary node iteratively to prevent stack overflow.
+    Uses a stack to emulate recursion.
+    """
+    # Stack stores tuples of (current_node_id, current_depth)
+    # We want pre-order for formatting (Headings first), but then children.
+    # Actually, the recursive version does:
+    # 1. Print Heading
+    # 2. Recurse children
+    # Iterative pre-order traversal using stack:
+    # Push root.
+    # While stack:
+    #   pop node
+    #   print node
+    #   push children in REVERSE order (so first child is popped first)
 
-    if node_id == root_node.id:
-        node = root_node
-    elif store:
-        stored_node = store.get_node(node_id)
-        if isinstance(stored_node, SummaryNode):
-            node = stored_node
+    # However, we need to handle mixed types (chunk vs summary) and 'depth' tracking.
 
-    if not node:
-        return
-
-    # Heading
-    heading, empty_line = _format_summary(node, depth)
-    lines.append(heading)
-    lines.append(empty_line)
-
-    # Process Children
-    for child_idx in node.children_indices:
-        if isinstance(child_idx, str):
-            _process_summary_node(child_idx, depth + 1, root_node, store, lines)
-        elif isinstance(child_idx, int):
-            _process_chunk_node(child_idx, depth + 1, store, lines)
+    # Re-implementing _process_node iteratively
+    # logic moved to _process_node_iterative
 
 
-def _process_node(
-    node_id: str | int,
-    is_chunk: bool,
-    depth: int,
+def _process_node_iterative(
+    start_node_id: str | int,
+    start_depth: int,
     tree: DocumentTree,
     store: DiskChunkStore | None,
     lines: list[str],
 ) -> None:
-    """Recursively process nodes for Markdown export."""
-    if is_chunk and isinstance(node_id, int):
-        _process_chunk_node(node_id, depth, store, lines)
-    elif isinstance(node_id, str):
-        _process_summary_node(node_id, depth, tree.root_node, store, lines)
+    """
+    Iterative implementation of node processing to avoid stack overflow.
+    """
+    # Stack elements: (node_id, is_chunk, depth)
+    # Initial: root node
+    is_chunk_start = isinstance(start_node_id, int)
+    stack: list[tuple[str | int, bool, int]] = [(start_node_id, is_chunk_start, start_depth)]
+
+    while stack:
+        curr_id, is_chunk, depth = stack.pop()
+
+        if is_chunk:
+            if isinstance(curr_id, int):
+                _process_chunk_node(curr_id, depth, store, lines)
+            continue
+
+        # Summary Node
+        if isinstance(curr_id, str):
+            node: SummaryNode | None = None
+            if curr_id == tree.root_node.id:
+                node = tree.root_node
+            elif store:
+                stored_node = store.get_node(curr_id)
+                if isinstance(stored_node, SummaryNode):
+                    node = stored_node
+
+            if not node:
+                continue
+
+            # Heading
+            heading, empty_line = _format_summary(node, depth)
+            lines.append(heading)
+            lines.append(empty_line)
+
+            # Push children to stack in reverse order
+            # (so first child is processed next)
+            for child_idx in reversed(node.children_indices):
+                if isinstance(child_idx, str):
+                    stack.append((child_idx, False, depth + 1))
+                elif isinstance(child_idx, int):
+                    stack.append((child_idx, True, depth + 1))
 
 
 def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) -> str:
@@ -90,6 +121,7 @@ def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) 
     lines: list[str] = []
 
     if tree.root_node:
-        _process_node(tree.root_node.id, False, 0, tree, store, lines)
+        # Use iterative approach
+        _process_node_iterative(tree.root_node.id, 0, tree, store, lines)
 
     return "\n".join(lines)

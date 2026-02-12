@@ -211,7 +211,10 @@ class SummarizationAgent:
         """
         Basic mitigation for Prompt Injection using case folding.
         """
-        sanitized = text
+        # 1. Normalize text first (NFKC) to ensure regex matches consistent characters
+        normalized_text = unicodedata.normalize("NFKC", text)
+
+        sanitized = normalized_text
         for pattern in PROMPT_INJECTION_PATTERNS:
             # We use re.sub for flexible matching with IGNORECASE which handles case folding.
             # This is effective for typical prompt injection patterns.

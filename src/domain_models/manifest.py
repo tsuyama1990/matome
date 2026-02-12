@@ -32,6 +32,7 @@ class Chunk(BaseModel):
     end_char_idx: int = Field(
         ..., ge=0, description="Ending character position in the original text."
     )
+    # Embedding is optional during initial chunking, but required for clustering/persistence.
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the chunk text."
     )
