@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,14 +14,14 @@ from matome.utils.store import DiskChunkStore
 
 
 @pytest.fixture
-def mock_summarizer():
+def mock_summarizer() -> MagicMock:
     summarizer = MagicMock(spec=Summarizer)
     summarizer.summarize.return_value = "Refined Summary"
     return summarizer
 
 
 @pytest.fixture
-def mock_embedder():
+def mock_embedder() -> MagicMock:
     embedder = MagicMock(spec=EmbeddingService)
     # embed_strings returns an iterator
     embedder.embed_strings.return_value = iter([[0.1, 0.2, 0.3]])
@@ -28,7 +29,7 @@ def mock_embedder():
 
 
 @pytest.fixture
-def store():
+def store() -> Generator[DiskChunkStore, None, None]:
     # Use in-memory DB for speed (default if no path provided is temp file)
     # But DiskChunkStore constructor creates a temp file if None.
     # To be truly in-memory, we might need specific sqlite url, but temp file is fine.
@@ -37,7 +38,9 @@ def store():
     store.close()
 
 
-def test_refine_node_success(mock_summarizer, mock_embedder, store):
+def test_refine_node_success(
+    mock_summarizer: MagicMock, mock_embedder: MagicMock, store: DiskChunkStore
+) -> None:
     config = ProcessingConfig()
     engine = InteractiveRaptorEngine(mock_summarizer, mock_embedder, config)
 
@@ -71,11 +74,14 @@ def test_refine_node_success(mock_summarizer, mock_embedder, store):
 
     # Verify store updated
     stored_node = store.get_node(node_id)
+    assert stored_node is not None  # Type check for None
     assert stored_node.text == "Refined Summary"
     assert stored_node.embedding == [0.1, 0.2, 0.3]
 
 
-def test_refine_node_not_found(mock_summarizer, mock_embedder, store):
+def test_refine_node_not_found(
+    mock_summarizer: MagicMock, mock_embedder: MagicMock, store: DiskChunkStore
+) -> None:
     config = ProcessingConfig()
     engine = InteractiveRaptorEngine(mock_summarizer, mock_embedder, config)
 
@@ -83,7 +89,9 @@ def test_refine_node_not_found(mock_summarizer, mock_embedder, store):
         engine.refine_node("non-existent-id", "instruction", store)
 
 
-def test_refine_node_chunk_error(mock_summarizer, mock_embedder, store):
+def test_refine_node_chunk_error(
+    mock_summarizer: MagicMock, mock_embedder: MagicMock, store: DiskChunkStore
+) -> None:
     config = ProcessingConfig()
     engine = InteractiveRaptorEngine(mock_summarizer, mock_embedder, config)
 

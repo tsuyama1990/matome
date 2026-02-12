@@ -16,7 +16,7 @@ from matome.utils.prompts import (
 )
 
 
-def test_base_summary_strategy():
+def test_base_summary_strategy() -> None:
     strategy = BaseSummaryStrategy()
     text = "Hello world"
     prompt = strategy.format_prompt(text)
@@ -24,7 +24,7 @@ def test_base_summary_strategy():
     assert strategy.parse_output("Summary") == {"summary": "Summary"}
 
 
-def test_wisdom_strategy():
+def test_wisdom_strategy() -> None:
     strategy = WisdomStrategy()
     text = "Philosophical text"
     prompt = strategy.format_prompt(text)
@@ -32,7 +32,7 @@ def test_wisdom_strategy():
     assert strategy.parse_output("Wisdom") == {"summary": "Wisdom"}
 
 
-def test_knowledge_strategy():
+def test_knowledge_strategy() -> None:
     strategy = KnowledgeStrategy()
     text = "Scientific text"
     prompt = strategy.format_prompt(text)
@@ -40,7 +40,7 @@ def test_knowledge_strategy():
     assert strategy.parse_output("Knowledge") == {"summary": "Knowledge"}
 
 
-def test_information_strategy():
+def test_information_strategy() -> None:
     strategy = InformationStrategy()
     text = "Instructional text"
     prompt = strategy.format_prompt(text)
@@ -48,7 +48,7 @@ def test_information_strategy():
     assert strategy.parse_output("Information") == {"summary": "Information"}
 
 
-def test_refinement_strategy():
+def test_refinement_strategy() -> None:
     strategy = RefinementStrategy()
     text = "Original text"
     instruction = "Make it shorter"

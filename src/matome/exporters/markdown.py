@@ -15,6 +15,23 @@ def _format_summary(node: SummaryNode, depth: int) -> tuple[str, str]:
     return f"{heading} {node.text.strip()}", ""
 
 
+def _process_children(
+    node: SummaryNode,
+    depth: int,
+    tree: DocumentTree,
+    chunk_map: dict[int, Chunk],
+    lines: list[str],
+) -> None:
+    """Process child nodes recursively."""
+    for child_idx in node.children_indices:
+        if isinstance(child_idx, str):
+            # Child is SummaryNode
+            _process_node(child_idx, False, depth + 1, tree, chunk_map, lines)
+        elif isinstance(child_idx, int):
+            # Child is Chunk
+            _process_node(child_idx, True, depth + 1, tree, chunk_map, lines)
+
+
 def _process_node(
     node_id: str | int,
     is_chunk: bool,
@@ -48,13 +65,7 @@ def _process_node(
         lines.append(empty_line)
 
         # Process Children
-        for child_idx in node.children_indices:
-            if isinstance(child_idx, str):
-                # Child is SummaryNode
-                _process_node(child_idx, False, depth + 1, tree, chunk_map, lines)
-            elif isinstance(child_idx, int):
-                # Child is Chunk
-                _process_node(child_idx, True, depth + 1, tree, chunk_map, lines)
+        _process_children(node, depth, tree, chunk_map, lines)
 
 
 def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) -> str:
