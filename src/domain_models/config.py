@@ -118,6 +118,11 @@ class ProcessingConfig(BaseModel):
         ge=1,
         description="Buffer size for batch database writes in Raptor engine.",
     )
+    max_recursion_depth: int = Field(
+        default=10,
+        ge=1,
+        description="Maximum recursion depth for RAPTOR tree generation.",
+    )
     canvas_node_width: int = Field(
         default=DEFAULT_CANVAS_NODE_WIDTH,
         ge=10,

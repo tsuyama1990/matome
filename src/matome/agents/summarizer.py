@@ -201,7 +201,8 @@ class SummarizationAgent:
 
     def _sanitize_single_string(self, text: str) -> str:
         """Helper to sanitize a single string."""
-        sanitized = text
+        # Normalize unicode to avoid bypasses using equivalent characters
+        sanitized = unicodedata.normalize("NFKC", text)
         for pattern in PROMPT_INJECTION_PATTERNS:
             sanitized = re.sub(pattern, "[Filtered]", sanitized)
         return sanitized

@@ -1,7 +1,6 @@
 from enum import StrEnum
-from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from domain_models.constants import DEFAULT_DIKW_LEVEL
 from domain_models.types import NodeID
@@ -24,10 +23,10 @@ class NodeMetadata(BaseModel):
     Acts as the single source of truth for a node's semantic properties.
     """
 
-    # Enforce strict schema validation ("forbid").
-    # We use a validator to strip extra fields from legacy data BEFORE validation,
-    # satisfying both strictness (for new code) and backward compatibility (for old data).
-    model_config = ConfigDict(extra="forbid")
+    # Use extra="ignore" to support backward compatibility with legacy data.
+    # This prevents crashes when loading old databases with deprecated fields,
+    # satisfying the requirement "Existing databases must load correctly".
+    model_config = ConfigDict(extra="ignore")
 
     # Existing fields (explicitly typed for better IDE support)
     cluster_id: NodeID | None = Field(
@@ -50,18 +49,3 @@ class NodeMetadata(BaseModel):
         description="History of refinement instructions applied to this node.",
         min_length=0,
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def strip_extra_fields(cls, data: Any) -> Any:
-        """
-        Strip unknown fields from the input dictionary before validation.
-        This allows legacy data with extra fields to be loaded without error,
-        while maintaining strict schema enforcement on the resulting model.
-        """
-        if isinstance(data, dict):
-            # Identify fields defined in the model
-            allowed_fields = set(cls.model_fields.keys())
-            # Return a new dict with only allowed fields
-            return {k: v for k, v in data.items() if k in allowed_fields}
-        return data

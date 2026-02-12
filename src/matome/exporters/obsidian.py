@@ -192,84 +192,96 @@ class ObsidianCanvasExporter:
         self._subtree_widths[node_id_str] = width
 
     def _assign_positions(
-        self, node_id: int | str, center_x: int, y: int, tree: "DocumentTree"
+        self, root_id: int | str, start_x: int, start_y: int, tree: "DocumentTree"
     ) -> None:
-        """Recursively assigns (x, y) positions to nodes and creates edges."""
-        node_id_str = self._get_node_id_str(node_id)
+        """
+        Iteratively assigns (x, y) positions to nodes and creates edges using a stack.
+        Replaces recursive implementation to avoid recursion depth errors.
+        """
+        # Stack stores tuples of (node_id, center_x, y)
+        stack: list[tuple[int | str, int, int]] = [(root_id, start_x, start_y)]
 
-        # Create the node
-        text = ""
-        if isinstance(node_id, int):
-            chunk = self._chunk_map.get(node_id)
-            chunk_content = chunk.text if chunk else "Missing Chunk"
-            text = f"Chunk {node_id}\n\n{chunk_content}"
-        else:
-            # Summary Node
-            node = tree.all_nodes.get(str(node_id))
-            if str(node_id) == tree.root_node.id:
-                node = tree.root_node
-            text = node.text if node else "Missing Node"
+        while stack:
+            curr_id, cx, cy = stack.pop()
+            node_id_str = self._get_node_id_str(curr_id)
 
-        # Position: center_x is the center of the node.
-        # Canvas x is the top-left corner.
-        x = center_x - (self.NODE_WIDTH // 2)
+            # 1. Create and position the node
+            text = ""
+            if isinstance(curr_id, int):
+                chunk = self._chunk_map.get(curr_id)
+                chunk_content = chunk.text if chunk else "Missing Chunk"
+                text = f"Chunk {curr_id}\n\n{chunk_content}"
+            else:
+                # Summary Node
+                node = tree.all_nodes.get(str(curr_id))
+                if str(curr_id) == tree.root_node.id:
+                    node = tree.root_node
+                text = node.text if node else "Missing Node"
 
-        canvas_node = CanvasNode(
-            id=node_id_str,
-            x=int(x),
-            y=y,
-            width=self.NODE_WIDTH,
-            height=self.NODE_HEIGHT,
-            type="text",
-            text=text,
-        )
-        self.nodes.append(canvas_node)
+            # Position: center_x is the center of the node.
+            # Canvas x is the top-left corner.
+            x = cx - (self.NODE_WIDTH // 2)
 
-        # If Chunk, we are done
-        if isinstance(node_id, int):
-            return
-
-        # If SummaryNode, process children
-        summary_node = tree.all_nodes.get(str(node_id))
-        if str(node_id) == tree.root_node.id:
-            summary_node = tree.root_node
-
-        if not summary_node:
-            return
-
-        children = summary_node.children_indices
-        if not children:
-            return
-
-        # Calculate starting x for children
-        # We want to center the children block under the parent
-        # The children block width is what we calculated in _calculate_subtree_width
-        # But wait, subtree_width logic in step 1 was: max(NODE_WIDTH, children_total_width)
-        # So we need the actual children total width to center them.
-
-        children_widths = [self._subtree_widths[self._get_node_id_str(c)] for c in children]
-        children_block_width = sum(children_widths) + self.GAP_X * (len(children_widths) - 1)
-
-        start_x = center_x - (children_block_width / 2)
-        current_x = start_x
-
-        next_y = y + self.NODE_HEIGHT + self.GAP_Y
-
-        for child_idx in children:
-            child_id_str = self._get_node_id_str(child_idx)
-            child_width = self._subtree_widths[child_id_str]
-
-            # Child center
-            child_center_x = current_x + (child_width / 2)
-
-            # Recurse
-            self._assign_positions(child_idx, int(child_center_x), next_y, tree)
-
-            # Create Edge
-            edge = CanvasEdge(
-                id=f"edge_{node_id_str}_{child_id_str}", fromNode=node_id_str, toNode=child_id_str
+            canvas_node = CanvasNode(
+                id=node_id_str,
+                x=int(x),
+                y=cy,
+                width=self.NODE_WIDTH,
+                height=self.NODE_HEIGHT,
+                type="text",
+                text=text,
             )
-            self.edges.append(edge)
+            self.nodes.append(canvas_node)
 
-            # Advance x
-            current_x += child_width + self.GAP_X
+            # If Chunk, continue to next item in stack
+            if isinstance(curr_id, int):
+                continue
+
+            # If SummaryNode, prepare children
+            summary_node = tree.all_nodes.get(str(curr_id))
+            if str(curr_id) == tree.root_node.id:
+                summary_node = tree.root_node
+
+            if not summary_node:
+                continue
+
+            children = summary_node.children_indices
+            if not children:
+                continue
+
+            # Calculate geometry for children layer
+            children_widths = [self._subtree_widths[self._get_node_id_str(c)] for c in children]
+            children_block_width = sum(children_widths) + self.GAP_X * (len(children_widths) - 1)
+
+            # Starting X for the whole block of children
+            current_child_start_x = cx - (children_block_width / 2)
+            next_y = cy + self.NODE_HEIGHT + self.GAP_Y
+
+            # Iterate children to calculate their positions and push to stack
+            # We iterate in reverse to push to stack so they are popped in order (optional but nice)
+            # Actually, to maintain left-to-right order with pop(), we should push right-most first.
+            # But calculating x requires left-to-right accumulation.
+
+            # First, calculate all center_x positions
+            child_positions = []
+            temp_x = current_child_start_x
+            for i, child_idx in enumerate(children):
+                child_width = children_widths[i]
+                child_center_x = temp_x + (child_width / 2)
+                child_positions.append((child_idx, int(child_center_x)))
+
+                # Advance temp_x
+                temp_x += child_width + self.GAP_X
+
+                # Create Edge immediately
+                child_id_str = self._get_node_id_str(child_idx)
+                edge = CanvasEdge(
+                    id=f"edge_{node_id_str}_{child_id_str}",
+                    fromNode=node_id_str,
+                    toNode=child_id_str,
+                )
+                self.edges.append(edge)
+
+            # Push to stack in reverse order so first child is processed next
+            for child_idx, child_cx in reversed(child_positions):
+                stack.append((child_idx, child_cx, next_y))

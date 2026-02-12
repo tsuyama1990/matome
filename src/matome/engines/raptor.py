@@ -151,6 +151,12 @@ class RaptorEngine:
         """
         level = start_level
         while True:
+            if level > self.config.max_recursion_depth:
+                logger.warning(
+                    f"Max recursion depth ({self.config.max_recursion_depth}) reached. Stopping."
+                )
+                break
+
             node_count = len(current_level_ids)
             logger.info(f"Processing Level {level}. Node count: {node_count}")
 
