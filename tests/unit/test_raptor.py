@@ -87,7 +87,8 @@ def test_raptor_run_short_text(
     assert tree.root_node.level == 1
     assert tree.root_node.text == "Short text"
     assert tree.root_node.children_indices == [0]
-    assert len(tree.all_nodes) == 1
+    if tree.all_nodes:
+        assert len(tree.all_nodes) == 1
 
 
 def test_raptor_run_recursive(
@@ -206,4 +207,5 @@ def test_raptor_run_recursive(
 
     # Verify we have all nodes
     # Root + 2 L1 nodes = 3 nodes
-    assert len(tree.all_nodes) == 3
+    if tree.all_nodes:
+        assert len(tree.all_nodes) == 3

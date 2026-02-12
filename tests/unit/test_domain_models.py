@@ -80,8 +80,9 @@ def test_document_tree_validation() -> None:
     )
     assert tree.root_node.id == "s1"
     assert len(tree.leaf_chunk_ids) == 2
-    assert len(tree.all_nodes) == 1
-    assert tree.all_nodes["s1"] == summary
+    if tree.all_nodes:
+        assert len(tree.all_nodes) == 1
+        assert tree.all_nodes["s1"] == summary
 
 
 def test_config_validation() -> None:

@@ -121,12 +121,15 @@ class DocumentTree(BaseModel):
     Designed for scalability:
     - Does not store full leaf chunks in memory to avoid O(N) memory usage for large documents.
     - Stores IDs allowing retrieval from the associated `DiskChunkStore`.
+    - `all_nodes` is now optional/sparse to prevent loading massive trees into memory.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
-    all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
+    all_nodes: dict[str, SummaryNode] | None = Field(
+        default=None, description="Map of all summary nodes by ID. Optional for scalability."
+    )
     leaf_chunk_ids: list[NodeID] = Field(
         ..., description="IDs of the original leaf chunks (Level 0)."
     )
