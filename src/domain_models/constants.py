@@ -15,6 +15,7 @@ PROMPT_INJECTION_PATTERNS = [
 DEFAULT_TOKENIZER = "cl100k_base"
 DEFAULT_EMBEDDING = "intfloat/multilingual-e5-large"
 DEFAULT_SUMMARIZER = "gpt-4o"
+DEFAULT_DIKW_LEVEL = "data"
 
 # Configuration Defaults
 LARGE_SCALE_THRESHOLD = 20000

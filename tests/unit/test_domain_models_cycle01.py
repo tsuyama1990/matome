@@ -15,15 +15,12 @@ def test_node_metadata_defaults() -> None:
 def test_node_metadata_dict_compatibility() -> None:
     # Simulate loading from old dict with extra fields
     old_data = {"cluster_id": 123, "random_key": "value"}
-    meta = NodeMetadata(**old_data)  # type: ignore[arg-type]
-    assert meta.cluster_id == 123
-    assert meta.dikw_level == DIKWLevel.DATA
-    # With extra='ignore', random_key should be discarded without error
-    # verifying that legacy databases load without crashing.
-    assert meta.model_extra is None
+    # With extra='forbid', this MUST raise ValidationError
+    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
+        NodeMetadata(**old_data)  # type: ignore[arg-type]
 
 def test_node_metadata_validation() -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Input should be"):
         NodeMetadata(dikw_level="invalid_level")  # type: ignore[arg-type]
 
 def test_summary_node_integration() -> None:

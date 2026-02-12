@@ -27,12 +27,8 @@ def test_scenario_01_a_strategy_injection() -> None:
     agent.mock_mode = False
 
     # 3. Call summarize
-    # Since implementation is pending, catch ImportError or AttributeError if strategy is not yet supported
-    try:
-        # Note: If strategy argument is not yet added to summarize signature, python will raise TypeError
-        summary = agent.summarize("test text", strategy=mock_strategy)
-    except TypeError:
-        pytest.skip("Scenario 01-A: 'strategy' argument not accepted yet. Pending implementation.")
+    # Explicitly verify strategy pattern without skipping
+    summary = agent.summarize("test text", strategy=mock_strategy)
 
     # 4. Assert summary
     assert summary == "MOCK_RESULT"
@@ -58,6 +54,10 @@ def test_scenario_01_b_schema_compatibility() -> None:
     assert meta.is_user_edited is False # Default
     assert meta.refinement_history == [] # Default
 
-    # Check extra field handling (ignored)
-    # Pydantic V2 model_extra should be None with extra='ignore'
-    assert meta.model_extra is None
+    # Check extra field handling (forbid)
+    # Pydantic V2 model_extra should not exist or instantiation should fail
+    # Since we changed to forbid, we must expect failure or provide clean data.
+    # The requirement was "Schema Rigidity".
+    # We update the test to expect failure for dirty data.
+    with pytest.raises(Exception):
+        NodeMetadata(cluster_id=1, summary="Old summary") # type: ignore[call-arg]
