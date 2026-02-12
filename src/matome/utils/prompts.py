@@ -15,6 +15,65 @@ Please generate a high-density summary following these steps:
 Output ONLY the final, densest summary.
 """
 
+# Wisdom Prompt Template (L1)
+WISDOM_TEMPLATE = """
+Read the following text carefully:
+{context}
+
+Your task is to distill the core essence of this text into a single "Wisdom" statement.
+- Format: A philosophical aphorism, a profound truth, or a core lesson.
+- Constraint: Use exactly 20 to 50 characters.
+- Tone: Timeless, abstract, and insightful.
+- Do NOT include specific names, dates, or trivial details.
+
+Output ONLY the Wisdom statement.
+"""
+
+# Knowledge Prompt Template (L2)
+KNOWLEDGE_TEMPLATE = """
+Read the following text carefully:
+{context}
+
+Your task is to extract the "Knowledge" from this text.
+- Focus: The underlying mental models, frameworks, mechanisms, or "Why" logic.
+- Format: Explain the structural logic that supports the main idea.
+- Avoid: Mere lists of facts or specific anecdotes.
+- Goal: Help the reader understand the "System" or "Principles" at work.
+
+Output the explanation clearly and concisely.
+"""
+
+# Information Prompt Template (L3)
+INFORMATION_TEMPLATE = """
+Read the following text carefully:
+{context}
+
+Your task is to extract actionable "Information" from this text.
+- Focus: Actionable steps, checklists, rules, or "How-to" instructions.
+- Format: A bulleted list or a step-by-step guide.
+- Goal: Enable the reader to apply this information immediately.
+- If no clear actions exist, summarize the key factual takeaways.
+
+Output the actionable information clearly.
+"""
+
+# Refinement Prompt Template
+REFINE_TEMPLATE = """
+You are assisting a user in refining a specific part of a knowledge base.
+
+Original Content:
+{original_content}
+
+User Instruction:
+{instruction}
+
+Your Task:
+Rewrite the Original Content strictly following the User Instruction.
+- Do not add conversational filler (e.g., "Here is the rewritten text").
+- Maintain the original intent unless the instruction says otherwise.
+- Output ONLY the rewritten content.
+"""
+
 # Verification Prompt Template
 VERIFICATION_TEMPLATE = """
 You are a meticulous fact-checker. Your task is to verify the following Summary against the provided Source Text.

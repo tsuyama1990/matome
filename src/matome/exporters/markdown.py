@@ -33,7 +33,11 @@ def _process_node(
 
     # It's a SummaryNode
     if isinstance(node_id, str):
-        node = tree.root_node if node_id == tree.root_node.id else tree.all_nodes.get(node_id)
+        node: SummaryNode | None = None
+        if node_id == tree.root_node.id:
+            node = tree.root_node
+        elif tree.all_nodes:
+            node = tree.all_nodes.get(node_id)
 
         if not node:
             return
