@@ -177,23 +177,23 @@ class SummarizationAgent:
         Sanitize and validate input text.
         """
         # 0. Unicode Normalization (NFKC)
-        # Convert compatibility characters to their canonical form.
-        # This prevents bypassing checks using weird Unicode variants.
         normalized_text = unicodedata.normalize("NFKC", text)
 
-        # 1. Length Check (Document)
+        # 1. Length Check
         if len(normalized_text) > max_input_length:
             msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
             raise ValueError(msg)
 
         # 2. Control Character Check (Unicode)
+        # Allowed whitespace
         allowed_controls = {"\n", "\t", "\r"}
 
         for char in normalized_text:
-            if (
-                unicodedata.category(char).startswith("C")
-                and char not in allowed_controls
-            ):
+            category = unicodedata.category(char)
+            # Check for control categories: Cc (Control), Cf (Format), Co (Private Use), Cn (Not Assigned)
+            # Cs (Surrogate) - Python strings usually don't have Cs if valid unicode, but good to check.
+            # Emojis are typically So (Symbol, Other), which is fine.
+            if category in ("Cc", "Cf", "Co", "Cn") and char not in allowed_controls:
                 msg = f"Input text contains invalid control character: {char!r} (U+{ord(char):04X})"
                 raise ValueError(msg)
 
@@ -211,13 +211,12 @@ class SummarizationAgent:
         """
         Basic mitigation for Prompt Injection using case folding.
         """
-        # 1. Normalize text first (NFKC) to ensure regex matches consistent characters
+        # 1. Normalize text first (NFKC)
         normalized_text = unicodedata.normalize("NFKC", text)
 
         sanitized = normalized_text
         for pattern in PROMPT_INJECTION_PATTERNS:
             # We use re.sub for flexible matching with IGNORECASE which handles case folding.
-            # This is effective for typical prompt injection patterns.
             sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
 
         return sanitized

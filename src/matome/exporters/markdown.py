@@ -29,29 +29,26 @@ def _process_chunk_node(
         lines.append(_format_chunk(chunk, depth))
 
 
-def _process_summary_node(
-    node_id: str, depth: int, root_node: SummaryNode, store: DiskChunkStore | None, lines: list[str]
-) -> None:
-    """
-    Process a summary node iteratively to prevent stack overflow.
-    Uses a stack to emulate recursion.
-    """
-    # Stack stores tuples of (current_node_id, current_depth)
-    # We want pre-order for formatting (Headings first), but then children.
-    # Actually, the recursive version does:
-    # 1. Print Heading
-    # 2. Recurse children
-    # Iterative pre-order traversal using stack:
-    # Push root.
-    # While stack:
-    #   pop node
-    #   print node
-    #   push children in REVERSE order (so first child is popped first)
+def _fetch_summary_node(
+    node_id: str, tree: DocumentTree, store: DiskChunkStore | None
+) -> SummaryNode | None:
+    """Retrieve summary node from tree root or store."""
+    if node_id == tree.root_node.id:
+        return tree.root_node
+    if store:
+        stored_node = store.get_node(node_id)
+        if isinstance(stored_node, SummaryNode):
+            return stored_node
+    return None
 
-    # However, we need to handle mixed types (chunk vs summary) and 'depth' tracking.
 
-    # Re-implementing _process_node iteratively
-    # logic moved to _process_node_iterative
+def _process_summary_children(node: SummaryNode, depth: int, stack: list[tuple[str | int, bool, int]]) -> None:
+    """Push summary children to stack in reverse order."""
+    for child_idx in reversed(node.children_indices):
+        if isinstance(child_idx, str):
+            stack.append((child_idx, False, depth + 1))
+        elif isinstance(child_idx, int):
+            stack.append((child_idx, True, depth + 1))
 
 
 def _process_node_iterative(
@@ -65,7 +62,6 @@ def _process_node_iterative(
     Iterative implementation of node processing to avoid stack overflow.
     """
     # Stack elements: (node_id, is_chunk, depth)
-    # Initial: root node
     is_chunk_start = isinstance(start_node_id, int)
     stack: list[tuple[str | int, bool, int]] = [(start_node_id, is_chunk_start, start_depth)]
 
@@ -73,11 +69,12 @@ def _process_node_iterative(
         curr_id, is_chunk, depth = stack.pop()
 
         if is_chunk:
+            # Type guard for mypy
             if isinstance(curr_id, int):
                 _process_chunk_node(curr_id, depth, store, lines)
             continue
 
-        # Summary Node
+        # Summary Node processing
         if isinstance(curr_id, str):
             node: SummaryNode | None = None
             if curr_id == tree.root_node.id:
@@ -90,18 +87,11 @@ def _process_node_iterative(
             if not node:
                 continue
 
-            # Heading
             heading, empty_line = _format_summary(node, depth)
             lines.append(heading)
             lines.append(empty_line)
 
-            # Push children to stack in reverse order
-            # (so first child is processed next)
-            for child_idx in reversed(node.children_indices):
-                if isinstance(child_idx, str):
-                    stack.append((child_idx, False, depth + 1))
-                elif isinstance(child_idx, int):
-                    stack.append((child_idx, True, depth + 1))
+            _process_summary_children(node, depth, stack)
 
 
 def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) -> str:
@@ -121,7 +111,6 @@ def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) 
     lines: list[str] = []
 
     if tree.root_node:
-        # Use iterative approach
         _process_node_iterative(tree.root_node.id, 0, tree, store, lines)
 
     return "\n".join(lines)
