@@ -1,4 +1,5 @@
 import json
+import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -7,6 +8,7 @@ from langchain_core.messages import AIMessage
 from typer.testing import CliRunner
 
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import SummaryNode
 from matome.agents.verifier import VerifierAgent
 from matome.cli import app
 
@@ -113,7 +115,14 @@ def test_scenario_18_full_e2e_pipeline(
     mock_embedder_instance.embed_strings.return_value = [[0.1] * 10]
 
     mock_summarizer_instance = mock_summarizer_cls.return_value
-    mock_summarizer_instance.summarize.return_value = "Summary of cluster."
+    mock_node = SummaryNode(
+        id=str(uuid.uuid4()),
+        text="Summary of cluster.",
+        level=1,
+        children_indices=[0],
+        metadata={},
+    )
+    mock_summarizer_instance.summarize.return_value = mock_node
 
     mock_verifier_instance = mock_verifier_cls.return_value
     mock_result = MagicMock()

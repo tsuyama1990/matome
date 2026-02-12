@@ -6,40 +6,22 @@
 
 **Turn static text into interactive knowledge graphs.**
 
-Matome 2.0 is not just a summarizer; it's a **"Semantic Zooming" engine**. It breaks down long documents (books, reports) into a hierarchical DIKW (Data, Information, Knowledge, Wisdom) structure, allowing you to traverse from high-level profound insights down to actionable checklists and original source evidence.
+Matome 2.0 is a **"Semantic Zooming" engine**. It breaks down long documents (books, reports) into a hierarchical structure, allowing you to traverse from high-level insights down to original source evidence.
 
-## Key Features
+## Features
 
-- **Semantic Zooming:** Navigate information at four levels of abstraction:
-    - **Wisdom (L1):** Profound, context-free truths (20-40 chars).
-    - **Knowledge (L2):** Mental models and structural logic.
-    - **Information (L3):** Actionable checklists and procedures.
-    - **Data (L4):** Original source text.
-- **Interactive Refinement:** Don't like a summary? Talk to it. Instruct the AI to rewrite specific nodes ("Make this simpler", "Focus on finance") without regenerating the whole tree.
-- **Source Traceability:** Every insight is linked back to the original text chunks, ensuring you can always verify the AI's claims.
-- **Matome Canvas:** A modern, reactive GUI built with Panel for exploring and refining your knowledge base.
+- **Hierarchical Summarization (RAPTOR):** Recursively summarizes text to build a tree of knowledge.
+- **Japanese Semantic Chunking:** Intelligent text splitting optimized for Japanese content.
+- **Obsidian Canvas Export:** Visualize your summary as an interactive node graph in Obsidian.
+- **Extensible Architecture:** Built with a modular Strategy Pattern to support future DIKW (Wisdom, Knowledge, Information) modes.
 
-## Architecture Overview
-
-Matome uses a modular architecture separating the Core Engine (RAPTOR-based) from the Interactive UI (MVVM pattern).
-
-```mermaid
-graph TD
-    User((User)) -->|Interacts| Canvas[Matome Canvas GUI]
-    Canvas -->|View| Session[Interactive Session]
-    Session -->|Controller| Engine[Interactive Raptor Engine]
-    Engine -->|Read/Write| DB[(chunks.db)]
-    Engine -->|Generate| Agent[Summarization Agent]
-    Agent -->|Strategy| Strategies[DIKW Strategies]
-```
-
-## Prerequisites
+## Requirements
 
 - **Python 3.11+**
 - **uv** (Recommended package manager)
-- **OpenAI API Key** (Set as `OPENAI_API_KEY` environment variable)
+- **OpenRouter API Key** (Set as `OPENROUTER_API_KEY` environment variable)
 
-## Installation & Setup
+## Installation
 
 1.  **Clone the repository:**
     ```bash
@@ -47,61 +29,52 @@ graph TD
     cd matome
     ```
 
-2.  **Install dependencies with uv:**
+2.  **Install dependencies:**
     ```bash
     uv sync
     ```
 
-3.  **Configure Environment:**
-    ```bash
-    cp .env.example .env
-    # Edit .env and add your OPENAI_API_KEY
-    ```
-
 ## Usage
 
-### CLI Mode (Batch Generation)
-Process a text file and generate the initial DIKW tree.
+### Basic Command
+Run the summarization pipeline on a text file:
+
 ```bash
-uv run matome run data/my_book.txt --mode dikw
+uv run matome run data/sample.txt
 ```
 
-### Interactive Mode (GUI)
-Launch the Matome Canvas to explore and refine your knowledge base.
-```bash
-uv run matome serve
-```
+### Options
+- `--output-dir`, `-o`: Directory to save results (default: `results`).
+- `--model`, `-m`: Summarization model (default: `openai/gpt-4o-mini`).
+- `--verify/--no-verify`: Enable/Disable verification (default: Enabled).
 
-## Development Workflow
+### Output
+The command generates:
+- `summary_all.md`: A full markdown summary.
+- `summary_kj.canvas`: An Obsidian Canvas file for visualization.
+- `chunks.db`: A SQLite database containing all nodes and embeddings.
 
-This project follows a strict 5-cycle development plan.
-
-### Running Tests
-```bash
-uv run pytest
-```
-
-### Code Quality
-We enforce strict typing and linting.
-```bash
-uv run ruff check .
-uv run mypy .
-```
-
-## Project Structure
+## Architecture
 
 ```ascii
 src/
-├── domain_models/       # Pydantic schemas (DIKW definitions)
+├── domain_models/       # Pydantic schemas and configuration
 ├── matome/
 │   ├── agents/          # LLM interaction & Strategies
-│   ├── engines/         # RAPTOR & Interactive Logic
-│   ├── ui/              # Panel-based GUI (MVVM)
-│   └── cli.py           # Entry point
-tests/                   # Comprehensive test suite
-dev_documents/           # Architecture & Cycle Specs
+│   │   ├── summarizer.py
+│   │   └── strategies.py
+│   ├── engines/         # RAPTOR & Clustering Logic
+│   └── cli.py           # CLI Entry point
 ```
+
+## Roadmap
+
+- **Cycle 01 (Current):** Core Refactoring & Strategy Pattern.
+- **Cycle 02:** DIKW Engine (Wisdom/Knowledge/Information modes).
+- **Cycle 03:** Interactive Backend (Single-node refinement).
+- **Cycle 04:** GUI Foundation (MVVM with Panel).
+- **Cycle 05:** Full Semantic Zooming.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License.

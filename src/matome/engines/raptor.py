@@ -363,17 +363,15 @@ class RaptorEngine:
                 continue
 
             # Note: For very large clusters, joining texts might still be memory intensive.
-            # But the summarizer typically takes a string.
-            combined_text = "\n\n".join(cluster_texts)
-            summary_text = self.summarizer.summarize(combined_text, self.config)
-
+            # However, the summarizer strategy can handle list of strings.
             node_id_str = str(uuid.uuid4())
-            summary_node = SummaryNode(
-                id=node_id_str,
-                text=summary_text,
-                level=level,
-                children_indices=children_indices,
-                metadata={"cluster_id": cluster.id},
-            )
+            context = {
+                "id": node_id_str,
+                "level": level,
+                "children_indices": children_indices,
+                "metadata": {"cluster_id": cluster.id},
+            }
+
+            summary_node = self.summarizer.summarize(cluster_texts, context=context)
 
             yield summary_node

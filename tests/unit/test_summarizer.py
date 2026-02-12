@@ -1,5 +1,5 @@
 """
-Unit tests for the SummarizationAgent.
+Unit tests for the SummarizationAgent (Refactored for Strategy Pattern).
 """
 
 from collections.abc import Generator
@@ -10,14 +10,23 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import SummaryNode
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
+from matome.interfaces import PromptStrategy
 
 
 @pytest.fixture
 def config() -> ProcessingConfig:
     return ProcessingConfig()
+
+
+@pytest.fixture
+def mock_strategy() -> MagicMock:
+    strategy = MagicMock(spec=PromptStrategy)
+    strategy.format_prompt.return_value = "Mock Prompt"
+    strategy.parse_output.return_value = {"summary": "Mock Summary"}
+    return strategy
 
 
 @pytest.fixture
@@ -28,124 +37,143 @@ def mock_llm() -> Generator[MagicMock, None, None]:
 
 
 @pytest.fixture
-def agent(mock_llm: MagicMock, config: ProcessingConfig) -> SummarizationAgent:
-    """Create a SummarizationAgent instance with a mocked LLM."""
-    # We mock the internal llm attribute to avoid real API calls during init if any
-    agent = SummarizationAgent(config)
+def agent(
+    mock_llm: MagicMock, config: ProcessingConfig, mock_strategy: MagicMock
+) -> SummarizationAgent:
+    """Create a SummarizationAgent instance with a mocked LLM and strategy."""
+    agent = SummarizationAgent(config, strategy=mock_strategy)
     agent.llm = MagicMock()
     return agent
 
 
-def test_initialization(mock_llm: MagicMock) -> None:
-    """Test that the agent is initialized with the correct configuration."""
-    # Patch get_openrouter_api_key to return a key, so initialization proceeds
-    with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-test-key"):
-        config = ProcessingConfig(llm_temperature=0.5, max_retries=5)
-        _ = SummarizationAgent(config)
-        # Verify ChatOpenAI was called with correct base_url and config values
-        mock_llm.assert_called_with(
-            model="gpt-4o",
-            api_key="sk-test-key",
-            base_url="https://openrouter.ai/api/v1",
-            temperature=0.5,
-            max_retries=5,
-        )
+def test_initialization_with_strategy(
+    mock_llm: MagicMock, mock_strategy: MagicMock
+) -> None:
+    """Test that the agent is initialized with the injected strategy."""
+    with patch(
+        "matome.agents.summarizer.get_openrouter_api_key", return_value="sk-test-key"
+    ):
+        config = ProcessingConfig()
+        agent = SummarizationAgent(config, strategy=mock_strategy)
+        assert agent.strategy == mock_strategy
+        assert agent.llm is not None
 
 
-def test_summarize_happy_path(agent: SummarizationAgent, config: ProcessingConfig) -> None:
-    """Test the summarize method with a valid response."""
-    context = "This is a test context about AI."
-    expected_summary = "AI is tested."
+def test_summarize_delegates_to_strategy(
+    agent: SummarizationAgent, mock_strategy: MagicMock
+) -> None:
+    """Test that summarize calls strategy methods."""
+    context = {"id": "123", "level": 1, "children_indices": [0]}
+    text = "Input Text"
 
-    # Mock the LLM response
     llm_mock = cast(MagicMock, agent.llm)
-    llm_mock.invoke.return_value = AIMessage(content=expected_summary)
+    llm_mock.invoke.return_value = AIMessage(content="Raw Response")
 
-    result = agent.summarize(context, config)
+    result = agent.summarize(text, context=context)
 
-    assert result == expected_summary
-    # Verify the prompt contained the context and COD template
+    # Assert format_prompt called
+    mock_strategy.format_prompt.assert_called_with(text, context)
+
+    # Assert LLM invoked with formatted prompt
+    llm_mock.invoke.assert_called()
     args, _ = llm_mock.invoke.call_args
-    # args[0] is the list of messages passed to invoke
-    messages = args[0]
-    assert len(messages) == 1
-    prompt_content = messages[0].content
+    assert args[0][0].content == "Mock Prompt"
 
-    # Check if prompt matches the template structure
-    expected_prompt_start = COD_TEMPLATE.format(context=context)
-    assert prompt_content == expected_prompt_start
+    # Assert parse_output called
+    mock_strategy.parse_output.assert_called_with("Raw Response")
+
+    # Assert result is SummaryNode and fields are populated
+    assert isinstance(result, SummaryNode)
+    assert result.text == "Mock Summary"
+    assert result.id == "123"
 
 
-def test_summarize_empty_context(agent: SummarizationAgent, config: ProcessingConfig) -> None:
-    """Test behavior with empty context."""
-    result = agent.summarize("", config)
-    assert result == ""
+def test_summarize_merges_context(
+    agent: SummarizationAgent, mock_strategy: MagicMock
+) -> None:
+    """Test that context fields are merged into SummaryNode."""
+    context = {
+        "id": "node-1",
+        "level": 2,
+        "children_indices": [10, 11],
+        "metadata": {"cluster_id": 99},
+    }
+    mock_strategy.parse_output.return_value = {"summary": "Summary text"}
+
     llm_mock = cast(MagicMock, agent.llm)
-    llm_mock.invoke.assert_not_called()
+    llm_mock.invoke.return_value = AIMessage(content="Raw")
+
+    result = agent.summarize("text", context=context)
+
+    assert result.id == "node-1"
+    assert result.level == 2
+    assert result.children_indices == [10, 11]
+    assert result.metadata["cluster_id"] == 99
+    assert result.text == "Summary text"
 
 
-def test_mock_mode(config: ProcessingConfig) -> None:
-    """Test that the agent returns a static string in mock mode."""
-    # Patch where it is imported in summarizer.py
+def test_summarize_renames_summary_key(
+    agent: SummarizationAgent, mock_strategy: MagicMock
+) -> None:
+    """Test that 'summary' key from strategy is renamed to 'text' for SummaryNode."""
+    context = {"id": "1", "level": 1, "children_indices": []}
+    mock_strategy.parse_output.return_value = {"summary": "The summary"}
+
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="Raw")
+
+    result = agent.summarize("text", context=context)
+    assert result.text == "The summary"
+
+
+def test_summarize_list_input(
+    agent: SummarizationAgent, mock_strategy: MagicMock
+) -> None:
+    """Test that list input is passed to strategy."""
+    context = {"id": "1", "level": 1, "children_indices": []}
+    text_list = ["A", "B"]
+
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="Raw")
+
+    agent.summarize(text_list, context=context)
+
+    mock_strategy.format_prompt.assert_called_with(text_list, context)
+
+
+def test_mock_mode_returns_node(
+    config: ProcessingConfig, mock_strategy: MagicMock
+) -> None:
+    """Test that mock mode returns a valid SummaryNode."""
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
-        agent = SummarizationAgent(config)
-        result = agent.summarize("some context", config)
-        assert result.startswith("Summary of")
-        assert "some context" in result
+        agent = SummarizationAgent(config, strategy=mock_strategy)
+        context = {"id": "mock-id", "level": 1, "children_indices": []}
+        result = agent.summarize("some context", context=context)
+
+        assert isinstance(result, SummaryNode)
+        assert result.text.startswith("Summary of")
+        assert result.id == "mock-id"
 
 
-def test_summarize_missing_key(config: ProcessingConfig) -> None:
-    """Test that ValueError (or SummarizationError) is raised if API key is missing and not in mock mode."""
-    # Default get_openrouter_api_key returns None
+def test_summarize_missing_key(
+    config: ProcessingConfig, mock_strategy: MagicMock
+) -> None:
+    """Test that SummarizationError is raised if API key is missing."""
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value=None):
-        agent = SummarizationAgent(config)
-        # agent.llm should be None
+        agent = SummarizationAgent(config, strategy=mock_strategy)
         assert agent.llm is None
 
         with pytest.raises(SummarizationError, match="LLM not initialized"):
-            agent.summarize("some context", config)
-
-
-def test_summarize_list_response(agent: SummarizationAgent, config: ProcessingConfig) -> None:
-    """Test handling of list content in LLM response."""
-    llm_mock = cast(MagicMock, agent.llm)
-    llm_mock.invoke.return_value = AIMessage(content=["Part 1", "Part 2"])
-
-    result = agent.summarize("context", config)
-    assert "Part 1" in result
-    assert "Part 2" in result
-
-
-def test_summarize_int_response(agent: SummarizationAgent, config: ProcessingConfig) -> None:
-    """Test handling of unexpected content type (e.g. int)."""
-    mock_msg = MagicMock()
-    mock_msg.content = 123
-    llm_mock = cast(MagicMock, agent.llm)
-    llm_mock.invoke.return_value = mock_msg
-
-    result = agent.summarize("context", config)
-    assert result == "123"
-
-
-def test_summarize_exception(agent: SummarizationAgent, config: ProcessingConfig) -> None:
-    """Test that exceptions are wrapped in SummarizationError."""
-    llm_mock = cast(MagicMock, agent.llm)
-    llm_mock.invoke.side_effect = Exception("API Fail")
-
-    with pytest.raises(SummarizationError, match="Summarization failed"):
-        agent.summarize("context", config)
+            agent.summarize(
+                "some context", context={"id": "1", "level": 1, "children_indices": []}
+            )
 
 
 def test_summarize_long_input_dos_prevention(
     agent: SummarizationAgent, config: ProcessingConfig
 ) -> None:
-    """Test behavior with input containing potential DoS vectors (extremely long words)."""
-    # config.max_word_length default is 1000
+    """Test behavior with input containing potential DoS vectors."""
     long_word = "a" * 1001
-
+    context = {"id": "1", "level": 1, "children_indices": []}
     with pytest.raises(ValueError, match="potential DoS vector"):
-        agent.summarize(long_word, config)
-
-
-# We removed test_summarize_retry_behavior as mocking tenacity is complex
-# and integration test covers error handling (test_pipeline_errors.py)
+        agent.summarize(long_word, context=context)

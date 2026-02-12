@@ -72,7 +72,17 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     clusterer.cluster_nodes.side_effect = cluster_side_effect
 
     # Summarizer
-    summarizer.summarize.return_value = "Summary Text"
+    def summarize_side_effect(text, context=None):
+        import uuid
+        from domain_models.manifest import SummaryNode
+        return SummaryNode(
+            id=context.get("id", str(uuid.uuid4())),
+            text="Summary Text",
+            level=context.get("level", 1),
+            children_indices=context.get("children_indices", []),
+            metadata=context.get("metadata", {})
+        )
+    summarizer.summarize.side_effect = summarize_side_effect
 
     # 3. Run Engine
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)

@@ -3,8 +3,9 @@ from unittest.mock import create_autospec
 
 import pytest
 
+import uuid
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, DocumentTree
+from domain_models.manifest import Chunk, DocumentTree, SummaryNode
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
@@ -61,7 +62,15 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
 
     # Mock Summarizer (Protocol)
     summarizer = create_autospec(Summarizer, instance=True)
-    summarizer.summarize.return_value = "Summary Text"
+    def summarize_side_effect(text, context=None):
+        return SummaryNode(
+            id=context.get("id", str(uuid.uuid4())),
+            text="Summary Text",
+            level=context.get("level", 1),
+            children_indices=context.get("children_indices", []),
+            metadata=context.get("metadata", {})
+        )
+    summarizer.summarize.side_effect = summarize_side_effect
 
     # Dummy Embedder (Subclass)
     embedder = DummyEmbedder()
