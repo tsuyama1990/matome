@@ -363,10 +363,9 @@ class RaptorEngine:
                 logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
                 continue
 
-            # Note: For very large clusters, joining texts might still be memory intensive.
-            # But the summarizer typically takes a string.
-            combined_text = "\n\n".join(cluster_texts)
-            summary_text = self.summarizer.summarize(combined_text, self.config)
+            # Pass list of texts to summarizer to allow strategy-based handling
+            # and avoid creating a huge string in memory here.
+            summary_text = self.summarizer.summarize(cluster_texts, self.config)
 
             node_id_str = str(uuid.uuid4())
             summary_node = SummaryNode(

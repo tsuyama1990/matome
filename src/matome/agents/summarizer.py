@@ -66,7 +66,7 @@ class SummarizationAgent:
 
     def summarize(
         self,
-        text: str,
+        text: str | list[str],
         config: ProcessingConfig | None = None,
         strategy: PromptStrategy | None = None,
     ) -> str:
@@ -98,7 +98,8 @@ class SummarizationAgent:
 
         if self.mock_mode:
             logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
-            return f"Summary of {safe_text[:20]}..."
+            preview = safe_text if isinstance(safe_text, str) else safe_text[0]
+            return f"Summary of {preview[:20]}..."
 
         if not self.llm:
             msg = f"[{request_id}] LLM not initialized (missing API Key?). Cannot perform summarization."
@@ -132,48 +133,49 @@ class SummarizationAgent:
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 
-    def _validate_input(self, text: str, max_input_length: int, max_word_length: int) -> None:
+    def _validate_input(
+        self, text: str | list[str], max_input_length: int, max_word_length: int
+    ) -> None:
         """
         Sanitize and validate input text.
 
         Checks:
         1. Maximum overall length to prevent processing extremely large inputs.
         2. Control characters (Unicode 'C' category).
-           We strictly disallow control characters that are not standard whitespace.
-           While Newline (\\n) and Tab (\\t) are often used for formatting, they can be used for injection.
-           However, blocking them makes summarizing documents impossible.
-           Therefore, we strictly validate that ONLY \\n and \\t are present among control chars.
-           Other control characters (like \\r, null bytes, backspaces) are rejected.
         3. Word length to prevent tokenizer Denial of Service (DoS) attacks.
 
         Args:
-            text: The input text to validate.
+            text: The input text to validate (str or list[str]).
             max_input_length: Maximum allowed total characters.
             max_word_length: The maximum allowed length for a single word.
 
         Raises:
             ValueError: If any validation check fails.
         """
-        # 1. Length Check (Document)
+        if isinstance(text, str):
+            self._validate_single_string(text, max_input_length, max_word_length)
+        else:
+            total_length = sum(len(t) for t in text)
+            if total_length > max_input_length:
+                msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
+                raise ValueError(msg)
+            for t in text:
+                self._validate_single_string(t, max_input_length, max_word_length)
+
+    def _validate_single_string(
+        self, text: str, max_input_length: int, max_word_length: int
+    ) -> None:
+        """Helper to validate a single string."""
         if len(text) > max_input_length:
             msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
             raise ValueError(msg)
 
-        # 2. Control Character Check (Unicode)
-        # We strictly disallow control characters that are not standard whitespace.
-        # Allow standard whitespace controls: \n, \t, \r
-        # \f and \v are technically whitespace but rare, safer to block if not needed?
-        # Let's align with common definition: \t, \n, \r.
         allowed_controls = {"\n", "\t", "\r"}
-
         for char in text:
-            # Check for control characters (Cc, Cf, Cs, Co, Cn)
             if unicodedata.category(char).startswith("C") and char not in allowed_controls:
                 msg = f"Input text contains invalid control character: {char!r} (U+{ord(char):04X})"
                 raise ValueError(msg)
 
-        # 3. Tokenizer DoS Protection
-        # Split by whitespace to check word length
         words = text.split()
         if not words:
             return
@@ -183,28 +185,25 @@ class SummarizationAgent:
             msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
             raise ValueError(msg)
 
-    def _sanitize_prompt_injection(self, text: str) -> str:
+    def _sanitize_prompt_injection(self, text: str | list[str]) -> str | list[str]:
         """
         Basic mitigation for Prompt Injection.
-
-        Iterates through a list of known injection patterns (e.g., 'ignore previous instructions')
-        and replaces them with a placeholder '[Filtered]'.
-
-        Using literal string matching (if pattern is simple) or careful regex matching
-        is handled by PROMPT_INJECTION_PATTERNS definitions.
 
         Args:
             text: The input text to sanitize.
 
         Returns:
-            The sanitized text string.
+            The sanitized text string or list.
         """
+        if isinstance(text, str):
+            return self._sanitize_single_string(text)
+        return [self._sanitize_single_string(t) for t in text]
+
+    def _sanitize_single_string(self, text: str) -> str:
+        """Helper to sanitize a single string."""
         sanitized = text
         for pattern in PROMPT_INJECTION_PATTERNS:
-            # We use re.sub for flexible matching (case insensitive, whitespace variations)
-            # which are defined in the patterns themselves.
             sanitized = re.sub(pattern, "[Filtered]", sanitized)
-
         return sanitized
 
     def _invoke_llm(

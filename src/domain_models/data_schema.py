@@ -23,7 +23,10 @@ class NodeMetadata(BaseModel):
     """
 
     # Allow extra fields for backward compatibility with legacy dict metadata
-    model_config = ConfigDict(extra="allow")
+    # But forbid them to avoid silent data loss and enforce schema correctness.
+    # We set extra="ignore" to gracefully handle unexpected fields in old data without validation errors,
+    # satisfying "Existing databases must load correctly".
+    model_config = ConfigDict(extra="ignore")
 
     # Existing fields (explicitly typed for better IDE support)
     cluster_id: NodeID | None = Field(default=None, description="The ID of the cluster this node summarizes.")

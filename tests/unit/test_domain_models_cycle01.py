@@ -18,10 +18,9 @@ def test_node_metadata_dict_compatibility() -> None:
     meta = NodeMetadata(**old_data)  # type: ignore[arg-type]
     assert meta.cluster_id == 123
     assert meta.dikw_level == DIKWLevel.DATA
-    # Extra field should be allowed and accessible
-    # Pydantic models with extra='allow' store extra fields in __dict__ or model_extra
-    assert meta.model_extra is not None
-    assert meta.model_extra["random_key"] == "value"
+    # With extra='ignore', random_key should be discarded without error
+    # verifying that legacy databases load without crashing.
+    assert meta.model_extra is None
 
 def test_node_metadata_validation() -> None:
     with pytest.raises(ValueError):

@@ -71,13 +71,13 @@ class Summarizer(Protocol):
     token limits and other configuration parameters.
     """
 
-    def summarize(self, text: str, config: ProcessingConfig) -> str:
+    def summarize(self, text: str | list[str], config: ProcessingConfig) -> str:
         """
         Summarize the provided text.
 
         Args:
-            text: The text to summarize. If empty, behavior depends on implementation
-                  (may return empty string or raise error).
+            text: The text to summarize. Can be a single string or a list of strings
+                  (which will be joined or processed batch-wise).
             config: Configuration parameters such as `model_name` and `max_summary_tokens`.
 
         Returns:
@@ -93,12 +93,12 @@ class PromptStrategy(Protocol):
     Allows dynamic injection of summarization strategies (e.g., DIKW specific logic).
     """
 
-    def format_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
         """
         Constructs the prompt string for the LLM.
 
         Args:
-            text: The text to be summarized/processed.
+            text: The text to be summarized/processed. Can be a string or list of strings.
             context: Optional dictionary containing additional context (e.g., node level, instructions).
 
         Returns:

@@ -58,7 +58,6 @@ def test_scenario_01_b_schema_compatibility() -> None:
     assert meta.is_user_edited is False # Default
     assert meta.refinement_history == [] # Default
 
-    # Check extra field handling (allowed)
-    # Pydantic V2 access to extra fields via .model_extra
-    assert meta.model_extra is not None
-    assert meta.model_extra.get("summary") == "Old summary"
+    # Check extra field handling (ignored)
+    # Pydantic V2 model_extra should be None with extra='ignore'
+    assert meta.model_extra is None

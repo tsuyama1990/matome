@@ -9,7 +9,7 @@ class BaseSummaryStrategy:
     Implements the PromptStrategy protocol.
     """
 
-    def format_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
         """
         Constructs the Chain of Density prompt.
 
@@ -20,7 +20,13 @@ class BaseSummaryStrategy:
         Returns:
             Formatted prompt string.
         """
-        return COD_TEMPLATE.format(context=text)
+        # If list, join with newlines. Strategy handles the join logic.
+        if isinstance(text, list):
+            combined_text = "\n\n".join(text)
+        else:
+            combined_text = text
+
+        return COD_TEMPLATE.format(context=combined_text)
 
     def parse_output(self, response: str) -> dict[str, Any]:
         """
