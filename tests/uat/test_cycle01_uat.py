@@ -54,10 +54,9 @@ def test_scenario_01_b_schema_compatibility() -> None:
     assert meta.is_user_edited is False # Default
     assert meta.refinement_history == [] # Default
 
-    # Check extra field handling (forbid)
-    # Pydantic V2 model_extra should not exist or instantiation should fail
-    # Since we changed to forbid, we must expect failure or provide clean data.
-    # The requirement was "Schema Rigidity".
-    # We update the test to expect failure for dirty data.
-    with pytest.raises(Exception):
-        NodeMetadata(cluster_id=1, summary="Old summary") # type: ignore[call-arg]
+    # Check extra field handling (ignored)
+    # We are using extra="ignore" for backward compatibility.
+    # So unknown fields should be dropped without error.
+    meta_dirty = NodeMetadata(cluster_id=1, summary="Old summary") # type: ignore[call-arg]
+    assert meta_dirty.cluster_id == 1
+    assert meta_dirty.model_extra is None

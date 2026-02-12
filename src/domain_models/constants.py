@@ -67,4 +67,5 @@ ALLOWED_SUMMARIZATION_MODELS = {
 }
 
 # Regex Patterns
-SENTENCE_SPLIT_PATTERN = r"(?<=[。！？])\s*|\n+"
+# Uses unicode escapes for fullwidth punctuation to avoid ambiguity warnings
+SENTENCE_SPLIT_PATTERN = r"(?<=[。\uff01\uff1f])\s*|\n+"

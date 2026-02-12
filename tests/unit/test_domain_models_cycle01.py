@@ -15,9 +15,10 @@ def test_node_metadata_defaults() -> None:
 def test_node_metadata_dict_compatibility() -> None:
     # Simulate loading from old dict with extra fields
     old_data = {"cluster_id": 123, "random_key": "value"}
-    # With extra='forbid', this MUST raise ValidationError
-    with pytest.raises(ValueError, match="Extra inputs are not permitted"):
-        NodeMetadata(**old_data)  # type: ignore[arg-type]
+    # With extra='ignore', this should NOT raise, but ignore the field
+    meta = NodeMetadata(**old_data)  # type: ignore[arg-type]
+    assert meta.cluster_id == 123
+    assert meta.model_extra is None
 
 def test_node_metadata_validation() -> None:
     with pytest.raises(ValueError, match="Input should be"):

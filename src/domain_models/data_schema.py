@@ -23,8 +23,10 @@ class NodeMetadata(BaseModel):
     Acts as the single source of truth for a node's semantic properties.
     """
 
-    # Enforce strict schema validation to prevent data integrity issues.
-    model_config = ConfigDict(extra="forbid")
+    # Use extra="ignore" to support backward compatibility with legacy data.
+    # This prevents crashes when loading old databases with deprecated fields,
+    # satisfying the requirement "Existing databases must load correctly".
+    model_config = ConfigDict(extra="ignore")
 
     # Existing fields (explicitly typed for better IDE support)
     cluster_id: NodeID | None = Field(
