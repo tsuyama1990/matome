@@ -112,20 +112,8 @@ class RaptorEngine:
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
 
-        # Scalability: Removed all_summaries dict to prevent OOM on large trees.
+        # Scalability: Removed memory accumulation.
         # Tree reconstruction now relies on recursive building or minimal metadata.
-        # Since _finalize_tree needs to return a DocumentTree which currently expects all_nodes dict,
-        # we will fetch nodes from store as needed, but for now we keep the dict logic strictly
-        # for root/metadata but assume persistence is handled by store.
-        # However, DocumentTree expects a dict. For cycle 01, we might need to keep it
-        # but warn about scalability, or refactor DocumentTree.
-        # Given constraints, we will clear it after use if possible, but DocumentTree is the return type.
-        # Let's keep it but be aware.
-        # WAIT: Audit said "Scalability (Memory Safety) - Issue: RaptorEngine._finalize_tree loads all summary nodes into memory via all_summaries dictionary."
-        # Fix: Implement streaming tree construction or use database-backed node retrieval.
-        # For this cycle, I will populate all_summaries ONLY for the final return if it fits memory,
-        # but during recursion we rely on store.
-        all_summaries: dict[str, SummaryNode] = {}
 
         # Use provided store or create a temporary one
         # If provided, we wrap it in a nullcontext so it doesn't close on exit
@@ -142,17 +130,16 @@ class RaptorEngine:
             l0_ids = list(current_level_ids)
 
             current_level_ids = self._process_recursion(
-                clusters, current_level_ids, active_store, all_summaries
+                clusters, current_level_ids, active_store
             )
 
-            return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
+            return self._finalize_tree(current_level_ids, active_store, l0_ids)
 
     def _process_recursion(
         self,
         clusters: list[Cluster],
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
         start_level: int = 0,
     ) -> list[NodeID]:
         """
@@ -193,10 +180,6 @@ class RaptorEngine:
             BATCH_SIZE = self.config.chunk_buffer_size
 
             for node in new_nodes_iter:
-                # Store in memory dict for final tree (CAUTION: Scalability risk)
-                # Ideally DocumentTree should be lazy or DB-backed.
-                all_summaries[node.id] = node
-
                 current_level_ids.append(node.id)
                 summary_buffer.append(node)
 
@@ -267,7 +250,6 @@ class RaptorEngine:
         self,
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
-        all_summaries: dict[str, SummaryNode],
         l0_ids: list[NodeID],
     ) -> DocumentTree:
         """
@@ -294,10 +276,9 @@ class RaptorEngine:
             if embeddings:
                 root_node_obj.embedding = embeddings[0]
                 store.update_node_embedding(root_id, embeddings[0])
-                if isinstance(root_node_obj, SummaryNode):
-                    all_summaries[str(root_id)] = root_node_obj
 
         if isinstance(root_node_obj, Chunk):
+            # Create a virtual summary root for single chunk
             root_node = SummaryNode(
                 id=str(uuid.uuid4()),
                 text=root_node_obj.text,
@@ -305,13 +286,16 @@ class RaptorEngine:
                 children_indices=[root_node_obj.index],
                 metadata={"type": "single_chunk_root"},
             )
-            all_summaries[root_node.id] = root_node
+            # We must persist this virtual root if we want exporters to find it?
+            # Or just return it in memory.
+            # Exporters traverse via IDs. If they call store.get_node(virtual_root.id), it fails.
+            # So we MUST save it.
+            store.add_summaries([root_node])
         else:
             root_node = root_node_obj
 
         return DocumentTree(
             root_node=root_node,
-            all_nodes=all_summaries,
             leaf_chunk_ids=l0_ids,
             metadata={"levels": root_node.level},
         )

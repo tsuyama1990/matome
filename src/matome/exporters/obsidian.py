@@ -51,12 +51,8 @@ class ObsidianCanvasExporter:
         self.nodes: list[CanvasNode] = []
         self.edges: list[CanvasEdge] = []
         self._subtree_widths: dict[str, int] = {}
-        # We cache looked-up nodes to avoid repeated DB hits during width calc vs position assignment
-        # But for huge trees this is memory risk. However, canvas export usually implies visualizable size.
-        # We will use LRU cache or just direct DB hits if performance is okay.
-        # For simplicity in this cycle, direct DB hits with simple local cache for the active path?
-        # Let's rely on store.get_node which might be cached by OS/SQLite.
         self.config = config or ProcessingConfig()
+        # Use config, defaults handled in ProcessingConfig
         self.NODE_WIDTH = self.config.canvas_node_width
         self.NODE_HEIGHT = self.config.canvas_node_height
         self.GAP_X = self.config.canvas_gap_x
@@ -115,12 +111,9 @@ class ObsidianCanvasExporter:
         return node_id
 
     def _get_node(self, node_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None") -> Chunk | SummaryNode | None:
-        """Helper to retrieve node from tree root, memory dict, or store."""
-        if isinstance(node_id, str):
-            if node_id == tree.root_node.id:
-                return tree.root_node
-            if tree.all_nodes and node_id in tree.all_nodes:
-                return tree.all_nodes[node_id]
+        """Helper to retrieve node from tree root or store."""
+        if isinstance(node_id, str) and node_id == tree.root_node.id:
+            return tree.root_node
 
         if store:
             obj = store.get_node(node_id)

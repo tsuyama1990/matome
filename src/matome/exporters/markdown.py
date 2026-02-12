@@ -16,7 +16,7 @@ def _format_summary(node: SummaryNode, depth: int) -> tuple[str, str]:
 
 
 def _process_chunk_node(
-    node_id: int, depth: int, tree: DocumentTree, store: DiskChunkStore | None, lines: list[str]
+    node_id: int, depth: int, store: DiskChunkStore | None, lines: list[str]
 ) -> None:
     """Process a chunk node."""
     chunk: Chunk | None = None
@@ -25,23 +25,18 @@ def _process_chunk_node(
         if isinstance(node, Chunk):
             chunk = node
 
-    # Chunks are not typically in all_nodes, so we skip that check for simplicity
-    # and adherence to spec (Leaf chunks in store).
-
     if chunk:
         lines.append(_format_chunk(chunk, depth))
 
 
 def _process_summary_node(
-    node_id: str, depth: int, tree: DocumentTree, store: DiskChunkStore | None, lines: list[str]
+    node_id: str, depth: int, root_node: SummaryNode, store: DiskChunkStore | None, lines: list[str]
 ) -> None:
     """Process a summary node."""
     node: SummaryNode | None = None
 
-    if node_id == tree.root_node.id:
-        node = tree.root_node
-    elif tree.all_nodes and node_id in tree.all_nodes:
-        node = tree.all_nodes[node_id]
+    if node_id == root_node.id:
+        node = root_node
     elif store:
         stored_node = store.get_node(node_id)
         if isinstance(stored_node, SummaryNode):
@@ -58,9 +53,9 @@ def _process_summary_node(
     # Process Children
     for child_idx in node.children_indices:
         if isinstance(child_idx, str):
-            _process_summary_node(child_idx, depth + 1, tree, store, lines)
+            _process_summary_node(child_idx, depth + 1, root_node, store, lines)
         elif isinstance(child_idx, int):
-            _process_chunk_node(child_idx, depth + 1, tree, store, lines)
+            _process_chunk_node(child_idx, depth + 1, store, lines)
 
 
 def _process_node(
@@ -73,9 +68,9 @@ def _process_node(
 ) -> None:
     """Recursively process nodes for Markdown export."""
     if is_chunk and isinstance(node_id, int):
-        _process_chunk_node(node_id, depth, tree, store, lines)
+        _process_chunk_node(node_id, depth, store, lines)
     elif isinstance(node_id, str):
-        _process_summary_node(node_id, depth, tree, store, lines)
+        _process_summary_node(node_id, depth, tree.root_node, store, lines)
 
 
 def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) -> str:

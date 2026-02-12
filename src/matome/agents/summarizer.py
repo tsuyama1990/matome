@@ -213,19 +213,8 @@ class SummarizationAgent:
         """
         sanitized = text
         for pattern in PROMPT_INJECTION_PATTERNS:
-            # PROMPT_INJECTION_PATTERNS usually are strings.
-            # We iterate and check if the pattern exists (case-folded)
-            # Or better, use re.sub with IGNORECASE which handles case folding effectively for ASCII.
-            # For robust Unicode case folding, regex support might vary.
-            # Assuming PROMPT_INJECTION_PATTERNS are regex strings.
-
-            # Using re.IGNORECASE handles basic casing.
-            # For strict security, we could casefold both and check, but we need to replace in original.
-            # Matome's existing pattern was re.sub(pattern, ...)
-
-            # The audit requested explicit case folding.
-            # However, re.sub already takes flags.
-            # If pattern is a regex string, we use re.IGNORECASE.
+            # We use re.sub for flexible matching with IGNORECASE which handles case folding.
+            # This is effective for typical prompt injection patterns.
             sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
 
         return sanitized
