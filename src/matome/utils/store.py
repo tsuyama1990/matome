@@ -170,43 +170,60 @@ class DiskChunkStore:
             conn.execute(stmt)
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
-        """Retrieve a node by ID."""
-        # Use SQLAlchemy Core expression for parameterized select
-        stmt = select(
-            self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
-        ).where(self.nodes_table.c.id == str(node_id))
+        """Retrieve a single node by ID."""
+        nodes = self.get_nodes([node_id])
+        return nodes[0] if nodes else None
 
-        with self.engine.connect() as conn:
-            result = conn.execute(stmt)
-            row = result.fetchone()
+    def get_nodes(self, node_ids: Iterable[int | str]) -> list[Chunk | SummaryNode]:
+        """
+        Retrieve multiple nodes by ID using batched queries.
+        Solves N+1 query problem.
+        """
+        from matome.utils.compat import batched
 
-            if not row:
-                return None
+        # Ensure IDs are strings
+        ids = [str(nid) for nid in node_ids]
+        results: list[Chunk | SummaryNode] = []
 
-            node_type, content_json, embedding_json = row
+        if not ids:
+            return results
 
-            try:
-                # Deserialize embedding first
-                embedding = json.loads(embedding_json) if embedding_json else None
+        # Process in batches to avoid SQL limit on parameters
+        # SQLite limit is typically 999
+        BATCH_SIZE = 900
 
-                if node_type == "chunk":
-                    # Parse JSON then validate to ensure strict type compliance
-                    data = json.loads(content_json)
-                    if embedding is not None:
-                        data["embedding"] = embedding
-                    return Chunk.model_validate(data)
+        try:
+            with self.engine.connect() as conn:
+                for id_batch in batched(ids, BATCH_SIZE):
+                    stmt = select(
+                        self.nodes_table.c.id,
+                        self.nodes_table.c.type,
+                        self.nodes_table.c.content,
+                        self.nodes_table.c.embedding,
+                    ).where(self.nodes_table.c.id.in_(id_batch))
 
-                if node_type == "summary":
-                    data = json.loads(content_json)
-                    if embedding is not None:
-                        data["embedding"] = embedding
-                    return SummaryNode.model_validate(data)
+                    rows = conn.execute(stmt).fetchall()
 
-            except Exception:
-                logger.exception(f"Failed to deserialize node {node_id}")
-                return None
+                    for row in rows:
+                        _, node_type, content_json, embedding_json = row
+                        try:
+                            embedding = json.loads(embedding_json) if embedding_json else None
+                            data = json.loads(content_json)
+                            if embedding is not None:
+                                data["embedding"] = embedding
 
-        return None
+                            if node_type == "chunk":
+                                results.append(Chunk.model_validate(data))
+                            elif node_type == "summary":
+                                results.append(SummaryNode.model_validate(data))
+                        except Exception:
+                            logger.exception("Failed to deserialize a node in batch.")
+                            continue
+        except Exception:
+            logger.exception("Failed to retrieve nodes batch.")
+            raise
+
+        return results
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""

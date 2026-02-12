@@ -75,9 +75,10 @@ class ObsidianCanvasExporter:
         self._chunk_map = {}
 
         # Populate chunk map from store if available
+        # Use batched retrieval to avoid N+1 queries
         if store and tree.leaf_chunk_ids:
-            for chunk_id in tree.leaf_chunk_ids:
-                node = store.get_node(chunk_id)
+            nodes = store.get_nodes(tree.leaf_chunk_ids)
+            for node in nodes:
                 if isinstance(node, Chunk):
                     self._chunk_map[node.index] = node
 
