@@ -5,9 +5,32 @@ Test to ensure SummarizationAgent complies with Summarizer protocol.
 from unittest.mock import patch
 
 from domain_models.config import ProcessingConfig
-from matome.agents.strategies import BaseSummaryStrategy
+from matome.agents.strategies import (
+    BaseSummaryStrategy,
+    InformationStrategy,
+    KnowledgeStrategy,
+    RefinementStrategy,
+    WisdomStrategy,
+)
 from matome.agents.summarizer import SummarizationAgent
-from matome.interfaces import Summarizer
+from matome.interfaces import PromptStrategy, Summarizer
+
+
+def test_strategies_implement_prompt_strategy() -> None:
+    """Verify that all strategy classes implement the PromptStrategy protocol."""
+    strategies = [
+        BaseSummaryStrategy(),
+        WisdomStrategy(),
+        KnowledgeStrategy(),
+        InformationStrategy(),
+        # RefinementStrategy requires a base strategy
+        RefinementStrategy(BaseSummaryStrategy()),
+    ]
+
+    for strategy in strategies:
+        assert isinstance(strategy, PromptStrategy), (
+            f"{type(strategy).__name__} does not implement PromptStrategy"
+        )
 
 
 def test_summarization_agent_implements_summarizer() -> None:
