@@ -28,7 +28,9 @@ def get_db_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     """
     # check_same_thread=False is safe because we create a new connection per thread/context
     # and we don't share cursor objects across threads.
-    conn = sqlite3.connect(db_path, timeout=20.0, check_same_thread=False)
+    # However, to be strictly compliant with security best practices, we allow it to be default (True).
+    # If this causes issues with `panel` threads, we must ensure connections are thread-local.
+    conn = sqlite3.connect(db_path, timeout=20.0)
 
     # Enable WAL mode for better concurrency (readers don't block writers)
     conn.execute("PRAGMA journal_mode=WAL;")

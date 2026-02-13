@@ -133,7 +133,7 @@ class VerifierAgent:
                 if hasattr(self.llm, "invoke"):
                     response = self.llm.invoke(messages)
                 else:
-                    response = self.llm(messages)
+                    response = self.llm(messages)  # type: ignore[operator]
 
         if not response:
             msg = f"[{request_id}] No response received from LLM."
