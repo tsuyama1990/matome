@@ -9,7 +9,6 @@ from matome.agents.strategies import (
     InformationStrategy,
     KnowledgeStrategy,
     RefinementStrategy,
-    WisdomStrategy,
 )
 from matome.agents.summarizer import SummarizationAgent
 from matome.engines.interactive_raptor import InteractiveRaptorEngine

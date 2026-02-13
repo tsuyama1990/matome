@@ -1,11 +1,13 @@
-import pytest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 from typer.testing import CliRunner
+
 from matome.cli import app
 
 runner = CliRunner()
 
-def test_serve_command_help():
+def test_serve_command_help() -> None:
     result = runner.invoke(app, ["serve", "--help"])
     assert result.exit_code == 0
     # We check if help text contains description.
@@ -19,34 +21,34 @@ def test_serve_command_help():
 @patch("matome.cli.InteractiveRaptorEngine")
 @patch("matome.cli.SummarizationAgent")
 def test_serve_command_execution(
-    MockSummarizationAgent,
-    MockInteractiveRaptorEngine,
-    MockDiskChunkStore,
-    MockMatomeCanvas,
-    MockInteractiveSession,
-    mock_pn_serve
-):
+    mock_summarization_agent: MagicMock,
+    mock_interactive_raptor_engine: MagicMock,
+    mock_disk_chunk_store: MagicMock,
+    mock_matome_canvas: MagicMock,
+    mock_interactive_session: MagicMock,
+    mock_pn_serve: MagicMock,
+) -> None:
     # Setup mocks
-    mock_canvas = MockMatomeCanvas.return_value
+    mock_canvas = mock_matome_canvas.return_value
     mock_canvas.layout = MagicMock()
 
     # Create a dummy file for the argument
     with runner.isolated_filesystem():
-        with open("chunks.db", "w") as f:
-            f.write("dummy")
+        # Use Path.open() or write_text
+        Path("chunks.db").write_text("dummy")
 
         result = runner.invoke(app, ["serve", "chunks.db"])
 
         assert result.exit_code == 0
 
         # Verify initializations
-        MockDiskChunkStore.assert_called_once()
-        MockInteractiveRaptorEngine.assert_called_once()
+        mock_disk_chunk_store.assert_called_once()
+        mock_interactive_raptor_engine.assert_called_once()
         # Session and Canvas are created inside the factory, so they might be called multiple times if serve calls the factory.
         # But here serve is mocked, so it won't call the factory unless we do.
         # So mocks are NOT called yet for Session/Canvas.
-        MockInteractiveSession.assert_not_called()
-        MockMatomeCanvas.assert_not_called()
+        mock_interactive_session.assert_not_called()
+        mock_matome_canvas.assert_not_called()
 
         # Verify serve called with factory function
         mock_pn_serve.assert_called_once()
@@ -58,5 +60,5 @@ def test_serve_command_execution(
         # Call factory to verify Session/Canvas creation
         layout = factory_func()
         assert layout == mock_canvas.layout
-        MockInteractiveSession.assert_called_once()
-        MockMatomeCanvas.assert_called_once()
+        mock_interactive_session.assert_called_once()
+        mock_matome_canvas.assert_called_once()

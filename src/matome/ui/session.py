@@ -1,10 +1,13 @@
+import typing
+
 import param
+
 from domain_models.data_schema import DIKWLevel
 from domain_models.manifest import SummaryNode
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 
 
-class InteractiveSession(param.Parameterized):
+class InteractiveSession(param.Parameterized):  # type: ignore[misc]
     """
     ViewModel for the Matome Interactive GUI.
     Manages state and business logic, mediating between View and Engine.
@@ -32,7 +35,9 @@ class InteractiveSession(param.Parameterized):
         default=[], item_type=SummaryNode, doc="List of nodes available at the current level."
     )
 
-    def __init__(self, engine: InteractiveRaptorEngine, **params) -> None:
+    def __init__(
+        self, engine: InteractiveRaptorEngine, **params: typing.Any
+    ) -> None:
         super().__init__(**params)
         self.engine = engine
         self._update_available_nodes()

@@ -1,8 +1,8 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from domain_models.data_schema import NodeMetadata
 from domain_models.constants import TABLE_NODES
+from domain_models.data_schema import NodeMetadata
 from domain_models.manifest import Chunk, SummaryNode
 from matome.utils.store import DiskChunkStore, get_db_connection
 

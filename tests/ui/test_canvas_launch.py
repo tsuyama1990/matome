@@ -4,10 +4,11 @@ import panel as pn
 from matome.ui.canvas import MatomeCanvas
 from matome.ui.session import InteractiveSession
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
-from domain_models.manifest import SummaryNode, NodeMetadata
+from domain_models.manifest import SummaryNode
+from domain_models.data_schema import NodeMetadata
 
 @pytest.fixture
-def mock_session():
+def mock_session() -> InteractiveSession:
     engine = MagicMock(spec=InteractiveRaptorEngine)
     engine.get_nodes_by_level.return_value = []
     session = InteractiveSession(engine=engine)
@@ -17,12 +18,12 @@ def mock_session():
     ]
     return session
 
-def test_canvas_initialization(mock_session):
+def test_canvas_initialization(mock_session: InteractiveSession) -> None:
     """Test that MatomeCanvas initializes without error."""
     canvas = MatomeCanvas(session=mock_session)
     assert canvas.session == mock_session
 
-def test_canvas_layout(mock_session):
+def test_canvas_layout(mock_session: InteractiveSession) -> None:
     """Test that the layout can be generated."""
     canvas = MatomeCanvas(session=mock_session)
     # This might fail if panel relies on a server context or extension, but usually template instantiation works.
@@ -34,7 +35,7 @@ def test_canvas_layout(mock_session):
     except Exception as e:
         pytest.fail(f"Failed to generate layout: {e}")
 
-def test_components_exist(mock_session):
+def test_components_exist(mock_session: InteractiveSession) -> None:
     """Test that main components are created."""
     canvas = MatomeCanvas(session=mock_session)
 

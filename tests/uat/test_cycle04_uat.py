@@ -1,13 +1,15 @@
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
+from domain_models.data_schema import DIKWLevel, NodeMetadata
 from domain_models.manifest import SummaryNode
-from domain_models.data_schema import NodeMetadata, DIKWLevel
-from matome.ui.session import InteractiveSession
-from matome.ui.canvas import MatomeCanvas
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
+from matome.ui.session import InteractiveSession
+
 
 @pytest.fixture
-def uat_engine():
+def uat_engine() -> MagicMock:
     """Mock engine for UAT."""
     engine = MagicMock(spec=InteractiveRaptorEngine)
 
@@ -19,7 +21,7 @@ def uat_engine():
     engine.get_node.side_effect = lambda nid: wisdom_nodes[0] if nid == "w1" else None
 
     # Setup refinement
-    def refine_side_effect(nid, instr):
+    def refine_side_effect(nid: str, instr: str) -> SummaryNode:
         return SummaryNode(
             id=nid,
             text="Refined Wisdom 1",
@@ -31,13 +33,12 @@ def uat_engine():
 
     return engine
 
-def test_cycle04_uat_flow(uat_engine):
+def test_cycle04_uat_flow(uat_engine: MagicMock) -> None:
     """
     Simulate the full UAT flow: Launch -> Select -> Refine.
     """
     # 1. Launch (Session Init)
     session = InteractiveSession(engine=uat_engine)
-    canvas = MatomeCanvas(session=session)
 
     # Verify initial state (Cycle 04-01)
     assert session.current_level == DIKWLevel.WISDOM
