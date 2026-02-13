@@ -28,7 +28,9 @@ class InteractiveRaptorEngine:
 
         Args:
             store: The disk-based store containing chunks and summary nodes.
+                   Provides persistent storage access.
             agent: The summarization agent to use for refinement.
+                   Handles LLM interactions.
         """
         self.store = store
         self.agent = agent
@@ -67,6 +69,23 @@ class InteractiveRaptorEngine:
                 children.append(child)
         return children
 
+    def _get_refinement_strategy(self, current_level: DIKWLevel) -> RefinementStrategy:
+        """
+        Helper to determine the base strategy and wrap it in RefinementStrategy.
+        """
+        base_strategy: PromptStrategy
+
+        if current_level == DIKWLevel.WISDOM:
+            base_strategy = WisdomStrategy()
+        elif current_level == DIKWLevel.KNOWLEDGE:
+            base_strategy = KnowledgeStrategy()
+        elif current_level == DIKWLevel.INFORMATION:
+            base_strategy = InformationStrategy()
+        else:
+            base_strategy = BaseSummaryStrategy()
+
+        return RefinementStrategy(base_strategy)
+
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
         Refine a summary node with a user instruction.
@@ -82,7 +101,7 @@ class InteractiveRaptorEngine:
             The newly generated SummaryNode.
 
         Raises:
-            ValueError: If the node with `node_id` is not found.
+            ValueError: If the node with `node_id` is not found or `model_dump()` fails.
             TypeError: If the node is a Chunk (cannot be refined).
         """
         node = self.get_node(node_id)
@@ -94,21 +113,7 @@ class InteractiveRaptorEngine:
             msg = f"Cannot refine a Chunk (Node ID: {node_id}). Only SummaryNodes can be refined."
             raise TypeError(msg)
 
-        # Determine strategy based on current level
-        current_level = node.metadata.dikw_level
-        base_strategy: PromptStrategy
-
-        if current_level == DIKWLevel.WISDOM:
-            base_strategy = WisdomStrategy()
-        elif current_level == DIKWLevel.KNOWLEDGE:
-            base_strategy = KnowledgeStrategy()
-        elif current_level == DIKWLevel.INFORMATION:
-            base_strategy = InformationStrategy()
-        else:
-            base_strategy = BaseSummaryStrategy()
-
-        # Wrap with RefinementStrategy to include instruction
-        strategy = RefinementStrategy(base_strategy)
+        strategy = self._get_refinement_strategy(node.metadata.dikw_level)
 
         # Gather children text
         children_texts = []
@@ -122,8 +127,13 @@ class InteractiveRaptorEngine:
             children_texts = [node.text]
 
         # Prepare context for summarization
-        # We start with existing metadata but must convert to dict for context
-        meta_dict = node.metadata.model_dump()
+        try:
+            # We start with existing metadata but must convert to dict for context
+            meta_dict = node.metadata.model_dump()
+        except Exception as e:
+            msg = f"Failed to dump metadata for node {node_id}: {e}"
+            logger.exception(msg)
+            raise ValueError(msg) from e
 
         # Update metadata for refinement
         meta_dict["is_user_edited"] = True
@@ -150,4 +160,5 @@ class InteractiveRaptorEngine:
         # Note: This overwrites the existing node in the store because IDs match.
         self.store.add_summary(new_node)
 
+        logger.info(f"Successfully refined node {node_id} with instruction: '{instruction}'")
         return new_node

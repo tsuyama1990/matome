@@ -23,7 +23,8 @@ class BaseSummaryStrategy:
 
         Args:
             text: The text to summarize. Can be a string or list of strings.
-            context: Optional context (unused in BaseSummaryStrategy).
+            context: Optional context containing additional information (e.g., node metadata).
+                     Structure: {'instruction': str, 'metadata': dict, ...}
 
         Returns:
             The formatted prompt string.
@@ -126,6 +127,9 @@ class RefinementStrategy:
         self.base_strategy = base_strategy
 
     def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
+        """
+        Format the prompt by appending the user instruction to the base strategy's prompt.
+        """
         base_prompt = self.base_strategy.format_prompt(text, context)
         instruction = context.get("instruction", "") if context else ""
 
@@ -134,4 +138,7 @@ class RefinementStrategy:
         return base_prompt
 
     def parse_output(self, response: str) -> dict[str, Any]:
+        """
+        Delegate response parsing to the base strategy.
+        """
         return self.base_strategy.parse_output(response)
