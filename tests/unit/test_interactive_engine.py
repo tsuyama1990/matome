@@ -4,7 +4,7 @@ import pytest
 
 from domain_models.data_schema import DIKWLevel, NodeMetadata
 from domain_models.manifest import Chunk, SummaryNode
-from matome.agents.strategies import WisdomStrategy
+from matome.agents.strategies import RefinementStrategy, WisdomStrategy
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 
 
@@ -110,7 +110,9 @@ def test_refine_node(
     mock_agent.summarize.assert_called_once()
     args, kwargs = mock_agent.summarize.call_args
     assert kwargs["context"]["instruction"] == "Make it wiser"
-    assert isinstance(kwargs["strategy"], WisdomStrategy)
+    strategy = kwargs["strategy"]
+    assert isinstance(strategy, RefinementStrategy)
+    assert isinstance(strategy.base_strategy, WisdomStrategy)
 
     # Verify store update
     mock_store.add_summary.assert_called_with(new_node)

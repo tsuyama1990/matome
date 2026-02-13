@@ -1,10 +1,12 @@
 from typing import Any
 
 from domain_models.data_schema import DIKWLevel
+from matome.interfaces import PromptStrategy
 from matome.utils.prompts import (
     COD_TEMPLATE,
     INFORMATION_TEMPLATE,
     KNOWLEDGE_TEMPLATE,
+    REFINEMENT_INSTRUCTION_TEMPLATE,
     WISDOM_TEMPLATE,
 )
 
@@ -21,7 +23,8 @@ class BaseSummaryStrategy:
 
         Args:
             text: The text to summarize. Can be a string or list of strings.
-            context: Optional context (unused in BaseSummaryStrategy).
+            context: Optional context containing additional information (e.g., node metadata).
+                     Structure: {'instruction': str, 'metadata': dict, ...}
 
         Returns:
             The formatted prompt string.
@@ -112,3 +115,30 @@ class InformationStrategy:
             "summary": response.strip(),
             "metadata": {"dikw_level": DIKWLevel.INFORMATION},
         }
+
+
+class RefinementStrategy:
+    """
+    Decorator strategy for refining an existing summary based on user instructions.
+    Wraps a base strategy (Wisdom, Knowledge, etc.) and appends the instruction to the prompt.
+    """
+
+    def __init__(self, base_strategy: PromptStrategy) -> None:
+        self.base_strategy = base_strategy
+
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
+        """
+        Format the prompt by appending the user instruction to the base strategy's prompt.
+        """
+        base_prompt = self.base_strategy.format_prompt(text, context)
+        instruction = context.get("instruction", "") if context else ""
+
+        if instruction:
+            return base_prompt + REFINEMENT_INSTRUCTION_TEMPLATE.format(instruction=instruction)
+        return base_prompt
+
+    def parse_output(self, response: str) -> dict[str, Any]:
+        """
+        Delegate response parsing to the base strategy.
+        """
+        return self.base_strategy.parse_output(response)

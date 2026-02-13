@@ -85,3 +85,12 @@ Text:
 
 Output the markdown checklist.
 """
+
+# Cycle 03: Refinement Prompt Template
+REFINEMENT_INSTRUCTION_TEMPLATE = """
+
+IMPORTANT - USER REFINEMENT INSTRUCTION:
+{instruction}
+
+Please adjust the summary to satisfy this instruction while maintaining the required format and role.
+"""
