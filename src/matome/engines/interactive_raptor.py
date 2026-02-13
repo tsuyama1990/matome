@@ -6,9 +6,11 @@ from matome.agents.strategies import (
     BaseSummaryStrategy,
     InformationStrategy,
     KnowledgeStrategy,
+    RefinementStrategy,
     WisdomStrategy,
 )
 from matome.agents.summarizer import SummarizationAgent
+from matome.interfaces import PromptStrategy
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
@@ -94,16 +96,19 @@ class InteractiveRaptorEngine:
 
         # Determine strategy based on current level
         current_level = node.metadata.dikw_level
-        strategy: BaseSummaryStrategy | WisdomStrategy | KnowledgeStrategy | InformationStrategy
+        base_strategy: PromptStrategy
 
         if current_level == DIKWLevel.WISDOM:
-            strategy = WisdomStrategy()
+            base_strategy = WisdomStrategy()
         elif current_level == DIKWLevel.KNOWLEDGE:
-            strategy = KnowledgeStrategy()
+            base_strategy = KnowledgeStrategy()
         elif current_level == DIKWLevel.INFORMATION:
-            strategy = InformationStrategy()
+            base_strategy = InformationStrategy()
         else:
-            strategy = BaseSummaryStrategy()
+            base_strategy = BaseSummaryStrategy()
+
+        # Wrap with RefinementStrategy to include instruction
+        strategy = RefinementStrategy(base_strategy)
 
         # Gather children text
         children_texts = []
