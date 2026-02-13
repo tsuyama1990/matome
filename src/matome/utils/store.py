@@ -208,35 +208,32 @@ class DiskChunkStore:
 
         return None
 
-    def get_nodes_by_level(self, level: str) -> list[SummaryNode]:
+    def get_nodes_by_level(self, level: str) -> Iterator[SummaryNode]:
         """
         Retrieve all SummaryNodes matching a specific DIKW level.
-        Note: This performs a full scan of summary nodes and filters in Python.
+        Yields nodes to avoid loading the entire dataset into memory.
         """
         sql = f"SELECT {COL_CONTENT}, {COL_EMBEDDING} FROM {TABLE_NODES} WHERE {COL_TYPE} = ?"  # noqa: S608
 
-        nodes: list[SummaryNode] = []
-
         with get_db_connection(self.db_path) as conn:
             cursor = conn.execute(sql, ("summary",))
-            rows = cursor.fetchall()
 
-        for content_json, embedding_json in rows:
-            try:
-                data = json.loads(content_json)
-                if embedding_json:
-                    data["embedding"] = json.loads(embedding_json)
+            # Iterate over cursor directly to stream results
+            for row in cursor:
+                content_json, embedding_json = row
+                try:
+                    data = json.loads(content_json)
+                    if embedding_json:
+                        data["embedding"] = json.loads(embedding_json)
 
-                node = SummaryNode.model_validate(data)
+                    node = SummaryNode.model_validate(data)
 
-                # Check DIKW level
-                if node.metadata.dikw_level == level:
-                    nodes.append(node)
+                    # Check DIKW level
+                    if node.metadata.dikw_level == level:
+                        yield node
 
-            except Exception:
-                logger.exception("Failed to deserialize summary node during level filtering")
-
-        return nodes
+                except Exception:
+                    logger.exception("Failed to deserialize summary node during level filtering")
 
     def get_nodes(self, node_ids: list[int | str]) -> dict[int | str, Chunk | SummaryNode | None]:
         """

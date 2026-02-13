@@ -223,7 +223,7 @@ def serve(
         return canvas.layout
 
     # Serve
-    pn.serve(create_app, port=port, show=False)  # type: ignore[no-untyped-call]
+    pn.serve(create_app, port=port, show=False)
 
 
 def _select_strategy(mode: str) -> PromptStrategy:

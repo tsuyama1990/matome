@@ -127,6 +127,11 @@ class ProcessingConfig(BaseModel):
         ge=1,
         description="Buffer size for batch database writes in Raptor engine.",
     )
+    interactive_batch_size: int = Field(
+        default=50,
+        ge=1,
+        description="Batch size for interactive operations (e.g. prefetching).",
+    )
 
     # Canvas / Visualization Configuration
     canvas_node_width: int = Field(
