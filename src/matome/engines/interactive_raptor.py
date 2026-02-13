@@ -22,8 +22,6 @@ class InteractiveRaptorEngine:
     Supports single-node retrieval and refinement.
     """
 
-    BATCH_SIZE: int = 50
-
     def __init__(self, store: DiskChunkStore, agent: SummarizationAgent) -> None:
         """
         Initialize the interactive engine.
@@ -134,11 +132,9 @@ class InteractiveRaptorEngine:
         stack: list[str | int],
         node_cache: dict[str | int, SummaryNode | Chunk],
     ) -> None:
-        """
-        Prefetch nodes in the top of the stack into cache to optimize DB access.
-        Uses class-level BATCH_SIZE to determine how many upcoming nodes to fetch.
-        """
-        upcoming_ids = stack[-self.BATCH_SIZE :]
+        """Prefetch nodes in the top of the stack into cache."""
+        BATCH_SIZE = 50
+        upcoming_ids = stack[-BATCH_SIZE:]
         missing_ids = [nid for nid in upcoming_ids if nid not in node_cache]
 
         if missing_ids:

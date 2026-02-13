@@ -105,7 +105,6 @@ def test_cycle05_user_journey(uat_engine: MagicMock) -> None:
 
     # Verify Zoom to Knowledge
     assert session.current_level == DIKWLevel.KNOWLEDGE
-    assert session.view_context is not None
     assert session.view_context.id == "W1"
     assert len(session.breadcrumbs) == 1
     assert len(session.available_nodes) == 1
@@ -117,7 +116,6 @@ def test_cycle05_user_journey(uat_engine: MagicMock) -> None:
 
     # Verify Zoom to Information
     assert session.current_level == DIKWLevel.INFORMATION
-    assert session.view_context is not None
     assert session.view_context.id == "K1"
     assert len(session.breadcrumbs) == 2
     assert session.available_nodes[0].id == "I1"

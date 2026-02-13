@@ -80,10 +80,9 @@ def test_full_pipeline_flow() -> None:
         embedder = EmbeddingService(config)
 
         # Mock LLM for SummarizationAgent
-        from langchain_core.messages import AIMessage
-
         mock_llm_instance = MagicMock()
-        mock_response = AIMessage(content="Summary of the cluster.")
+        mock_response = MagicMock()
+        mock_response.content = "Summary of the cluster."
         mock_llm_instance.invoke.return_value = mock_response
 
         # Use dependency injection

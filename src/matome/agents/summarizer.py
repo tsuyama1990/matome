@@ -359,15 +359,10 @@ class SummarizationAgent:
                 if hasattr(self.llm, "invoke"):
                     response = self.llm.invoke(messages)
                 else:
-                    response = self.llm(messages)
+                    response = self.llm(messages)  # type: ignore[operator]
 
         if not response:
             msg = f"[{request_id}] No response received from LLM."
-            raise SummarizationError(msg)
-
-        if not isinstance(response, BaseMessage):
-            # Should not happen with LangChain chat models but good for safety
-            msg = f"[{request_id}] Invalid response type from LLM: {type(response)}"
             raise SummarizationError(msg)
 
         return response
