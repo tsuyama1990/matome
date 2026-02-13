@@ -7,17 +7,17 @@ import tempfile
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
+from domain_models.constants import (
+    COL_CONTENT,
+    COL_EMBEDDING,
+    COL_ID,
+    COL_TYPE,
+    TABLE_NODES,
+)
 from domain_models.manifest import Chunk, SummaryNode
 from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
-
-# Constants for DB Schema
-TABLE_NODES = "nodes"
-COL_ID = "id"
-COL_TYPE = "type"
-COL_CONTENT = "content"  # Stores JSON of the node (excluding embedding)
-COL_EMBEDDING = "embedding"  # Stores JSON of the embedding list
 
 
 @contextlib.contextmanager
@@ -150,6 +150,29 @@ class DiskChunkStore:
         with get_db_connection(self.db_path) as conn:
             conn.execute(sql, (embedding_json, str(node_id)))
 
+    def update_embeddings(self, updates: Iterable[tuple[int | str, list[float]]]) -> None:
+        """
+        Batch update embeddings.
+        Args:
+            updates: Iterable of (node_id, embedding_vector) tuples.
+        """
+        BATCH_SIZE = 1000
+        sql = f"UPDATE {TABLE_NODES} SET {COL_EMBEDDING} = ? WHERE {COL_ID} = ?"  # noqa: S608
+
+        for batch in batched(updates, BATCH_SIZE):
+            buffer = []
+            for node_id, embedding in batch:
+                if embedding is None:
+                    continue
+                embedding_json = json.dumps(embedding)
+                buffer.append((embedding_json, str(node_id)))
+
+            if not buffer:
+                continue
+
+            with get_db_connection(self.db_path) as conn:
+                conn.executemany(sql, buffer)
+
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
 
@@ -184,6 +207,79 @@ class DiskChunkStore:
                 return None
 
         return None
+
+    def get_nodes(self, node_ids: list[int | str]) -> dict[int | str, Chunk | SummaryNode | None]:
+        """
+        Retrieve multiple nodes by ID in a single query.
+        Returns a dictionary mapping ID to Node object (or None).
+        """
+        if not node_ids:
+            return {}
+
+        # Determine strict mapping for return keys
+        # We want to return exactly the same type/value of key as requested
+        # But DB returns string IDs.
+
+        # Helper to normalize ID for DB query
+        str_ids = [str(nid) for nid in node_ids]
+
+        # We can't use placeholders for IN clause with list directly in sqlite3 standard execute,
+        # need to construct string with correct number of ?
+        # But for huge lists, this hits SQL limits.
+        # So we should batch the retrieval too.
+
+        BATCH_SIZE = 900  # SQLite limit is typically 999 vars
+        results: dict[int | str, Chunk | SummaryNode | None] = {}
+
+        # Pre-fill with None to ensure all keys exist
+        for nid in node_ids:
+            results[nid] = None
+
+        for batch_ids in batched(str_ids, BATCH_SIZE):
+            # We need to map back from str_id to original ID type if needed.
+            batch_ids_list = list(batch_ids)
+            placeholders = ",".join("?" for _ in batch_ids_list)
+            sql = f"SELECT {COL_ID}, {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING} FROM {TABLE_NODES} WHERE {COL_ID} IN ({placeholders})"  # noqa: S608
+
+            rows = []
+            with get_db_connection(self.db_path) as conn:
+                cursor = conn.execute(sql, batch_ids_list)
+                rows = cursor.fetchall()
+
+            for row in rows:
+                self._deserialize_and_store_node(row, results)
+
+        return results
+
+    def _deserialize_and_store_node(
+        self,
+        row: tuple[str, str, str, str | None],
+        results: dict[int | str, Chunk | SummaryNode | None],
+    ) -> None:
+        """Deserialize a node row and store in results if requested."""
+        node_id_str, node_type, content_json, embedding_json = row
+        try:
+            embedding = json.loads(embedding_json) if embedding_json else None
+            data = json.loads(content_json)
+            if embedding is not None:
+                data["embedding"] = embedding
+
+            node: Chunk | SummaryNode
+            if node_type == "chunk":
+                node = Chunk.model_validate(data)
+                # Map back to original key(s)
+                if node.index in results:
+                    results[node.index] = node
+                if str(node.index) in results:
+                    results[str(node.index)] = node
+
+            elif node_type == "summary":
+                node = SummaryNode.model_validate(data)
+                if node.id in results:
+                    results[node.id] = node
+
+        except Exception:
+            logger.exception(f"Failed to deserialize node {node_id_str}")
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""

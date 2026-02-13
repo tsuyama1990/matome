@@ -1,11 +1,19 @@
-from unittest.mock import MagicMock, ANY, patch
+from unittest.mock import MagicMock, patch
+
 import pytest
-from domain_models.data_schema import NodeMetadata, DIKWLevel
-from domain_models.manifest import SummaryNode, Chunk
-from matome.engines.interactive_raptor import InteractiveRaptorEngine, RefinementAgent
+
+from domain_models.data_schema import DIKWLevel, NodeMetadata
+from domain_models.manifest import Chunk, SummaryNode
+from matome.agents.strategies import (
+    BaseSummaryStrategy,
+    InformationStrategy,
+    KnowledgeStrategy,
+    RefinementStrategy,
+)
 from matome.agents.summarizer import SummarizationAgent
+from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.utils.store import DiskChunkStore
-from matome.agents.strategies import WisdomStrategy, KnowledgeStrategy, InformationStrategy, RefinementStrategy, BaseSummaryStrategy
+
 
 @pytest.fixture
 def mock_store() -> MagicMock:
@@ -73,8 +81,9 @@ def test_refine_node_success(engine: InteractiveRaptorEngine, mock_store: MagicM
 
     instruction = "Make it better"
 
-    with patch("matome.engines.interactive_raptor.RefinementAgent") as MockRefinementAgent:
-        mock_temp_agent = MockRefinementAgent.return_value
+    # We need to patch SummarizationAgent constructor to capture the temp agent
+    with patch("matome.engines.interactive_raptor.SummarizationAgent") as MockSummarizationAgent:
+        mock_temp_agent = MockSummarizationAgent.return_value
         mock_temp_agent.summarize.return_value = refined_node
 
         result = engine.refine_node("w1", instruction)
@@ -120,44 +129,21 @@ def test_refine_node_strategy_selection(engine: InteractiveRaptorEngine, mock_st
     )
     mock_store.get_node.return_value = node
 
-    with patch("matome.engines.interactive_raptor.RefinementAgent") as MockRefinementAgent:
-        mock_temp_agent = MockRefinementAgent.return_value
+    with patch("matome.engines.interactive_raptor.SummarizationAgent") as MockSummarizationAgent:
+        mock_temp_agent = MockSummarizationAgent.return_value
         mock_temp_agent.summarize.return_value = SummaryNode(
             id="k1", text="New", level=1, children_indices=[], metadata=NodeMetadata()
         )
 
         engine.refine_node("k1", "instr")
 
-        # Verify RefinementAgent was initialized with RefinementStrategy wrapping KnowledgeStrategy
-        MockRefinementAgent.assert_called_once()
-        call_args = MockRefinementAgent.call_args
+        # Verify SummarizationAgent was initialized with RefinementStrategy wrapping KnowledgeStrategy
+        MockSummarizationAgent.assert_called_once()
+        call_args = MockSummarizationAgent.call_args
         strategy_arg = call_args.kwargs.get('strategy')
 
         assert isinstance(strategy_arg, RefinementStrategy)
         assert isinstance(strategy_arg.base_strategy, KnowledgeStrategy)
-
-def test_refinement_agent_filters_context() -> None:
-    """Test that RefinementAgent filters 'instruction' from context before creating summary node."""
-    strategy = MagicMock()
-    strategy.parse_output.return_value = {"summary": "summary", "id": "1", "level": 1, "children_indices": []}
-
-    config = MagicMock()
-    config.max_input_length = 1000
-    config.max_word_length = 100
-    # Add valid string values for Pydantic validation in SummarizationAgent.__init__
-    config.summarization_model = "gpt-4o-mini"
-    config.llm_temperature = 0.5
-    config.max_retries = 1
-
-    agent = RefinementAgent(config, strategy)
-
-    context = {"instruction": "fail me", "id": "1", "level": 1}
-
-    # We allow the real call to happen, but verify it succeeds.
-    # If "instruction" was not filtered, SummaryNode validation would fail.
-    result = agent._create_summary_node("response", context, strategy)
-    assert isinstance(result, SummaryNode)
-    assert result.id == "1"
 
 def test_refine_node_preserves_metadata_and_info_strategy(
     engine: InteractiveRaptorEngine, mock_store: MagicMock, mock_agent: MagicMock
@@ -184,15 +170,15 @@ def test_refine_node_preserves_metadata_and_info_strategy(
         metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
     )
 
-    with patch("matome.engines.interactive_raptor.RefinementAgent") as MockRefinementAgent:
-        mock_temp = MockRefinementAgent.return_value
+    with patch("matome.engines.interactive_raptor.SummarizationAgent") as MockSummarizationAgent:
+        mock_temp = MockSummarizationAgent.return_value
         mock_temp.summarize.return_value = refined_node
 
         result = engine.refine_node("i1", "instr")
 
         # Verify Strategy was InformationStrategy
-        MockRefinementAgent.assert_called_once()
-        strategy_arg = MockRefinementAgent.call_args.kwargs.get('strategy')
+        MockSummarizationAgent.assert_called_once()
+        strategy_arg = MockSummarizationAgent.call_args.kwargs.get('strategy')
         assert strategy_arg is not None
         assert isinstance(strategy_arg.base_strategy, InformationStrategy)
 
@@ -213,13 +199,13 @@ def test_refine_node_default_strategy(
     )
     mock_store.get_node.return_value = original_node
 
-    with patch("matome.engines.interactive_raptor.RefinementAgent") as MockRefinementAgent:
-        mock_temp = MockRefinementAgent.return_value
+    with patch("matome.engines.interactive_raptor.SummarizationAgent") as MockSummarizationAgent:
+        mock_temp = MockSummarizationAgent.return_value
         mock_temp.summarize.return_value = original_node # dummy
 
         engine.refine_node("d1", "instr")
 
-        strategy_arg = MockRefinementAgent.call_args.kwargs.get('strategy')
+        strategy_arg = MockSummarizationAgent.call_args.kwargs.get('strategy')
         assert strategy_arg is not None
         # BaseSummaryStrategy is used for DATA or others
         assert isinstance(strategy_arg.base_strategy, BaseSummaryStrategy)

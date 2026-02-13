@@ -194,6 +194,32 @@ class RaptorEngine:
 
         return current_level_ids
 
+    def _yield_node_texts(
+        self, node_ids: list[NodeID], store: DiskChunkStore
+    ) -> Iterator[tuple[NodeID, str]]:
+        """Yield (id, text) tuples from store efficiently."""
+        for batch_ids in batched(node_ids, self.config.chunk_buffer_size):
+            batch_ids_list = list(batch_ids)
+            nodes_map = store.get_nodes(batch_ids_list)
+
+            for nid in batch_ids_list:
+                node = nodes_map.get(nid)
+                if not node:
+                    # Fallback check
+                    alt_key: int | str | None = None
+                    if isinstance(nid, int):
+                        alt_key = str(nid)
+                    elif isinstance(nid, str) and nid.isdigit():
+                        alt_key = int(nid)
+
+                    if alt_key is not None and alt_key in nodes_map:
+                        node = nodes_map[alt_key]
+
+                if node:
+                    yield nid, node.text
+                else:
+                    logger.warning(f"Node {nid} not found in store.")
+
     def _embed_and_cluster_next_level(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
     ) -> list[Cluster]:
@@ -202,20 +228,11 @@ class RaptorEngine:
         """
 
         def lx_embedding_generator() -> Iterator[list[list[float]]]:
-            # Generator that yields (id, text) tuples
-            def node_text_generator() -> Iterator[tuple[NodeID, str]]:
-                for nid in current_level_ids:
-                    node = store.get_node(nid)
-                    if node:
-                        yield nid, node.text
-                    else:
-                        logger.warning(
-                            f"Node {nid} not found in store during next level clustering."
-                        )
-
             # Strategy: Batched processing manually
             # Using config.embedding_batch_size to bound memory usage per batch.
-            for batch in batched(node_text_generator(), self.config.embedding_batch_size):
+            node_iter = self._yield_node_texts(current_level_ids, store)
+
+            for batch in batched(node_iter, self.config.embedding_batch_size):
                 unzipped = list(zip(*batch, strict=True))
                 if not unzipped:
                     continue
@@ -229,10 +246,14 @@ class RaptorEngine:
                     # If implementation returns list, iter() handles it.
                     embeddings_iter = self.embedder.embed_strings(texts_tuple)
                     embeddings_batch = []
+                    updates: list[tuple[NodeID, list[float]]] = []
 
                     for nid, embedding in zip(ids_tuple, embeddings_iter, strict=True):
-                        store.update_node_embedding(nid, embedding)
+                        updates.append((nid, embedding))
                         embeddings_batch.append(embedding)
+
+                    # Bulk update
+                    store.update_embeddings(updates)
 
                     yield embeddings_batch
 
@@ -313,22 +334,9 @@ class RaptorEngine:
         Process clusters to generate summaries (streaming).
         """
         for cluster in clusters:
-            children_indices: list[NodeID] = []
-            cluster_texts: list[str] = []
-
-            for idx_raw in cluster.node_indices:
-                idx = int(idx_raw)
-                if idx < 0 or idx >= len(current_level_ids):
-                    logger.warning(f"Cluster index {idx} out of bounds for current level nodes.")
-                    continue
-
-                node_id = current_level_ids[idx]
-                node = store.get_node(node_id)
-                if not node:
-                    continue
-
-                children_indices.append(node_id)
-                cluster_texts.append(node.text)
+            children_indices, cluster_texts = self._gather_cluster_data(
+                cluster, current_level_ids, store
+            )
 
             if not cluster_texts:
                 logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
@@ -347,3 +355,50 @@ class RaptorEngine:
             summary_node = self.summarizer.summarize(cluster_texts, context=context)
 
             yield summary_node
+
+    def _gather_cluster_data(
+        self,
+        cluster: Cluster,
+        current_level_ids: list[NodeID],
+        store: DiskChunkStore,
+    ) -> tuple[list[NodeID], list[str]]:
+        """Retrieve node IDs and texts for a cluster."""
+        children_indices: list[NodeID] = []
+        cluster_texts: list[str] = []
+
+        # Gather valid node IDs first
+        valid_node_ids: list[NodeID] = []
+        for idx_raw in cluster.node_indices:
+            idx = int(idx_raw)
+            if idx < 0 or idx >= len(current_level_ids):
+                logger.warning(f"Cluster index {idx} out of bounds for current level nodes.")
+                continue
+            valid_node_ids.append(current_level_ids[idx])
+
+        if not valid_node_ids:
+            logger.warning(f"Cluster {cluster.id} has no valid node indices.")
+            return [], []
+
+        # Batch retrieve nodes
+        nodes_map = store.get_nodes(valid_node_ids)
+
+        for node_id in valid_node_ids:
+            node = nodes_map.get(node_id)
+            # Fallback check for int/str key mismatch
+            if not node and isinstance(node_id, (int, str)):
+                alt_key: int | str | None = None
+                if isinstance(node_id, int):
+                    alt_key = str(node_id)
+                elif isinstance(node_id, str) and node_id.isdigit():
+                    alt_key = int(node_id)
+
+                if alt_key is not None and alt_key in nodes_map:
+                    node = nodes_map[alt_key]
+
+            if not node:
+                continue
+
+            children_indices.append(node_id)
+            cluster_texts.append(node.text)
+
+        return children_indices, cluster_texts

@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 from domain_models.data_schema import DIKWLevel
 from domain_models.manifest import Chunk, SummaryNode
@@ -15,26 +14,6 @@ from matome.interfaces import PromptStrategy
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
-
-
-class RefinementAgent(SummarizationAgent):
-    """
-    Specialized agent for refinement that filters instruction from context
-    to prevent SummaryNode validation errors.
-    """
-
-    def _create_summary_node(
-        self,
-        response_content: str,
-        context: dict[str, Any] | None,
-        strategy: PromptStrategy,
-    ) -> SummaryNode:
-        # Filter context to remove non-SummaryNode fields before calling super
-        safe_context = context
-        if context and "instruction" in context:
-            safe_context = context.copy()
-            safe_context.pop("instruction")
-        return super()._create_summary_node(response_content, safe_context, strategy)
 
 
 class InteractiveRaptorEngine:
@@ -108,7 +87,7 @@ class InteractiveRaptorEngine:
 
         # Create a temporary agent with the refinement strategy to avoid mutating the shared agent
         # (This achieves "Strategy Swap" in a thread-safe manner)
-        temp_agent = RefinementAgent(self.agent.config, strategy=refinement_strategy)
+        temp_agent = SummarizationAgent(self.agent.config, strategy=refinement_strategy)
         # Reuse the underlying LLM client
         temp_agent.llm = self.agent.llm
 
