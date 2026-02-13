@@ -16,32 +16,32 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
 
     # State
     # Support Chunk for read-only selection
-    selected_node = param.ClassSelector(
+    selected_node: SummaryNode | Chunk | None = param.ClassSelector(
         class_=(SummaryNode, Chunk), allow_None=True, doc="Currently selected node."
     )
-    current_level = param.Selector(
+    current_level: DIKWLevel = param.Selector(
         objects=list(DIKWLevel), default=DIKWLevel.WISDOM, doc="Current abstraction level."
     )
-    is_refining = param.Boolean(
+    is_refining: bool = param.Boolean(
         default=False, doc="Whether a refinement operation is in progress."
     )
-    refinement_instruction = param.String(
+    refinement_instruction: str = param.String(
         default="", doc="User instruction for refinement."
     )
-    status_message = param.String(
+    status_message: str = param.String(
         default="Ready", doc="Status message to display to the user."
     )
 
     # Navigation State (Zooming)
-    view_context = param.ClassSelector(
+    view_context: SummaryNode | None = param.ClassSelector(
         class_=SummaryNode, allow_None=True, doc="Current parent node being viewed."
     )
-    breadcrumbs = param.List(
+    breadcrumbs: list[SummaryNode] = param.List(
         default=[], item_type=SummaryNode, doc="Navigation stack."
     )
 
     # Data source for the list view
-    available_nodes = param.List(
+    available_nodes: list[SummaryNode | Chunk] = param.List(
         default=[], doc="List of nodes available at the current level."
     )
 

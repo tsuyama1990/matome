@@ -88,7 +88,8 @@ class VerifierAgent:
 
         try:
             prompt = VERIFICATION_TEMPLATE.format(source_text=source_text, summary_text=summary)
-            messages = [HumanMessage(content=prompt)]
+            # Upcast to BaseMessage for type compatibility
+            messages: list[BaseMessage] = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, self.config, request_id)
             return self._process_response(response, request_id)
@@ -110,7 +111,7 @@ class VerifierAgent:
             raise VerificationError(msg) from e
 
     def _invoke_llm(
-        self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str
+        self, messages: list[BaseMessage], config: ProcessingConfig, request_id: str
     ) -> BaseMessage:
         """Invoke LLM with retries."""
         if not self.llm:
@@ -133,7 +134,7 @@ class VerifierAgent:
                 if hasattr(self.llm, "invoke"):
                     response = self.llm.invoke(messages)
                 else:
-                    response = self.llm(messages)  # type: ignore[operator]
+                    response = self.llm(messages)
 
         if not response:
             msg = f"[{request_id}] No response received from LLM."

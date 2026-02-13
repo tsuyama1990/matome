@@ -137,7 +137,8 @@ class SummarizationAgent:
 
         try:
             prompt = active_strategy.format_prompt(safe_text, context)
-            messages = [HumanMessage(content=prompt)]
+            # Upcast to BaseMessage for type compatibility
+            messages: list[BaseMessage] = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, self.config, request_id)
             response_content = self._process_response(response, request_id)
@@ -324,7 +325,7 @@ class SummarizationAgent:
         return sanitized
 
     def _invoke_llm(
-        self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str
+        self, messages: list[BaseMessage], config: ProcessingConfig, request_id: str
     ) -> BaseMessage:
         """
         Invoke the LLM with exponential backoff retry logic.
@@ -359,7 +360,7 @@ class SummarizationAgent:
                 if hasattr(self.llm, "invoke"):
                     response = self.llm.invoke(messages)
                 else:
-                    response = self.llm(messages)  # type: ignore[operator]
+                    response = self.llm(messages)
 
         if not response:
             msg = f"[{request_id}] No response received from LLM."

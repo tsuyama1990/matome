@@ -109,6 +109,8 @@ class InteractiveRaptorEngine:
         node_cache: dict[str | int, SummaryNode | Chunk] = {}
 
         while stack:
+            # Optimization: prefetch the next batch of nodes that will be popped
+            # to avoid N+1 query problem with SQLite.
             self._prefetch_nodes(stack, node_cache)
 
             # Now proceed with DFS
