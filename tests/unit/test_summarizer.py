@@ -10,6 +10,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
+from domain_models.data_schema import DIKWLevel
 from domain_models.manifest import SummaryNode
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import SummarizationError
@@ -108,7 +109,10 @@ def test_summarize_merges_context(
     assert result.id == "node-1"
     assert result.level == 2
     assert result.children_indices == [10, 11]
-    assert result.metadata["cluster_id"] == 99
+    # Update: Metadata is now an object, use attribute access
+    assert result.metadata.cluster_id == 99
+    # Also verify default level was added
+    assert result.metadata.dikw_level == DIKWLevel.DATA
     assert result.text == "Summary text"
 
 
@@ -153,6 +157,7 @@ def test_mock_mode_returns_node(
         assert isinstance(result, SummaryNode)
         assert result.text.startswith("Summary of")
         assert result.id == "mock-id"
+        assert result.metadata.dikw_level == DIKWLevel.DATA
 
 
 def test_summarize_missing_key(

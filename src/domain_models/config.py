@@ -1,5 +1,5 @@
 import os
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -21,6 +21,14 @@ from domain_models.constants import (
 
 class ClusteringAlgorithm(Enum):
     GMM = "gmm"
+
+
+class ProcessingMode(StrEnum):
+    """
+    Processing mode for the pipeline.
+    """
+    DEFAULT = "default"
+    DIKW = "dikw"
 
 
 def _safe_getenv(key: str, default: str) -> str:

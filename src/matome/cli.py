@@ -5,7 +5,6 @@ from typing import Annotated
 import typer
 
 from domain_models.config import ProcessingConfig
-from matome.agents.strategies import BaseSummaryStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
@@ -14,6 +13,7 @@ from matome.engines.raptor import RaptorEngine
 from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.exporters.markdown import export_to_markdown
 from matome.exporters.obsidian import ObsidianCanvasExporter
+from matome.strategies import DefaultStrategy
 from matome.utils.store import DiskChunkStore
 
 # Configure logging to stderr so it doesn't interfere with stdout output if needed
@@ -95,7 +95,8 @@ def run(
     chunker = JapaneseTokenChunker()
     embedder = EmbeddingService(config)
     clusterer = GMMClusterer()
-    summarizer = SummarizationAgent(config, strategy=BaseSummaryStrategy())
+    # Use DefaultStrategy (Chain of Density) as default
+    summarizer = SummarizationAgent(config, strategy=DefaultStrategy())
     verifier = VerifierAgent(config) if config.verifier_enabled else None
 
     store_path = output_dir / "chunks.db"
@@ -156,12 +157,14 @@ def run(
     typer.echo("Exporting results...")
 
     # Markdown Export
-    md_output = export_to_markdown(tree, store)
+    # Pass store explicitly
+    md_output = export_to_markdown(tree, store=store)
     (output_dir / "summary_all.md").write_text(md_output, encoding="utf-8")
 
     # Obsidian Canvas Export
     obs_exporter = ObsidianCanvasExporter(config)
-    obs_exporter.export(tree, output_dir / "summary_kj.canvas", store)
+    # Pass store explicitly
+    obs_exporter.export(tree, output_dir / "summary_kj.canvas", store=store)
 
     typer.echo(f"Done! Results saved in {output_dir}")
 
