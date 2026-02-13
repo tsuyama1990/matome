@@ -20,8 +20,10 @@ Matome 2.0 is a **"Semantic Zooming" engine**. It breaks down long documents (bo
 - **Obsidian Canvas Export:** Visualize your summary as an interactive node graph in Obsidian.
 - **Interactive Refinement:** Refine individual nodes using natural language instructions via CLI or GUI.
 - **Interactive GUI (New):** Explore and refine your knowledge graph in a web interface.
-  - **Navigate:** Filter nodes by DIKW level (Wisdom, Knowledge, Information).
-  - **Refine:** Select any node and rewrite it using natural language instructions.
+  - **Breadcrumb Navigation:** Drill down from Wisdom to Data.
+  - **Zoom In/Out:** Explore child nodes for detailed understanding.
+  - **View Source:** Trace any summary back to its original text chunks for verification.
+  - **Refine:** Select any summary node and rewrite it using natural language instructions.
 
 ## Requirements
 

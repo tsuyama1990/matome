@@ -57,6 +57,107 @@ class InteractiveRaptorEngine:
         """
         return self.store.get_nodes_by_level(level)
 
+    def get_children(self, node_id: str) -> list[SummaryNode | Chunk]:
+        """
+        Retrieve the immediate children of a node.
+
+        Args:
+            node_id: The ID of the parent node.
+
+        Returns:
+            List of child nodes (SummaryNode or Chunk).
+        """
+        node = self.store.get_node(node_id)
+        if not node or not isinstance(node, SummaryNode):
+            return []
+
+        # We rely on get_nodes to handle the batch retrieval efficiently
+        children_map = self.store.get_nodes(node.children_indices)
+
+        # Filter out None values and return list
+        # Note: The order of children_indices matters for reading, so we iterate through indices
+        children = []
+        for child_id in node.children_indices:
+            child = children_map.get(child_id)
+            if child:
+                children.append(child)
+        return children
+
+    def get_source_chunks(self, node_id: str) -> list[Chunk]:
+        """
+        Recursively retrieve all leaf chunks (DATA level) for a given node.
+        Uses iterative DFS with batch pre-fetching to optimize SQLite access.
+
+        Args:
+            node_id: The ID of the root node to traverse from.
+
+        Returns:
+            List of Chunk objects in reading order (DFS).
+        """
+        root = self.store.get_node(node_id)
+        if not root:
+            return []
+
+        if isinstance(root, Chunk):
+            return [root]
+
+        # Stack contains IDs to process, starting with children of root
+        stack: list[str | int] = list(root.children_indices)
+        stack.reverse()  # Reverse so we pop the first child first (DFS)
+
+        chunks: list[Chunk] = []
+        node_cache: dict[str | int, SummaryNode | Chunk] = {}
+
+        while stack:
+            self._prefetch_nodes(stack, node_cache)
+
+            # Now proceed with DFS
+            current_id = stack.pop()
+            node = self._resolve_node(current_id, node_cache)
+            if not node:
+                continue
+
+            if isinstance(node, Chunk):
+                chunks.append(node)
+            elif isinstance(node, SummaryNode):
+                # Push children to stack
+                children = list(node.children_indices)
+                children.reverse()
+                stack.extend(children)
+
+        return chunks
+
+    def _prefetch_nodes(
+        self,
+        stack: list[str | int],
+        node_cache: dict[str | int, SummaryNode | Chunk],
+    ) -> None:
+        """Prefetch nodes in the top of the stack into cache."""
+        BATCH_SIZE = 50
+        upcoming_ids = stack[-BATCH_SIZE:]
+        missing_ids = [nid for nid in upcoming_ids if nid not in node_cache]
+
+        if missing_ids:
+            fetched = self.store.get_nodes(missing_ids)
+            for nid, node in fetched.items():
+                if node:
+                    node_cache[nid] = node
+
+    def _resolve_node(
+        self,
+        node_id: str | int,
+        node_cache: dict[str | int, SummaryNode | Chunk],
+    ) -> SummaryNode | Chunk | None:
+        """Resolve node from cache or store, and clean up cache."""
+        node = node_cache.get(node_id)
+        if not node:
+            node = self.store.get_node(node_id)
+
+        # Clean up cache to save memory
+        node_cache.pop(node_id, None)
+
+        return node
+
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
         Refine a node based on user instruction.
