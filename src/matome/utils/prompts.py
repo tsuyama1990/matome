@@ -50,3 +50,38 @@ Return a valid JSON object with the following structure:
   ]
 }}
 """
+
+# Cycle 02: DIKW Prompt Templates
+
+WISDOM_TEMPLATE = """
+You are a philosopher. Read the text and output ONE sentence capturing the deepest truth or "One Big Idea".
+
+Distill it into a single, punchy aphorism (20-40 chars). Do not use specific names or dates.
+
+Text:
+{context}
+
+Output ONLY the aphorism.
+"""
+
+KNOWLEDGE_TEMPLATE = """
+You are a professor. Explain the mental models, frameworks, or causal relationships ('Why' and 'How') in the text.
+
+Structure the output as key concepts.
+
+Text:
+{context}
+
+Output the structured explanation.
+"""
+
+INFORMATION_TEMPLATE = """
+You are a tactical advisor. Extract actionable advice, checklists, or procedures ('What to do').
+
+Format as a markdown checklist (e.g., - [ ] Do X).
+
+Text:
+{context}
+
+Output the markdown checklist.
+"""

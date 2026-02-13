@@ -26,9 +26,9 @@ class DummyEmbedder(EmbeddingService):
             vec = [0.0] * self.dim
             # Create two distinct clusters in embedding space
             if i < len(chunk_list) // 2:
-                vec[0] = 1.0 + (i * 0.01) # Cluster A
+                vec[0] = 1.0 + (i * 0.01)  # Cluster A
             else:
-                vec[1] = 1.0 + (i * 0.01) # Cluster B
+                vec[1] = 1.0 + (i * 0.01)  # Cluster B
             c.embedding = vec
             yield c
 
@@ -66,7 +66,10 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
 
     # Mock Summarizer (Protocol)
     summarizer = create_autospec(Summarizer, instance=True)
-    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+
+    def summarize_side_effect(
+        text: str | list[str], context: dict[str, Any] | None = None
+    ) -> SummaryNode:
         if context is None:
             context = {}
         return SummaryNode(
@@ -74,8 +77,9 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
             text="Summary Text",
             level=context.get("level", 1),
             children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {})
+            metadata=context.get("metadata", {}),
         )
+
     summarizer.summarize.side_effect = summarize_side_effect
 
     # Dummy Embedder (Subclass)

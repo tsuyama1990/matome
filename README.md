@@ -10,10 +10,14 @@ Matome 2.0 is a **"Semantic Zooming" engine**. It breaks down long documents (bo
 
 ## Features
 
+- **Semantic Zooming (DIKW):** Generate summaries at different abstraction levels:
+  - **Wisdom (L1):** Profound, concise aphorisms.
+  - **Knowledge (L2):** Structural mental models and frameworks.
+  - **Information (L3):** Actionable checklists and procedures.
+  - **Data (L4):** Original text chunks.
 - **Hierarchical Summarization (RAPTOR):** Recursively summarizes text to build a tree of knowledge.
 - **Japanese Semantic Chunking:** Intelligent text splitting optimized for Japanese content.
 - **Obsidian Canvas Export:** Visualize your summary as an interactive node graph in Obsidian.
-- **Extensible Architecture:** Built with a modular Strategy Pattern to support future DIKW (Wisdom, Knowledge, Information) modes.
 
 ## Requirements
 
@@ -43,7 +47,22 @@ Run the summarization pipeline on a text file:
 uv run matome run data/sample.txt
 ```
 
+### DIKW Modes
+Select a specific mode to tailor the output:
+
+```bash
+# Generate profound insights (Wisdom)
+uv run matome run data/sample.txt --mode wisdom
+
+# Extract structural frameworks (Knowledge)
+uv run matome run data/sample.txt --mode knowledge
+
+# Create actionable checklists (Information)
+uv run matome run data/sample.txt --mode information
+```
+
 ### Options
+- `--mode`: Summarization mode: `wisdom`, `knowledge`, `information`, `data` (default).
 - `--output-dir`, `-o`: Directory to save results (default: `results`).
 - `--model`, `-m`: Summarization model (default: `openai/gpt-4o-mini`).
 - `--verify/--no-verify`: Enable/Disable verification (default: Enabled).
@@ -69,8 +88,8 @@ src/
 
 ## Roadmap
 
-- **Cycle 01 (Current):** Core Refactoring & Strategy Pattern.
-- **Cycle 02:** DIKW Engine (Wisdom/Knowledge/Information modes).
+- **Cycle 01:** Core Refactoring & Strategy Pattern.
+- **Cycle 02 (Current):** DIKW Engine (Wisdom/Knowledge/Information modes).
 - **Cycle 03:** Interactive Backend (Single-node refinement).
 - **Cycle 04:** GUI Foundation (MVVM with Panel).
 - **Cycle 05:** Full Semantic Zooming.

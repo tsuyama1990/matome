@@ -29,7 +29,7 @@ def uat_tree() -> DocumentTree:
         text="Root Summary",
         level=2,
         children_indices=["summary_a", "summary_b"],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE),
     )
 
     return DocumentTree(
@@ -61,24 +61,17 @@ def test_scenario_14_canvas_generation(uat_tree: DocumentTree, tmp_path: Path) -
         text="Summary A",
         level=1,
         children_indices=[1, 2],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION),
     )
     node_b = SummaryNode(
         id="summary_b",
         text="Summary B",
         level=1,
         children_indices=[3],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION),
     )
 
-    node_map = {
-        "root": root,
-        "summary_a": node_a,
-        "summary_b": node_b,
-        1: c1,
-        2: c2,
-        3: c3
-    }
+    node_map = {"root": root, "summary_a": node_a, "summary_b": node_b, 1: c1, 2: c2, 3: c3}
 
     store.get_node.side_effect = node_map.get
 
@@ -122,25 +115,18 @@ def test_scenario_15_visual_hierarchy(uat_tree: DocumentTree) -> None:
         text="Summary A",
         level=1,
         children_indices=[1, 2],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION),
     )
     node_b = SummaryNode(
         id="summary_b",
         text="Summary B",
         level=1,
         children_indices=[3],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION),
     )
     root = uat_tree.root_node
 
-    node_map = {
-        "root": root,
-        "summary_a": node_a,
-        "summary_b": node_b,
-        1: c1,
-        2: c2,
-        3: c3
-    }
+    node_map = {"root": root, "summary_a": node_a, "summary_b": node_b, 1: c1, 2: c2, 3: c3}
 
     store.get_node.side_effect = node_map.get
 

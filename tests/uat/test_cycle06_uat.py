@@ -38,9 +38,7 @@ def test_scenario_16_hallucination_detection(uat_config: ProcessingConfig) -> No
     """
     # Arrange
     mock_llm = MagicMock()
-    mock_llm.invoke.return_value = AIMessage(
-        content=MOCK_HALLUCINATION_RESPONSE
-    )
+    mock_llm.invoke.return_value = AIMessage(content=MOCK_HALLUCINATION_RESPONSE)
 
     agent = VerifierAgent(uat_config, llm=mock_llm)
     summary = "There are 5 planets."

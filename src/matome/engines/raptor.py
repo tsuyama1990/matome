@@ -132,9 +132,7 @@ class RaptorEngine:
             # Capture L0 IDs for later reconstruction
             l0_ids = list(current_level_ids)
 
-            current_level_ids = self._process_recursion(
-                clusters, current_level_ids, active_store
-            )
+            current_level_ids = self._process_recursion(clusters, current_level_ids, active_store)
 
             return self._finalize_tree(current_level_ids, active_store, l0_ids)
 
@@ -207,6 +205,7 @@ class RaptorEngine:
         """
         Perform embedding and clustering for the next level (summaries).
         """
+
         def lx_embedding_generator() -> Iterator[list[float]]:
             # Generator that yields (id, text) tuples
             def node_text_generator() -> Iterator[tuple[NodeID, str]]:
@@ -288,10 +287,7 @@ class RaptorEngine:
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata=NodeMetadata(
-                    dikw_level=DIKWLevel.DATA,
-                    type="single_chunk_root"
-                ),
+                metadata=NodeMetadata(dikw_level=DIKWLevel.DATA, type="single_chunk_root"),
             )
             # We must persist this virtual root if we want exporters to find it?
             # Or just return it in memory.
@@ -346,10 +342,7 @@ class RaptorEngine:
                 "id": node_id_str,
                 "level": level,
                 "children_indices": children_indices,
-                "metadata": {
-                    "cluster_id": cluster.id,
-                    "dikw_level": DIKWLevel.INFORMATION
-                },
+                "metadata": {"cluster_id": cluster.id},
             }
 
             summary_node = self.summarizer.summarize(cluster_texts, context=context)

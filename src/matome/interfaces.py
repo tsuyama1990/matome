@@ -70,9 +70,7 @@ class PromptStrategy(Protocol):
     Implementations must define how to construct prompts and parse responses.
     """
 
-    def format_prompt(
-        self, text: str | list[str], context: dict[str, Any] | None = None
-    ) -> str:
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
         """
         Constructs the prompt string from the input text and optional context.
         """
@@ -116,6 +114,7 @@ class Embedder(Protocol):
     """
     Protocol for embedding services.
     """
+
     def embed_strings(self, texts: Iterable[str]) -> Iterator[list[float]]:
         """Embed a stream of strings."""
         ...

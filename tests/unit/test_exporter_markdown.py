@@ -21,7 +21,7 @@ def test_export_to_markdown() -> None:
         text="Summary L1 text",
         level=1,
         children_indices=[0, 1],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION),
     )
 
     root = SummaryNode(
@@ -29,15 +29,10 @@ def test_export_to_markdown() -> None:
         text="Root text",
         level=2,
         children_indices=["s1"],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE),
     )
 
-    tree = DocumentTree(
-        root_node=root,
-        leaf_chunk_ids=[0, 1],
-        metadata={},
-        all_nodes=None
-    )
+    tree = DocumentTree(root_node=root, leaf_chunk_ids=[0, 1], metadata={}, all_nodes=None)
 
     # Mock store
     store = MagicMock()

@@ -101,10 +101,7 @@ class SummarizationAgent:
                 if "metadata" not in ctx:
                     ctx["metadata"] = default_meta
 
-                return SummaryNode(
-                    text="",
-                    **ctx
-                )
+                return SummaryNode(text="", **ctx)
             return SummaryNode(
                 id=str(uuid.uuid4()),
                 text="",
@@ -114,9 +111,7 @@ class SummarizationAgent:
             )
 
         # Validate input for security
-        self._validate_input(
-            text_str, self.config.max_input_length, self.config.max_word_length
-        )
+        self._validate_input(text_str, self.config.max_input_length, self.config.max_word_length)
 
         # Sanitize prompt injection
         if isinstance(text, list):
@@ -149,9 +144,7 @@ class SummarizationAgent:
             return self._create_summary_node(response_content, context, active_strategy)
 
         except Exception as e:
-            logger.exception(
-                f"[{request_id}] Summarization failed for text length {len(text_str)}"
-            )
+            logger.exception(f"[{request_id}] Summarization failed for text length {len(text_str)}")
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 
@@ -205,13 +198,13 @@ class SummarizationAgent:
 
         # Ensure metadata exists as NodeMetadata object before merging context
         if "metadata" not in parsed_data:
-             parsed_data["metadata"] = NodeMetadata(dikw_level=DIKWLevel.DATA)
+            parsed_data["metadata"] = NodeMetadata(dikw_level=DIKWLevel.DATA)
         elif isinstance(parsed_data["metadata"], dict):
-             # Try to upgrade dict to NodeMetadata if it has dikw_level, else default
-             meta_dict = parsed_data["metadata"]
-             if "dikw_level" not in meta_dict:
-                 meta_dict["dikw_level"] = DIKWLevel.DATA
-             parsed_data["metadata"] = NodeMetadata(**meta_dict)
+            # Try to upgrade dict to NodeMetadata if it has dikw_level, else default
+            meta_dict = parsed_data["metadata"]
+            if "dikw_level" not in meta_dict:
+                meta_dict["dikw_level"] = DIKWLevel.DATA
+            parsed_data["metadata"] = NodeMetadata(**meta_dict)
 
         # Smart Merge of Context
         if context:
@@ -232,9 +225,7 @@ class SummarizationAgent:
 
         return SummaryNode(**parsed_data)
 
-    def _validate_input(
-        self, text: str, max_input_length: int, max_word_length: int
-    ) -> None:
+    def _validate_input(self, text: str, max_input_length: int, max_word_length: int) -> None:
         """
         Sanitize and validate input text.
         """
@@ -328,7 +319,5 @@ class SummarizationAgent:
             logger.warning(f"[{request_id}] Received list content from LLM: {content}")
             return " ".join([str(c) for c in content])
 
-        logger.warning(
-            f"[{request_id}] Received unexpected content type from LLM: {type(content)}"
-        )
+        logger.warning(f"[{request_id}] Received unexpected content type from LLM: {type(content)}")
         return str(content)

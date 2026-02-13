@@ -42,7 +42,7 @@ def test_summary_node_validation() -> None:
         text="Summary of text",
         level=1,
         children_indices=[0, 1],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
     )
     assert node.level == 1
     assert node.children_indices == [0, 1]
@@ -55,18 +55,18 @@ def test_summary_node_validation() -> None:
             text="Summary",
             level=0,  # Should be >= 1
             children_indices=[0],
-            metadata=NodeMetadata(dikw_level=DIKWLevel.DATA)
+            metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
         )
 
-    # Invalid case: missing dikw_level in dict
-    with pytest.raises(ValidationError):
-        SummaryNode(
-            id="node2",
-            text="Summary",
-            level=1,
-            children_indices=[0],
-            metadata={} # Missing dikw_level
-        )
+    # Valid case: missing dikw_level in dict (defaults to DATA)
+    node2 = SummaryNode(
+        id="node2",
+        text="Summary",
+        level=1,
+        children_indices=[0],
+        metadata={},  # Missing dikw_level, should default
+    )
+    assert node2.metadata.dikw_level == DIKWLevel.DATA
 
 
 def test_cluster_validation() -> None:
@@ -91,7 +91,7 @@ def test_document_tree_validation() -> None:
         text="AB",
         level=1,
         children_indices=[0, 1],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION),
     )
 
     # Valid DocumentTree

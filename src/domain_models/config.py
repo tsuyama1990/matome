@@ -27,6 +27,7 @@ class ProcessingMode(StrEnum):
     """
     Processing mode for the pipeline.
     """
+
     DEFAULT = "default"
     DIKW = "dikw"
 

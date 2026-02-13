@@ -86,7 +86,9 @@ def test_full_pipeline_flow() -> None:
         mock_llm_instance.invoke.return_value = mock_response
 
         # Use dependency injection
-        summarizer = SummarizationAgent(config, strategy=BaseSummaryStrategy(), llm=mock_llm_instance)
+        summarizer = SummarizationAgent(
+            config, strategy=BaseSummaryStrategy(), llm=mock_llm_instance
+        )
 
         # Act & Assert (Logic same as before, but with deterministic RNG)
         chunks = list(chunker.split_text(text, config))
@@ -111,7 +113,9 @@ def test_full_pipeline_flow() -> None:
             cluster_text_parts.append(chunks_with_embeddings[int(idx)].text)
 
         cluster_text = " ".join(cluster_text_parts)
-        summary_node = summarizer.summarize(cluster_text, context={"id": "test", "level": 1, "children_indices": []})
+        summary_node = summarizer.summarize(
+            cluster_text, context={"id": "test", "level": 1, "children_indices": []}
+        )
         assert summary_node.text == "Summary of the cluster."
 
 
