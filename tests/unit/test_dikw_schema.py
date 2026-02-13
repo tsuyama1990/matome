@@ -30,6 +30,9 @@ def test_node_metadata_custom_values() -> None:
 
 
 def test_node_metadata_extra_fields() -> None:
-    """Test that NodeMetadata allows extra fields."""
-    meta = NodeMetadata(extra_field="value")
-    assert meta.extra_field == "value"  # type: ignore[attr-defined]
+    """Test that NodeMetadata forbids extra fields."""
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        NodeMetadata(extra_field="value")  # type: ignore[call-arg]

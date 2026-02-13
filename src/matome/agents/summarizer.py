@@ -288,7 +288,16 @@ class SummarizationAgent:
 
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
-        Basic mitigation for Prompt Injection using case folding.
+        Basic mitigation for Prompt Injection using pattern matching.
+
+        This implementation uses regular expressions to detect and redact known
+        prompt injection patterns (e.g., "ignore previous instructions").
+        While not foolproof against sophisticated adversarial attacks, it provides
+        a baseline level of defense against common injection attempts.
+
+        Future improvements could include:
+        - Integrating a dedicated security model (e.g., Llama Guard).
+        - Using an external sanitization library.
         """
         # 1. Normalize text first (NFKC)
         normalized_text = unicodedata.normalize("NFKC", text)
@@ -296,6 +305,7 @@ class SummarizationAgent:
         sanitized = normalized_text
         for pattern in PROMPT_INJECTION_PATTERNS:
             # We use re.sub for flexible matching with IGNORECASE which handles case folding.
+            # The patterns in PROMPT_INJECTION_PATTERNS are assumed to be raw regex strings.
             sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
 
         return sanitized

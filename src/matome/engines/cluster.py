@@ -30,13 +30,13 @@ class GMMClusterer:
     """
 
     def cluster_nodes(
-        self, embeddings: Iterable[list[float]], config: ProcessingConfig
+        self, embeddings: Iterable[list[float]] | Iterable[list[list[float]]], config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Clusters the nodes based on their embeddings.
 
         Args:
-            embeddings: An iterable of vectors (list of floats).
+            embeddings: An iterable of vectors (list of floats) OR an iterable of batches (list of list of floats).
             config: Processing configuration.
 
         Returns:
@@ -84,7 +84,10 @@ class GMMClusterer:
                     path_obj.unlink()
 
     def _stream_write_embeddings(
-        self, embeddings: Iterable[list[float]], path_obj: Path, batch_size: int
+        self,
+        embeddings: Iterable[list[float]] | Iterable[list[list[float]]],
+        path_obj: Path,
+        batch_size: int,
     ) -> tuple[int, int]:
         """
         Stream embeddings to disk in batches.
@@ -94,7 +97,7 @@ class GMMClusterer:
         Optimized to write using a configurable buffer to avoid I/O bottlenecks.
 
         Args:
-            embeddings: Iterable of embedding vectors.
+            embeddings: Iterable of embedding vectors (or batches of them).
             path_obj: Path object to write the embeddings to.
             batch_size: Number of embeddings to process at once.
 
@@ -110,23 +113,31 @@ class GMMClusterer:
         buffer_size = batch_size
 
         with path_obj.open("wb") as f:
-            for i, vec in enumerate(embeddings):
-                if n_samples == 0 and len(buffer) == 0:
-                    dim = len(vec)
-                    if dim == 0:
-                        msg = "Embedding dimension cannot be zero."
+            for item in embeddings:
+                # Normalize to list of vectors (batch)
+                batch: list[list[float]] = []
+                if isinstance(item, list) and item and isinstance(item[0], list):
+                    batch = item  # type: ignore
+                else:
+                    batch = [item]  # type: ignore # Treat single vector as batch of 1
+
+                for vec in batch:
+                    if n_samples == 0 and len(buffer) == 0:
+                        dim = len(vec)
+                        if dim == 0:
+                            msg = "Embedding dimension cannot be zero."
+                            raise ValueError(msg)
+
+                    if len(vec) != dim:
+                        msg = f"Embedding dimension mismatch. Expected {dim}, got {len(vec)}."
                         raise ValueError(msg)
 
-                if len(vec) != dim:
-                    msg = f"Embedding dimension mismatch at index {i}."
-                    raise ValueError(msg)
+                    buffer.append(vec)
 
-                buffer.append(vec)
-
-                if len(buffer) >= buffer_size:
-                    self._flush_buffer(f, buffer)
-                    n_samples += len(buffer)
-                    buffer.clear()
+                    if len(buffer) >= buffer_size:
+                        self._flush_buffer(f, buffer)
+                        n_samples += len(buffer)
+                        buffer.clear()
 
             # Final flush
             if buffer:
