@@ -72,6 +72,15 @@ class InteractiveRaptorEngine:
     def _get_refinement_strategy(self, current_level: DIKWLevel) -> RefinementStrategy:
         """
         Helper to determine the base strategy and wrap it in RefinementStrategy.
+
+        This method maps the DIKW level of a node to its corresponding PromptStrategy.
+        - Wisdom -> WisdomStrategy
+        - Knowledge -> KnowledgeStrategy
+        - Information -> InformationStrategy
+        - Data/Other -> BaseSummaryStrategy
+
+        The resulting strategy is then wrapped in RefinementStrategy to allow for
+        user instruction injection.
         """
         base_strategy: PromptStrategy
 
@@ -82,6 +91,11 @@ class InteractiveRaptorEngine:
         elif current_level == DIKWLevel.INFORMATION:
             base_strategy = InformationStrategy()
         else:
+            # Fallback for DATA or unknown levels
+            if current_level != DIKWLevel.DATA:
+                logger.warning(
+                    f"Unknown or unexpected DIKW level '{current_level}'. Falling back to BaseSummaryStrategy."
+                )
             base_strategy = BaseSummaryStrategy()
 
         return RefinementStrategy(base_strategy)
@@ -101,9 +115,14 @@ class InteractiveRaptorEngine:
             The newly generated SummaryNode.
 
         Raises:
-            ValueError: If the node with `node_id` is not found or `model_dump()` fails.
+            ValueError: If the node with `node_id` is not found, `instruction` is empty, or `model_dump()` fails.
             TypeError: If the node is a Chunk (cannot be refined).
         """
+        if not instruction or not instruction.strip():
+            msg = "Refinement instruction cannot be empty."
+            logger.error(msg)
+            raise ValueError(msg)
+
         node = self.get_node(node_id)
         if not node:
             msg = f"Node {node_id} not found."
@@ -123,7 +142,9 @@ class InteractiveRaptorEngine:
                 children_texts.append(child.text)
 
         if not children_texts:
-            logger.warning(f"Node {node_id} has no accessible children. Refining text itself.")
+            logger.warning(
+                f"Node {node_id} has no accessible children. Refining using the node's own text as context."
+            )
             children_texts = [node.text]
 
         # Prepare context for summarization
