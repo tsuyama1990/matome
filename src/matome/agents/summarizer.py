@@ -274,7 +274,7 @@ class SummarizationAgent:
             raise ValueError(msg)
 
         # 2. Control Character Check (Unicode)
-        # Allowed whitespace
+        # Allowed whitespace and typical formatting characters
         allowed_controls = {"\n", "\t", "\r"}
 
         for char in normalized_text:
@@ -282,7 +282,9 @@ class SummarizationAgent:
             # Check for control categories: Cc (Control), Cf (Format), Co (Private Use), Cn (Not Assigned)
             # Cs (Surrogate) - Python strings usually don't have Cs if valid unicode, but good to check.
             # Emojis are typically So (Symbol, Other), which is fine.
-            if category in ("Cc", "Cf", "Co", "Cn") and char not in allowed_controls:
+            if category in ("Cc", "Co", "Cn") and char not in allowed_controls:
+                # We strictly disallow Cc (Control) except whitespace.
+                # We allow Cf (Format) because it includes ZWJ/ZWNJ often used in emojis and text layout.
                 msg = f"Input text contains invalid control character: {char!r} (U+{ord(char):04X})"
                 raise ValueError(msg)
 

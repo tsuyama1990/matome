@@ -334,43 +334,9 @@ class RaptorEngine:
         Process clusters to generate summaries (streaming).
         """
         for cluster in clusters:
-            children_indices: list[NodeID] = []
-            cluster_texts: list[str] = []
-
-            # Gather valid node IDs first
-            valid_node_ids: list[NodeID] = []
-            for idx_raw in cluster.node_indices:
-                idx = int(idx_raw)
-                if idx < 0 or idx >= len(current_level_ids):
-                    logger.warning(f"Cluster index {idx} out of bounds for current level nodes.")
-                    continue
-                valid_node_ids.append(current_level_ids[idx])
-
-            if not valid_node_ids:
-                logger.warning(f"Cluster {cluster.id} has no valid node indices.")
-                continue
-
-            # Batch retrieve nodes
-            nodes_map = store.get_nodes(valid_node_ids)
-
-            for node_id in valid_node_ids:
-                node = nodes_map.get(node_id)
-                # Fallback check for int/str key mismatch
-                if not node and isinstance(node_id, (int, str)):
-                    alt_key: int | str | None = None
-                    if isinstance(node_id, int):
-                        alt_key = str(node_id)
-                    elif isinstance(node_id, str) and node_id.isdigit():
-                        alt_key = int(node_id)
-
-                    if alt_key is not None and alt_key in nodes_map:
-                        node = nodes_map[alt_key]
-
-                if not node:
-                    continue
-
-                children_indices.append(node_id)
-                cluster_texts.append(node.text)
+            children_indices, cluster_texts = self._gather_cluster_data(
+                cluster, current_level_ids, store
+            )
 
             if not cluster_texts:
                 logger.warning(f"Cluster {cluster.id} has no valid nodes to summarize.")
@@ -389,3 +355,50 @@ class RaptorEngine:
             summary_node = self.summarizer.summarize(cluster_texts, context=context)
 
             yield summary_node
+
+    def _gather_cluster_data(
+        self,
+        cluster: Cluster,
+        current_level_ids: list[NodeID],
+        store: DiskChunkStore,
+    ) -> tuple[list[NodeID], list[str]]:
+        """Retrieve node IDs and texts for a cluster."""
+        children_indices: list[NodeID] = []
+        cluster_texts: list[str] = []
+
+        # Gather valid node IDs first
+        valid_node_ids: list[NodeID] = []
+        for idx_raw in cluster.node_indices:
+            idx = int(idx_raw)
+            if idx < 0 or idx >= len(current_level_ids):
+                logger.warning(f"Cluster index {idx} out of bounds for current level nodes.")
+                continue
+            valid_node_ids.append(current_level_ids[idx])
+
+        if not valid_node_ids:
+            logger.warning(f"Cluster {cluster.id} has no valid node indices.")
+            return [], []
+
+        # Batch retrieve nodes
+        nodes_map = store.get_nodes(valid_node_ids)
+
+        for node_id in valid_node_ids:
+            node = nodes_map.get(node_id)
+            # Fallback check for int/str key mismatch
+            if not node and isinstance(node_id, (int, str)):
+                alt_key: int | str | None = None
+                if isinstance(node_id, int):
+                    alt_key = str(node_id)
+                elif isinstance(node_id, str) and node_id.isdigit():
+                    alt_key = int(node_id)
+
+                if alt_key is not None and alt_key in nodes_map:
+                    node = nodes_map[alt_key]
+
+            if not node:
+                continue
+
+            children_indices.append(node_id)
+            cluster_texts.append(node.text)
+
+        return children_indices, cluster_texts

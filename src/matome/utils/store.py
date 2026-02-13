@@ -7,17 +7,17 @@ import tempfile
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 
+from domain_models.constants import (
+    COL_CONTENT,
+    COL_EMBEDDING,
+    COL_ID,
+    COL_TYPE,
+    TABLE_NODES,
+)
 from domain_models.manifest import Chunk, SummaryNode
 from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
-
-# Constants for DB Schema
-TABLE_NODES = "nodes"
-COL_ID = "id"
-COL_TYPE = "type"
-COL_CONTENT = "content"  # Stores JSON of the node (excluding embedding)
-COL_EMBEDDING = "embedding"  # Stores JSON of the embedding list
 
 
 @contextlib.contextmanager
