@@ -80,7 +80,7 @@ def test_scenario_14_canvas_generation(uat_tree: DocumentTree, tmp_path: Path) -
         3: c3
     }
 
-    store.get_node.side_effect = lambda idx: node_map.get(idx)
+    store.get_node.side_effect = node_map.get
 
     exporter.export(uat_tree, output_path, store=store)
 
@@ -142,7 +142,7 @@ def test_scenario_15_visual_hierarchy(uat_tree: DocumentTree) -> None:
         3: c3
     }
 
-    store.get_node.side_effect = lambda idx: node_map.get(idx)
+    store.get_node.side_effect = node_map.get
 
     canvas = exporter.generate_canvas_data(uat_tree, store=store)
 

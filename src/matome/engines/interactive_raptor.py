@@ -22,15 +22,39 @@ class InteractiveRaptorEngine:
     """
 
     def __init__(self, store: DiskChunkStore, agent: SummarizationAgent) -> None:
+        """
+        Initialize the interactive engine.
+
+        Args:
+            store: The disk-based store containing chunks and summary nodes.
+            agent: The summarization agent to use for refinement.
+        """
         self.store = store
         self.agent = agent
 
     def get_node(self, node_id: str | int) -> SummaryNode | Chunk | None:
-        """Get a node from the store."""
+        """
+        Get a node from the store by ID.
+
+        Args:
+            node_id: The ID of the node (int for Chunk, str for SummaryNode).
+
+        Returns:
+            The node object if found, otherwise None.
+        """
         return self.store.get_node(node_id)
 
     def get_children(self, node_id: str) -> list[SummaryNode | Chunk]:
-        """Get children of a specific node."""
+        """
+        Get children of a specific summary node.
+
+        Args:
+            node_id: The ID of the parent summary node.
+
+        Returns:
+            A list of child nodes (SummaryNode or Chunk).
+            Returns an empty list if the parent node is not found or is a Chunk.
+        """
         node = self.get_node(node_id)
         if not node or not isinstance(node, SummaryNode):
             return []
@@ -44,8 +68,21 @@ class InteractiveRaptorEngine:
 
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
-        Refine a node with user instruction.
-        Re-summarizes the node's children using the appropriate strategy and the user's instruction.
+        Refine a summary node with a user instruction.
+
+        Re-summarizes the node's children using the appropriate strategy (based on DIKW level)
+        and the provided user instruction. The updated node is saved back to the store.
+
+        Args:
+            node_id: The ID of the node to refine.
+            instruction: The user's refinement instruction (e.g., "Make it simpler").
+
+        Returns:
+            The newly generated SummaryNode.
+
+        Raises:
+            ValueError: If the node with `node_id` is not found.
+            TypeError: If the node is a Chunk (cannot be refined).
         """
         node = self.get_node(node_id)
         if not node:

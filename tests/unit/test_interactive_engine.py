@@ -9,35 +9,40 @@ from matome.strategies import WisdomStrategy
 
 
 @pytest.fixture
-def mock_store():
+def mock_store() -> MagicMock:
     return MagicMock()
 
-@pytest.fixture
-def mock_agent():
-    return MagicMock()
 
 @pytest.fixture
-def engine(mock_store, mock_agent):
+def mock_agent() -> MagicMock:
+    return MagicMock()
+
+
+@pytest.fixture
+def engine(mock_store: MagicMock, mock_agent: MagicMock) -> InteractiveRaptorEngine:
     return InteractiveRaptorEngine(mock_store, mock_agent)
 
-def test_get_children(engine, mock_store):
+
+def test_get_children(
+    engine: InteractiveRaptorEngine, mock_store: MagicMock
+) -> None:
     parent = SummaryNode(
         id="p1",
         text="Parent",
         level=2,
         children_indices=["c1", 0],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE),
     )
     c1 = SummaryNode(
         id="c1",
         text="Child 1",
         level=1,
         children_indices=[],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION),
     )
     c2 = Chunk(index=0, text="Chunk 0", start_char_idx=0, end_char_idx=5)
 
-    def get_node_side_effect(nid):
+    def get_node_side_effect(nid: int | str) -> Chunk | SummaryNode | None:
         if nid == "p1":
             return parent
         if nid == "c1":
@@ -50,20 +55,23 @@ def test_get_children(engine, mock_store):
 
     children = engine.get_children("p1")
     assert len(children) == 2
-    assert children[0].id == "c1"
-    assert children[1].index == 0
+    assert children[0].id == "c1"  # type: ignore[attr-defined]
+    assert children[1].index == 0  # type: ignore[attr-defined]
 
-def test_refine_node(engine, mock_store, mock_agent):
+
+def test_refine_node(
+    engine: InteractiveRaptorEngine, mock_store: MagicMock, mock_agent: MagicMock
+) -> None:
     node = SummaryNode(
         id="n1",
         text="Original",
         level=1,
         children_indices=[0],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM),
     )
     child = Chunk(index=0, text="Source text", start_char_idx=0, end_char_idx=10)
 
-    def get_node_side_effect(nid):
+    def get_node_side_effect(nid: int | str) -> Chunk | SummaryNode | None:
         if nid == "n1":
             return node
         if nid == 0:
@@ -81,8 +89,8 @@ def test_refine_node(engine, mock_store, mock_agent):
         metadata=NodeMetadata(
             dikw_level=DIKWLevel.WISDOM,
             is_user_edited=True,
-            refinement_history=["Make it wiser"]
-        )
+            refinement_history=["Make it wiser"],
+        ),
     )
     mock_agent.summarize.return_value = new_node
 
