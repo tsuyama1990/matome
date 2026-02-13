@@ -97,12 +97,6 @@ class InteractiveRaptorEngine:
         # Wrap with RefinementStrategy
         refinement_strategy = RefinementStrategy(base_strategy)
 
-        # Create a temporary agent with the refinement strategy to avoid mutating the shared agent
-        # (This achieves "Strategy Swap" in a thread-safe manner)
-        temp_agent = SummarizationAgent(self.agent.config, strategy=refinement_strategy)
-        # Reuse the underlying LLM client
-        temp_agent.llm = self.agent.llm
-
         # Prepare context
         context = {
             "id": node.id,
@@ -113,9 +107,11 @@ class InteractiveRaptorEngine:
             "metadata": node.metadata.model_dump(),
         }
 
-        # Call agent to generate new summary
+        # Call agent to generate new summary using the refinement strategy override
         # We pass the OLD text as input to be rewritten
-        new_node = temp_agent.summarize(text=node.text, context=context)
+        new_node = self.agent.summarize(
+            text=node.text, context=context, strategy=refinement_strategy
+        )
 
         # Update metadata
         new_node.metadata.is_user_edited = True

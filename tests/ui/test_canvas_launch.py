@@ -1,11 +1,13 @@
-import pytest
 from unittest.mock import MagicMock
-import panel as pn
+
+import pytest
+
+from domain_models.data_schema import NodeMetadata
+from domain_models.manifest import SummaryNode
+from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.ui.canvas import MatomeCanvas
 from matome.ui.session import InteractiveSession
-from matome.engines.interactive_raptor import InteractiveRaptorEngine
-from domain_models.manifest import SummaryNode
-from domain_models.data_schema import NodeMetadata
+
 
 @pytest.fixture
 def mock_session() -> InteractiveSession:

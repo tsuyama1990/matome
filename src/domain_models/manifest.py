@@ -103,9 +103,11 @@ class SummaryNode(BaseModel):
         if isinstance(data, dict):
             meta = data.get("metadata")
             if isinstance(meta, dict):
-                # If we are loading from a dict that doesn't have 'dikw_level',
-                # we might need to handle it or let Pydantic validation handle it.
-                pass
+                # Filter out unknown fields to satisfy extra="forbid" in NodeMetadata
+                # This ensures backward compatibility with legacy data containing deprecated fields.
+                allowed_fields = NodeMetadata.model_fields.keys()
+                filtered_meta = {k: v for k, v in meta.items() if k in allowed_fields}
+                data["metadata"] = filtered_meta
         return data
 
 

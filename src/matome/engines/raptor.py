@@ -152,47 +152,76 @@ class RaptorEngine:
             if node_count <= 1:
                 break
 
-            # Force reduction if clustering returns same number of clusters as nodes
-            if len(clusters) == node_count and node_count > 1:
-                logger.warning(
-                    f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
-                )
-                if node_count < 20:
-                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
-                else:
-                    logger.error("Could not reduce nodes. Stopping recursion.")
-                    break
+            # Check for convergence or failure to reduce
+            clusters = self._check_reduction_and_force_if_needed(clusters, node_count, level)
+            if not clusters:
+                break
 
             logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
-            # Summarization
+            # Summarization Step (Level N -> Level N+1)
             level += 1
-            new_nodes_iter = self._summarize_clusters(clusters, current_level_ids, store, level)
+            current_level_ids = self._process_summarization_step(
+                clusters, current_level_ids, store, level
+            )
 
-            current_level_ids = []
-
-            # Process summary nodes in batches
-            summary_buffer: list[SummaryNode] = []
-            BATCH_SIZE = self.config.chunk_buffer_size
-
-            for node in new_nodes_iter:
-                current_level_ids.append(node.id)
-                summary_buffer.append(node)
-
-                if len(summary_buffer) >= BATCH_SIZE:
-                    store.add_summaries(summary_buffer)
-                    summary_buffer.clear()
-
-            if summary_buffer:
-                store.add_summaries(summary_buffer)
-
+            # Prepare for next iteration
             if len(current_level_ids) > 1:
-                # Embed and Cluster for next level
                 clusters = self._embed_and_cluster_next_level(current_level_ids, store)
             else:
                 clusters = []
 
         return current_level_ids
+
+    def _check_reduction_and_force_if_needed(
+        self, clusters: list[Cluster], node_count: int, level: int
+    ) -> list[Cluster]:
+        """
+        Ensure that clustering is actually reducing the node count.
+        If not, force reduction for small sets or stop recursion.
+        """
+        if len(clusters) == node_count and node_count > 1:
+            logger.warning(
+                f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
+            )
+            # If small enough, just collapse everything into one root
+            if node_count < 20:
+                return [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+
+            logger.error("Could not reduce nodes. Stopping recursion.")
+            return []
+        return clusters
+
+    def _process_summarization_step(
+        self,
+        clusters: list[Cluster],
+        previous_level_ids: list[NodeID],
+        store: DiskChunkStore,
+        level: int,
+    ) -> list[NodeID]:
+        """
+        Perform the summarization for a single level and persist results.
+        Returns the list of new summary node IDs.
+        """
+        new_nodes_iter = self._summarize_clusters(clusters, previous_level_ids, store, level)
+        new_level_ids: list[NodeID] = []
+
+        # Process summary nodes in batches
+        summary_buffer: list[SummaryNode] = []
+        BATCH_SIZE = self.config.chunk_buffer_size
+
+        for node in new_nodes_iter:
+            new_level_ids.append(node.id)
+            summary_buffer.append(node)
+
+            if len(summary_buffer) >= BATCH_SIZE:
+                store.add_summaries(summary_buffer)
+                summary_buffer.clear()
+
+        if summary_buffer:
+            store.add_summaries(summary_buffer)
+
+        return new_level_ids
 
     def _yield_node_texts(
         self, node_ids: list[NodeID], store: DiskChunkStore
