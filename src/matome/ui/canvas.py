@@ -3,7 +3,7 @@ from typing import Any
 import panel as pn
 import param
 
-from domain_models.manifest import SummaryNode, Chunk
+from domain_models.manifest import Chunk, SummaryNode
 from matome.ui.session import InteractiveSession
 
 # Initialize panel extension
@@ -149,7 +149,7 @@ class MatomeCanvas(param.Parameterized):  # type: ignore[misc]
             btn.on_click(jump)
             buttons.append(btn)
 
-        return pn.Row(*buttons, sizing_mode="stretch_width") # type: ignore[no-untyped-call]
+        return pn.Row(*buttons, sizing_mode="stretch_width")
 
     def _render_detail_view(self, node: SummaryNode | Chunk | None) -> pn.viewable.Viewable:
         """Render the details of the selected node."""
@@ -196,7 +196,7 @@ class MatomeCanvas(param.Parameterized):  # type: ignore[misc]
             pn.pane.Markdown(  # type: ignore[no-untyped-call]
                 f"**Level**: {getattr(node, 'level', 'N/A')} | **DIKW**: {getattr(node.metadata, 'dikw_level', 'N/A') if hasattr(node, 'metadata') else 'DATA'}"
             ),
-            pn.Row(*buttons), # type: ignore[no-untyped-call]
+            pn.Row(*buttons),
             pn.pane.Markdown("### Content"),  # type: ignore[no-untyped-call]
             pn.pane.Markdown(  # type: ignore[no-untyped-call]
                 node.text,

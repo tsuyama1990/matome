@@ -1,4 +1,5 @@
 import typing
+from collections.abc import Sequence
 
 import param
 
@@ -56,7 +57,7 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
         """Fetch nodes for the selected level or context."""
         self.status_message = "Loading nodes..."
         try:
-            nodes: list[SummaryNode | Chunk]
+            nodes: Sequence[SummaryNode | Chunk]
             if self.view_context:
                 # Zoomed in: Fetch children of current context
                 nodes = self.engine.get_children(self.view_context.id)
@@ -64,10 +65,13 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
             else:
                 # Root view: Fetch by level
                 # get_nodes_by_level returns list[SummaryNode]
+                # Cast to Sequence for covariance if needed, but simple assignment is fine
+                # if typing is relaxed or precise.
                 nodes = self.engine.get_nodes_by_level(self.current_level)
                 self.status_message = f"Loaded {len(nodes)} {self.current_level} nodes."
 
-            self.available_nodes = nodes
+            # param.List expects a list, so we might need explicit conversion if it was a Sequence
+            self.available_nodes = list(nodes)
             self.selected_node = None  # Clear selection on view change
 
         except Exception as e:
@@ -77,18 +81,16 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
         """Select a node by ID."""
         try:
             # Look in available_nodes to avoid DB hit and ensure it's in current view
-            found = None
+            found: SummaryNode | Chunk | None = None
             node_id_str = str(node_id)
 
             for n in self.available_nodes:
-                if isinstance(n, SummaryNode):
-                    if n.id == node_id_str:
-                        found = n
-                        break
-                elif isinstance(n, Chunk):
-                    if str(n.index) == node_id_str:
-                        found = n
-                        break
+                if isinstance(n, SummaryNode) and n.id == node_id_str:
+                    found = n
+                    break
+                if isinstance(n, Chunk) and str(n.index) == node_id_str:
+                    found = n
+                    break
 
             if found:
                 self.selected_node = found
@@ -100,7 +102,7 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
                     self.selected_node = node
                     self.status_message = f"Selected node {node_id}"
                 else:
-                     self.status_message = f"Node {node_id} not found."
+                    self.status_message = f"Node {node_id} not found."
 
         except Exception as e:
             self.status_message = f"Error selecting node: {e}"
@@ -138,11 +140,11 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
             # Refresh list to show updated content if needed
             new_list = list(self.available_nodes)
             for i, n in enumerate(new_list):
-                 # Check ID match safely
-                 nid = getattr(n, 'id', None)
-                 if nid == new_node.id:
-                     new_list[i] = new_node
-                     break
+                # Check ID match safely
+                nid = getattr(n, 'id', None)
+                if nid == new_node.id:
+                    new_list[i] = new_node
+                    break
             self.available_nodes = new_list
 
         except Exception as e:
@@ -153,8 +155,8 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
     def zoom_in(self, node: SummaryNode) -> None:
         """Zoom into a node to see its children."""
         if not node.children_indices:
-             self.status_message = "Cannot zoom into a leaf node."
-             return
+            self.status_message = "Cannot zoom into a leaf node."
+            return
 
         # Determine next level
         next_level = self._get_next_level(node.metadata.dikw_level)
@@ -172,15 +174,15 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
         if not self.breadcrumbs:
             return
 
-        # Pop last breadcrumb
-        popped = self.breadcrumbs[-1]
         new_breadcrumbs = self.breadcrumbs[:-1]
         self.breadcrumbs = new_breadcrumbs
 
         if new_breadcrumbs:
             # Go back to parent of popped
             self.view_context = new_breadcrumbs[-1]
-            self.current_level = self._get_next_level(self.view_context.metadata.dikw_level) or DIKWLevel.WISDOM
+            self.current_level = self._get_next_level(
+                self.view_context.metadata.dikw_level
+            ) or DIKWLevel.WISDOM
         else:
             # Back to Root
             self.view_context = None
@@ -202,14 +204,19 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
 
         self.breadcrumbs = self.breadcrumbs[:idx+1]
         self.view_context = node
-        self.current_level = self._get_next_level(node.metadata.dikw_level) or DIKWLevel.WISDOM
+        self.current_level = self._get_next_level(
+            node.metadata.dikw_level
+        ) or DIKWLevel.WISDOM
 
     def get_source(self, node: SummaryNode) -> list[Chunk]:
         """Get source chunks for a node."""
         return self.engine.get_source_chunks(node.id)
 
     def _get_next_level(self, current: DIKWLevel) -> DIKWLevel | None:
-        if current == DIKWLevel.WISDOM: return DIKWLevel.KNOWLEDGE
-        if current == DIKWLevel.KNOWLEDGE: return DIKWLevel.INFORMATION
-        if current == DIKWLevel.INFORMATION: return DIKWLevel.DATA
+        if current == DIKWLevel.WISDOM:
+            return DIKWLevel.KNOWLEDGE
+        if current == DIKWLevel.KNOWLEDGE:
+            return DIKWLevel.INFORMATION
+        if current == DIKWLevel.INFORMATION:
+            return DIKWLevel.DATA
         return None

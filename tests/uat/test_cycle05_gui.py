@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+
 from domain_models.data_schema import DIKWLevel, NodeMetadata
 from domain_models.manifest import Chunk, SummaryNode
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
@@ -37,28 +38,9 @@ def uat_engine() -> MagicMock:
         metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM)
     )
 
-    # Setup Engine Behaviors
-    def get_nodes_by_level(level: str) -> list[SummaryNode]:
-        if level == DIKWLevel.WISDOM: return [w1]
-        if level == DIKWLevel.KNOWLEDGE: return [k1]
-        if level == DIKWLevel.INFORMATION: return [i1]
-        return []
-
-    engine.get_nodes_by_level.side_effect = get_nodes_by_level
-
-    def get_node(nid: str) -> SummaryNode | Chunk | None:
-        mapping = {"W1": w1, "K1": k1, "I1": i1, "1": c1}
-        return mapping.get(nid)
-
-    engine.get_node.side_effect = get_node
-
-    def get_children(nid: str) -> list[SummaryNode | Chunk]:
-        if nid == "W1": return [k1]
-        if nid == "K1": return [i1]
-        if nid == "I1": return [c1]
-        return []
-
-    engine.get_children.side_effect = get_children
+    _configure_get_nodes(engine, w1, k1, i1)
+    _configure_get_node(engine, w1, k1, i1, c1)
+    _configure_get_children(engine, w1, k1, i1, c1)
 
     def get_source_chunks(nid: str) -> list[Chunk]:
         return [c1]
@@ -66,6 +48,37 @@ def uat_engine() -> MagicMock:
     engine.get_source_chunks.side_effect = get_source_chunks
 
     return engine
+
+
+def _configure_get_nodes(engine: MagicMock, w1: SummaryNode, k1: SummaryNode, i1: SummaryNode) -> None:
+    def get_nodes_by_level(level: str) -> list[SummaryNode]:
+        if level == DIKWLevel.WISDOM:
+            return [w1]
+        if level == DIKWLevel.KNOWLEDGE:
+            return [k1]
+        if level == DIKWLevel.INFORMATION:
+            return [i1]
+        return []
+    engine.get_nodes_by_level.side_effect = get_nodes_by_level
+
+
+def _configure_get_node(engine: MagicMock, w1: SummaryNode, k1: SummaryNode, i1: SummaryNode, c1: Chunk) -> None:
+    def get_node(nid: str) -> SummaryNode | Chunk | None:
+        mapping: dict[str, SummaryNode | Chunk] = {"W1": w1, "K1": k1, "I1": i1, "1": c1}
+        return mapping.get(nid)
+    engine.get_node.side_effect = get_node
+
+
+def _configure_get_children(engine: MagicMock, w1: SummaryNode, k1: SummaryNode, i1: SummaryNode, c1: Chunk) -> None:
+    def get_children(nid: str) -> list[SummaryNode | Chunk]:
+        if nid == "W1":
+            return [k1]
+        if nid == "K1":
+            return [i1]
+        if nid == "I1":
+            return [c1]
+        return []
+    engine.get_children.side_effect = get_children
 
 
 def test_cycle05_user_journey(uat_engine: MagicMock) -> None:

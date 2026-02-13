@@ -1,10 +1,9 @@
 from unittest.mock import MagicMock
 
 import pytest
-import param
 
 from domain_models.data_schema import DIKWLevel, NodeMetadata
-from domain_models.manifest import SummaryNode, Chunk
+from domain_models.manifest import Chunk, SummaryNode
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.ui.session import InteractiveSession
 

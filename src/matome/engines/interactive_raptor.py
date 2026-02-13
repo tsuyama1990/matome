@@ -71,7 +71,6 @@ class InteractiveRaptorEngine:
         if not node or not isinstance(node, SummaryNode):
             return []
 
-        # children_indices is list[int | str]
         # We rely on get_nodes to handle the batch retrieval efficiently
         children_map = self.store.get_nodes(node.children_indices)
 
@@ -102,48 +101,21 @@ class InteractiveRaptorEngine:
         if isinstance(root, Chunk):
             return [root]
 
-        # Stack contains IDs to process
-        # We start with the children of the root
+        # Stack contains IDs to process, starting with children of root
         stack: list[str | int] = list(root.children_indices)
         stack.reverse()  # Reverse so we pop the first child first (DFS)
 
         chunks: list[Chunk] = []
-
-        # Local cache to avoid repeated DB calls and support batch fetching
         node_cache: dict[str | int, SummaryNode | Chunk] = {}
 
         while stack:
-            # Optimization: identify which nodes in the *top* of the stack are missing from cache
-            # We can't peek deep into stack easily, but we can peek the top batch.
-            BATCH_SIZE = 50
-
-            # IDs we need to process soon (from the end of the list/stack)
-            upcoming_ids = stack[-BATCH_SIZE:]
-            missing_ids = [nid for nid in upcoming_ids if nid not in node_cache]
-
-            if missing_ids:
-                fetched = self.store.get_nodes(missing_ids)
-                # Filter None and update cache
-                for nid, node in fetched.items():
-                    if node:
-                        node_cache[nid] = node
+            self._prefetch_nodes(stack, node_cache)
 
             # Now proceed with DFS
             current_id = stack.pop()
-
-            node = node_cache.get(current_id)
-            if not node:
-                # If not in cache (maybe fetch failed or missing in DB), try direct fetch
-                # This is a fallback
-                node = self.store.get_node(current_id)
-
+            node = self._resolve_node(current_id, node_cache)
             if not node:
                 continue
-
-            # Clean up cache to save memory (we visit each node once in a tree)
-            # Use pop to remove if present
-            if current_id in node_cache:
-                del node_cache[current_id]
 
             if isinstance(node, Chunk):
                 chunks.append(node)
@@ -154,6 +126,37 @@ class InteractiveRaptorEngine:
                 stack.extend(children)
 
         return chunks
+
+    def _prefetch_nodes(
+        self,
+        stack: list[str | int],
+        node_cache: dict[str | int, SummaryNode | Chunk],
+    ) -> None:
+        """Prefetch nodes in the top of the stack into cache."""
+        BATCH_SIZE = 50
+        upcoming_ids = stack[-BATCH_SIZE:]
+        missing_ids = [nid for nid in upcoming_ids if nid not in node_cache]
+
+        if missing_ids:
+            fetched = self.store.get_nodes(missing_ids)
+            for nid, node in fetched.items():
+                if node:
+                    node_cache[nid] = node
+
+    def _resolve_node(
+        self,
+        node_id: str | int,
+        node_cache: dict[str | int, SummaryNode | Chunk],
+    ) -> SummaryNode | Chunk | None:
+        """Resolve node from cache or store, and clean up cache."""
+        node = node_cache.get(node_id)
+        if not node:
+            node = self.store.get_node(node_id)
+
+        # Clean up cache to save memory
+        node_cache.pop(node_id, None)
+
+        return node
 
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
