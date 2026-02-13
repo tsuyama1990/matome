@@ -158,3 +158,67 @@ def test_bulk_operations(tmp_path: Path) -> None:
     assert u_node_1.embedding == [0.1, 0.1]
 
     store.close()
+
+
+def test_get_nodes_by_level(tmp_path: Path) -> None:
+    """Test retrieving nodes filtered by DIKW level."""
+    store_path = tmp_path / "level_store.db"
+    store = DiskChunkStore(store_path)
+
+    # Add summaries with different levels
+    s1 = SummaryNode(
+        id="s1",
+        text="Wisdom Node",
+        level=3,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level="wisdom"),
+    )
+    s2 = SummaryNode(
+        id="s2",
+        text="Knowledge Node",
+        level=2,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level="knowledge"),
+    )
+    s3 = SummaryNode(
+        id="s3",
+        text="Information Node",
+        level=1,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level="information"),
+    )
+    # Add a chunk (should be ignored even if somehow it had metadata)
+    c1 = Chunk(index=0, text="Chunk", start_char_idx=0, end_char_idx=5)
+
+    store.add_summaries([s1, s2, s3])
+    store.add_chunk(c1)
+
+    # Test Wisdom
+    wisdom_nodes = store.get_nodes_by_level("wisdom")
+    assert len(wisdom_nodes) == 1
+    assert wisdom_nodes[0].id == "s1"
+
+    # Test Knowledge
+    knowledge_nodes = store.get_nodes_by_level("knowledge")
+    assert len(knowledge_nodes) == 1
+    assert knowledge_nodes[0].id == "s2"
+
+    # Test Information
+    info_nodes = store.get_nodes_by_level("information")
+    assert len(info_nodes) == 1
+    assert info_nodes[0].id == "s3"
+
+    # Test Data (SummaryNode with data level)
+    s4 = SummaryNode(
+        id="s4",
+        text="Data Summary",
+        level=1,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level="data"),
+    )
+    store.add_summary(s4)
+    data_nodes = store.get_nodes_by_level("data")
+    assert len(data_nodes) == 1
+    assert data_nodes[0].id == "s4"
+
+    store.close()

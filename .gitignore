@@ -51,3 +51,4 @@ dev_documents/project_state_local.json
 
 # Allow test data
 !tests/data/*.txt
+*.db

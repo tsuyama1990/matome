@@ -45,6 +45,18 @@ class InteractiveRaptorEngine:
         """
         return self.store.get_node(node_id)
 
+    def get_nodes_by_level(self, level: str) -> list[SummaryNode]:
+        """
+        Retrieve all summary nodes at a specific DIKW level.
+
+        Args:
+            level: The DIKW level (e.g., 'wisdom', 'knowledge').
+
+        Returns:
+            List of SummaryNodes.
+        """
+        return self.store.get_nodes_by_level(level)
+
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
         Refine a node based on user instruction.

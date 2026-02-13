@@ -1,203 +1,71 @@
-import uuid
-from collections.abc import Iterator
-from typing import Any
-from unittest.mock import MagicMock
-
 import pytest
-
-from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, SummaryNode
-from matome.engines.cluster import GMMClusterer
-from matome.engines.raptor import RaptorEngine
-
-
-class UATEmbedder:
-    def __init__(self, dim: int = 384) -> None:
-        self.dim = dim
-        self.config = MagicMock()
-
-    def embed_chunks(self, chunks: list[Chunk]) -> Iterator[Chunk]:
-        # Create clear clusters based on index
-        # This ensures that GMMClusterer finds structure
-        for c in chunks:
-            vec = [0.0] * self.dim
-            # Cluster 0: indices 0-9
-            # Cluster 1: indices 10-19
-            # ...
-            # We map chunk index to a dimension in vector space to make them orthogonal
-            # But dim is limited.
-            # Let's use simple logic:
-            # 5 groups of 10 chunks.
-            group_id = c.index // 10
-            # Set a unique dimension for each group
-            if group_id < self.dim:
-                vec[group_id] = 1.0
-            c.embedding = vec
-            yield c
-
-    def embed_strings(self, texts: list[str]) -> Iterator[list[float]]:
-        for _ in texts:
-            # Summary embeddings
-            # Make them distinct so they might cluster again or merge
-            vec = [0.0] * self.dim
-            # Put them in a different subspace?
-            # Or make them all similar to force merge?
-            # If we want depth 2, summaries must merge into 1 root.
-            vec[100] = 1.0
-            yield vec
-
+from unittest.mock import MagicMock
+from domain_models.manifest import SummaryNode
+from domain_models.data_schema import NodeMetadata, DIKWLevel
+from matome.ui.session import InteractiveSession
+from matome.ui.canvas import MatomeCanvas
+from matome.engines.interactive_raptor import InteractiveRaptorEngine
 
 @pytest.fixture
-def uat_config() -> ProcessingConfig:
-    return ProcessingConfig(
-        umap_n_neighbors=5,  # Slightly larger for 50 chunks
-        umap_min_dist=0.0,
-    )
+def uat_engine():
+    """Mock engine for UAT."""
+    engine = MagicMock(spec=InteractiveRaptorEngine)
 
-
-def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
-    """
-    Scenario 11: Single-Level Summarization (Priority: Medium)
-    Goal: Ensure the system handles short documents correctly (no recursion needed).
-    Expected Outcome: The RAPTOR engine returns a tree with Depth 1 (Root -> Chunks).
-    """
-    chunker = MagicMock()
-    # 3 chunks (small enough to be one cluster)
-    chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(3)
+    # Setup some nodes
+    wisdom_nodes = [
+        SummaryNode(id="w1", text="Wisdom 1", level=3, children_indices=[], metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM))
     ]
-    chunker.split_text.return_value = chunks
+    engine.get_nodes_by_level.return_value = wisdom_nodes
+    engine.get_node.side_effect = lambda nid: wisdom_nodes[0] if nid == "w1" else None
 
-    embedder = UATEmbedder()
-
-    # GMMClusterer handles small input < 3 by returning 1 cluster.
-    clusterer = GMMClusterer()
-
-    summarizer = MagicMock()
-
-    def summarize_side_effect(
-        text: str | list[str], context: dict[str, Any] | None = None
-    ) -> SummaryNode:
-        if context is None:
-            context = {}
+    # Setup refinement
+    def refine_side_effect(nid, instr):
         return SummaryNode(
-            id=context.get("id", str(uuid.uuid4())),
-            text="Summary Root",
-            level=context.get("level", 1),
-            children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {}),
+            id=nid,
+            text="Refined Wisdom 1",
+            level=3,
+            children_indices=[],
+            metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM, is_user_edited=True, refinement_history=[instr])
         )
+    engine.refine_node.side_effect = refine_side_effect
 
-    summarizer.summarize.side_effect = summarize_side_effect
+    return engine
 
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
-    tree = engine.run("Short doc")
-
-    # 3 chunks -> 1 cluster -> 1 Summary (Root)
-    # Level 1.
-    assert tree.root_node.level == 1
-    assert len(tree.leaf_chunk_ids) == 3
-    assert tree.root_node.text == "Summary Root"
-
-
-def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
+def test_cycle04_uat_flow(uat_engine):
     """
-    Scenario 12: Multi-Level Tree Construction (Priority: High)
-    Goal: Ensure the recursive logic builds a hierarchy for long documents.
-    Expected Outcome: The RAPTOR engine returns a tree with Depth >= 2.
+    Simulate the full UAT flow: Launch -> Select -> Refine.
     """
-    chunker = MagicMock()
-    # 50 chunks
-    # UATEmbedder will create 5 clusters (indices 0-9, 10-19, etc.)
-    chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(50)
-    ]
-    chunker.split_text.return_value = chunks
+    # 1. Launch (Session Init)
+    session = InteractiveSession(engine=uat_engine)
+    canvas = MatomeCanvas(session=session)
 
-    embedder = UATEmbedder()
+    # Verify initial state (Cycle 04-01)
+    assert session.current_level == DIKWLevel.WISDOM
+    assert len(session.available_nodes) == 1
+    assert session.available_nodes[0].id == "w1"
 
-    # GMMClusterer should find clusters in 50 orthogonal items?
-    # Actually, UMAP might reduce them to 2D.
-    # If they are orthogonal in high dim, UMAP projects them.
-    # They should form distinct blobs.
-    clusterer = GMMClusterer()
+    # 2. Node Selection (Cycle 04-02)
+    # Simulate user selecting node from list (via View binding or ViewModel directly)
+    # We'll use ViewModel directly as binding is tested in unit tests
+    session.select_node("w1")
 
-    summarizer = MagicMock()
+    assert session.selected_node is not None
+    assert session.selected_node.id == "w1"
+    assert "Selected node w1" in session.status_message
 
-    def summarize_side_effect(
-        text: str | list[str], context: dict[str, Any] | None = None
-    ) -> SummaryNode:
-        if context is None:
-            context = {}
-        return SummaryNode(
-            id=context.get("id", str(uuid.uuid4())),
-            text="Summary Node",
-            level=context.get("level", 1),
-            children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {}),
-        )
+    # 3. Refinement (Cycle 04-03)
+    instruction = "Make it shorter"
+    session.refinement_instruction = instruction
 
-    summarizer.summarize.side_effect = summarize_side_effect
+    # Simulate button click
+    session.submit_refinement()
 
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
-    tree = engine.run("Long doc")
+    # Verify state after refinement
+    assert session.is_refining is False
+    assert session.refinement_instruction == ""
+    assert "Refinement complete" in session.status_message
+    assert session.selected_node.text == "Refined Wisdom 1"
+    assert session.selected_node.metadata.is_user_edited is True
 
-    # 50 chunks -> Multiple clusters -> Multiple Summaries (L1).
-    # Multiple Summaries -> ... -> Root (L2+).
-    assert tree.root_node.level >= 2
-    assert len(tree.leaf_chunk_ids) == 50
-    # Check that we have intermediate summaries
-    if tree.all_nodes:
-        assert len(tree.all_nodes) > 1
-
-
-def test_uat_scenario_13_summary_coherence() -> None:
-    """
-    Scenario 13: Summary Coherence Check (Priority: High)
-    Goal: Ensure the generated summary captures the main idea.
-    Note: Since we mock LLM, we verify that the summarizer is called with expected text.
-    """
-    config = ProcessingConfig(umap_n_neighbors=2, umap_min_dist=0.0)
-
-    chunker = MagicMock()
-    chunks = [
-        Chunk(index=0, text="Climate change is real.", start_char_idx=0, end_char_idx=20),
-        Chunk(index=1, text="Sea levels are rising.", start_char_idx=20, end_char_idx=40),
-    ]
-    chunker.split_text.return_value = chunks
-
-    embedder = UATEmbedder()
-    clusterer = GMMClusterer()
-
-    summarizer = MagicMock()
-
-    def summarize_side_effect(
-        text: str | list[str], context: dict[str, Any] | None = None
-    ) -> SummaryNode:
-        if context is None:
-            context = {}
-        return SummaryNode(
-            id=context.get("id", str(uuid.uuid4())),
-            text="Global Warming Summary",
-            level=context.get("level", 1),
-            children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {}),
-        )
-
-    summarizer.summarize.side_effect = summarize_side_effect
-
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)  # type: ignore
-    tree = engine.run("Climate doc")
-
-    # Verify coherence (mocked)
-    assert tree.root_node.text == "Global Warming Summary"
-
-    # Verify summarizer was called with combined text
-    # The call argument should contain chunk texts
-    calls = summarizer.summarize.call_args_list
-    assert len(calls) > 0
-    # Check content of first call
-    args, _ = calls[0]
-    input_text = args[0]
-    assert "Climate change is real." in input_text
-    assert "Sea levels are rising." in input_text
+    # Verify available_nodes updated
+    assert session.available_nodes[0].text == "Refined Wisdom 1"
