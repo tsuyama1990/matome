@@ -1,6 +1,12 @@
 from typing import Any
 
-from matome.utils.prompts import COD_TEMPLATE
+from domain_models.data_schema import DIKWLevel
+from matome.utils.prompts import (
+    COD_TEMPLATE,
+    INFORMATION_TEMPLATE,
+    KNOWLEDGE_TEMPLATE,
+    WISDOM_TEMPLATE,
+)
 
 
 class BaseSummaryStrategy:
@@ -9,9 +15,7 @@ class BaseSummaryStrategy:
     Preserves the behavior of Cycle 0.
     """
 
-    def format_prompt(
-        self, text: str | list[str], context: dict[str, Any] | None = None
-    ) -> str:
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
         """
         Format the prompt using the Chain of Density template.
 
@@ -39,3 +43,72 @@ class BaseSummaryStrategy:
             A dictionary containing the summary.
         """
         return {"summary": response.strip()}
+
+
+class WisdomStrategy:
+    """
+    Strategy for generating Wisdom level summaries (L1).
+    """
+
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
+        """
+        Format the prompt for Wisdom generation.
+        """
+        if isinstance(text, list):
+            text = "\n\n".join(text)
+        return WISDOM_TEMPLATE.format(context=text)
+
+    def parse_output(self, response: str) -> dict[str, Any]:
+        """
+        Parse the output for Wisdom.
+        """
+        return {
+            "summary": response.strip(),
+            "metadata": {"dikw_level": DIKWLevel.WISDOM},
+        }
+
+
+class KnowledgeStrategy:
+    """
+    Strategy for generating Knowledge level summaries (L2).
+    """
+
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
+        """
+        Format the prompt for Knowledge generation.
+        """
+        if isinstance(text, list):
+            text = "\n\n".join(text)
+        return KNOWLEDGE_TEMPLATE.format(context=text)
+
+    def parse_output(self, response: str) -> dict[str, Any]:
+        """
+        Parse the output for Knowledge.
+        """
+        return {
+            "summary": response.strip(),
+            "metadata": {"dikw_level": DIKWLevel.KNOWLEDGE},
+        }
+
+
+class InformationStrategy:
+    """
+    Strategy for generating Information level summaries (L3).
+    """
+
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
+        """
+        Format the prompt for Information generation.
+        """
+        if isinstance(text, list):
+            text = "\n\n".join(text)
+        return INFORMATION_TEMPLATE.format(context=text)
+
+    def parse_output(self, response: str) -> dict[str, Any]:
+        """
+        Parse the output for Information.
+        """
+        return {
+            "summary": response.strip(),
+            "metadata": {"dikw_level": DIKWLevel.INFORMATION},
+        }

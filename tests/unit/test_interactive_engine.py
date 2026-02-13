@@ -4,8 +4,8 @@ import pytest
 
 from domain_models.data_schema import DIKWLevel, NodeMetadata
 from domain_models.manifest import Chunk, SummaryNode
+from matome.agents.strategies import WisdomStrategy
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
-from matome.strategies import WisdomStrategy
 
 
 @pytest.fixture
@@ -23,9 +23,7 @@ def engine(mock_store: MagicMock, mock_agent: MagicMock) -> InteractiveRaptorEng
     return InteractiveRaptorEngine(mock_store, mock_agent)
 
 
-def test_get_children(
-    engine: InteractiveRaptorEngine, mock_store: MagicMock
-) -> None:
+def test_get_children(engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:
     parent = SummaryNode(
         id="p1",
         text="Parent",

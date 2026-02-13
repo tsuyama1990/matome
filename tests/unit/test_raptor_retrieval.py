@@ -52,7 +52,7 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
         embeddings_iter: Iterator[list[float]], config: ProcessingConfig
     ) -> list[Cluster]:
         nonlocal call_count
-        _ = list(embeddings_iter) # consume
+        _ = list(embeddings_iter)  # consume
         result = return_values[call_count]
         call_count += 1
         return result
@@ -60,8 +60,11 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     clusterer.cluster_nodes.side_effect = cluster_side_effect
 
     # Summarizer
-    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+    def summarize_side_effect(
+        text: str | list[str], context: dict[str, Any] | None = None
+    ) -> SummaryNode:
         import uuid
+
         if context is None:
             context = {}
         return SummaryNode(
@@ -69,8 +72,9 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
             text="Summary Text",
             level=context.get("level", 1),
             children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {})
+            metadata=context.get("metadata", {}),
         )
+
     summarizer.summarize.side_effect = summarize_side_effect
 
     # 3. Run Engine with Real Store

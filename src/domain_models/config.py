@@ -27,6 +27,7 @@ class ProcessingMode(StrEnum):
     """
     Processing mode for the pipeline.
     """
+
     DEFAULT = "default"
     DIKW = "dikw"
 
@@ -126,6 +127,8 @@ class ProcessingConfig(BaseModel):
         ge=1,
         description="Buffer size for batch database writes in Raptor engine.",
     )
+
+    # Canvas / Visualization Configuration
     canvas_node_width: int = Field(
         default=DEFAULT_CANVAS_NODE_WIDTH,
         ge=10,

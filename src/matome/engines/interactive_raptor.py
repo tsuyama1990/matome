@@ -2,14 +2,13 @@ import logging
 
 from domain_models.data_schema import DIKWLevel
 from domain_models.manifest import Chunk, SummaryNode
-from matome.agents.summarizer import SummarizationAgent
-from matome.strategies import (
+from matome.agents.strategies import (
     BaseSummaryStrategy,
-    DefaultStrategy,
     InformationStrategy,
     KnowledgeStrategy,
     WisdomStrategy,
 )
+from matome.agents.summarizer import SummarizationAgent
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
@@ -86,8 +85,8 @@ class InteractiveRaptorEngine:
         """
         node = self.get_node(node_id)
         if not node:
-             msg = f"Node {node_id} not found."
-             raise ValueError(msg)
+            msg = f"Node {node_id} not found."
+            raise ValueError(msg)
 
         if not isinstance(node, SummaryNode):
             msg = f"Cannot refine a Chunk (Node ID: {node_id}). Only SummaryNodes can be refined."
@@ -95,16 +94,16 @@ class InteractiveRaptorEngine:
 
         # Determine strategy based on current level
         current_level = node.metadata.dikw_level
-        strategy: BaseSummaryStrategy
+        strategy: BaseSummaryStrategy | WisdomStrategy | KnowledgeStrategy | InformationStrategy
 
         if current_level == DIKWLevel.WISDOM:
             strategy = WisdomStrategy()
         elif current_level == DIKWLevel.KNOWLEDGE:
-             strategy = KnowledgeStrategy()
+            strategy = KnowledgeStrategy()
         elif current_level == DIKWLevel.INFORMATION:
-             strategy = InformationStrategy()
+            strategy = InformationStrategy()
         else:
-             strategy = DefaultStrategy()
+            strategy = BaseSummaryStrategy()
 
         # Gather children text
         children_texts = []
@@ -136,7 +135,7 @@ class InteractiveRaptorEngine:
             "level": node.level,
             "children_indices": node.children_indices,
             "metadata": meta_dict,
-            "instruction": instruction
+            "instruction": instruction,
         }
 
         # Summarize

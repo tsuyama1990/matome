@@ -47,13 +47,9 @@ def agent(
     return agent
 
 
-def test_initialization_with_strategy(
-    mock_llm: MagicMock, mock_strategy: MagicMock
-) -> None:
+def test_initialization_with_strategy(mock_llm: MagicMock, mock_strategy: MagicMock) -> None:
     """Test that the agent is initialized with the injected strategy."""
-    with patch(
-        "matome.agents.summarizer.get_openrouter_api_key", return_value="sk-test-key"
-    ):
+    with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-test-key"):
         config = ProcessingConfig()
         agent = SummarizationAgent(config, strategy=mock_strategy)
         assert agent.strategy == mock_strategy
@@ -89,9 +85,7 @@ def test_summarize_delegates_to_strategy(
     assert result.id == "123"
 
 
-def test_summarize_merges_context(
-    agent: SummarizationAgent, mock_strategy: MagicMock
-) -> None:
+def test_summarize_merges_context(agent: SummarizationAgent, mock_strategy: MagicMock) -> None:
     """Test that context fields are merged into SummaryNode."""
     context = {
         "id": "node-1",
@@ -116,9 +110,7 @@ def test_summarize_merges_context(
     assert result.text == "Summary text"
 
 
-def test_summarize_renames_summary_key(
-    agent: SummarizationAgent, mock_strategy: MagicMock
-) -> None:
+def test_summarize_renames_summary_key(agent: SummarizationAgent, mock_strategy: MagicMock) -> None:
     """Test that 'summary' key from strategy is renamed to 'text' for SummaryNode."""
     context = {"id": "1", "level": 1, "children_indices": []}
     mock_strategy.parse_output.return_value = {"summary": "The summary"}
@@ -130,9 +122,7 @@ def test_summarize_renames_summary_key(
     assert result.text == "The summary"
 
 
-def test_summarize_list_input(
-    agent: SummarizationAgent, mock_strategy: MagicMock
-) -> None:
+def test_summarize_list_input(agent: SummarizationAgent, mock_strategy: MagicMock) -> None:
     """Test that list input is passed to strategy."""
     context = {"id": "1", "level": 1, "children_indices": []}
     text_list = ["A", "B"]
@@ -145,9 +135,7 @@ def test_summarize_list_input(
     mock_strategy.format_prompt.assert_called_with(text_list, context)
 
 
-def test_mock_mode_returns_node(
-    config: ProcessingConfig, mock_strategy: MagicMock
-) -> None:
+def test_mock_mode_returns_node(config: ProcessingConfig, mock_strategy: MagicMock) -> None:
     """Test that mock mode returns a valid SummaryNode."""
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="mock"):
         agent = SummarizationAgent(config, strategy=mock_strategy)
@@ -160,18 +148,14 @@ def test_mock_mode_returns_node(
         assert result.metadata.dikw_level == DIKWLevel.DATA
 
 
-def test_summarize_missing_key(
-    config: ProcessingConfig, mock_strategy: MagicMock
-) -> None:
+def test_summarize_missing_key(config: ProcessingConfig, mock_strategy: MagicMock) -> None:
     """Test that SummarizationError is raised if API key is missing."""
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value=None):
         agent = SummarizationAgent(config, strategy=mock_strategy)
         assert agent.llm is None
 
         with pytest.raises(SummarizationError, match="LLM not initialized"):
-            agent.summarize(
-                "some context", context={"id": "1", "level": 1, "children_indices": []}
-            )
+            agent.summarize("some context", context={"id": "1", "level": 1, "children_indices": []})
 
 
 def test_summarize_long_input_dos_prevention(

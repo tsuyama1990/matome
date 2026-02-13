@@ -17,7 +17,7 @@ def sample_tree() -> DocumentTree:
         text="Root Summary",
         level=2,
         children_indices=["node_a", "node_b"],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM),
     )
 
     return DocumentTree(
@@ -61,14 +61,14 @@ def test_generate_canvas_data(sample_tree: DocumentTree) -> None:
         text="Summary A",
         level=1,
         children_indices=[0],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE),
     )
     node_b = SummaryNode(
         id="node_b",
         text="Summary B",
         level=1,
         children_indices=[1],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE),
     )
     root = sample_tree.root_node
     chunk0 = Chunk(index=0, text="C0", start_char_idx=0, end_char_idx=1)
@@ -136,14 +136,14 @@ def test_export_file(sample_tree: DocumentTree, tmp_path: Path) -> None:
         text="Summary A",
         level=1,
         children_indices=[0],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE),
     )
     node_b = SummaryNode(
         id="node_b",
         text="Summary B",
         level=1,
         children_indices=[1],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE),
     )
     root = sample_tree.root_node
     chunk0 = Chunk(index=0, text="C0", start_char_idx=0, end_char_idx=1)

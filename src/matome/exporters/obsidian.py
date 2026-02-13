@@ -110,7 +110,9 @@ class ObsidianCanvasExporter:
             return f"chunk_{node_id}"
         return node_id
 
-    def _get_node(self, node_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None") -> Chunk | SummaryNode | None:
+    def _get_node(
+        self, node_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None"
+    ) -> Chunk | SummaryNode | None:
         """Helper to retrieve node from tree root or store."""
         if isinstance(node_id, str) and node_id == tree.root_node.id:
             return tree.root_node
@@ -122,7 +124,9 @@ class ObsidianCanvasExporter:
 
         return None
 
-    def _calculate_subtree_width(self, root_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None") -> int:
+    def _calculate_subtree_width(
+        self, root_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None"
+    ) -> int:
         """
         Iteratively calculates the width of the subtree rooted at node_id using a stack.
         Avoids recursion depth limits.
@@ -136,7 +140,9 @@ class ObsidianCanvasExporter:
 
         return self._subtree_widths[self._get_node_id_str(root_id)]
 
-    def _get_traversal_order(self, root_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None") -> list[int | str]:
+    def _get_traversal_order(
+        self, root_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None"
+    ) -> list[int | str]:
         """Helper to get processing order for nodes."""
         stack = [root_id]
         processing_order: list[int | str] = []
@@ -150,7 +156,11 @@ class ObsidianCanvasExporter:
         return processing_order
 
     def _append_children_to_stack(
-        self, curr_id: str, stack: list[int | str], tree: "DocumentTree", store: "DiskChunkStore | None"
+        self,
+        curr_id: str,
+        stack: list[int | str],
+        tree: "DocumentTree",
+        store: "DiskChunkStore | None",
     ) -> None:
         """Helper to push children to stack."""
         node = self._get_node(curr_id, tree, store)
@@ -159,7 +169,9 @@ class ObsidianCanvasExporter:
             for child_idx in node.children_indices:
                 stack.append(child_idx)
 
-    def _process_node_width(self, curr_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None") -> None:
+    def _process_node_width(
+        self, curr_id: int | str, tree: "DocumentTree", store: "DiskChunkStore | None"
+    ) -> None:
         """Helper to calculate width for a single node."""
         node_id_str = self._get_node_id_str(curr_id)
 
@@ -189,7 +201,12 @@ class ObsidianCanvasExporter:
         self._subtree_widths[node_id_str] = width
 
     def _assign_positions(
-        self, node_id: int | str, center_x: int, y: int, tree: "DocumentTree", store: "DiskChunkStore | None"
+        self,
+        node_id: int | str,
+        center_x: int,
+        y: int,
+        tree: "DocumentTree",
+        store: "DiskChunkStore | None",
     ) -> None:
         """Recursively assigns (x, y) positions to nodes and creates edges."""
         node_id_str = self._get_node_id_str(node_id)

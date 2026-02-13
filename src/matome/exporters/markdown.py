@@ -42,7 +42,9 @@ def _fetch_summary_node(
     return None
 
 
-def _process_summary_children(node: SummaryNode, depth: int, stack: list[tuple[str | int, bool, int]]) -> None:
+def _process_summary_children(
+    node: SummaryNode, depth: int, stack: list[tuple[str | int, bool, int]]
+) -> None:
     """Push summary children to stack in reverse order."""
     for child_idx in reversed(node.children_indices):
         if isinstance(child_idx, str):

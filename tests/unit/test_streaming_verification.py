@@ -73,8 +73,11 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     clusterer.cluster_nodes.side_effect = cluster_side_effect
 
     # Summarizer
-    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+    def summarize_side_effect(
+        text: str | list[str], context: dict[str, Any] | None = None
+    ) -> SummaryNode:
         import uuid
+
         if context is None:
             context = {}
         return SummaryNode(
@@ -82,8 +85,9 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
             text="Summary Text",
             level=context.get("level", 1),
             children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {})
+            metadata=context.get("metadata", {}),
         )
+
     summarizer.summarize.side_effect = summarize_side_effect
 
     # 3. Run Engine
@@ -115,6 +119,7 @@ def test_raptor_reconstructs_leaf_chunks_empty(tmp_path: Path) -> None:
     chunker.split_text.return_value = iter([])
 
     clusterer = MagicMock()
+
     # We must ensure cluster_nodes handles empty input correctly if RaptorEngine calls it
     # RaptorEngine checks generator before calling clusterer? No, it passes it.
     # So clusterer must consume.
@@ -138,6 +143,7 @@ def test_raptor_reconstructs_leaf_chunks_empty(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="No nodes remaining"):
         engine.run("empty")
+
 
 def test_raptor_malformed_chunk_data(tmp_path: Path) -> None:
     """Test error handling with malformed chunk data (e.g. missing embedding)."""
@@ -178,18 +184,20 @@ def test_raptor_malformed_chunk_data(tmp_path: Path) -> None:
     # We must mock clusterer to consume input.
 
     def consume_input(embeddings: Iterable[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        list(embeddings) # Trigger generator
+        list(embeddings)  # Trigger generator
         return []
 
     # Use cast to satisfy mypy that clusterer (MagicMock) has side_effect attribute
     # or just set it if typed correctly. Here engine.clusterer is defined as Clusterer protocol in engine
     # but at runtime it's MagicMock.
     from unittest.mock import Mock
+
     if isinstance(engine.clusterer, Mock):
         engine.clusterer.cluster_nodes.side_effect = consume_input
 
     with pytest.raises(ValueError, match="missing embedding"):
         engine.run("text")
+
 
 def test_raptor_empty_iterator_error() -> None:
     """Verify error handling when chunker yields nothing."""

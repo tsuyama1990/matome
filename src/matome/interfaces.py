@@ -42,7 +42,7 @@ class Clusterer(Protocol):
     """
 
     def cluster_nodes(
-        self, embeddings: Iterable[list[float]], config: ProcessingConfig
+        self, embeddings: Iterable[list[float]] | Iterable[list[list[float]]], config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Cluster nodes based on embeddings.
@@ -52,13 +52,14 @@ class Clusterer(Protocol):
 
         Args:
             embeddings: An iterable of vectors (list of floats), where each vector corresponds to a node.
+                        Can also be an iterable of *batches* of vectors (list[list[float]]) to support streaming.
                         The order of embeddings implies the index (0..N-1).
             config: Configuration parameters such as `n_clusters` or `clustering_algorithm`.
 
         Returns:
             A list of `Cluster` objects.
             Each `Cluster` contains `node_indices` which correspond to the indices (0..N-1) of the
-            input `embeddings` list.
+            input `embeddings` list (flattened if batched).
         """
         ...
 
@@ -70,9 +71,7 @@ class PromptStrategy(Protocol):
     Implementations must define how to construct prompts and parse responses.
     """
 
-    def format_prompt(
-        self, text: str | list[str], context: dict[str, Any] | None = None
-    ) -> str:
+    def format_prompt(self, text: str | list[str], context: dict[str, Any] | None = None) -> str:
         """
         Constructs the prompt string from the input text and optional context.
         """
@@ -116,6 +115,7 @@ class Embedder(Protocol):
     """
     Protocol for embedding services.
     """
+
     def embed_strings(self, texts: Iterable[str]) -> Iterator[list[float]]:
         """Embed a stream of strings."""
         ...

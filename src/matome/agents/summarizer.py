@@ -101,10 +101,7 @@ class SummarizationAgent:
                 if "metadata" not in ctx:
                     ctx["metadata"] = default_meta
 
-                return SummaryNode(
-                    text="",
-                    **ctx
-                )
+                return SummaryNode(text="", **ctx)
             return SummaryNode(
                 id=str(uuid.uuid4()),
                 text="",
@@ -114,9 +111,7 @@ class SummarizationAgent:
             )
 
         # Validate input for security
-        self._validate_input(
-            text_str, self.config.max_input_length, self.config.max_word_length
-        )
+        self._validate_input(text_str, self.config.max_input_length, self.config.max_word_length)
 
         # Sanitize prompt injection
         if isinstance(text, list):
@@ -149,16 +144,27 @@ class SummarizationAgent:
             return self._create_summary_node(response_content, context, active_strategy)
 
         except Exception as e:
-            logger.exception(
-                f"[{request_id}] Summarization failed for text length {len(text_str)}"
-            )
+            logger.exception(f"[{request_id}] Summarization failed for text length {len(text_str)}")
             msg = f"Summarization failed: {e}"
             raise SummarizationError(msg) from e
 
     def _handle_mock_mode(
         self, safe_text_str: str, context: dict[str, Any] | None, request_id: str
     ) -> SummaryNode:
-        """Handle mock mode summarization."""
+        """
+        Handle summarization when in mock mode.
+
+        Returns a static summary without calling an external LLM, useful for testing
+        and development without incurring API costs.
+
+        Args:
+            safe_text_str: The sanitized input text.
+            context: Optional context dictionary.
+            request_id: Unique request identifier.
+
+        Returns:
+            A SummaryNode with mock content.
+        """
         logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
         mock_summary = f"Summary of {safe_text_str[:20]}..."
 
@@ -196,7 +202,20 @@ class SummarizationAgent:
         context: dict[str, Any] | None,
         strategy: PromptStrategy,
     ) -> SummaryNode:
-        """Parse LLM response and create SummaryNode."""
+        """
+        Create a SummaryNode from the LLM response.
+
+        Parses the response using the strategy, merges it with provided context,
+        and constructs the Pydantic model.
+
+        Args:
+            response_content: The raw text response from the LLM.
+            context: Optional context dictionary to merge.
+            strategy: The strategy used for parsing.
+
+        Returns:
+            A validated SummaryNode object.
+        """
         parsed_data = strategy.parse_output(response_content)
 
         # Map 'summary' to 'text' if needed
@@ -205,13 +224,13 @@ class SummarizationAgent:
 
         # Ensure metadata exists as NodeMetadata object before merging context
         if "metadata" not in parsed_data:
-             parsed_data["metadata"] = NodeMetadata(dikw_level=DIKWLevel.DATA)
+            parsed_data["metadata"] = NodeMetadata(dikw_level=DIKWLevel.DATA)
         elif isinstance(parsed_data["metadata"], dict):
-             # Try to upgrade dict to NodeMetadata if it has dikw_level, else default
-             meta_dict = parsed_data["metadata"]
-             if "dikw_level" not in meta_dict:
-                 meta_dict["dikw_level"] = DIKWLevel.DATA
-             parsed_data["metadata"] = NodeMetadata(**meta_dict)
+            # Try to upgrade dict to NodeMetadata if it has dikw_level, else default
+            meta_dict = parsed_data["metadata"]
+            if "dikw_level" not in meta_dict:
+                meta_dict["dikw_level"] = DIKWLevel.DATA
+            parsed_data["metadata"] = NodeMetadata(**meta_dict)
 
         # Smart Merge of Context
         if context:
@@ -232,9 +251,7 @@ class SummarizationAgent:
 
         return SummaryNode(**parsed_data)
 
-    def _validate_input(
-        self, text: str, max_input_length: int, max_word_length: int
-    ) -> None:
+    def _validate_input(self, text: str, max_input_length: int, max_word_length: int) -> None:
         """
         Sanitize and validate input text.
         """
@@ -271,7 +288,16 @@ class SummarizationAgent:
 
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
-        Basic mitigation for Prompt Injection using case folding.
+        Basic mitigation for Prompt Injection using pattern matching.
+
+        This implementation uses regular expressions to detect and redact known
+        prompt injection patterns (e.g., "ignore previous instructions").
+        While not foolproof against sophisticated adversarial attacks, it provides
+        a baseline level of defense against common injection attempts.
+
+        Future improvements could include:
+        - Integrating a dedicated security model (e.g., Llama Guard).
+        - Using an external sanitization library.
         """
         # 1. Normalize text first (NFKC)
         normalized_text = unicodedata.normalize("NFKC", text)
@@ -279,6 +305,7 @@ class SummarizationAgent:
         sanitized = normalized_text
         for pattern in PROMPT_INJECTION_PATTERNS:
             # We use re.sub for flexible matching with IGNORECASE which handles case folding.
+            # The patterns in PROMPT_INJECTION_PATTERNS are assumed to be raw regex strings.
             sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
 
         return sanitized
@@ -328,7 +355,5 @@ class SummarizationAgent:
             logger.warning(f"[{request_id}] Received list content from LLM: {content}")
             return " ".join([str(c) for c in content])
 
-        logger.warning(
-            f"[{request_id}] Received unexpected content type from LLM: {type(content)}"
-        )
+        logger.warning(f"[{request_id}] Received unexpected content type from LLM: {type(content)}")
         return str(content)

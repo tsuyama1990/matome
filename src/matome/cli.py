@@ -5,6 +5,12 @@ from typing import Annotated
 import typer
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import (
+    BaseSummaryStrategy,
+    InformationStrategy,
+    KnowledgeStrategy,
+    WisdomStrategy,
+)
 from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
@@ -13,7 +19,7 @@ from matome.engines.raptor import RaptorEngine
 from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.exporters.markdown import export_to_markdown
 from matome.exporters.obsidian import ObsidianCanvasExporter
-from matome.strategies import DefaultStrategy
+from matome.interfaces import PromptStrategy
 from matome.utils.store import DiskChunkStore
 
 # Configure logging to stderr so it doesn't interfere with stdout output if needed
@@ -62,6 +68,13 @@ def run(
         bool, typer.Option("--verify/--no-verify", help="Enable/Disable verification.")
     ] = True,
     max_tokens: Annotated[int, typer.Option(help="Max tokens per chunk.")] = 500,
+    mode: Annotated[
+        str,
+        typer.Option(
+            "--mode",
+            help="Summarization mode: wisdom, knowledge, information, data (default).",
+        ),
+    ] = "data",
 ) -> None:
     """
     Run the full summarization pipeline on a text file.
@@ -72,8 +85,6 @@ def run(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load config
-    # We can map CLI args to config
-    # Note: Using env vars for secrets like API keys
     config = ProcessingConfig(
         summarization_model=model,
         verification_model=verifier_model,
@@ -87,16 +98,13 @@ def run(
         typer.echo(f"Error reading file: {e}", err=True)
         raise typer.Exit(code=1) from e
 
-    # Initialize components with progress bars where possible
-    # Note: engines don't take tqdm bar directly, but we can wrap iterators if needed.
-    # For now, just logging progress steps.
-
     typer.echo("Initializing engines...")
     chunker = JapaneseTokenChunker()
     embedder = EmbeddingService(config)
     clusterer = GMMClusterer()
-    # Use DefaultStrategy (Chain of Density) as default
-    summarizer = SummarizationAgent(config, strategy=DefaultStrategy())
+
+    strategy = _select_strategy(mode)
+    summarizer = SummarizationAgent(config, strategy=strategy)
     verifier = VerifierAgent(config) if config.verifier_enabled else None
 
     store_path = output_dir / "chunks.db"
@@ -105,11 +113,7 @@ def run(
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
     typer.echo("Running RAPTOR process (Chunk -> Embed -> Cluster -> Summarize)...")
-    # We could add a spinner here
     with typer.progressbar(length=100, label="Processing") as progress:
-        # RaptorEngine.run is blocking. We can't easily update progress bar unless we modify RaptorEngine to accept a callback.
-        # Given constraints, we'll just run it and rely on logs for detailed progress if verbose.
-        # Or we can just show a spinner.
         tree = engine.run(text, store=store)
         progress.update(100)
 
@@ -117,25 +121,7 @@ def run(
 
     if verifier and config.verifier_enabled:
         typer.echo("Running Verification...")
-        # Verify the root node or all summary nodes?
-        # Typically we verify the summary against source.
-        # For Raptor, maybe we verify the Root Summary against the raw text?
-        # Or verify each summary node against its children.
-        # The prompt says "Source Text".
-        # Let's verify the Root Summary against the raw text (if fits context) or top chunks.
-        # For this cycle, let's verify the root summary against the chunks.
-
-        # We need to reconstruct source text for the root summary.
-        # The root summary summarizes its children.
-        # Getting the full text might be too large.
-        # But we'll try verification on the Root Node.
-
         root_summary = tree.root_node.text
-        # Naive approach: Verify against original text (might be too long).
-        # Better: Verify against children text.
-
-        # Let's verify the root node against its direct children text combined.
-        # Retrieve children
         child_texts = []
         for idx in tree.root_node.children_indices:
             node = store.get_node(idx)
@@ -144,26 +130,22 @@ def run(
 
         source_text_for_verification = "\n\n".join(child_texts)
 
-        # Truncate if too long?
-        # VerificationAgent handles it via LLM limit usually, but we should be careful.
+        # Basic truncation to avoid huge contexts
+        if len(source_text_for_verification) > 100000:
+            source_text_for_verification = source_text_for_verification[:100000]
 
         result = verifier.verify(root_summary, source_text_for_verification)
         typer.echo(f"Verification Score: {result.score}")
 
-        # Save verification result
         with (output_dir / "verification_result.json").open("w") as f:
             f.write(result.model_dump_json(indent=2))
 
     typer.echo("Exporting results...")
 
-    # Markdown Export
-    # Pass store explicitly
     md_output = export_to_markdown(tree, store=store)
     (output_dir / "summary_all.md").write_text(md_output, encoding="utf-8")
 
-    # Obsidian Canvas Export
     obs_exporter = ObsidianCanvasExporter(config)
-    # Pass store explicitly
     obs_exporter.export(tree, output_dir / "summary_kj.canvas", store=store)
 
     typer.echo(f"Done! Results saved in {output_dir}")
@@ -191,15 +173,23 @@ def export(
     """
     Export an existing database to a specific format.
     """
-    # This would require loading the tree from DB.
-    # Currently DocumentTree is not persisted as a whole object, but nodes are.
-    # We would need to reconstruct the tree.
-    # RaptorEngine._finalize_tree does this but it needs current_level_ids.
-    # If we persist tree metadata, we can reload.
-    # For now, this might be a placeholder or we just dump what we can.
-
     typer.echo("Export from DB is not fully implemented in this cycle (requires tree persistence).")
-    # Implementing minimal dump if needed.
+
+
+def _select_strategy(mode: str) -> PromptStrategy:
+    """Select summarization strategy based on mode."""
+    if mode == "wisdom":
+        typer.echo("Mode: WISDOM (L1)")
+        return WisdomStrategy()
+    if mode == "knowledge":
+        typer.echo("Mode: KNOWLEDGE (L2)")
+        return KnowledgeStrategy()
+    if mode == "information":
+        typer.echo("Mode: INFORMATION (L3)")
+        return InformationStrategy()
+
+    typer.echo("Mode: DATA/DEFAULT (Chain of Density)")
+    return BaseSummaryStrategy()
 
 
 if __name__ == "__main__":

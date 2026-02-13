@@ -42,7 +42,9 @@ def test_scenario_08_openrouter_connection_mocked(mock_env_key: None) -> None:
         # but the agent enforces CoD.
         # So we just check if it calls the LLM.
 
-        summary_node = agent.summarize("Hello, world!", context={"id": "test", "level": 1, "children_indices": []})
+        summary_node = agent.summarize(
+            "Hello, world!", context={"id": "test", "level": 1, "children_indices": []}
+        )
 
         assert summary_node.text == MOCK_SUMMARY_RESPONSE
         MockLLM.assert_called()
@@ -59,14 +61,14 @@ def test_scenario_09_cod_behavior_mocked() -> None:
     with patch("matome.agents.summarizer.ChatOpenAI") as MockLLM:
         mock_instance = MockLLM.return_value
         # Mock a "dense" response
-        mock_instance.invoke.return_value = AIMessage(
-            content=MOCK_DENSE_RESPONSE
-        )
+        mock_instance.invoke.return_value = AIMessage(content=MOCK_DENSE_RESPONSE)
 
         config = ProcessingConfig()
         agent = SummarizationAgent(config, strategy=BaseSummaryStrategy())
 
-        summary_node = agent.summarize(verbose_text, context={"id": "test", "level": 1, "children_indices": []})
+        summary_node = agent.summarize(
+            verbose_text, context={"id": "test", "level": 1, "children_indices": []}
+        )
 
         # Check prompt contains instructions for CoD
         args, _ = mock_instance.invoke.call_args

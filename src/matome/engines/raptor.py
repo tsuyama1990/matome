@@ -50,18 +50,12 @@ class RaptorEngine:
         # Use mutable container to track count within generator
         stats = {"node_count": 0}
 
-        def l0_embedding_generator() -> Iterator[list[float]]:
-            # We must yield embeddings for the clusterer.
-            # While doing so, we save to DB.
-
+        def l0_embedding_generator() -> Iterator[list[list[float]]]:
             # Streaming chain:
             # 1. initial_chunks (Iterator)
             # 2. embedder.embed_chunks (Iterator) -> Yields Chunk with embedding
 
             chunk_stream = self.embedder.embed_chunks(initial_chunks)
-
-            # We assume store.add_chunks handles lists efficiently.
-            # But to strictly stream, we should batch manually here and call store.add_chunks on batches.
 
             # Using batched to process small groups of chunks. Use config for buffer size.
             for chunk_batch_tuple in batched(chunk_stream, self.config.chunk_buffer_size):
@@ -71,7 +65,8 @@ class RaptorEngine:
                 # 1. Store batch
                 store.add_chunks(chunk_batch)
 
-                # 2. Yield embeddings and collect IDs
+                # 2. Yield batch of embeddings and collect IDs
+                embeddings_batch = []
                 for chunk in chunk_batch:
                     if chunk.embedding is None:
                         msg = f"Chunk {chunk.index} missing embedding."
@@ -79,15 +74,15 @@ class RaptorEngine:
 
                     stats["node_count"] += 1
                     current_level_ids.append(chunk.index)
-                    yield chunk.embedding
+                    embeddings_batch.append(chunk.embedding)
 
                 if stats["node_count"] % 100 == 0:
                     logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")
 
+                yield embeddings_batch
+
         # cluster_nodes consumes the generator.
-        # This will drive the loop above, which drives storage and counting.
-        # NOTE: GMMClusterer might need to materialize the list internally if the algorithm requires it,
-        # but we pass a generator to adhere to interface and allow for algorithms that support partial fit.
+        # NOTE: GMMClusterer now handles batches of embeddings
         clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
 
         return clusters, current_level_ids
@@ -132,9 +127,7 @@ class RaptorEngine:
             # Capture L0 IDs for later reconstruction
             l0_ids = list(current_level_ids)
 
-            current_level_ids = self._process_recursion(
-                clusters, current_level_ids, active_store
-            )
+            current_level_ids = self._process_recursion(clusters, current_level_ids, active_store)
 
             return self._finalize_tree(current_level_ids, active_store, l0_ids)
 
@@ -207,7 +200,8 @@ class RaptorEngine:
         """
         Perform embedding and clustering for the next level (summaries).
         """
-        def lx_embedding_generator() -> Iterator[list[float]]:
+
+        def lx_embedding_generator() -> Iterator[list[list[float]]]:
             # Generator that yields (id, text) tuples
             def node_text_generator() -> Iterator[tuple[NodeID, str]]:
                 for nid in current_level_ids:
@@ -234,10 +228,14 @@ class RaptorEngine:
                     # Fix: Ensure embed_strings is treated as iterator source
                     # If implementation returns list, iter() handles it.
                     embeddings_iter = self.embedder.embed_strings(texts_tuple)
+                    embeddings_batch = []
 
                     for nid, embedding in zip(ids_tuple, embeddings_iter, strict=True):
                         store.update_node_embedding(nid, embedding)
-                        yield embedding
+                        embeddings_batch.append(embedding)
+
+                    yield embeddings_batch
+
                 except Exception as e:
                     logger.exception("Failed to embed batch during next level clustering.")
                     msg = "Embedding failed during recursion."
@@ -288,10 +286,7 @@ class RaptorEngine:
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata=NodeMetadata(
-                    dikw_level=DIKWLevel.DATA,
-                    type="single_chunk_root"
-                ),
+                metadata=NodeMetadata(dikw_level=DIKWLevel.DATA, type="single_chunk_root"),
             )
             # We must persist this virtual root if we want exporters to find it?
             # Or just return it in memory.
@@ -346,10 +341,7 @@ class RaptorEngine:
                 "id": node_id_str,
                 "level": level,
                 "children_indices": children_indices,
-                "metadata": {
-                    "cluster_id": cluster.id,
-                    "dikw_level": DIKWLevel.INFORMATION
-                },
+                "metadata": {"cluster_id": cluster.id},
             }
 
             summary_node = self.summarizer.summarize(cluster_texts, context=context)

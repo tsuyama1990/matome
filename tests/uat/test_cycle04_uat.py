@@ -74,7 +74,10 @@ def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
     clusterer = GMMClusterer()
 
     summarizer = MagicMock()
-    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+
+    def summarize_side_effect(
+        text: str | list[str], context: dict[str, Any] | None = None
+    ) -> SummaryNode:
         if context is None:
             context = {}
         return SummaryNode(
@@ -82,8 +85,9 @@ def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
             text="Summary Root",
             level=context.get("level", 1),
             children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {})
+            metadata=context.get("metadata", {}),
         )
+
     summarizer.summarize.side_effect = summarize_side_effect
 
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
@@ -119,7 +123,10 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     clusterer = GMMClusterer()
 
     summarizer = MagicMock()
-    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+
+    def summarize_side_effect(
+        text: str | list[str], context: dict[str, Any] | None = None
+    ) -> SummaryNode:
         if context is None:
             context = {}
         return SummaryNode(
@@ -127,8 +134,9 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
             text="Summary Node",
             level=context.get("level", 1),
             children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {})
+            metadata=context.get("metadata", {}),
         )
+
     summarizer.summarize.side_effect = summarize_side_effect
 
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
@@ -162,7 +170,10 @@ def test_uat_scenario_13_summary_coherence() -> None:
     clusterer = GMMClusterer()
 
     summarizer = MagicMock()
-    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
+
+    def summarize_side_effect(
+        text: str | list[str], context: dict[str, Any] | None = None
+    ) -> SummaryNode:
         if context is None:
             context = {}
         return SummaryNode(
@@ -170,8 +181,9 @@ def test_uat_scenario_13_summary_coherence() -> None:
             text="Global Warming Summary",
             level=context.get("level", 1),
             children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {})
+            metadata=context.get("metadata", {}),
         )
+
     summarizer.summarize.side_effect = summarize_side_effect
 
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)  # type: ignore

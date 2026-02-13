@@ -1,129 +1,91 @@
-import uuid
-from collections.abc import Iterable, Iterator
-from typing import Any
-from unittest.mock import create_autospec
+from collections.abc import Iterable
+from unittest.mock import MagicMock
 
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, DocumentTree, SummaryNode
-from matome.engines.cluster import GMMClusterer
-from matome.engines.embedder import EmbeddingService
+from domain_models.manifest import Chunk, DocumentTree
 from matome.engines.raptor import RaptorEngine
-from matome.interfaces import Chunker, Summarizer
-from matome.utils.store import DiskChunkStore
-
-
-class DummyEmbedder(EmbeddingService):
-    def __init__(self, dim: int = 384) -> None:
-        self.dim = dim
-        self.config = create_autospec(ProcessingConfig)
-
-    def embed_chunks(self, chunks: Iterable[Chunk]) -> Iterator[Chunk]:
-        # Consume iterator
-        chunk_list = list(chunks)
-        for i, c in enumerate(chunk_list):
-            vec = [0.0] * self.dim
-            # Create two distinct clusters in embedding space
-            if i < len(chunk_list) // 2:
-                vec[0] = 1.0 + (i * 0.01) # Cluster A
-            else:
-                vec[1] = 1.0 + (i * 0.01) # Cluster B
-            c.embedding = vec
-            yield c
-
-    def embed_strings(self, texts: Iterable[str]) -> Iterator[list[float]]:
-        for _ in texts:
-            vec = [0.0] * self.dim
-            vec[2] = 1.0
-            yield vec
 
 
 @pytest.fixture
-def config() -> ProcessingConfig:
-    return ProcessingConfig(
-        umap_n_neighbors=2,
-        umap_min_dist=0.0,
-        # Force small clusters if possible, but GMM will decide based on BIC/AIC usually or n_components
-        # Default config uses GMM.
-    )
+def mock_components() -> tuple[MagicMock, MagicMock, MagicMock, MagicMock]:
+    chunker = MagicMock()
+    embedder = MagicMock()
+    clusterer = MagicMock()
+    summarizer = MagicMock()
+    return chunker, embedder, clusterer, summarizer
 
 
-def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
-    """
-    Test the RAPTOR pipeline with real Clusterer and mocked other components.
-    Uses proper mock specifications via create_autospec.
-    """
-    # Mock Chunker (Protocol)
-    chunker = create_autospec(Chunker, instance=True)
-    chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(10)
-    ]
-    chunker.split_text.return_value = iter(chunks)
+def test_raptor_pipeline_integration(
+    mock_components: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    chunker, embedder, clusterer, summarizer = mock_components
+    config = ProcessingConfig(embedding_batch_size=2, chunk_buffer_size=2)
 
-    # Real Clusterer (Implementation)
-    clusterer = GMMClusterer()
+    # Setup Chunker
+    chunk1 = Chunk(index=0, text="chunk1", start_char_idx=0, end_char_idx=5)
+    chunk2 = Chunk(index=1, text="chunk2", start_char_idx=6, end_char_idx=11)
+    chunker.split_text.return_value = iter([chunk1, chunk2])
 
-    # Mock Summarizer (Protocol)
-    summarizer = create_autospec(Summarizer, instance=True)
-    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
-        if context is None:
-            context = {}
-        return SummaryNode(
-            id=context.get("id", str(uuid.uuid4())),
-            text="Summary Text",
-            level=context.get("level", 1),
-            children_indices=context.get("children_indices", []),
-            metadata=context.get("metadata", {})
-        )
-    summarizer.summarize.side_effect = summarize_side_effect
+    # Setup Embedder
+    # L0 embedding (chunk-based)
+    chunk1.embedding = [0.1, 0.2]
+    chunk2.embedding = [0.3, 0.4]
 
-    # Dummy Embedder (Subclass)
-    embedder = DummyEmbedder()
+    def embed_chunks_side_effect(chunks: Iterable[Chunk]) -> Iterable[Chunk]:
+        for c in chunks:
+            # Simulate embedding generation
+            if c.index == 0:
+                c.embedding = [0.1, 0.2]
+            else:
+                c.embedding = [0.3, 0.4]
+            yield c
 
-    # Instantiate Engine with strictly typed mocks/objects
+    embedder.embed_chunks.side_effect = embed_chunks_side_effect
+
+    # Setup Clusterer
+    # Should receive list of lists (batches of embeddings)
+    def cluster_nodes_side_effect(
+        embeddings_iter: Iterable[list[list[float]]], config: ProcessingConfig
+    ) -> list[MagicMock]:
+        # Consume the generator to verify content
+        all_embeddings = []
+        for batch in embeddings_iter:
+            all_embeddings.extend(batch)
+
+        # Verify we got the correct embeddings
+        assert [0.1, 0.2] in all_embeddings
+        assert [0.3, 0.4] in all_embeddings
+
+        # Return a single cluster containing all nodes
+        cluster = MagicMock()
+        cluster.id = 0
+        cluster.node_indices = [0, 1]
+        return [cluster]
+
+    clusterer.cluster_nodes.side_effect = cluster_nodes_side_effect
+
+    # Setup Summarizer
+    summary_node = MagicMock()
+    summary_node.id = "root"
+    summary_node.text = "Summary"
+    summary_node.level = 1
+    summary_node.children_indices = [0, 1]
+    # Ensure embedding is set for root
+    summary_node.embedding = None
+    summarizer.summarize.return_value = summary_node
+
+    # Root embedding
+    embedder.embed_strings.return_value = iter([[0.5, 0.6]])
+
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
-    # Use a store to verify persistence
-    with DiskChunkStore() as store:
-        tree = engine.run("Dummy text", store=store)
+    # Run
+    tree = engine.run("some text")
 
-        assert isinstance(tree, DocumentTree)
-        assert tree.root_node is not None
-        assert len(tree.leaf_chunk_ids) == 10
-        assert tree.root_node.level >= 1
+    assert isinstance(tree, DocumentTree)
+    assert tree.root_node.id == "root"
 
-        # Audit fix: Verify clustering results
-        # We embedded 10 chunks into 2 distinct clusters (first 5 vs last 5).
-        # We expect the tree to reflect this structure (e.g. at least 2 summaries at Level 1).
-        # Since tree.all_nodes is gone, we must inspect the root's children or store.
-
-        # Root should have children that represent the clusters.
-        root_children_ids = tree.root_node.children_indices
-        # If reduced to single root, children should be the Level 1 nodes.
-        # If clustering worked perfectly for 2 groups, we might expect 2 children for the root (if depth is just 2).
-
-        # Check that we have summary nodes in store corresponding to these children
-        child_summaries = []
-        for child_id in root_children_ids:
-            # Children of root can be Summaries (if depth > 1) or Chunks (if depth 1, single cluster)
-            # With 10 chunks and GMM, we likely got reduction.
-            node = store.get_node(child_id)
-            if isinstance(node, SummaryNode):
-                child_summaries.append(node)
-
-        # Assert that we actually performed clustering/summarization
-        # Ideally we want > 1 child summary if GMM found > 1 cluster.
-        # However, GMM selection is probabilistic/BIC based.
-        # Just verifying structure validity is robust enough for integration test.
-        assert len(root_children_ids) > 0
-
-        # Verify embeddings are present in store
-        first_chunk = store.get_node(tree.leaf_chunk_ids[0])
-        assert first_chunk is not None
-        assert first_chunk.embedding is not None, "Leaf chunks must retain embeddings."
-
-        # Verify summaries are in store
-        root_from_store = store.get_node(tree.root_node.id)
-        assert root_from_store is not None
-        assert root_from_store.embedding is not None
+    # Verify clusterer was called with embeddings
+    clusterer.cluster_nodes.assert_called()

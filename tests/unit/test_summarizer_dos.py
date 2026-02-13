@@ -36,7 +36,9 @@ def test_summarize_long_document_dos(agent: SummarizationAgent, config: Processi
     agent.llm.invoke.return_value = AIMessage(content="Summary")  # type: ignore
 
     # Safe text should pass validation
-    result = agent.summarize(safe_text_words, context={"id": "test", "level": 1, "children_indices": []})
+    result = agent.summarize(
+        safe_text_words, context={"id": "test", "level": 1, "children_indices": []}
+    )
     assert result.text == "Summary"
 
     # Over limit
@@ -52,7 +54,10 @@ def test_summarize_token_dos(agent: SummarizationAgent, config: ProcessingConfig
     with pytest.raises(ValueError, match="potential DoS vector"):
         agent.summarize(long_word, context={"id": "test", "level": 1, "children_indices": []})
 
-def test_summarize_token_dos_multiple_long_words(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+
+def test_summarize_token_dos_multiple_long_words(
+    agent: SummarizationAgent, config: ProcessingConfig
+) -> None:
     """Test protection against multiple long words."""
     long_words = ("a" * 1001 + " ") * 3
     with pytest.raises(ValueError, match="potential DoS vector"):
