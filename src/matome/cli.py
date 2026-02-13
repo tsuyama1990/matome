@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
+import panel as pn
 import typer
 
 from domain_models.config import ProcessingConfig
@@ -15,11 +16,14 @@ from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
+from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.engines.raptor import RaptorEngine
 from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.exporters.markdown import export_to_markdown
 from matome.exporters.obsidian import ObsidianCanvasExporter
 from matome.interfaces import PromptStrategy
+from matome.ui.canvas import MatomeCanvas
+from matome.ui.session import InteractiveSession
 from matome.utils.store import DiskChunkStore
 
 # Configure logging to stderr so it doesn't interfere with stdout output if needed
@@ -174,6 +178,52 @@ def export(
     Export an existing database to a specific format.
     """
     typer.echo("Export from DB is not fully implemented in this cycle (requires tree persistence).")
+
+
+@app.command()
+def serve(
+    store_path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Path to the chunks.db file.",
+        ),
+    ],
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to serve on.")] = 5006,
+    model: Annotated[
+        str, typer.Option("--model", "-m", help="Summarization model for refinement.")
+    ] = "openai/gpt-4o-mini",
+) -> None:
+    """
+    Start the Matome Interactive GUI.
+    """
+    typer.echo(f"Starting Matome GUI on port {port}...")
+
+    # Init Store
+    store = DiskChunkStore(db_path=store_path)
+
+    # Init Agent
+    config = ProcessingConfig(summarization_model=model)
+    # Strategy: For refinement, the engine dynamically wraps the strategy based on level.
+    # So we can initialize with a default strategy here.
+    agent = SummarizationAgent(config, strategy=BaseSummaryStrategy())
+
+    # Init Engine
+    engine = InteractiveRaptorEngine(store=store, agent=agent)
+
+    def create_app() -> pn.template.BaseTemplate:
+        """Create a new session-isolated app instance."""
+        # Init Session (ViewModel) for this user
+        session = InteractiveSession(engine=engine)
+        # Init Canvas (View)
+        canvas = MatomeCanvas(session=session)
+        return canvas.layout
+
+    # Serve
+    pn.serve(create_app, port=port, show=False)  # type: ignore[no-untyped-call]
 
 
 def _select_strategy(mode: str) -> PromptStrategy:

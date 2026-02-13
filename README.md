@@ -18,7 +18,10 @@ Matome 2.0 is a **"Semantic Zooming" engine**. It breaks down long documents (bo
 - **Hierarchical Summarization (RAPTOR):** Recursively summarizes text to build a tree of knowledge.
 - **Japanese Semantic Chunking:** Intelligent text splitting optimized for Japanese content.
 - **Obsidian Canvas Export:** Visualize your summary as an interactive node graph in Obsidian.
-- **Interactive Refinement:** Refine individual nodes using natural language instructions.
+- **Interactive Refinement:** Refine individual nodes using natural language instructions via CLI or GUI.
+- **Interactive GUI (New):** Explore and refine your knowledge graph in a web interface.
+  - **Navigate:** Filter nodes by DIKW level (Wisdom, Knowledge, Information).
+  - **Refine:** Select any node and rewrite it using natural language instructions.
 
 ## Requirements
 
@@ -62,6 +65,15 @@ uv run matome run data/sample.txt --mode knowledge
 uv run matome run data/sample.txt --mode information
 ```
 
+### Launch Interactive GUI
+Start the web interface to explore and refine an existing database:
+
+```bash
+uv run matome serve results/chunks.db
+```
+
+This will launch a local server (default: http://localhost:5006) where you can interact with the knowledge graph.
+
 ### Options
 - `--mode`: Summarization mode: `wisdom`, `knowledge`, `information`, `data` (default).
 - `--output-dir`, `-o`: Directory to save results (default: `results`).
@@ -91,7 +103,7 @@ src/
 
 - **Cycle 01:** Core Refactoring & Strategy Pattern.
 - **Cycle 02:** DIKW Engine (Wisdom/Knowledge/Information modes).
-- **Cycle 03 (Current):** Interactive Backend (Single-node refinement).
+- **Cycle 03:** Interactive Backend (Single-node refinement).
 - **Cycle 04:** GUI Foundation (MVVM with Panel).
 - **Cycle 05:** Full Semantic Zooming.
 
