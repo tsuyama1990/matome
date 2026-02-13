@@ -151,7 +151,20 @@ class SummarizationAgent:
     def _handle_mock_mode(
         self, safe_text_str: str, context: dict[str, Any] | None, request_id: str
     ) -> SummaryNode:
-        """Handle mock mode summarization."""
+        """
+        Handle summarization when in mock mode.
+
+        Returns a static summary without calling an external LLM, useful for testing
+        and development without incurring API costs.
+
+        Args:
+            safe_text_str: The sanitized input text.
+            context: Optional context dictionary.
+            request_id: Unique request identifier.
+
+        Returns:
+            A SummaryNode with mock content.
+        """
         logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
         mock_summary = f"Summary of {safe_text_str[:20]}..."
 
@@ -189,7 +202,20 @@ class SummarizationAgent:
         context: dict[str, Any] | None,
         strategy: PromptStrategy,
     ) -> SummaryNode:
-        """Parse LLM response and create SummaryNode."""
+        """
+        Create a SummaryNode from the LLM response.
+
+        Parses the response using the strategy, merges it with provided context,
+        and constructs the Pydantic model.
+
+        Args:
+            response_content: The raw text response from the LLM.
+            context: Optional context dictionary to merge.
+            strategy: The strategy used for parsing.
+
+        Returns:
+            A validated SummaryNode object.
+        """
         parsed_data = strategy.parse_output(response_content)
 
         # Map 'summary' to 'text' if needed
