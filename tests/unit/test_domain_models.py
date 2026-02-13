@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
+from domain_models.data_schema import DIKWLevel, NodeMetadata
 from domain_models.manifest import Chunk, Cluster, Document, DocumentTree, SummaryNode
 
 
@@ -37,10 +38,15 @@ def test_summary_node_validation() -> None:
     """Test valid and invalid SummaryNode creation."""
     # Valid
     node = SummaryNode(
-        id="node1", text="Summary of text", level=1, children_indices=[0, 1], metadata={}
+        id="node1",
+        text="Summary of text",
+        level=1,
+        children_indices=[0, 1],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA)
     )
     assert node.level == 1
     assert node.children_indices == [0, 1]
+    assert node.metadata.dikw_level == DIKWLevel.DATA
 
     # Invalid case: level < 1
     with pytest.raises(ValidationError):
@@ -49,6 +55,17 @@ def test_summary_node_validation() -> None:
             text="Summary",
             level=0,  # Should be >= 1
             children_indices=[0],
+            metadata=NodeMetadata(dikw_level=DIKWLevel.DATA)
+        )
+
+    # Invalid case: missing dikw_level in dict
+    with pytest.raises(ValidationError):
+        SummaryNode(
+            id="node2",
+            text="Summary",
+            level=1,
+            children_indices=[0],
+            metadata={} # Missing dikw_level
         )
 
 
@@ -69,7 +86,13 @@ def test_document_tree_validation() -> None:
     # Setup components
     chunk1 = Chunk(index=0, text="A", start_char_idx=0, end_char_idx=1)
     chunk2 = Chunk(index=1, text="B", start_char_idx=1, end_char_idx=2)
-    summary = SummaryNode(id="s1", text="AB", level=1, children_indices=[0, 1])
+    summary = SummaryNode(
+        id="s1",
+        text="AB",
+        level=1,
+        children_indices=[0, 1],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+    )
 
     # Valid DocumentTree
     tree = DocumentTree(

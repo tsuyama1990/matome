@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage
 from typer.testing import CliRunner
 
 from domain_models.config import ProcessingConfig
+from domain_models.data_schema import DIKWLevel, NodeMetadata
 from domain_models.manifest import SummaryNode
 from matome.agents.verifier import VerifierAgent
 from matome.cli import app
@@ -107,7 +108,7 @@ def test_scenario_18_full_e2e_pipeline(
         text="Summary of cluster.",
         level=1,
         children_indices=[0],
-        metadata={},
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION),
     )
     mock_summarizer_instance.summarize.return_value = mock_node
 
