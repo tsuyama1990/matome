@@ -1,4 +1,4 @@
-import json
+import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -7,8 +7,10 @@ from langchain_core.messages import AIMessage
 from typer.testing import CliRunner
 
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import SummaryNode
 from matome.agents.verifier import VerifierAgent
 from matome.cli import app
+from tests.constants import MOCK_HALLUCINATION_RESPONSE
 
 runner = CliRunner()
 
@@ -36,20 +38,7 @@ def test_scenario_16_hallucination_detection(uat_config: ProcessingConfig) -> No
     # Arrange
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = AIMessage(
-        content=json.dumps(
-            {
-                "score": 0.5,
-                "details": [
-                    {
-                        "claim": "There are 5 planets.",
-                        "verdict": "Contradicted",
-                        "reasoning": "Source says 8.",
-                    }
-                ],
-                "unsupported_claims": ["There are 5 planets."],
-                "model_name": "mock-model",
-            }
-        )
+        content=MOCK_HALLUCINATION_RESPONSE
     )
 
     agent = VerifierAgent(uat_config, llm=mock_llm)
@@ -113,7 +102,14 @@ def test_scenario_18_full_e2e_pipeline(
     mock_embedder_instance.embed_strings.return_value = [[0.1] * 10]
 
     mock_summarizer_instance = mock_summarizer_cls.return_value
-    mock_summarizer_instance.summarize.return_value = "Summary of cluster."
+    mock_node = SummaryNode(
+        id=str(uuid.uuid4()),
+        text="Summary of cluster.",
+        level=1,
+        children_indices=[0],
+        metadata={},
+    )
+    mock_summarizer_instance.summarize.return_value = mock_node
 
     mock_verifier_instance = mock_verifier_cls.return_value
     mock_result = MagicMock()

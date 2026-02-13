@@ -9,7 +9,9 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import BaseSummaryStrategy
 from matome.agents.summarizer import SummarizationAgent
+from tests.constants import MOCK_DENSE_RESPONSE, MOCK_SUMMARY_RESPONSE
 
 
 @pytest.fixture
@@ -27,10 +29,10 @@ def test_scenario_08_openrouter_connection_mocked(mock_env_key: None) -> None:
     """
     with patch("matome.agents.summarizer.ChatOpenAI") as MockLLM:
         mock_instance = MockLLM.return_value
-        mock_instance.invoke.return_value = AIMessage(content="Hello! How can I help you?")
+        mock_instance.invoke.return_value = AIMessage(content=MOCK_SUMMARY_RESPONSE)
 
         config = ProcessingConfig()
-        agent = SummarizationAgent(config)
+        agent = SummarizationAgent(config, strategy=BaseSummaryStrategy())
         # We manually trigger a simple call if the agent exposed one, but here we test summarize
         # The scenario asks for "Hello, world!" input.
         # We can reuse summarize for this or invoke llm directly if exposed.
@@ -40,9 +42,9 @@ def test_scenario_08_openrouter_connection_mocked(mock_env_key: None) -> None:
         # but the agent enforces CoD.
         # So we just check if it calls the LLM.
 
-        summary = agent.summarize("Hello, world!", config)
+        summary_node = agent.summarize("Hello, world!", context={"id": "test", "level": 1, "children_indices": []})
 
-        assert summary == "Hello! How can I help you?"
+        assert summary_node.text == MOCK_SUMMARY_RESPONSE
         MockLLM.assert_called()
 
 
@@ -58,13 +60,13 @@ def test_scenario_09_cod_behavior_mocked() -> None:
         mock_instance = MockLLM.return_value
         # Mock a "dense" response
         mock_instance.invoke.return_value = AIMessage(
-            content="iPhone (2007, Steve Jobs) revolutionized phones."
+            content=MOCK_DENSE_RESPONSE
         )
 
         config = ProcessingConfig()
-        agent = SummarizationAgent(config)
+        agent = SummarizationAgent(config, strategy=BaseSummaryStrategy())
 
-        summary = agent.summarize(verbose_text, config)
+        summary_node = agent.summarize(verbose_text, context={"id": "test", "level": 1, "children_indices": []})
 
         # Check prompt contains instructions for CoD
         args, _ = mock_instance.invoke.call_args
@@ -74,8 +76,8 @@ def test_scenario_09_cod_behavior_mocked() -> None:
         assert "high-density summary" in prompt_content.lower()
         assert "missing entities" in prompt_content.lower()
 
-        assert "iPhone" in summary
-        assert "2007" in summary
+        assert "iPhone" in summary_node.text
+        assert "2007" in summary_node.text
 
 
 def test_scenario_10_error_handling() -> None:
@@ -97,7 +99,7 @@ def test_scenario_10_error_handling() -> None:
         mock_instance.invoke.side_effect = Exception("API Error 503")
 
         config = ProcessingConfig()
-        agent = SummarizationAgent(config)
+        agent = SummarizationAgent(config, strategy=BaseSummaryStrategy())
 
         # It should probably raise an exception or return an error string
         # purely depending on implementation. Spec says "eventually return a result or a structured error".
@@ -105,4 +107,4 @@ def test_scenario_10_error_handling() -> None:
         # If it raises, we catch it.
 
         with pytest.raises(Exception, match="API Error 503"):
-            agent.summarize("test", config)
+            agent.summarize("test", context={"id": "test", "level": 1, "children_indices": []})

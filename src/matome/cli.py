@@ -5,6 +5,7 @@ from typing import Annotated
 import typer
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import BaseSummaryStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
@@ -94,7 +95,7 @@ def run(
     chunker = JapaneseTokenChunker()
     embedder = EmbeddingService(config)
     clusterer = GMMClusterer()
-    summarizer = SummarizationAgent(config)
+    summarizer = SummarizationAgent(config, strategy=BaseSummaryStrategy())
     verifier = VerifierAgent(config) if config.verifier_enabled else None
 
     store_path = output_dir / "chunks.db"

@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import BaseSummaryStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
@@ -56,10 +57,10 @@ def test_summarization_error_handling() -> None:
 
     # Mock API key presence
     with patch("matome.agents.summarizer.get_openrouter_api_key", return_value="sk-key"):
-        agent = SummarizationAgent(config)
+        agent = SummarizationAgent(config, strategy=BaseSummaryStrategy())
         # Mock LLM failure
         agent.llm = MagicMock()
         agent.llm.invoke.side_effect = Exception("API Failure")
 
         with pytest.raises(SummarizationError, match="Summarization failed"):
-            agent.summarize("text", config)
+            agent.summarize("text", context={"id": "test", "level": 1, "children_indices": []})

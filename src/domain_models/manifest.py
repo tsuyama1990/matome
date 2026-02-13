@@ -32,6 +32,7 @@ class Chunk(BaseModel):
     end_char_idx: int = Field(
         ..., ge=0, description="Ending character position in the original text."
     )
+    # Embedding is optional during initial chunking, but required for clustering/persistence.
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the chunk text."
     )
@@ -121,13 +122,15 @@ class DocumentTree(BaseModel):
     Designed for scalability:
     - Does not store full leaf chunks in memory to avoid O(N) memory usage for large documents.
     - Stores IDs allowing retrieval from the associated `DiskChunkStore`.
+    - `all_nodes` removed to prevent memory issues. Use `DiskChunkStore` for traversal.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
-    all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
     leaf_chunk_ids: list[NodeID] = Field(
         ..., description="IDs of the original leaf chunks (Level 0)."
     )
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")
+    # all_nodes removed as per audit
+    all_nodes: None = None

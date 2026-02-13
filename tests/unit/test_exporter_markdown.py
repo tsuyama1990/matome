@@ -20,14 +20,22 @@ def test_export_to_markdown() -> None:
     root = SummaryNode(id="root", text="Root text", level=2, children_indices=["s1"])
 
     tree = DocumentTree(
-        root_node=root, all_nodes={"s1": summary_l1, "root": root}, leaf_chunk_ids=[0, 1]
+        root_node=root, all_nodes=None, leaf_chunk_ids=[0, 1]
     )
 
     # Mock store
     store = MagicMock()
 
-    def get_node_side_effect(idx: int) -> Chunk | None:
-        return {0: chunk0, 1: chunk1}.get(idx)
+    def get_node_side_effect(node_id: int | str) -> Chunk | SummaryNode | None:
+        if node_id == 0:
+            return chunk0
+        if node_id == 1:
+            return chunk1
+        if node_id == "s1":
+            return summary_l1
+        if node_id == "root":
+            return root
+        return None
 
     store.get_node.side_effect = get_node_side_effect
 

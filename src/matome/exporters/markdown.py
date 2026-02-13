@@ -15,42 +15,83 @@ def _format_summary(node: SummaryNode, depth: int) -> tuple[str, str]:
     return f"{heading} {node.text.strip()}", ""
 
 
-def _process_node(
-    node_id: str | int,
-    is_chunk: bool,
-    depth: int,
+def _process_chunk_node(
+    node_id: int, depth: int, store: DiskChunkStore | None, lines: list[str]
+) -> None:
+    """Process a chunk node."""
+    chunk: Chunk | None = None
+    if store:
+        node = store.get_node(node_id)
+        if isinstance(node, Chunk):
+            chunk = node
+
+    if chunk:
+        lines.append(_format_chunk(chunk, depth))
+
+
+def _fetch_summary_node(
+    node_id: str, tree: DocumentTree, store: DiskChunkStore | None
+) -> SummaryNode | None:
+    """Retrieve summary node from tree root or store."""
+    if node_id == tree.root_node.id:
+        return tree.root_node
+    if store:
+        stored_node = store.get_node(node_id)
+        if isinstance(stored_node, SummaryNode):
+            return stored_node
+    return None
+
+
+def _process_summary_children(node: SummaryNode, depth: int, stack: list[tuple[str | int, bool, int]]) -> None:
+    """Push summary children to stack in reverse order."""
+    for child_idx in reversed(node.children_indices):
+        if isinstance(child_idx, str):
+            stack.append((child_idx, False, depth + 1))
+        elif isinstance(child_idx, int):
+            stack.append((child_idx, True, depth + 1))
+
+
+def _process_node_iterative(
+    start_node_id: str | int,
+    start_depth: int,
     tree: DocumentTree,
-    chunk_map: dict[int, Chunk],
+    store: DiskChunkStore | None,
     lines: list[str],
 ) -> None:
-    """Recursively process nodes for Markdown export."""
-    if is_chunk:
-        if isinstance(node_id, int):
-            chunk = chunk_map.get(node_id)
-            if chunk:
-                lines.append(_format_chunk(chunk, depth))
-        return
+    """
+    Iterative implementation of node processing to avoid stack overflow.
+    """
+    # Stack elements: (node_id, is_chunk, depth)
+    is_chunk_start = isinstance(start_node_id, int)
+    stack: list[tuple[str | int, bool, int]] = [(start_node_id, is_chunk_start, start_depth)]
 
-    # It's a SummaryNode
-    if isinstance(node_id, str):
-        node = tree.root_node if node_id == tree.root_node.id else tree.all_nodes.get(node_id)
+    while stack:
+        curr_id, is_chunk, depth = stack.pop()
 
-        if not node:
-            return
+        if is_chunk:
+            # Type guard for mypy
+            if isinstance(curr_id, int):
+                _process_chunk_node(curr_id, depth, store, lines)
+            continue
 
-        # Heading
-        heading, empty_line = _format_summary(node, depth)
-        lines.append(heading)
-        lines.append(empty_line)
+        # Summary Node processing
+        if isinstance(curr_id, str):
+            node: SummaryNode | None = None
+            if curr_id == tree.root_node.id:
+                node = tree.root_node
+            elif store:
+                stored_node = store.get_node(curr_id)
+                if isinstance(stored_node, SummaryNode):
+                    node = stored_node
 
-        # Process Children
-        for child_idx in node.children_indices:
-            if isinstance(child_idx, str):
-                # Child is SummaryNode
-                _process_node(child_idx, False, depth + 1, tree, chunk_map, lines)
-            elif isinstance(child_idx, int):
-                # Child is Chunk
-                _process_node(child_idx, True, depth + 1, tree, chunk_map, lines)
+            if not node:
+                continue
+
+            heading, empty_line = _format_summary(node, depth)
+            lines.append(heading)
+            lines.append(empty_line)
+
+            _process_summary_children(node, depth, stack)
 
 
 def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) -> str:
@@ -68,15 +109,8 @@ def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) 
         A formatted Markdown string.
     """
     lines: list[str] = []
-    chunk_map: dict[int, Chunk] = {}
-
-    if store and tree.leaf_chunk_ids:
-        for chunk_id in tree.leaf_chunk_ids:
-            node = store.get_node(chunk_id)
-            if isinstance(node, Chunk):
-                chunk_map[node.index] = node
 
     if tree.root_node:
-        _process_node(tree.root_node.id, False, 0, tree, chunk_map, lines)
+        _process_node_iterative(tree.root_node.id, 0, tree, store, lines)
 
     return "\n".join(lines)

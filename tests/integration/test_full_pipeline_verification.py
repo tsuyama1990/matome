@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import BaseSummaryStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
@@ -26,7 +27,7 @@ def test_interface_compliance() -> None:
     # Use dependency injection to avoid API key requirement
     config = ProcessingConfig()
     mock_llm = MagicMock()
-    summarizer = SummarizationAgent(config, llm=mock_llm)
+    summarizer = SummarizationAgent(config, strategy=BaseSummaryStrategy(), llm=mock_llm)
     assert isinstance(summarizer, Summarizer)
 
 
@@ -85,7 +86,7 @@ def test_full_pipeline_flow() -> None:
         mock_llm_instance.invoke.return_value = mock_response
 
         # Use dependency injection
-        summarizer = SummarizationAgent(config, llm=mock_llm_instance)
+        summarizer = SummarizationAgent(config, strategy=BaseSummaryStrategy(), llm=mock_llm_instance)
 
         # Act & Assert (Logic same as before, but with deterministic RNG)
         chunks = list(chunker.split_text(text, config))
@@ -110,8 +111,8 @@ def test_full_pipeline_flow() -> None:
             cluster_text_parts.append(chunks_with_embeddings[int(idx)].text)
 
         cluster_text = " ".join(cluster_text_parts)
-        summary = summarizer.summarize(cluster_text, config)
-        assert summary == "Summary of the cluster."
+        summary_node = summarizer.summarize(cluster_text, context={"id": "test", "level": 1, "children_indices": []})
+        assert summary_node.text == "Summary of the cluster."
 
 
 def test_pipeline_streaming_logic() -> None:

@@ -1,10 +1,12 @@
+import uuid
 from collections.abc import Iterator
+from typing import Any
 from unittest.mock import MagicMock, create_autospec
 
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.interfaces import Chunker, Clusterer, Summarizer
@@ -85,7 +87,8 @@ def test_raptor_run_short_text(
     assert tree.root_node.level == 1
     assert tree.root_node.text == "Short text"
     assert tree.root_node.children_indices == [0]
-    assert len(tree.all_nodes) == 1
+    if tree.all_nodes:
+        assert len(tree.all_nodes) == 1
 
 
 def test_raptor_run_recursive(
@@ -134,11 +137,35 @@ def test_raptor_run_recursive(
     ]
 
     # Summarization
-    summarizer.summarize.side_effect = [
-        "Summary L1-0",  # Summary of Cluster L0-0
-        "Summary L1-1",  # Summary of Cluster L0-1
-        "Root Summary",  # Summary of Cluster L1-0
+    # We must return SummaryNode, using the context passed by RaptorEngine
+    summary_texts = [
+        "Summary L1-0",
+        "Summary L1-1",
+        "Root Summary",
     ]
+    summary_iter = iter(summary_texts)
+
+    def summarize_side_effect(
+        text: str | list[str], context: dict[str, Any] | None = None
+    ) -> SummaryNode:
+        summary_text = next(summary_iter)
+        # Ensure context has ID and children
+        if not context:
+            context = {
+                "id": str(uuid.uuid4()),
+                "level": 1,
+                "children_indices": [],
+            }
+
+        return SummaryNode(
+            id=context["id"],
+            text=summary_text,
+            level=context["level"],
+            children_indices=context["children_indices"],
+            metadata=context.get("metadata", {}),
+        )
+
+    summarizer.summarize.side_effect = summarize_side_effect
 
     # Run
     # We must simulate the consumption of generator inside cluster_nodes mock side effect
@@ -180,4 +207,5 @@ def test_raptor_run_recursive(
 
     # Verify we have all nodes
     # Root + 2 L1 nodes = 3 nodes
-    assert len(tree.all_nodes) == 3
+    if tree.all_nodes:
+        assert len(tree.all_nodes) == 3

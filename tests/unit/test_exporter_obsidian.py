@@ -11,18 +11,18 @@ from matome.exporters.obsidian import CanvasFile, ObsidianCanvasExporter
 def sample_tree() -> DocumentTree:
     """Create a sample DocumentTree with Root -> [Node A, Node B] -> [Chunk 1, Chunk 2]."""
     # Summary Nodes
-    node_a = SummaryNode(
-        id="node_a",
-        text="Summary A",
-        level=1,
-        children_indices=[0],  # Points to Chunk 0
-    )
-    node_b = SummaryNode(
-        id="node_b",
-        text="Summary B",
-        level=1,
-        children_indices=[1],  # Points to Chunk 1
-    )
+    # node_a and node_b variables are unused but needed for the tree structure logic.
+    # We assign them to avoid F841, or just instantiate inline if possible,
+    # but they are referenced in children_indices of root.
+    # Wait, they are NOT referenced in `all_nodes` anymore because I removed `all_nodes`.
+    # So they are essentially dangling unless fetched by `store.get_node`.
+    # BUT this fixture returns a DocumentTree that is supposed to be 'complete'.
+    # If `all_nodes` is None, the tree object itself doesn't hold them.
+
+    # To fix F841 and keep logic clear:
+    # We can just define root and let the test mocks handle retrieval.
+    # But `root` needs `children_indices`.
+
     root = SummaryNode(
         id="root",
         text="Root Summary",
@@ -30,15 +30,15 @@ def sample_tree() -> DocumentTree:
         children_indices=["node_a", "node_b"],
     )
 
-    all_nodes = {
-        "root": root,
-        "node_a": node_a,
-        "node_b": node_b,
-    }
+    # Mocking behavior where nodes are retrieved from store
+    # Since generate_canvas_data uses _get_node which falls back to all_nodes if present,
+    # we can keep all_nodes for this specific test fixture or mock store.
+    # To test scalability changes properly, let's remove all_nodes and use store.
+
+    # However, fixture signature returns DocumentTree. We need to mock store inside tests.
 
     return DocumentTree(
         root_node=root,
-        all_nodes=all_nodes,
         leaf_chunk_ids=[0, 1],
     )
 
@@ -71,7 +71,37 @@ def test_canvas_schema_validation() -> None:
 def test_generate_canvas_data(sample_tree: DocumentTree) -> None:
     """Test generating canvas data from a DocumentTree."""
     exporter = ObsidianCanvasExporter()
-    canvas = exporter.generate_canvas_data(sample_tree)
+
+    # We must mock store because all_nodes is None
+    from unittest.mock import MagicMock
+
+    from domain_models.manifest import Chunk, SummaryNode
+
+    store = MagicMock()
+
+    # Reconstruct nodes for side effect
+    node_a = SummaryNode(id="node_a", text="Summary A", level=1, children_indices=[0])
+    node_b = SummaryNode(id="node_b", text="Summary B", level=1, children_indices=[1])
+    root = sample_tree.root_node
+    chunk0 = Chunk(index=0, text="C0", start_char_idx=0, end_char_idx=1)
+    chunk1 = Chunk(index=1, text="C1", start_char_idx=2, end_char_idx=3)
+
+    def get_node_side_effect(idx: int | str) -> Chunk | SummaryNode | None:
+        if idx == "node_a":
+            return node_a
+        if idx == "node_b":
+            return node_b
+        if idx == "root":
+            return root
+        if idx == 0:
+            return chunk0
+        if idx == 1:
+            return chunk1
+        return None
+
+    store.get_node.side_effect = get_node_side_effect
+
+    canvas = exporter.generate_canvas_data(sample_tree, store=store)
 
     assert isinstance(canvas, CanvasFile)
 
@@ -111,7 +141,36 @@ def test_export_file(sample_tree: DocumentTree, tmp_path: Path) -> None:
     exporter = ObsidianCanvasExporter()
     output_file = tmp_path / "test.canvas"
 
-    exporter.export(sample_tree, output_file)
+    # We must mock store because all_nodes is None
+    from unittest.mock import MagicMock
+
+    from domain_models.manifest import Chunk, SummaryNode
+
+    store = MagicMock()
+
+    # Reconstruct nodes for side effect
+    node_a = SummaryNode(id="node_a", text="Summary A", level=1, children_indices=[0])
+    node_b = SummaryNode(id="node_b", text="Summary B", level=1, children_indices=[1])
+    root = sample_tree.root_node
+    chunk0 = Chunk(index=0, text="C0", start_char_idx=0, end_char_idx=1)
+    chunk1 = Chunk(index=1, text="C1", start_char_idx=2, end_char_idx=3)
+
+    def get_node_side_effect(idx: int | str) -> Chunk | SummaryNode | None:
+        if idx == "node_a":
+            return node_a
+        if idx == "node_b":
+            return node_b
+        if idx == "root":
+            return root
+        if idx == 0:
+            return chunk0
+        if idx == 1:
+            return chunk1
+        return None
+
+    store.get_node.side_effect = get_node_side_effect
+
+    exporter.export(sample_tree, output_file, store=store)
 
     assert output_file.exists()
 

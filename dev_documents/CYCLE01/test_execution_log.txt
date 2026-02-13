@@ -1,0 +1,181 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0, langsmith-0.6.9, anyio-4.12.1
+collected 118 items
+
+tests/integration/test_chunking_pipeline.py .                            [  0%]
+tests/integration/test_embedding_clustering_pipeline.py ..               [  2%]
+tests/integration/test_full_pipeline_verification.py ....                [  5%]
+tests/integration/test_hallucination_verification.py .                   [  6%]
+tests/integration/test_pipeline_errors.py ....                           [ 10%]
+tests/integration/test_raptor_pipeline.py .                              [ 11%]
+tests/integration/test_store_concurrency.py ..                           [ 12%]
+tests/uat/test_cycle01_uat.py ...                                        [ 15%]
+tests/uat/test_cycle02_uat.py ...                                        [ 17%]
+tests/uat/test_cycle03_uat.py ...                                        [ 20%]
+tests/uat/test_cycle04_uat.py ...                                        [ 22%]
+tests/uat/test_cycle05_uat.py EE                                         [ 24%]
+tests/uat/test_cycle06_uat.py ...                                        [ 27%]
+tests/unit/test_cli.py ....                                              [ 30%]
+tests/unit/test_cluster.py .....                                         [ 34%]
+tests/unit/test_cluster_edge_cases.py ...                                [ 37%]
+tests/unit/test_cluster_large.py .                                       [ 38%]
+tests/unit/test_config_validation.py ...                                 [ 40%]
+tests/unit/test_domain_models.py ......                                  [ 45%]
+tests/unit/test_domain_models_cycle02.py ......                          [ 50%]
+tests/unit/test_embedder.py ...                                          [ 53%]
+tests/unit/test_exporter_markdown.py .                                   [ 54%]
+tests/unit/test_exporter_obsidian.py ...                                 [ 56%]
+tests/unit/test_interface_compliance.py .                                [ 57%]
+tests/unit/test_io.py ...                                                [ 60%]
+tests/unit/test_raptor.py ...                                            [ 62%]
+tests/unit/test_raptor_retrieval.py .                                    [ 63%]
+tests/unit/test_semantic_chunker.py .....                                [ 67%]
+tests/unit/test_store_schema.py ...                                      [ 70%]
+tests/unit/test_strategies.py ...                                        [ 72%]
+tests/unit/test_streaming_verification.py ....                           [ 76%]
+tests/unit/test_summarizer.py ........                                   [ 83%]
+tests/unit/test_summarizer_dos.py ...                                    [ 85%]
+tests/unit/test_text_utils.py .....                                      [ 89%]
+tests/unit/test_token_chunker.py ........                                [ 96%]
+tests/unit/test_verifier.py ....                                         [100%]
+
+==================================== ERRORS ====================================
+_____________ ERROR at setup of test_scenario_14_canvas_generation _____________
+
+    @pytest.fixture
+    def uat_tree() -> DocumentTree:
+        """
+        Create a complex tree for UAT:
+        Root
+          |-- Cluster A (Summary A)
+          |     |-- Chunk 1
+          |     |-- Chunk 2
+          |-- Cluster B (Summary B)
+                |-- Chunk 3
+        """
+        c1 = Chunk(index=1, text="Chunk 1", start_char_idx=0, end_char_idx=5)
+        c2 = Chunk(index=2, text="Chunk 2", start_char_idx=6, end_char_idx=10)
+        c3 = Chunk(index=3, text="Chunk 3", start_char_idx=11, end_char_idx=15)
+
+        node_a = SummaryNode(id="summary_a", text="Summary A", level=1, children_indices=[1, 2])
+        node_b = SummaryNode(id="summary_b", text="Summary B", level=1, children_indices=[3])
+        root = SummaryNode(
+            id="root", text="Root Summary", level=2, children_indices=["summary_a", "summary_b"]
+        )
+
+>       return DocumentTree(
+            root_node=root,
+            all_nodes={"root": root, "summary_a": node_a, "summary_b": node_b},
+            leaf_chunk_ids=[c1.index, c2.index, c3.index],
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for DocumentTree
+E       all_nodes
+E         Input should be None [type=none_required, input_value={'root': SummaryNode(id='...ding=None, metadata={})}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/none_required
+
+tests/uat/test_cycle05_uat.py:31: ValidationError
+_____________ ERROR at setup of test_scenario_15_visual_hierarchy ______________
+
+    @pytest.fixture
+    def uat_tree() -> DocumentTree:
+        """
+        Create a complex tree for UAT:
+        Root
+          |-- Cluster A (Summary A)
+          |     |-- Chunk 1
+          |     |-- Chunk 2
+          |-- Cluster B (Summary B)
+                |-- Chunk 3
+        """
+        c1 = Chunk(index=1, text="Chunk 1", start_char_idx=0, end_char_idx=5)
+        c2 = Chunk(index=2, text="Chunk 2", start_char_idx=6, end_char_idx=10)
+        c3 = Chunk(index=3, text="Chunk 3", start_char_idx=11, end_char_idx=15)
+
+        node_a = SummaryNode(id="summary_a", text="Summary A", level=1, children_indices=[1, 2])
+        node_b = SummaryNode(id="summary_b", text="Summary B", level=1, children_indices=[3])
+        root = SummaryNode(
+            id="root", text="Root Summary", level=2, children_indices=["summary_a", "summary_b"]
+        )
+
+>       return DocumentTree(
+            root_node=root,
+            all_nodes={"root": root, "summary_a": node_a, "summary_b": node_b},
+            leaf_chunk_ids=[c1.index, c2.index, c3.index],
+        )
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for DocumentTree
+E       all_nodes
+E         Input should be None [type=none_required, input_value={'root': SummaryNode(id='...ding=None, metadata={})}, input_type=dict]
+E           For further information visit https://errors.pydantic.dev/2.12/v/none_required
+
+tests/uat/test_cycle05_uat.py:31: ValidationError
+=============================== warnings summary ===============================
+tests/integration/test_embedding_clustering_pipeline.py::test_embedding_clustering_pipeline
+tests/integration/test_embedding_clustering_pipeline.py::test_real_pipeline_small
+tests/integration/test_full_pipeline_verification.py::test_full_pipeline_flow
+tests/integration/test_full_pipeline_verification.py::test_pipeline_streaming_logic
+tests/integration/test_raptor_pipeline.py::test_raptor_pipeline_integration
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+  /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+    warn(
+
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+  /app/.venv/lib/python3.12/site-packages/umap/spectral.py:548: UserWarning: Spectral initialisation failed! The eigenvector solver
+  failed. This is likely due to too small an eigengap. Consider
+  adding some noise or jitter to your data.
+
+  Falling back to random initialisation!
+    warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+
+Name                                     Stmts   Miss  Cover   Missing
+----------------------------------------------------------------------
+src/domain_models/__init__.py                5      0   100%
+src/domain_models/config.py                 74      3    96%   31, 196-197
+src/domain_models/constants.py              13      0   100%
+src/domain_models/manifest.py               56      9    84%   53-55, 73-75, 77-79
+src/domain_models/types.py                   3      0   100%
+src/domain_models/verification.py           20      1    95%   55
+src/matome/__init__.py                       4      0   100%
+src/matome/agents/__init__.py                0      0   100%
+src/matome/agents/strategies.py              9      0   100%
+src/matome/agents/summarizer.py            130     21    84%   89-92, 119, 150, 152, 154, 197-198, 203, 231-232, 249, 252-253, 265-272
+src/matome/agents/verifier.py               91     28    69%   57, 73-74, 79-80, 85-87, 102-110, 117-118, 128, 136, 139-140, 148, 153, 155, 168-171
+src/matome/cli.py                           66      5    92%   86-88, 198, 203
+src/matome/config.py                        10      0   100%
+src/matome/engines/__init__.py               0      0   100%
+src/matome/engines/chunker.py                3      3     0%   1-4
+src/matome/engines/cluster.py              184     21    89%   74, 117-118, 121-122, 144-146, 255-258, 369-372, 384, 396, 406-412
+src/matome/engines/embedder.py              51      4    92%   57, 65, 88-89
+src/matome/engines/raptor.py               157     26    83%   84, 106-107, 111-112, 169-170, 189-190, 217, 226, 240-243, 247-250, 271-272, 323-324, 329, 335-336
+src/matome/engines/semantic_chunker.py      86     13    85%   62, 105, 115-117, 133-134, 153-155, 200-202
+src/matome/engines/token_chunker.py         68     10    85%   32-37, 44-47, 121-126
+src/matome/exceptions/__init__.py            4      0   100%
+src/matome/exporters/__init__.py             3      0   100%
+src/matome/exporters/markdown.py            59      8    86%   36-42, 88
+src/matome/exporters/obsidian.py           122      4    97%   77, 123, 184, 226
+src/matome/interfaces.py                    21      0   100%
+src/matome/utils/__init__.py                 0      0   100%
+src/matome/utils/compat.py                  17      8    53%   30-31, 39-44
+src/matome/utils/io.py                      15      0   100%
+src/matome/utils/prompts.py                  1      0   100%
+src/matome/utils/store.py                   96      8    92%   58-60, 108, 158, 205-209
+src/matome/utils/text.py                    30      1    97%   20
+----------------------------------------------------------------------
+TOTAL                                     1398    173    88%
+=========================== short test summary info ============================
+ERROR tests/uat/test_cycle05_uat.py::test_scenario_14_canvas_generation - pyd...
+ERROR tests/uat/test_cycle05_uat.py::test_scenario_15_visual_hierarchy - pyda...
+============ 116 passed, 11 warnings, 2 errors in 67.92s (0:01:07) =============
+/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

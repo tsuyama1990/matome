@@ -40,8 +40,8 @@ def test_cli_run_success(
     mock_tree.root_node.text = "Root Summary"
     mock_tree.root_node.children_indices = [0, 1]
 
-    # Also need to mock all_nodes if accessed
-    mock_tree.all_nodes = {"root_id": mock_tree.root_node}
+    # all_nodes is None for scalability
+    mock_tree.all_nodes = None
 
     mock_raptor_instance.run.return_value = mock_tree
 
