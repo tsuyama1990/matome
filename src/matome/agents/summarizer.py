@@ -137,8 +137,7 @@ class SummarizationAgent:
 
         try:
             prompt = active_strategy.format_prompt(safe_text, context)
-            # Upcast to BaseMessage for type compatibility
-            messages: list[BaseMessage] = [HumanMessage(content=prompt)]
+            messages = [HumanMessage(content=prompt)]
 
             response = self._invoke_llm(messages, self.config, request_id)
             response_content = self._process_response(response, request_id)
@@ -325,7 +324,7 @@ class SummarizationAgent:
         return sanitized
 
     def _invoke_llm(
-        self, messages: list[BaseMessage], config: ProcessingConfig, request_id: str
+        self, messages: list[HumanMessage], config: ProcessingConfig, request_id: str
     ) -> BaseMessage:
         """
         Invoke the LLM with exponential backoff retry logic.
@@ -364,6 +363,11 @@ class SummarizationAgent:
 
         if not response:
             msg = f"[{request_id}] No response received from LLM."
+            raise SummarizationError(msg)
+
+        if not isinstance(response, BaseMessage):
+            # Should not happen with LangChain chat models but good for safety
+            msg = f"[{request_id}] Invalid response type from LLM: {type(response)}"
             raise SummarizationError(msg)
 
         return response

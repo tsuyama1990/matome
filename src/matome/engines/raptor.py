@@ -155,32 +155,19 @@ class RaptorEngine:
             # Check for convergence or failure to reduce
             clusters = self._check_reduction_and_force_if_needed(clusters, node_count, level)
             if not clusters:
-                logger.info("Clustering produced no clusters. Recursion stopping.")
                 break
 
             logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
             # Summarization Step (Level N -> Level N+1)
             level += 1
-            try:
-                current_level_ids = self._process_summarization_step(
-                    clusters, current_level_ids, store, level
-                )
-            except Exception:
-                logger.exception(f"Summarization failed at Level {level}. Recursion stopping.")
-                break
-
-            if not current_level_ids:
-                logger.warning(f"No summary nodes generated at Level {level}. Recursion stopping.")
-                break
+            current_level_ids = self._process_summarization_step(
+                clusters, current_level_ids, store, level
+            )
 
             # Prepare for next iteration
             if len(current_level_ids) > 1:
-                try:
-                    clusters = self._embed_and_cluster_next_level(current_level_ids, store)
-                except Exception:
-                    logger.exception(f"Clustering failed for Level {level}. Recursion stopping.")
-                    break
+                clusters = self._embed_and_cluster_next_level(current_level_ids, store)
             else:
                 clusters = []
 

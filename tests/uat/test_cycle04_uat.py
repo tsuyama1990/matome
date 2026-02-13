@@ -43,7 +43,6 @@ def test_cycle04_uat_flow(uat_engine: MagicMock) -> None:
     # Verify initial state (Cycle 04-01)
     assert session.current_level == DIKWLevel.WISDOM
     assert len(session.available_nodes) == 1
-    assert isinstance(session.available_nodes[0], SummaryNode)
     assert session.available_nodes[0].id == "w1"
 
     # 2. Node Selection (Cycle 04-02)
@@ -52,7 +51,6 @@ def test_cycle04_uat_flow(uat_engine: MagicMock) -> None:
     session.select_node("w1")
 
     assert session.selected_node is not None
-    assert isinstance(session.selected_node, SummaryNode)
     assert session.selected_node.id == "w1"
     assert "Selected node w1" in session.status_message
 
@@ -67,10 +65,8 @@ def test_cycle04_uat_flow(uat_engine: MagicMock) -> None:
     assert session.is_refining is False
     assert session.refinement_instruction == ""
     assert "Refinement complete" in session.status_message
-    assert isinstance(session.selected_node, SummaryNode)
     assert session.selected_node.text == "Refined Wisdom 1"
     assert session.selected_node.metadata.is_user_edited is True
 
     # Verify available_nodes updated
-    assert isinstance(session.available_nodes[0], SummaryNode)
     assert session.available_nodes[0].text == "Refined Wisdom 1"

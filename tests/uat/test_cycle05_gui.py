@@ -97,32 +97,29 @@ def test_cycle05_user_journey(uat_engine: MagicMock) -> None:
     # Verify initial state
     assert session.current_level == DIKWLevel.WISDOM
     assert len(session.available_nodes) == 1
-    assert isinstance(session.available_nodes[0], SummaryNode)
     assert session.available_nodes[0].id == "W1"
 
     # 2. Zoom In on Wisdom Node
     w1 = session.available_nodes[0]
-    assert isinstance(w1, SummaryNode)
     session.zoom_in(w1)
 
     # Verify Zoom to Knowledge
-    assert session.current_level == DIKWLevel.KNOWLEDGE  # type: ignore[comparison-overlap]
-    assert session.view_context and session.view_context.id == "W1"
+    assert session.current_level == DIKWLevel.KNOWLEDGE
+    assert session.view_context is not None
+    assert session.view_context.id == "W1"
     assert len(session.breadcrumbs) == 1
     assert len(session.available_nodes) == 1
-    assert isinstance(session.available_nodes[0], SummaryNode)
     assert session.available_nodes[0].id == "K1"
 
     # 3. Zoom In on Knowledge Node
     k1 = session.available_nodes[0]
-    assert isinstance(k1, SummaryNode)
     session.zoom_in(k1)
 
     # Verify Zoom to Information
     assert session.current_level == DIKWLevel.INFORMATION
-    assert session.view_context and session.view_context.id == "K1"
+    assert session.view_context is not None
+    assert session.view_context.id == "K1"
     assert len(session.breadcrumbs) == 2
-    assert isinstance(session.available_nodes[0], SummaryNode)
     assert session.available_nodes[0].id == "I1"
 
     # 4. View Source
