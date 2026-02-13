@@ -1,5 +1,6 @@
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock
 
 from domain_models.config import ProcessingConfig
@@ -59,7 +60,7 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     clusterer.cluster_nodes.side_effect = cluster_side_effect
 
     # Summarizer
-    def summarize_side_effect(text: str | list[str], context: dict | None = None) -> SummaryNode:
+    def summarize_side_effect(text: str | list[str], context: dict[str, Any] | None = None) -> SummaryNode:
         import uuid
         if context is None:
             context = {}
