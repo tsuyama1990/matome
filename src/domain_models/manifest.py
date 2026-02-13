@@ -104,8 +104,7 @@ class SummaryNode(BaseModel):
             meta = data.get("metadata")
             if isinstance(meta, dict):
                 # If we are loading from a dict that doesn't have 'dikw_level',
-                # we might need to handle it or let validation fail.
-                # For now, let Pydantic validation handle it.
+                # we might need to handle it or let Pydantic validation handle it.
                 pass
         return data
 

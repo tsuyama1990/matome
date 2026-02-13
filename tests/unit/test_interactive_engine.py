@@ -55,8 +55,16 @@ def test_get_children(
 
     children = engine.get_children("p1")
     assert len(children) == 2
-    assert children[0].id == "c1"  # type: ignore[attr-defined]
-    assert children[1].index == 0  # type: ignore[attr-defined]
+
+    # Fix: Assert types to satisfy mypy
+    child0 = children[0]
+    child1 = children[1]
+
+    assert isinstance(child0, SummaryNode)
+    assert child0.id == "c1"
+
+    assert isinstance(child1, Chunk)
+    assert child1.index == 0
 
 
 def test_refine_node(

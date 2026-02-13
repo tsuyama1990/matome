@@ -95,12 +95,15 @@ class SummarizationAgent:
             logger.debug(f"[{request_id}] Skipping empty text summarization.")
             default_meta = NodeMetadata(dikw_level=DIKWLevel.DATA)
             if context:
-                # Merge context into metadata if possible or just use context
-                # To be safe with strict validation:
+                ctx = context.copy()
+                # If context does not specify metadata, use default.
+                # If it does, we trust it (validating at SummaryNode construction).
+                if "metadata" not in ctx:
+                    ctx["metadata"] = default_meta
+
                 return SummaryNode(
                     text="",
-                    metadata=default_meta,  # Will be overridden/merged if context has metadata
-                    **context,
+                    **ctx
                 )
             return SummaryNode(
                 id=str(uuid.uuid4()),

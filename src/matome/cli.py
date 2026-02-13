@@ -157,12 +157,14 @@ def run(
     typer.echo("Exporting results...")
 
     # Markdown Export
-    md_output = export_to_markdown(tree, store)
+    # Pass store explicitly
+    md_output = export_to_markdown(tree, store=store)
     (output_dir / "summary_all.md").write_text(md_output, encoding="utf-8")
 
     # Obsidian Canvas Export
     obs_exporter = ObsidianCanvasExporter(config)
-    obs_exporter.export(tree, output_dir / "summary_kj.canvas", store)
+    # Pass store explicitly
+    obs_exporter.export(tree, output_dir / "summary_kj.canvas", store=store)
 
     typer.echo(f"Done! Results saved in {output_dir}")
 

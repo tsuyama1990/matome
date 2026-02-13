@@ -341,10 +341,7 @@ class RaptorEngine:
 
             node_id_str = str(uuid.uuid4())
 
-            # Default to INFORMATION for generic summaries, or allow strategy to override if not set.
-            # If we set it here, it might override DefaultStrategy which sets DATA.
-            # But Summarizer agent merges context.
-            # If we want generic Raptor to produce 'Information' summaries, set it here.
+            # Default to INFORMATION for generic summaries
             context = {
                 "id": node_id_str,
                 "level": level,
