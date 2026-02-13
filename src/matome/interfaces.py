@@ -42,7 +42,9 @@ class Clusterer(Protocol):
     """
 
     def cluster_nodes(
-        self, embeddings: Iterable[list[float]] | Iterable[list[list[float]]], config: ProcessingConfig
+        self,
+        embeddings: Iterable[list[float]] | Iterable[list[list[float]]],
+        config: ProcessingConfig,
     ) -> list[Cluster]:
         """
         Cluster nodes based on embeddings.

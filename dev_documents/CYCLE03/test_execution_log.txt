@@ -1,0 +1,271 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0, langsmith-0.6.9, anyio-4.12.1
+collected 144 items
+
+tests/integration/test_chunking_pipeline.py .                            [  0%]
+tests/integration/test_dikw_pipeline.py ...                              [  2%]
+tests/integration/test_embedding_clustering_pipeline.py ..               [  4%]
+tests/integration/test_full_pipeline_verification.py ....                [  6%]
+tests/integration/test_hallucination_verification.py .                   [  7%]
+tests/integration/test_pipeline_errors.py ....                           [ 10%]
+tests/integration/test_raptor_pipeline.py F                              [ 11%]
+tests/integration/test_store_concurrency.py .                            [ 11%]
+tests/uat/test_cycle01_uat.py ...                                        [ 13%]
+tests/uat/test_cycle02_uat.py ...                                        [ 15%]
+tests/uat/test_cycle03_uat.py ...                                        [ 18%]
+tests/uat/test_cycle04_uat.py ...                                        [ 20%]
+tests/uat/test_cycle05_uat.py ..                                         [ 21%]
+tests/uat/test_cycle06_uat.py ...                                        [ 23%]
+tests/unit/test_cli.py ....                                              [ 26%]
+tests/unit/test_cluster.py .....                                         [ 29%]
+tests/unit/test_cluster_edge_cases.py ...                                [ 31%]
+tests/unit/test_cluster_large.py .                                       [ 32%]
+tests/unit/test_config_validation.py ...                                 [ 34%]
+tests/unit/test_dikw_schema.py ....                                      [ 37%]
+tests/unit/test_dikw_strategies.py ......                                [ 41%]
+tests/unit/test_domain_models.py ......                                  [ 45%]
+tests/unit/test_domain_models_cycle02.py ......                          [ 50%]
+tests/unit/test_embedder.py ...                                          [ 52%]
+tests/unit/test_exporter_markdown.py .                                   [ 52%]
+tests/unit/test_exporter_obsidian.py ...                                 [ 54%]
+tests/unit/test_interactive_engine.py .......F..                         [ 61%]
+tests/unit/test_interface_compliance.py .                                [ 62%]
+tests/unit/test_io.py ...                                                [ 64%]
+tests/unit/test_raptor.py ...                                            [ 66%]
+tests/unit/test_raptor_retrieval.py .                                    [ 67%]
+tests/unit/test_refinement_strategy.py ....                              [ 70%]
+tests/unit/test_semantic_chunker.py .....                                [ 73%]
+tests/unit/test_store_schema.py ...                                      [ 75%]
+tests/unit/test_strategies.py ...                                        [ 77%]
+tests/unit/test_streaming_verification.py ....                           [ 80%]
+tests/unit/test_summarizer.py ........                                   [ 86%]
+tests/unit/test_summarizer_dos.py ...                                    [ 88%]
+tests/unit/test_text_utils.py .....                                      [ 91%]
+tests/unit/test_token_chunker.py ........                                [ 97%]
+tests/unit/test_verifier.py ....                                         [100%]
+
+=================================== FAILURES ===================================
+_______________________ test_raptor_pipeline_integration _______________________
+
+mock_components = (<MagicMock id='140100762776592'>, <MagicMock id='140100762764352'>, <MagicMock id='140100762693760'>, <MagicMock id='140100762691216'>)
+
+    def test_raptor_pipeline_integration(
+        mock_components: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+    ) -> None:
+        chunker, embedder, clusterer, summarizer = mock_components
+        config = ProcessingConfig(embedding_batch_size=2, chunk_buffer_size=2)
+
+        # Setup Chunker
+        chunk1 = Chunk(index=0, text="chunk1", start_char_idx=0, end_char_idx=5)
+        chunk2 = Chunk(index=1, text="chunk2", start_char_idx=6, end_char_idx=11)
+        chunker.split_text.return_value = iter([chunk1, chunk2])
+
+        # Setup Embedder
+        # L0 embedding (chunk-based)
+        chunk1.embedding = [0.1, 0.2]
+        chunk2.embedding = [0.3, 0.4]
+
+        def embed_chunks_side_effect(chunks: Iterable[Chunk]) -> Iterable[Chunk]:
+            for c in chunks:
+                # Simulate embedding generation
+                if c.index == 0:
+                    c.embedding = [0.1, 0.2]
+                else:
+                    c.embedding = [0.3, 0.4]
+                yield c
+
+        embedder.embed_chunks.side_effect = embed_chunks_side_effect
+
+        # Setup Clusterer
+        # Should receive list of lists (batches of embeddings)
+        def cluster_nodes_side_effect(
+            embeddings_iter: Iterable[list[list[float]]], config: ProcessingConfig
+        ) -> list[MagicMock]:
+            # Consume the generator to verify content
+            all_embeddings = []
+            for batch in embeddings_iter:
+                all_embeddings.extend(batch)
+
+            # Verify we got the correct embeddings
+            assert [0.1, 0.2] in all_embeddings
+            assert [0.3, 0.4] in all_embeddings
+
+            # Return a single cluster containing all nodes
+            cluster = MagicMock()
+            cluster.id = 0
+            cluster.node_indices = [0, 1]
+            return [cluster]
+
+        clusterer.cluster_nodes.side_effect = cluster_nodes_side_effect
+
+        # Setup Summarizer
+        summary_node = MagicMock()
+        summary_node.id = "root"
+        summary_node.text = "Summary"
+        summary_node.level = 1
+        summary_node.children_indices = [0, 1]
+        # Ensure embedding is set for root
+        summary_node.embedding = None
+        summarizer.summarize.return_value = summary_node
+
+        # Root embedding
+        embedder.embed_strings.return_value = iter([[0.5, 0.6]])
+
+        engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+        # Run
+>       tree = engine.run("some text")
+               ^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/integration/test_raptor_pipeline.py:85:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matome/engines/raptor.py:130: in run
+    current_level_ids = self._process_recursion(clusters, current_level_ids, active_store)
+                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/matome/engines/raptor.py:187: in _process_recursion
+    store.add_summaries(summary_buffer)
+src/matome/utils/store.py:106: in add_summaries
+    self._add_nodes(nodes, "summary")
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <matome.utils.store.DiskChunkStore object at 0x7f6bc02a1b80>
+nodes = [<MagicMock name='mock.summarize()' id='140100659307936'>]
+node_type = 'summary'
+
+    def _add_nodes(self, nodes: Iterable[Chunk | SummaryNode], node_type: str) -> None:
+        """
+        Helper to batch insert nodes.
+        Streaming safe: processes input iterable in batches without full materialization.
+        """
+        BATCH_SIZE = 1000
+
+        sql = f"""
+            INSERT OR REPLACE INTO {TABLE_NODES} ({COL_ID}, {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING})
+            VALUES (?, ?, ?, ?)
+        """  # noqa: S608
+
+        # Iterate over the input iterable using batched() to handle chunks efficiently
+        for node_batch in batched(nodes, BATCH_SIZE):
+            buffer = []
+            for node in node_batch:
+                # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
+                content_json = node.model_dump_json(exclude={"embedding"})
+
+                # Embedding JSON
+                embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+
+                node_id = str(node.index) if isinstance(node, Chunk) else node.id
+
+                buffer.append((node_id, node_type, content_json, embedding_json))
+
+            # Flush batch
+            with get_db_connection(self.db_path) as conn:
+>               conn.executemany(sql, buffer)
+E               sqlite3.ProgrammingError: Error binding parameter 3: type 'MagicMock' is not supported
+
+src/matome/utils/store.py:136: ProgrammingError
+____________________ test_refinement_agent_filters_context _____________________
+
+    def test_refinement_agent_filters_context() -> None:
+        """Test that RefinementAgent filters 'instruction' from context before creating summary node."""
+        strategy = MagicMock()
+        strategy.parse_output.return_value = {"summary": "summary", "id": "1", "level": 1, "children_indices": []}
+
+        config = MagicMock()
+        config.max_input_length = 1000
+        config.max_word_length = 100
+
+>       agent = RefinementAgent(config, strategy)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/unit/test_interactive_engine.py:148:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/matome/agents/summarizer.py:61: in __init__
+    self.llm = ChatOpenAI(
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = ChatOpenAI(), args = ()
+kwargs = {'api_key': 'sk-fake-key', 'base_url': 'https://openrouter.ai/api/v1', 'max_retries': <MagicMock name='mock.max_retries' id='140100817988752'>, 'model': <MagicMock name='mock.summarization_model' id='140100817983136'>, ...}
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """"""  # noqa: D419  # Intentional blank docstring
+>       super().__init__(*args, **kwargs)
+E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ChatOpenAI
+E       model
+E         Input should be a valid string [type=string_type, input_value=<MagicMock name='mock.sum...l' id='140100817983136'>, input_type=MagicMock]
+E           For further information visit https://errors.pydantic.dev/2.12/v/string_type
+
+.venv/lib/python3.12/site-packages/langchain_core/load/serializable.py:118: ValidationError
+=============================== warnings summary ===============================
+tests/integration/test_embedding_clustering_pipeline.py::test_embedding_clustering_pipeline
+tests/integration/test_embedding_clustering_pipeline.py::test_real_pipeline_small
+tests/integration/test_full_pipeline_verification.py::test_full_pipeline_flow
+tests/integration/test_full_pipeline_verification.py::test_pipeline_streaming_logic
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+  /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+    warn(
+
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+tests/uat/test_cycle04_uat.py::test_uat_scenario_12_multi_level
+  /app/.venv/lib/python3.12/site-packages/umap/spectral.py:548: UserWarning: Spectral initialisation failed! The eigenvector solver
+  failed. This is likely due to too small an eigengap. Consider
+  adding some noise or jitter to your data.
+
+  Falling back to random initialisation!
+    warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+
+Name                                       Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------
+src/domain_models/__init__.py                  5      0   100%
+src/domain_models/config.py                   77      3    96%   40, 207-208
+src/domain_models/constants.py                13      0   100%
+src/domain_models/data_schema.py              14      0   100%
+src/domain_models/manifest.py                 66      9    86%   53-55, 67-69, 71-73
+src/domain_models/types.py                     3      0   100%
+src/domain_models/verification.py             20      1    95%   55
+src/matome/__init__.py                         4      0   100%
+src/matome/agents/__init__.py                  0      0   100%
+src/matome/agents/strategies.py               43      3    93%   61, 84, 107
+src/matome/agents/summarizer.py              159     31    81%   95-105, 133, 180-185, 191, 193, 195, 232, 276-277, 282, 320-321, 338, 341-342, 354-359
+src/matome/agents/verifier.py                 91     28    69%   57, 73-74, 79-80, 85-87, 102-110, 117-118, 128, 136, 139-140, 148, 153, 155, 168-171
+src/matome/cli.py                             82     12    85%   97-99, 135, 176, 182-183, 185-186, 188-189, 196
+src/matome/config.py                          10      0   100%
+src/matome/engines/__init__.py                 0      0   100%
+src/matome/engines/chunker.py                  3      3     0%   1-4
+src/matome/engines/cluster.py                189     21    89%   76, 130-131, 134-135, 157-159, 268-271, 382-385, 397, 409, 419-425
+src/matome/engines/embedder.py                51      4    92%   57, 65, 88-89
+src/matome/engines/interactive_raptor.py      53      5    91%   33-37
+src/matome/engines/raptor.py                 162     29    82%   80, 102-103, 107-108, 157-164, 183-184, 212, 221, 239-242, 246-249, 270-271, 322-323, 328, 334-335
+src/matome/engines/semantic_chunker.py        86     13    85%   62, 105, 115-117, 133-134, 153-155, 200-202
+src/matome/engines/token_chunker.py           68     10    85%   32-37, 44-47, 121-126
+src/matome/exceptions/__init__.py              4      0   100%
+src/matome/exporters/__init__.py               3      0   100%
+src/matome/exporters/markdown.py              59      8    86%   36-42, 90
+src/matome/exporters/obsidian.py             122      4    97%   77, 125, 196, 243
+src/matome/interfaces.py                      21      0   100%
+src/matome/strategies.py                      19     19     0%   6-51
+src/matome/utils/__init__.py                   0      0   100%
+src/matome/utils/compat.py                    17      8    53%   30-31, 39-44
+src/matome/utils/io.py                        15      0   100%
+src/matome/utils/prompts.py                    5      0   100%
+src/matome/utils/store.py                     98      9    91%   71-73, 102, 144, 163, 182-186
+src/matome/utils/text.py                      30      1    97%   20
+------------------------------------------------------------------------
+TOTAL                                       1592    221    86%
+=========================== short test summary info ============================
+FAILED tests/integration/test_raptor_pipeline.py::test_raptor_pipeline_integration
+FAILED tests/unit/test_interactive_engine.py::test_refinement_agent_filters_context
+============ 2 failed, 142 passed, 10 warnings in 79.62s (0:01:19) =============
+/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

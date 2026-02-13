@@ -30,7 +30,9 @@ class GMMClusterer:
     """
 
     def cluster_nodes(
-        self, embeddings: Iterable[list[float]] | Iterable[list[list[float]]], config: ProcessingConfig
+        self,
+        embeddings: Iterable[list[float]] | Iterable[list[list[float]]],
+        config: ProcessingConfig,
     ) -> list[Cluster]:
         """
         Clusters the nodes based on their embeddings.

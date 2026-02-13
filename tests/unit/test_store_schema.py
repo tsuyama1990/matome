@@ -1,10 +1,8 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from sqlalchemy import text
-
 from domain_models.manifest import Chunk
-from matome.utils.store import TABLE_NODES, DiskChunkStore
+from matome.utils.store import TABLE_NODES, DiskChunkStore, get_db_connection
 
 
 def test_add_chunks_streaming(tmp_path: Path) -> None:
@@ -19,12 +17,12 @@ def test_add_chunks_streaming(tmp_path: Path) -> None:
     store.add_chunks(chunk_generator())
 
     # Verify storage
-    with store.engine.connect() as conn:
-        result = conn.execute(
-            text(f"SELECT COUNT(*) FROM {TABLE_NODES} WHERE type=:type"),  # noqa: S608
-            {"type": "chunk"},
+    with get_db_connection(store_path) as conn:
+        cursor = conn.execute(
+            f"SELECT COUNT(*) FROM {TABLE_NODES} WHERE type=?",  # noqa: S608
+            ("chunk",),
         )
-        assert result.scalar() == 5
+        assert cursor.fetchone()[0] == 5
 
     store.close()
 
@@ -32,29 +30,30 @@ def test_add_chunks_streaming(tmp_path: Path) -> None:
 def test_update_node_embedding_direct(tmp_path: Path) -> None:
     """Test updating embedding without fetching the node."""
     store_path = tmp_path / "embed_store.db"
-    store = DiskChunkStore(store_path)
+    # We must ensure store is initialized (tables created)
+    with DiskChunkStore(store_path) as store:
+        # Add chunk without embedding
+        chunk = Chunk(index=0, text="Test", start_char_idx=0, end_char_idx=4)
+        store.add_chunk(chunk)
 
-    # Add chunk without embedding
-    chunk = Chunk(index=0, text="Test", start_char_idx=0, end_char_idx=4)
-    store.add_chunk(chunk)
+    # Re-open or use helper to update (DiskChunkStore methods work on path)
+    # The test intent is to use store instance.
+    store = DiskChunkStore(store_path)
 
     # Update embedding
     embedding = [0.1, 0.2, 0.3]
-    store.update_node_embedding(chunk.index, embedding)
+    store.update_node_embedding(0, embedding)
 
     # Fetch and verify
-    fetched = store.get_node(chunk.index)
+    fetched = store.get_node(0)
     assert fetched is not None
     assert fetched.embedding == embedding
 
-    # Verify content JSON didn't change (still lacks embedding if we stripped it, or has old one)
-    # But get_node re-assembles it.
-
     # Check DB internals
-    with store.engine.connect() as conn:
+    with get_db_connection(store_path) as conn:
         row = conn.execute(
-            text(f"SELECT embedding FROM {TABLE_NODES} WHERE id=:id"),  # noqa: S608
-            {"id": "0"},
+            f"SELECT embedding FROM {TABLE_NODES} WHERE id=?",  # noqa: S608
+            ("0",),
         ).fetchone()
         assert row is not None
         assert "[0.1, 0.2, 0.3]" in row[0]  # Stored as JSON string
@@ -75,10 +74,10 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
     assert fetched.embedding == [0.9, 0.9]
 
     # Verify separation in DB
-    with store.engine.connect() as conn:
+    with get_db_connection(store_path) as conn:
         row = conn.execute(
-            text(f"SELECT content, embedding FROM {TABLE_NODES} WHERE id=:id"),  # noqa: S608
-            {"id": "1"},
+            f"SELECT content, embedding FROM {TABLE_NODES} WHERE id=?",  # noqa: S608
+            ("1",),
         ).fetchone()
         assert row is not None
         content_json, embedding_json = row

@@ -22,9 +22,7 @@ class NodeMetadata(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    dikw_level: DIKWLevel = Field(
-        default=DIKWLevel.DATA, description="The DIKW level of the node."
-    )
+    dikw_level: DIKWLevel = Field(default=DIKWLevel.DATA, description="The DIKW level of the node.")
     is_user_edited: bool = Field(
         default=False,
         description="Whether the node content was manually edited by a user.",
