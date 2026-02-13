@@ -3,10 +3,12 @@ Summarization Agent module.
 This module implements the summarization logic using OpenRouter and Chain of Density prompting.
 """
 
+import json
 import logging
 import re
 import unicodedata
 import uuid
+from pathlib import Path
 from typing import Any
 
 from langchain_core.messages import BaseMessage, HumanMessage
@@ -123,7 +125,7 @@ class SummarizationAgent:
             safe_text_str = safe_text
 
         if self.mock_mode:
-            return self._handle_mock_mode(safe_text_str, context, request_id)
+            return self._handle_mock_mode(safe_text_str, context, request_id, active_strategy)
 
         if not self.llm:
             msg = f"[{request_id}] LLM not initialized (missing API Key?). Cannot perform summarization."
@@ -150,7 +152,11 @@ class SummarizationAgent:
             raise SummarizationError(msg) from e
 
     def _handle_mock_mode(
-        self, safe_text_str: str, context: dict[str, Any] | None, request_id: str
+        self,
+        safe_text_str: str,
+        context: dict[str, Any] | None,
+        request_id: str,
+        strategy: PromptStrategy | None = None,
     ) -> SummaryNode:
         """
         Handle summarization when in mock mode.
@@ -162,17 +168,80 @@ class SummarizationAgent:
             safe_text_str: The sanitized input text.
             context: Optional context dictionary.
             request_id: Unique request identifier.
+            strategy: The active strategy used for this request.
 
         Returns:
             A SummaryNode with mock content.
         """
         logger.info(f"[{request_id}] Mock mode enabled. Returning static summary.")
+
+        # Determine strategy name to look up mock file
+        strategy_name = "default"
+        if strategy:
+            if hasattr(strategy, "base_strategy"):
+                # Handle wrapper strategies (e.g., RefinementStrategy)
+                strategy_name = "refinement"
+            else:
+                # Handle normal strategies (WisdomStrategy, etc.)
+                strategy_name = type(strategy).__name__.lower().replace("strategy", "")
+
+        # Try to load mock response from file
+        mock_file = (
+            Path(__file__).parents[3] / "tests" / "data" / "mock_responses" / f"{strategy_name}.json"
+        )
+
+        if mock_file.exists():
+            try:
+                with open(mock_file, encoding="utf-8") as f:
+                    data = json.load(f)
+
+                # Ensure we have a SummaryNode compatible dict
+                if "text" not in data and "summary" in data:
+                    data["text"] = data.pop("summary")
+
+                # Handle metadata
+                if "metadata" in data and isinstance(data["metadata"], dict):
+                    # Keep as dict for now, will be merged/converted later if needed
+                    pass
+                else:
+                    data["metadata"] = {}
+
+                # Merge with context
+                if context:
+                    ctx_meta = context.get("metadata")
+                    if ctx_meta and isinstance(ctx_meta, dict):
+                        data["metadata"].update(ctx_meta)
+                    data.update({k: v for k, v in context.items() if k != "metadata"})
+
+                # Convert metadata dict to NodeMetadata if not already
+                if isinstance(data.get("metadata"), dict):
+                    # Ensure defaults if missing
+                    meta_dict = data["metadata"]
+                    if "dikw_level" not in meta_dict:
+                        meta_dict["dikw_level"] = DIKWLevel.DATA
+                    data["metadata"] = NodeMetadata(**meta_dict)
+
+                # Ensure required fields
+                if "id" not in data:
+                    data["id"] = str(uuid.uuid4())
+                if "level" not in data:
+                    data["level"] = 1
+                if "children_indices" not in data:
+                    data["children_indices"] = []
+
+                return SummaryNode(**data)
+
+            except Exception as e:
+                logger.warning(f"Failed to load mock response from {mock_file}: {e}")
+                # Fallback to default behavior below
+
+        # Default fallback behavior (preserves backward compatibility)
         mock_summary = f"Summary of {safe_text_str[:20]}..."
 
         # Default metadata
         meta = NodeMetadata(dikw_level=DIKWLevel.DATA, is_user_edited=False)
 
-        data: dict[str, Any] = {"text": mock_summary, "metadata": meta}
+        data = {"text": mock_summary, "metadata": meta}
 
         if context:
             # Handle metadata merge manually for mock mode too
