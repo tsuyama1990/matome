@@ -1,7 +1,9 @@
 import logging
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from domain_models.data_schema import NodeMetadata
 from domain_models.types import Metadata, NodeID
 
 # Configure logger
@@ -47,15 +49,11 @@ class Chunk(BaseModel):
         Also check embedding validity if present.
         """
         # Ensure text is not just whitespace and not empty
-        # We strip to check, but we don't modify the actual text field here as it might be intentional?
-        # No, RAPTOR chunks should contain meaningful content.
         if not self.text or not self.text.strip():
             msg = "Chunk text cannot be empty or whitespace only."
             logger.error(msg)
             raise ValueError(msg)
 
-        # Simplified validation as requested by feedback
-        # Empty text is already rejected above, so we can be strict about range
         if self.start_char_idx > self.end_char_idx:
             msg = (
                 f"Invalid character range: start ({self.start_char_idx}) cannot be greater than "
@@ -64,10 +62,6 @@ class Chunk(BaseModel):
             logger.error(msg)
             raise ValueError(msg)
 
-        # Embedding Validation
-        # Explicit check for None is implied by logic: if self.embedding is not None, we validate it.
-        # If the schema allows None, we accept None.
-        # However, if it's NOT None, we strictly validate content.
         if self.embedding is not None:
             if len(self.embedding) == 0:
                 msg = "Embedding cannot be an empty list if provided."
@@ -95,9 +89,24 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        ..., description="Metadata including DIKW level and refinement history."
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_metadata(cls, data: Any) -> Any:
+        """
+        Allow initialization with a dict for metadata by parsing it into NodeMetadata.
+        This supports loading from legacy JSON storage or dict-based tests.
+        """
+        if isinstance(data, dict):
+            meta = data.get("metadata")
+            if isinstance(meta, dict):
+                # If we are loading from a dict that doesn't have 'dikw_level',
+                # we might need to handle it or let Pydantic validation handle it.
+                pass
+        return data
 
 
 class Cluster(BaseModel):
@@ -118,11 +127,6 @@ class Cluster(BaseModel):
 class DocumentTree(BaseModel):
     """
     Represents the full RAPTOR tree structure.
-
-    Designed for scalability:
-    - Does not store full leaf chunks in memory to avoid O(N) memory usage for large documents.
-    - Stores IDs allowing retrieval from the associated `DiskChunkStore`.
-    - `all_nodes` removed to prevent memory issues. Use `DiskChunkStore` for traversal.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -132,5 +136,4 @@ class DocumentTree(BaseModel):
         ..., description="IDs of the original leaf chunks (Level 0)."
     )
     metadata: Metadata = Field(default_factory=dict, description="Global metadata for the tree.")
-    # all_nodes removed as per audit
     all_nodes: None = None

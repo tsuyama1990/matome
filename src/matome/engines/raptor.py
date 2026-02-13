@@ -4,6 +4,7 @@ import uuid
 from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
+from domain_models.data_schema import DIKWLevel, NodeMetadata
 from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from domain_models.types import NodeID
 from matome.engines.embedder import EmbeddingService
@@ -287,7 +288,10 @@ class RaptorEngine:
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata={"type": "single_chunk_root"},
+                metadata=NodeMetadata(
+                    dikw_level=DIKWLevel.DATA,
+                    type="single_chunk_root"
+                ),
             )
             # We must persist this virtual root if we want exporters to find it?
             # Or just return it in memory.
@@ -336,11 +340,16 @@ class RaptorEngine:
                 continue
 
             node_id_str = str(uuid.uuid4())
+
+            # Default to INFORMATION for generic summaries
             context = {
                 "id": node_id_str,
                 "level": level,
                 "children_indices": children_indices,
-                "metadata": {"cluster_id": cluster.id},
+                "metadata": {
+                    "cluster_id": cluster.id,
+                    "dikw_level": DIKWLevel.INFORMATION
+                },
             }
 
             summary_node = self.summarizer.summarize(cluster_texts, context=context)

@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock
 
+from domain_models.data_schema import DIKWLevel, NodeMetadata
 from domain_models.manifest import Chunk, DocumentTree, SummaryNode
 from matome.exporters.markdown import export_to_markdown
 
@@ -15,12 +16,27 @@ def test_export_to_markdown() -> None:
     chunk0 = Chunk(index=0, text="Chunk 0 text", start_char_idx=0, end_char_idx=10)
     chunk1 = Chunk(index=1, text="Chunk 1 text", start_char_idx=10, end_char_idx=20)
 
-    summary_l1 = SummaryNode(id="s1", text="Summary L1 text", level=1, children_indices=[0, 1])
+    summary_l1 = SummaryNode(
+        id="s1",
+        text="Summary L1 text",
+        level=1,
+        children_indices=[0, 1],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+    )
 
-    root = SummaryNode(id="root", text="Root text", level=2, children_indices=["s1"])
+    root = SummaryNode(
+        id="root",
+        text="Root text",
+        level=2,
+        children_indices=["s1"],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+    )
 
     tree = DocumentTree(
-        root_node=root, all_nodes=None, leaf_chunk_ids=[0, 1]
+        root_node=root,
+        leaf_chunk_ids=[0, 1],
+        metadata={},
+        all_nodes=None
     )
 
     # Mock store
