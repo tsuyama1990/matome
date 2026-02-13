@@ -1,7 +1,8 @@
 from collections.abc import Iterator
 from pathlib import Path
 
-from domain_models.manifest import Chunk
+from domain_models.data_schema import NodeMetadata
+from domain_models.manifest import Chunk, SummaryNode
 from matome.utils.store import TABLE_NODES, DiskChunkStore, get_db_connection
 
 
@@ -83,5 +84,76 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
         content_json, embedding_json = row
         assert "embedding" not in content_json  # We excluded it
         assert embedding_json == "[0.9, 0.9]"
+
+    store.close()
+
+
+def test_bulk_operations(tmp_path: Path) -> None:
+    """Test get_nodes and update_embeddings."""
+    store_path = tmp_path / "bulk_store.db"
+    store = DiskChunkStore(store_path)
+
+    # 1. Add Chunks
+    chunks = [
+        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=5, embedding=[0.1, 0.1])
+        for i in range(10)
+    ]
+    store.add_chunks(chunks)
+
+    # 2. Add Summaries
+    summaries = [
+        SummaryNode(
+            id=f"summary_{i}",
+            text=f"Summary {i}",
+            level=1,
+            children_indices=[],
+            metadata=NodeMetadata(),
+        )
+        for i in range(5)
+    ]
+    store.add_summaries(summaries)
+
+    # 3. Test get_nodes (mixed types)
+    ids_to_fetch: list[int | str] = [0, 1, "summary_0", "summary_1", 999]  # 999 is missing
+    # ids_to_fetch has mixed int and str, plus potentially an int ID that doesn't exist
+    # get_nodes signature expects list[int | str] which is valid.
+    nodes = store.get_nodes(ids_to_fetch)
+
+    assert len(nodes) == 5
+    assert isinstance(nodes[0], Chunk)
+    assert nodes[0].index == 0
+    assert isinstance(nodes[1], Chunk)
+    assert isinstance(nodes["summary_0"], SummaryNode)
+    assert isinstance(nodes["summary_1"], SummaryNode)
+    assert nodes[999] is None
+
+    # Test int vs str ID for chunks
+    # This tests the "map back" logic in get_nodes
+    nodes_str = store.get_nodes(["0", 1])
+    node_0 = nodes_str["0"]
+    node_1 = nodes_str[1]
+    assert isinstance(node_0, Chunk)
+    assert node_0.index == 0
+    assert isinstance(node_1, Chunk)
+    assert node_1.index == 1
+
+    # 4. Test update_embeddings
+    updates: list[tuple[int | str, list[float]]] = [(0, [0.9, 0.9]), ("summary_0", [0.8, 0.8])]
+    store.update_embeddings(updates)
+
+    # Verify updates
+    updated_nodes = store.get_nodes([0, "summary_0"])
+    u_node_0 = updated_nodes[0]
+    u_node_s0 = updated_nodes["summary_0"]
+    assert u_node_0 is not None
+    assert u_node_0.embedding == [0.9, 0.9]
+    assert u_node_s0 is not None
+    assert u_node_s0.embedding == [0.8, 0.8]
+
+    # Verify others untouched
+    untouched = store.get_nodes([1])
+    u_node_1 = untouched[1]
+    assert u_node_1 is not None
+    assert u_node_1.embedding == [0.1, 0.1]
 
     store.close()

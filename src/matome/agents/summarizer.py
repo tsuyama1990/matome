@@ -218,11 +218,20 @@ class SummarizationAgent:
         """
         parsed_data = strategy.parse_output(response_content)
 
+        self._normalize_parsed_data(parsed_data)
+
+        if context:
+            self._merge_context(parsed_data, context)
+
+        return SummaryNode(**parsed_data)
+
+    def _normalize_parsed_data(self, parsed_data: dict[str, Any]) -> None:
+        """Normalize parsed data keys and ensure metadata object."""
         # Map 'summary' to 'text' if needed
         if "summary" in parsed_data and "text" not in parsed_data:
             parsed_data["text"] = parsed_data.pop("summary")
 
-        # Ensure metadata exists as NodeMetadata object before merging context
+        # Ensure metadata exists as NodeMetadata object
         if "metadata" not in parsed_data:
             parsed_data["metadata"] = NodeMetadata(dikw_level=DIKWLevel.DATA)
         elif isinstance(parsed_data["metadata"], dict):
@@ -232,24 +241,25 @@ class SummarizationAgent:
                 meta_dict["dikw_level"] = DIKWLevel.DATA
             parsed_data["metadata"] = NodeMetadata(**meta_dict)
 
-        # Smart Merge of Context
-        if context:
-            strat_meta = parsed_data.get("metadata")
-            ctx_meta = context.get("metadata")
+    def _merge_context(self, parsed_data: dict[str, Any], context: dict[str, Any]) -> None:
+        """Smart merge of context into parsed data."""
+        strat_meta = parsed_data.get("metadata")
+        ctx_meta = context.get("metadata")
 
-            if strat_meta and isinstance(strat_meta, NodeMetadata) and isinstance(ctx_meta, dict):
-                # Update NodeMetadata object with context metadata (e.g. cluster_id)
-                for k, v in ctx_meta.items():
+        # 1. Merge Metadata
+        if strat_meta and isinstance(strat_meta, NodeMetadata) and isinstance(ctx_meta, dict):
+            # Update NodeMetadata object with context metadata (e.g. cluster_id)
+            # Only update fields that exist in NodeMetadata
+            for k, v in ctx_meta.items():
+                if k in NodeMetadata.model_fields:
                     setattr(strat_meta, k, v)
 
-                # Remove metadata from context so it doesn't overwrite parsed_data['metadata']
-                context_copy = context.copy()
-                context_copy.pop("metadata")
-                parsed_data.update(context_copy)
-            else:
-                parsed_data.update(context)
-
-        return SummaryNode(**parsed_data)
+        # 2. Merge Top-level fields
+        # Only merge fields that are part of SummaryNode schema
+        summary_node_fields = SummaryNode.model_fields.keys()
+        for k, v in context.items():
+            if k in summary_node_fields and k != "metadata":
+                parsed_data[k] = v
 
     def _validate_input(self, text: str, max_input_length: int, max_word_length: int) -> None:
         """
