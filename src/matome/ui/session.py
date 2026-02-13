@@ -60,18 +60,27 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
             nodes: Sequence[SummaryNode | Chunk]
             if self.view_context:
                 # Zoomed in: Fetch children of current context
+                # Ideally get_children should also stream, but for now we consume it
                 nodes = self.engine.get_children(self.view_context.id)
                 self.status_message = f"Loaded {len(nodes)} children."
             else:
                 # Root view: Fetch by level
-                # get_nodes_by_level returns list[SummaryNode]
-                # Cast to Sequence for covariance if needed, but simple assignment is fine
-                # if typing is relaxed or precise.
+                # This returns a list now from InteractiveRaptorEngine (which consumes the store iterator)
+                # But to be safe against large lists, we slice it here if it were an iterator,
+                # or just accept the list if already consumed.
+                # Currently InteractiveRaptorEngine consumes it to list.
+                # If we change InteractiveRaptorEngine to yield, we must consume here with limit.
+
+                # To fully solve the memory issue, InteractiveRaptorEngine should yield, and we slice here.
+                # But InteractiveRaptorEngine currently returns list.
                 nodes = self.engine.get_nodes_by_level(self.current_level)
                 self.status_message = f"Loaded {len(nodes)} {self.current_level} nodes."
 
-            # param.List expects a list, so we might need explicit conversion if it was a Sequence
-            self.available_nodes = list(nodes)
+            # Limit display to avoid UI lag
+            self.available_nodes = list(nodes)[:1000]
+            if len(nodes) > 1000:
+                self.status_message += " (Truncated to 1000)"
+
             self.selected_node = None  # Clear selection on view change
 
         except Exception as e:

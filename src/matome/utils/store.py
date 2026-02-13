@@ -28,7 +28,9 @@ def get_db_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
     """
     # check_same_thread=False is safe because we create a new connection per thread/context
     # and we don't share cursor objects across threads.
-    conn = sqlite3.connect(db_path, timeout=20.0, check_same_thread=False)
+    # However, to be strictly compliant with security best practices, we allow it to be default (True).
+    # If this causes issues with `panel` threads, we must ensure connections are thread-local.
+    conn = sqlite3.connect(db_path, timeout=20.0)
 
     # Enable WAL mode for better concurrency (readers don't block writers)
     conn.execute("PRAGMA journal_mode=WAL;")
@@ -208,35 +210,32 @@ class DiskChunkStore:
 
         return None
 
-    def get_nodes_by_level(self, level: str) -> list[SummaryNode]:
+    def get_nodes_by_level(self, level: str) -> Iterator[SummaryNode]:
         """
         Retrieve all SummaryNodes matching a specific DIKW level.
-        Note: This performs a full scan of summary nodes and filters in Python.
+        Yields nodes to avoid loading the entire dataset into memory.
         """
         sql = f"SELECT {COL_CONTENT}, {COL_EMBEDDING} FROM {TABLE_NODES} WHERE {COL_TYPE} = ?"  # noqa: S608
 
-        nodes: list[SummaryNode] = []
-
         with get_db_connection(self.db_path) as conn:
             cursor = conn.execute(sql, ("summary",))
-            rows = cursor.fetchall()
 
-        for content_json, embedding_json in rows:
-            try:
-                data = json.loads(content_json)
-                if embedding_json:
-                    data["embedding"] = json.loads(embedding_json)
+            # Iterate over cursor directly to stream results
+            for row in cursor:
+                content_json, embedding_json = row
+                try:
+                    data = json.loads(content_json)
+                    if embedding_json:
+                        data["embedding"] = json.loads(embedding_json)
 
-                node = SummaryNode.model_validate(data)
+                    node = SummaryNode.model_validate(data)
 
-                # Check DIKW level
-                if node.metadata.dikw_level == level:
-                    nodes.append(node)
+                    # Check DIKW level
+                    if node.metadata.dikw_level == level:
+                        yield node
 
-            except Exception:
-                logger.exception("Failed to deserialize summary node during level filtering")
-
-        return nodes
+                except Exception:
+                    logger.exception("Failed to deserialize summary node during level filtering")
 
     def get_nodes(self, node_ids: list[int | str]) -> dict[int | str, Chunk | SummaryNode | None]:
         """

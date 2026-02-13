@@ -1,5 +1,6 @@
 import logging
 
+from domain_models.config import ProcessingConfig
 from domain_models.data_schema import DIKWLevel
 from domain_models.manifest import Chunk, SummaryNode
 from matome.agents.strategies import (
@@ -22,16 +23,23 @@ class InteractiveRaptorEngine:
     Supports single-node retrieval and refinement.
     """
 
-    def __init__(self, store: DiskChunkStore, agent: SummarizationAgent) -> None:
+    def __init__(
+        self,
+        store: DiskChunkStore,
+        agent: SummarizationAgent,
+        config: ProcessingConfig | None = None,
+    ) -> None:
         """
         Initialize the interactive engine.
 
         Args:
             store: The persistence layer (DiskChunkStore).
             agent: The summarization agent to use for refinement.
+            config: Optional processing configuration.
         """
         self.store = store
         self.agent = agent
+        self.config = config or ProcessingConfig()
 
     def get_node(self, node_id: str) -> SummaryNode | Chunk | None:
         """
@@ -55,7 +63,9 @@ class InteractiveRaptorEngine:
         Returns:
             List of SummaryNodes.
         """
-        return self.store.get_nodes_by_level(level)
+        # Consume the generator to maintain API compatibility for now
+        # Ideally consumers should handle the iterator
+        return list(self.store.get_nodes_by_level(level))
 
     def get_children(self, node_id: str) -> list[SummaryNode | Chunk]:
         """
@@ -132,9 +142,12 @@ class InteractiveRaptorEngine:
         stack: list[str | int],
         node_cache: dict[str | int, SummaryNode | Chunk],
     ) -> None:
-        """Prefetch nodes in the top of the stack into cache."""
-        BATCH_SIZE = 50
-        upcoming_ids = stack[-BATCH_SIZE:]
+        """
+        Prefetch nodes in the top of the stack into cache to optimize DB access.
+        Uses config.interactive_batch_size to determine how many upcoming nodes to fetch.
+        """
+        batch_size = self.config.interactive_batch_size
+        upcoming_ids = stack[-batch_size:]
         missing_ids = [nid for nid in upcoming_ids if nid not in node_cache]
 
         if missing_ids:

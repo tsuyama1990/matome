@@ -131,16 +131,16 @@ class MatomeCanvas(param.Parameterized):  # type: ignore[misc]
              self.session.view_context = None
              self.session.current_level = self.session.current_level.__class__.WISDOM
 
-        home_btn = pn.widgets.Button(name="Home", button_type="light", width=80) # type: ignore[no-untyped-call]
+        home_btn = pn.widgets.Button(name="Home", button_type="light", width=80)  # type: ignore[no-untyped-call]
         home_btn.on_click(go_home)
         buttons.append(home_btn)
 
         for node in breadcrumbs:
-            buttons.append(pn.pane.Markdown(" > ", align="center")) # type: ignore[no-untyped-call]
+            buttons.append(pn.pane.Markdown(" > ", align="center"))  # type: ignore[no-untyped-call]
 
             # Use level title or truncated text
             label = f"{node.metadata.dikw_level.title()}: {node.text[:10]}..."
-            btn = pn.widgets.Button(name=label, button_type="light", height=30) # type: ignore[no-untyped-call]
+            btn = pn.widgets.Button(name=label, button_type="light", height=30)  # type: ignore[no-untyped-call]
 
             # Closure capture
             def jump(event: Any, n: SummaryNode = node) -> None:
@@ -162,7 +162,7 @@ class MatomeCanvas(param.Parameterized):  # type: ignore[misc]
             # Render Chunk View
             return pn.Column(
                 pn.pane.Markdown(f"## Chunk: {node.index}"),  # type: ignore[no-untyped-call]
-                pn.pane.Markdown("**Level**: DATA (Read-Only)"), # type: ignore[no-untyped-call]
+                pn.pane.Markdown("**Level**: DATA (Read-Only)"),  # type: ignore[no-untyped-call]
                 pn.pane.Markdown("### Content"),  # type: ignore[no-untyped-call]
                 pn.pane.Markdown(  # type: ignore[no-untyped-call]
                     node.text,
@@ -181,12 +181,12 @@ class MatomeCanvas(param.Parameterized):  # type: ignore[misc]
 
         # Zoom In Button
         if isinstance(node, SummaryNode) and node.children_indices:
-             zoom_btn = pn.widgets.Button(name="Zoom In", button_type="primary") # type: ignore[no-untyped-call]
+             zoom_btn = pn.widgets.Button(name="Zoom In", button_type="primary")  # type: ignore[no-untyped-call]
              zoom_btn.on_click(lambda e: self.session.zoom_in(node))
              buttons.append(zoom_btn)
 
         # View Source Button
-        source_btn = pn.widgets.Button(name="View Source", button_type="default") # type: ignore[no-untyped-call]
+        source_btn = pn.widgets.Button(name="View Source", button_type="default")  # type: ignore[no-untyped-call]
         source_btn.on_click(lambda e: self._show_source_modal(node))
         buttons.append(source_btn)
 
@@ -236,7 +236,7 @@ class MatomeCanvas(param.Parameterized):  # type: ignore[misc]
 
         modal_content = pn.Column(
             "## Source Chunks",
-            pn.pane.Markdown("\n".join(content), height=400, style={"overflow-y": "scroll"}), # type: ignore[no-untyped-call]
+            pn.pane.Markdown("\n".join(content), height=400, style={"overflow-y": "scroll"}),  # type: ignore[no-untyped-call]
             sizing_mode="stretch_width"
         )
 
@@ -257,7 +257,7 @@ class MatomeCanvas(param.Parameterized):  # type: ignore[misc]
     def main_area(self) -> pn.Column:
         return pn.Column(
             self.breadcrumbs_view,
-            pn.layout.Divider(), # type: ignore[no-untyped-call]
+            pn.layout.Divider(),  # type: ignore[no-untyped-call]
             self.detail_view,
             pn.layout.Divider(),  # type: ignore[no-untyped-call]
             "### Refinement",

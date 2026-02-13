@@ -194,17 +194,17 @@ def test_get_nodes_by_level(tmp_path: Path) -> None:
     store.add_chunk(c1)
 
     # Test Wisdom
-    wisdom_nodes = store.get_nodes_by_level("wisdom")
+    wisdom_nodes = list(store.get_nodes_by_level("wisdom"))
     assert len(wisdom_nodes) == 1
     assert wisdom_nodes[0].id == "s1"
 
     # Test Knowledge
-    knowledge_nodes = store.get_nodes_by_level("knowledge")
+    knowledge_nodes = list(store.get_nodes_by_level("knowledge"))
     assert len(knowledge_nodes) == 1
     assert knowledge_nodes[0].id == "s2"
 
     # Test Information
-    info_nodes = store.get_nodes_by_level("information")
+    info_nodes = list(store.get_nodes_by_level("information"))
     assert len(info_nodes) == 1
     assert info_nodes[0].id == "s3"
 
@@ -217,7 +217,7 @@ def test_get_nodes_by_level(tmp_path: Path) -> None:
         metadata=NodeMetadata(dikw_level="data"),
     )
     store.add_summary(s4)
-    data_nodes = store.get_nodes_by_level("data")
+    data_nodes = list(store.get_nodes_by_level("data"))
     assert len(data_nodes) == 1
     assert data_nodes[0].id == "s4"
 
