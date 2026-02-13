@@ -144,6 +144,10 @@ def test_refinement_agent_filters_context() -> None:
     config = MagicMock()
     config.max_input_length = 1000
     config.max_word_length = 100
+    # Add valid string values for Pydantic validation in SummarizationAgent.__init__
+    config.summarization_model = "gpt-4o-mini"
+    config.llm_temperature = 0.5
+    config.max_retries = 1
 
     agent = RefinementAgent(config, strategy)
 
@@ -189,6 +193,7 @@ def test_refine_node_preserves_metadata_and_info_strategy(
         # Verify Strategy was InformationStrategy
         MockRefinementAgent.assert_called_once()
         strategy_arg = MockRefinementAgent.call_args.kwargs.get('strategy')
+        assert strategy_arg is not None
         assert isinstance(strategy_arg.base_strategy, InformationStrategy)
 
         # Verify metadata preserved
@@ -215,5 +220,6 @@ def test_refine_node_default_strategy(
         engine.refine_node("d1", "instr")
 
         strategy_arg = MockRefinementAgent.call_args.kwargs.get('strategy')
+        assert strategy_arg is not None
         # BaseSummaryStrategy is used for DATA or others
         assert isinstance(strategy_arg.base_strategy, BaseSummaryStrategy)
