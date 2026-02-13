@@ -87,6 +87,7 @@ Output the markdown checklist.
 """
 
 # Cycle 03: Refinement Prompt Template
+# Appended to the base strategy prompt to inject user instructions.
 REFINEMENT_INSTRUCTION_TEMPLATE = """
 
 IMPORTANT - USER REFINEMENT INSTRUCTION:

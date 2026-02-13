@@ -121,6 +121,7 @@ class RefinementStrategy:
     """
     Decorator strategy for refining an existing summary based on user instructions.
     Wraps a base strategy (Wisdom, Knowledge, etc.) and appends the instruction to the prompt.
+    Implemented for Cycle 03.
     """
 
     def __init__(self, base_strategy: PromptStrategy) -> None:

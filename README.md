@@ -18,6 +18,7 @@ Matome 2.0 is a **"Semantic Zooming" engine**. It breaks down long documents (bo
 - **Hierarchical Summarization (RAPTOR):** Recursively summarizes text to build a tree of knowledge.
 - **Japanese Semantic Chunking:** Intelligent text splitting optimized for Japanese content.
 - **Obsidian Canvas Export:** Visualize your summary as an interactive node graph in Obsidian.
+- **Interactive Refinement:** Refine individual nodes using natural language instructions.
 
 ## Requirements
 
@@ -89,8 +90,8 @@ src/
 ## Roadmap
 
 - **Cycle 01:** Core Refactoring & Strategy Pattern.
-- **Cycle 02 (Current):** DIKW Engine (Wisdom/Knowledge/Information modes).
-- **Cycle 03:** Interactive Backend (Single-node refinement).
+- **Cycle 02:** DIKW Engine (Wisdom/Knowledge/Information modes).
+- **Cycle 03 (Current):** Interactive Backend (Single-node refinement).
 - **Cycle 04:** GUI Foundation (MVVM with Panel).
 - **Cycle 05:** Full Semantic Zooming.
 

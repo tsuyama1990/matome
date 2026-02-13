@@ -1,25 +1,14 @@
+import contextlib
 import json
 import logging
 import shutil
+import sqlite3
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any
-
-from sqlalchemy import (
-    Column,
-    MetaData,
-    String,
-    Table,
-    Text,
-    create_engine,
-    insert,
-    select,
-    text,
-    update,
-)
 
 from domain_models.manifest import Chunk, SummaryNode
+from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
@@ -31,10 +20,34 @@ COL_CONTENT = "content"  # Stores JSON of the node (excluding embedding)
 COL_EMBEDDING = "embedding"  # Stores JSON of the embedding list
 
 
+@contextlib.contextmanager
+def get_db_connection(db_path: Path) -> Iterator[sqlite3.Connection]:
+    """
+    Context manager for SQLite connections.
+    Ensures proper closing and handles timeouts for concurrency.
+    """
+    # check_same_thread=False is safe because we create a new connection per thread/context
+    # and we don't share cursor objects across threads.
+    conn = sqlite3.connect(db_path, timeout=20.0, check_same_thread=False)
+
+    # Enable WAL mode for better concurrency (readers don't block writers)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 class DiskChunkStore:
     """
     A temporary disk-based store for Chunks and SummaryNodes to avoid O(N) RAM usage.
-    Uses SQLAlchemy + SQLite for robustness and connection pooling.
+    Uses raw SQLite3 with context managers for thread-safe concurrency.
 
     Schema:
         id: String PK
@@ -62,38 +75,19 @@ class DiskChunkStore:
             self.temp_dir = tempfile.mkdtemp()
             self.db_path = Path(self.temp_dir) / "store.db"
 
-        # Use standard SQLite URL
-        db_url = f"sqlite:///{self.db_path}"
-
-        # Configure connection pooling for performance
-        # SQLite handles concurrency poorly with multiple writers, but we use WAL mode.
-        # Pool size and timeout help manage contention.
-        # isolation_level=None allows manual transaction control if needed, but AUTOCOMMIT is default.
-        # For WAL, standard is fine. We explicitly set PRAGMAs.
-        self.engine = create_engine(
-            db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800
-        )
         self._setup_db()
 
     def _setup_db(self) -> None:
         """Initialize the database schema."""
-        with self.engine.begin() as conn:
-            # Enable WAL mode for performance
-            conn.execute(text("PRAGMA journal_mode=WAL;"))
-            # Synchronous NORMAL is faster and safe enough for WAL
-            conn.execute(text("PRAGMA synchronous=NORMAL;"))
-
-        # Define schema using SQLAlchemy Core
-        metadata = MetaData()
-        self.nodes_table = Table(
-            TABLE_NODES,
-            metadata,
-            Column(COL_ID, String, primary_key=True),
-            Column(COL_TYPE, String),
-            Column(COL_CONTENT, Text),  # Main node data
-            Column(COL_EMBEDDING, Text),  # Embedding separated for efficient updates
-        )
-        metadata.create_all(self.engine)
+        with get_db_connection(self.db_path) as conn:
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS {TABLE_NODES} (
+                    {COL_ID} TEXT PRIMARY KEY,
+                    {COL_TYPE} TEXT,
+                    {COL_CONTENT} TEXT,
+                    {COL_EMBEDDING} TEXT
+                )
+            """)
 
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
@@ -117,16 +111,15 @@ class DiskChunkStore:
         Streaming safe: processes input iterable in batches without full materialization.
         """
         BATCH_SIZE = 1000
-        # Use Core Insert with REPLACE logic for SQLite
-        stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
-        from matome.utils.compat import batched
+        sql = f"""
+            INSERT OR REPLACE INTO {TABLE_NODES} ({COL_ID}, {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING})
+            VALUES (?, ?, ?, ?)
+        """  # noqa: S608
 
         # Iterate over the input iterable using batched() to handle chunks efficiently
-        # without loading the entire dataset into memory.
         for node_batch in batched(nodes, BATCH_SIZE):
-            buffer: list[dict[str, Any]] = []
-
+            buffer = []
             for node in node_batch:
                 # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
                 content_json = node.model_dump_json(exclude={"embedding"})
@@ -136,18 +129,11 @@ class DiskChunkStore:
 
                 node_id = str(node.index) if isinstance(node, Chunk) else node.id
 
-                buffer.append(
-                    {
-                        "id": node_id,
-                        "type": node_type,
-                        "content": content_json,
-                        "embedding": embedding_json,
-                    }
-                )
+                buffer.append((node_id, node_type, content_json, embedding_json))
 
             # Flush batch
-            with self.engine.begin() as conn:
-                conn.execute(stmt, buffer)
+            with get_db_connection(self.db_path) as conn:
+                conn.executemany(sql, buffer)
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
         """
@@ -159,26 +145,19 @@ class DiskChunkStore:
 
         embedding_json = json.dumps(embedding)
 
-        # Use SQLAlchemy Core expression for parameterized update
-        stmt = (
-            update(self.nodes_table)
-            .where(self.nodes_table.c.id == str(node_id))
-            .values(embedding=embedding_json)
-        )
+        sql = f"UPDATE {TABLE_NODES} SET {COL_EMBEDDING} = ? WHERE {COL_ID} = ?"  # noqa: S608
 
-        with self.engine.begin() as conn:
-            conn.execute(stmt)
+        with get_db_connection(self.db_path) as conn:
+            conn.execute(sql, (embedding_json, str(node_id)))
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
-        # Use SQLAlchemy Core expression for parameterized select
-        stmt = select(
-            self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
-        ).where(self.nodes_table.c.id == str(node_id))
 
-        with self.engine.connect() as conn:
-            result = conn.execute(stmt)
-            row = result.fetchone()
+        sql = f"SELECT {COL_TYPE}, {COL_CONTENT}, {COL_EMBEDDING} FROM {TABLE_NODES} WHERE {COL_ID} = ?"  # noqa: S608
+
+        with get_db_connection(self.db_path) as conn:
+            cursor = conn.execute(sql, (str(node_id),))
+            row = cursor.fetchone()
 
             if not row:
                 return None
@@ -189,17 +168,15 @@ class DiskChunkStore:
                 # Deserialize embedding first
                 embedding = json.loads(embedding_json) if embedding_json else None
 
+                # Parse JSON then validate to ensure strict type compliance
+                data = json.loads(content_json)
+                if embedding is not None:
+                    data["embedding"] = embedding
+
                 if node_type == "chunk":
-                    # Parse JSON then validate to ensure strict type compliance
-                    data = json.loads(content_json)
-                    if embedding is not None:
-                        data["embedding"] = embedding
                     return Chunk.model_validate(data)
 
                 if node_type == "summary":
-                    data = json.loads(content_json)
-                    if embedding is not None:
-                        data["embedding"] = embedding
                     return SummaryNode.model_validate(data)
 
             except Exception:
@@ -213,7 +190,6 @@ class DiskChunkStore:
 
     def close(self) -> None:
         """Close the engine and cleanup temp files."""
-        self.engine.dispose()
         if self.temp_dir:
             shutil.rmtree(self.temp_dir, ignore_errors=True)
 

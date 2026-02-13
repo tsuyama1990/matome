@@ -1,53 +1,50 @@
 from typing import Any
 from unittest.mock import MagicMock
 
-from matome.agents.strategies import RefinementStrategy, WisdomStrategy
-from matome.utils.prompts import REFINEMENT_INSTRUCTION_TEMPLATE, WISDOM_TEMPLATE
+import pytest
+
+from matome.agents.strategies import RefinementStrategy
+from matome.interfaces import PromptStrategy
 
 
-def test_refinement_strategy_format_prompt() -> None:
-    base_strategy = WisdomStrategy()
+@pytest.fixture
+def base_strategy() -> MagicMock:
+    strategy = MagicMock(spec=PromptStrategy)
+    strategy.format_prompt.return_value = "Base Prompt"
+    strategy.parse_output.return_value = {"summary": "Base Summary"}
+    return strategy
+
+
+def test_refinement_strategy_init(base_strategy: MagicMock) -> None:
     strategy = RefinementStrategy(base_strategy)
-
-    text = "Some text"
-    instruction = "Make it shorter"
-    context = {"instruction": instruction}
-
-    prompt = strategy.format_prompt(text, context)
-
-    expected_base_prompt = WISDOM_TEMPLATE.format(context=text)
-    expected_instruction = REFINEMENT_INSTRUCTION_TEMPLATE.format(instruction=instruction)
-
-    assert expected_base_prompt in prompt
-    assert expected_instruction in prompt
-    assert prompt.endswith(expected_instruction)
+    assert strategy.base_strategy == base_strategy
 
 
-def test_refinement_strategy_no_instruction() -> None:
-    base_strategy = WisdomStrategy()
+def test_refinement_format_prompt_with_instruction(base_strategy: MagicMock) -> None:
     strategy = RefinementStrategy(base_strategy)
+    context = {"instruction": "Make it shorter"}
+    prompt = strategy.format_prompt("text", context)
 
-    text = "Some text"
+    # Assert base prompt is included
+    assert "Base Prompt" in prompt
+    # Assert instruction is included (via REFINEMENT_INSTRUCTION_TEMPLATE)
+    assert "Make it shorter" in prompt
+    assert "IMPORTANT - USER REFINEMENT INSTRUCTION" in prompt
+
+
+def test_refinement_format_prompt_no_instruction(base_strategy: MagicMock) -> None:
+    strategy = RefinementStrategy(base_strategy)
     context: dict[str, Any] = {}
+    prompt = strategy.format_prompt("text", context)
 
-    prompt = strategy.format_prompt(text, context)
-
-    expected_base_prompt = WISDOM_TEMPLATE.format(context=text)
-
-    assert prompt == expected_base_prompt
-
-    # Basic check to ensure instruction template part is not present
-    # REFINEMENT_INSTRUCTION_TEMPLATE likely starts with newlines, so we strip
-    template_core = REFINEMENT_INSTRUCTION_TEMPLATE.strip()
-    if template_core:
-        assert template_core not in prompt
+    assert prompt == "Base Prompt"
+    assert "IMPORTANT - USER REFINEMENT INSTRUCTION" not in prompt
 
 
-def test_refinement_strategy_parse_output() -> None:
-    base_strategy = MagicMock()
+def test_refinement_parse_output(base_strategy: MagicMock) -> None:
     strategy = RefinementStrategy(base_strategy)
+    response = "Response"
+    result = strategy.parse_output(response)
 
-    response = "Output"
-    strategy.parse_output(response)
-
-    base_strategy.parse_output.assert_called_once_with(response)
+    base_strategy.parse_output.assert_called_with(response)
+    assert result == {"summary": "Base Summary"}

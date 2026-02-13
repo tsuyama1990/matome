@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from domain_models.data_schema import DIKWLevel
 from domain_models.manifest import Chunk, SummaryNode
@@ -16,10 +17,30 @@ from matome.utils.store import DiskChunkStore
 logger = logging.getLogger(__name__)
 
 
+class RefinementAgent(SummarizationAgent):
+    """
+    Specialized agent for refinement that filters instruction from context
+    to prevent SummaryNode validation errors.
+    """
+
+    def _create_summary_node(
+        self,
+        response_content: str,
+        context: dict[str, Any] | None,
+        strategy: PromptStrategy,
+    ) -> SummaryNode:
+        # Filter context to remove non-SummaryNode fields before calling super
+        safe_context = context
+        if context and "instruction" in context:
+            safe_context = context.copy()
+            safe_context.pop("instruction")
+        return super()._create_summary_node(response_content, safe_context, strategy)
+
+
 class InteractiveRaptorEngine:
     """
-    Interactive engine for manipulating the RAPTOR tree.
-    Allows for single-node refinement and traversal.
+    Engine for interactive operations on the knowledge graph.
+    Supports single-node retrieval and refinement.
     """
 
     def __init__(self, store: DiskChunkStore, agent: SummarizationAgent) -> None:
@@ -27,159 +48,100 @@ class InteractiveRaptorEngine:
         Initialize the interactive engine.
 
         Args:
-            store: The disk-based store containing chunks and summary nodes.
-                   Provides persistent storage access.
+            store: The persistence layer (DiskChunkStore).
             agent: The summarization agent to use for refinement.
-                   Handles LLM interactions.
         """
         self.store = store
         self.agent = agent
 
-    def get_node(self, node_id: str | int) -> SummaryNode | Chunk | None:
+    def get_node(self, node_id: str) -> SummaryNode | Chunk | None:
         """
-        Get a node from the store by ID.
+        Retrieve a node from the store.
 
         Args:
-            node_id: The ID of the node (int for Chunk, str for SummaryNode).
+            node_id: The unique ID of the node.
 
         Returns:
-            The node object if found, otherwise None.
+            The node object (Chunk or SummaryNode) or None if not found.
         """
         return self.store.get_node(node_id)
 
-    def get_children(self, node_id: str) -> list[SummaryNode | Chunk]:
-        """
-        Get children of a specific summary node.
-
-        Args:
-            node_id: The ID of the parent summary node.
-
-        Returns:
-            A list of child nodes (SummaryNode or Chunk).
-            Returns an empty list if the parent node is not found or is a Chunk.
-        """
-        node = self.get_node(node_id)
-        if not node or not isinstance(node, SummaryNode):
-            return []
-
-        children = []
-        for child_id in node.children_indices:
-            child = self.store.get_node(child_id)
-            if child:
-                children.append(child)
-        return children
-
-    def _get_refinement_strategy(self, current_level: DIKWLevel) -> RefinementStrategy:
-        """
-        Helper to determine the base strategy and wrap it in RefinementStrategy.
-
-        This method maps the DIKW level of a node to its corresponding PromptStrategy.
-        - Wisdom -> WisdomStrategy
-        - Knowledge -> KnowledgeStrategy
-        - Information -> InformationStrategy
-        - Data/Other -> BaseSummaryStrategy
-
-        The resulting strategy is then wrapped in RefinementStrategy to allow for
-        user instruction injection.
-        """
-        base_strategy: PromptStrategy
-
-        if current_level == DIKWLevel.WISDOM:
-            base_strategy = WisdomStrategy()
-        elif current_level == DIKWLevel.KNOWLEDGE:
-            base_strategy = KnowledgeStrategy()
-        elif current_level == DIKWLevel.INFORMATION:
-            base_strategy = InformationStrategy()
-        else:
-            # Fallback for DATA or unknown levels
-            if current_level != DIKWLevel.DATA:
-                logger.warning(
-                    f"Unknown or unexpected DIKW level '{current_level}'. Falling back to BaseSummaryStrategy."
-                )
-            base_strategy = BaseSummaryStrategy()
-
-        return RefinementStrategy(base_strategy)
-
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
-        Refine a summary node with a user instruction.
-
-        Re-summarizes the node's children using the appropriate strategy (based on DIKW level)
-        and the provided user instruction. The updated node is saved back to the store.
+        Refine a node based on user instruction.
 
         Args:
             node_id: The ID of the node to refine.
-            instruction: The user's refinement instruction (e.g., "Make it simpler").
+            instruction: The user's refinement instruction.
 
         Returns:
-            The newly generated SummaryNode.
+            The updated SummaryNode.
 
         Raises:
-            ValueError: If the node with `node_id` is not found, `instruction` is empty, or `model_dump()` fails.
-            TypeError: If the node is a Chunk (cannot be refined).
+            ValueError: If the node is not found.
+            TypeError: If the node is not a SummaryNode.
         """
-        if not instruction or not instruction.strip():
-            msg = "Refinement instruction cannot be empty."
-            logger.error(msg)
-            raise ValueError(msg)
-
-        node = self.get_node(node_id)
+        node = self.store.get_node(node_id)
         if not node:
             msg = f"Node {node_id} not found."
             raise ValueError(msg)
 
         if not isinstance(node, SummaryNode):
-            msg = f"Cannot refine a Chunk (Node ID: {node_id}). Only SummaryNodes can be refined."
+            msg = "Cannot refine a raw Chunk. Only SummaryNodes can be refined."
             raise TypeError(msg)
 
-        strategy = self._get_refinement_strategy(node.metadata.dikw_level)
+        # Determine base strategy from DIKW level
+        dikw_level = node.metadata.dikw_level
+        base_strategy: PromptStrategy
 
-        # Gather children text
-        children_texts = []
-        for child_id in node.children_indices:
-            child = self.store.get_node(child_id)
-            if child:
-                children_texts.append(child.text)
+        if dikw_level == DIKWLevel.WISDOM:
+            base_strategy = WisdomStrategy()
+        elif dikw_level == DIKWLevel.KNOWLEDGE:
+            base_strategy = KnowledgeStrategy()
+        elif dikw_level == DIKWLevel.INFORMATION:
+            base_strategy = InformationStrategy()
+        else:
+            base_strategy = BaseSummaryStrategy()
 
-        if not children_texts:
-            logger.warning(
-                f"Node {node_id} has no accessible children. Refining using the node's own text as context."
-            )
-            children_texts = [node.text]
+        # Wrap with RefinementStrategy
+        refinement_strategy = RefinementStrategy(base_strategy)
 
-        # Prepare context for summarization
-        try:
-            # We start with existing metadata but must convert to dict for context
-            meta_dict = node.metadata.model_dump()
-        except Exception as e:
-            msg = f"Failed to dump metadata for node {node_id}: {e}"
-            logger.exception(msg)
-            raise ValueError(msg) from e
+        # Create a temporary agent with the refinement strategy to avoid mutating the shared agent
+        # (This achieves "Strategy Swap" in a thread-safe manner)
+        temp_agent = RefinementAgent(self.agent.config, strategy=refinement_strategy)
+        # Reuse the underlying LLM client
+        temp_agent.llm = self.agent.llm
 
-        # Update metadata for refinement
-        meta_dict["is_user_edited"] = True
-
-        # Append instruction to history
-        current_history = meta_dict.get("refinement_history", [])
-        if not isinstance(current_history, list):
-            current_history = []
-        current_history.append(instruction)
-        meta_dict["refinement_history"] = current_history
-
+        # Prepare context
         context = {
             "id": node.id,
             "level": node.level,
             "children_indices": node.children_indices,
-            "metadata": meta_dict,
             "instruction": instruction,
+            # Pass existing metadata to preserve fields like cluster_id
+            "metadata": node.metadata.model_dump(),
         }
 
-        # Summarize
-        new_node = self.agent.summarize(children_texts, context=context, strategy=strategy)
+        # Call agent to generate new summary
+        # We pass the OLD text as input to be rewritten
+        new_node = temp_agent.summarize(text=node.text, context=context)
 
-        # Update store with the new node content
-        # Note: This overwrites the existing node in the store because IDs match.
+        # Update metadata
+        new_node.metadata.is_user_edited = True
+        new_node.metadata.refinement_history = [*node.metadata.refinement_history, instruction]
+
+        # Preserve original DIKW level if agent didn't set it (though strategies usually do)
+        if new_node.metadata.dikw_level == DIKWLevel.DATA and dikw_level != DIKWLevel.DATA:
+            new_node.metadata.dikw_level = dikw_level
+
+        # Ensure we keep other metadata if not overwritten (e.g. cluster_id)
+        if node.metadata.cluster_id and not new_node.metadata.cluster_id:
+            new_node.metadata.cluster_id = node.metadata.cluster_id
+
+        if node.metadata.type and not new_node.metadata.type:
+            new_node.metadata.type = node.metadata.type
+
+        # Save to store
         self.store.add_summary(new_node)
 
-        logger.info(f"Successfully refined node {node_id} with instruction: '{instruction}'")
         return new_node
