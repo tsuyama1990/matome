@@ -357,8 +357,13 @@ class RaptorEngine:
                 node = nodes_map.get(node_id)
                 # Fallback check for int/str key mismatch
                 if not node and isinstance(node_id, (int, str)):
-                    alt_key = str(node_id) if isinstance(node_id, int) else int(node_id) if node_id.isdigit() else None  # type: ignore[attr-defined]
-                    if alt_key in nodes_map:
+                    alt_key: int | str | None = None
+                    if isinstance(node_id, int):
+                        alt_key = str(node_id)
+                    elif isinstance(node_id, str) and node_id.isdigit():
+                        alt_key = int(node_id)
+
+                    if alt_key is not None and alt_key in nodes_map:
                         node = nodes_map[alt_key]
 
                 if not node:
