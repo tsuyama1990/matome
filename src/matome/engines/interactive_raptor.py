@@ -81,6 +81,11 @@ class InteractiveRaptorEngine:
             msg = "Cannot refine a raw Chunk. Only SummaryNodes can be refined."
             raise TypeError(msg)
 
+        # Basic security validation for instruction
+        if not instruction or len(instruction) > 1000:
+            msg = "Instruction must be non-empty and less than 1000 characters."
+            raise ValueError(msg)
+
         # Determine base strategy from DIKW level
         dikw_level = node.metadata.dikw_level
         base_strategy: PromptStrategy

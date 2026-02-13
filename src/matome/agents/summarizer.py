@@ -328,6 +328,17 @@ class SummarizationAgent:
     ) -> BaseMessage:
         """
         Invoke the LLM with exponential backoff retry logic.
+
+        Args:
+            messages: List of messages to send to the LLM.
+            config: Processing configuration (for max retries).
+            request_id: Unique identifier for logging.
+
+        Returns:
+            The raw response message from the LLM.
+
+        Raises:
+            SummarizationError: If LLM is not initialized or call fails after retries.
         """
         if not self.llm:
             msg = "LLM not initialized"
