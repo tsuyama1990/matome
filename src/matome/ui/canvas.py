@@ -116,7 +116,7 @@ class MatomeCanvas:
                 pn.state.notifications.error(f"Selection failed: {ex}")  # type: ignore[no-untyped-call]
 
     def _render_details(self) -> pn.viewable.Viewable:
-        def _details(node: SummaryNode | Chunk | None) -> pn.Column:
+        def _details(node: SummaryNode | Chunk | None, is_processing: bool) -> pn.Column:
             try:
                 if not node:
                     return pn.Column(pn.pane.Markdown("Select a node to view details."))  # type: ignore[no-untyped-call]
@@ -130,21 +130,61 @@ class MatomeCanvas:
                     **Edited**: {meta.is_user_edited}
                     **Refinements**: {len(meta.refinement_history)}
                     """
+
+                    # Refinement UI
+                    instruction_input = pn.widgets.TextAreaInput(
+                        name="Refine Node",
+                        placeholder="Enter instruction (e.g., 'Simplify this', 'Translate to Japanese')...",
+                        height=100,
+                        disabled=is_processing,
+                    )
+
+                    refine_btn = pn.widgets.Button(
+                        name="Refine",
+                        button_type="primary",
+                        disabled=is_processing,
+                    )  # type: ignore[no-untyped-call]
+
+                    def on_refine(event: Any) -> None:
+                        if instruction_input.value:
+                            self.session.refine_current_node(instruction_input.value)
+
+                    refine_btn.on_click(on_refine)
+
+                    spinner = pn.indicators.LoadingSpinner(
+                        value=is_processing,
+                        width=25,
+                        height=25,
+                        align="center",
+                    )  # type: ignore[no-untyped-call]
+
+                    # Only show spinner if processing
+                    spinner.visible = is_processing
+
+                    refine_panel = pn.Column(
+                        pn.pane.Markdown("### Refinement"),  # type: ignore[no-untyped-call]
+                        instruction_input,
+                        pn.Row(refine_btn, spinner),
+                        sizing_mode="stretch_width",
+                    )
+
                 else:
                     title = f"Chunk {node.index}"
                     content = node.text
                     meta_md = f"""
                     **Range**: {node.start_char_idx} - {node.end_char_idx}
                     """
+                    refine_panel = pn.Column()  # Empty for chunks
 
                 return pn.Column(
                     pn.pane.Markdown(f"## {title}"),  # type: ignore[no-untyped-call]
                     pn.pane.Markdown(meta_md),  # type: ignore[no-untyped-call]
                     pn.pane.Markdown("### Content"),  # type: ignore[no-untyped-call]
                     pn.pane.Markdown(content, sizing_mode="stretch_width"),  # type: ignore[no-untyped-call]
+                    refine_panel,
                     sizing_mode="stretch_width"
                 )
             except Exception as e:
                 return pn.Column(pn.pane.Markdown(f"Error rendering details: {e}", style={"color": "red"}))  # type: ignore[no-untyped-call]
 
-        return pn.bind(_details, self.session.param.selected_node)  # type: ignore[no-any-return]
+        return pn.bind(_details, self.session.param.selected_node, self.session.param.is_processing)  # type: ignore[no-any-return]

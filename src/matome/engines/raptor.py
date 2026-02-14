@@ -229,9 +229,8 @@ class RaptorEngine:
             if node_count < 20:
                 node_ids = list(store.get_node_ids_by_level(level))
                 return [Cluster(id=0, level=level, node_indices=node_ids)]
-            else:
-                logger.error("Could not reduce nodes. Stopping recursion.")
-                raise StopRecursionError(next(iter(store.get_node_ids_by_level(level))))
+            logger.error("Could not reduce nodes. Stopping recursion.")
+            raise StopRecursionError(next(iter(store.get_node_ids_by_level(level))))
         return clusters
 
     def _summarize_and_store_level(

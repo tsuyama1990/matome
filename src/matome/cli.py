@@ -299,8 +299,12 @@ def serve(
 
     try:
         config = ProcessingConfig()  # Default config for now
-        # Read-only mode: summarizer=None
-        engine = InteractiveRaptorEngine(store=store, summarizer=None, config=config)
+
+        # Initialize SummarizationAgent for interactive refinement
+        # Note: Requires OPENROUTER_API_KEY environment variable
+        summarizer = SummarizationAgent(config)
+
+        engine = InteractiveRaptorEngine(store=store, summarizer=summarizer, config=config)
         session = InteractiveSession(engine=engine)
 
         # Load initial tree

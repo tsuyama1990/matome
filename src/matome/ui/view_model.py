@@ -19,6 +19,8 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
     breadcrumbs = param.List(default=[])
     current_view_nodes = param.List(default=[])
 
+    is_processing = param.Boolean(default=False)
+
     def __init__(self, engine: InteractiveRaptorEngine, **params: Any) -> None:
         super().__init__(engine=engine, **params)
 
@@ -73,3 +75,32 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
             self.current_view_nodes = self.engine.get_children(node)
         else:
             self.current_view_nodes = []
+
+    def refine_current_node(self, instruction: str) -> None:
+        """
+        Refine the currently selected node using the given instruction.
+        """
+        if not self.selected_node:
+            return
+
+        if not isinstance(self.selected_node, SummaryNode):
+            msg = "Only SummaryNodes can be refined."
+            raise TypeError(msg)
+
+        self.is_processing = True
+        try:
+            updated_node = self.engine.refine_node(self.selected_node.id, instruction)
+            self.selected_node = updated_node
+
+            # Update breadcrumbs to reflect the new node instance
+            # This ensures navigation history remains valid with the updated content
+            new_breadcrumbs = []
+            for crumb in self.breadcrumbs:
+                if isinstance(crumb, SummaryNode) and crumb.id == updated_node.id:
+                    new_breadcrumbs.append(updated_node)
+                else:
+                    new_breadcrumbs.append(crumb)
+            self.breadcrumbs = new_breadcrumbs
+
+        finally:
+            self.is_processing = False

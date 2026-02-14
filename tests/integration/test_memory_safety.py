@@ -4,7 +4,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, SummaryNode
+from domain_models.manifest import Chunk, Cluster
 from matome.engines.raptor import RaptorEngine
 
 
