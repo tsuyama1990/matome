@@ -8,10 +8,11 @@ from sqlalchemy import text
 
 from domain_models.manifest import Chunk
 from matome.utils.store import DiskChunkStore, StoreError
+from tests.utils import generate_chunks
 
 
 def test_invalid_node_id_validation() -> None:
-    """Test that invalid node IDs raise ValueError."""
+    """Test that invalid node IDs raise ValueError, including path traversal."""
     store = DiskChunkStore()
 
     # Valid IDs
@@ -26,19 +27,19 @@ def test_invalid_node_id_validation() -> None:
     with pytest.raises(ValueError, match="Invalid node ID format"):
         store.get_node("id with spaces")
 
+    # Path Traversal Check
+    with pytest.raises(ValueError, match="Invalid node ID format"):
+        store.get_node("../../../etc/passwd")
+
     store.close()
 
 
 def test_large_batch_processing(tmp_path: Path) -> None:
-    """Test processing a batch larger than the internal read buffer."""
+    """Test processing a batch larger than the internal read buffer using streaming."""
     store = DiskChunkStore(tmp_path / "large_batch.db", read_batch_size=10)
 
-    # Create 25 chunks (2.5 batches)
-    chunks = [
-        Chunk(index=i, text=f"C{i}", start_char_idx=0, end_char_idx=1)
-        for i in range(25)
-    ]
-    store.add_chunks(chunks)
+    # Stream chunks directly (no list comprehension)
+    store.add_chunks(generate_chunks(25))
 
     # Retrieve all 25
     ids = [str(i) for i in range(25)]
@@ -159,4 +160,12 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
     t2.join()
 
     assert not errors, f"Concurrency errors: {errors}"
+
+    # Final Consistency Check
+    final_node = store.get_node("0")
+    assert final_node is not None
+    # Depending on race, it will be one of the updates or init, but valid.
+    assert isinstance(final_node, Chunk)
+    assert final_node.text.startswith("Update") or final_node.text == "Init"
+
     store.close()

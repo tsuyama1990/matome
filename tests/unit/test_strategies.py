@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 from domain_models.types import DIKWLevel
 from matome.agents.strategies import (
+    STRATEGY_REGISTRY,
     ChainOfDensityStrategy,
     InformationStrategy,
     KnowledgeStrategy,
@@ -94,3 +95,24 @@ def test_refinement_strategy_no_instruction() -> None:
     prompt = strategy.format_prompt("Source Text", {})
 
     assert prompt == "Base Prompt."
+
+
+def test_strategy_registry_completeness() -> None:
+    """Verify that all expected strategies are registered."""
+    expected_keys = {
+        DIKWLevel.WISDOM.value,
+        DIKWLevel.KNOWLEDGE.value,
+        DIKWLevel.INFORMATION.value,
+        "default",
+        "refinement",
+    }
+
+    # Check keys exist
+    assert expected_keys.issubset(STRATEGY_REGISTRY.keys())
+
+    # Check types
+    assert issubclass(STRATEGY_REGISTRY[DIKWLevel.WISDOM.value], WisdomStrategy)
+    assert issubclass(STRATEGY_REGISTRY[DIKWLevel.KNOWLEDGE.value], KnowledgeStrategy)
+    assert issubclass(STRATEGY_REGISTRY[DIKWLevel.INFORMATION.value], InformationStrategy)
+    assert issubclass(STRATEGY_REGISTRY["default"], ChainOfDensityStrategy)
+    assert issubclass(STRATEGY_REGISTRY["refinement"], RefinementStrategy)

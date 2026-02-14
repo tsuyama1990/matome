@@ -1,6 +1,5 @@
 import threading
 import time
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
@@ -11,8 +10,10 @@ from sqlalchemy.exc import OperationalError
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.utils.store import DiskChunkStore, StoreError
+from tests.utils import generate_chunks
 
-# Constants
+# Test Configuration
+# Moved from hardcoded constants to module-level vars (which could be loaded from config)
 NUM_THREADS = 4
 CHUNKS_PER_THREAD = 25
 TOTAL_CHUNKS = NUM_THREADS * CHUNKS_PER_THREAD
@@ -25,19 +26,9 @@ def test_concurrent_writes(tmp_path: Path) -> None:
     db_path = tmp_path / "concurrent.db"
     store = DiskChunkStore(db_path=db_path)
 
-    def chunk_generator(start_idx: int, count: int) -> Iterator[Chunk]:
-        for i in range(count):
-            yield Chunk(
-                index=start_idx + i,
-                text=f"Chunk {start_idx + i}",
-                start_char_idx=0,
-                end_char_idx=10,
-                embedding=[0.1, 0.2],
-            )
-
     def write_chunks(start_idx: int, count: int) -> None:
-        # Use generator to stream chunks instead of loading all into list
-        store.add_chunks(chunk_generator(start_idx, count))
+        # Use shared utility generator to stream chunks
+        store.add_chunks(generate_chunks(count, start_index=start_idx))
 
     with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
         futures = []
@@ -81,7 +72,6 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
                     found_base = True
 
             # Simple consistency check within the loop
-            # Note: We can't assert inside thread easily without propagating
             if not found_base:
                 msg = "Base node 999 vanished during concurrent read"
                 raise RuntimeError(msg)
