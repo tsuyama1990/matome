@@ -2,6 +2,7 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Iterable, Iterator
+from typing import cast
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
@@ -144,13 +145,14 @@ class RaptorEngine:
 
             # We need L0 IDs for finalizing the tree.
             l0_ids = list(active_store.get_node_ids_by_level(0))
+            l0_ids_typed = cast(list[NodeID], l0_ids)
 
             # Recursive Summarization
             final_root_id = self._process_recursion(
                 clusters, node_count, active_store
             )
 
-            return self._finalize_tree([final_root_id], active_store, l0_ids)
+            return self._finalize_tree([final_root_id], active_store, l0_ids_typed)
 
     def _process_recursion(
         self,
@@ -199,7 +201,10 @@ class RaptorEngine:
             logger.info(f"Using strategy {type(strategy).__name__} for Level {level} (Final={is_final})")
 
             next_level = level + 1
-            new_nodes_iter = self._summarize_clusters(clusters, current_level_ids, store, next_level, strategy)
+            current_level_ids_typed = cast(list[NodeID], current_level_ids)
+            new_nodes_iter = self._summarize_clusters(
+                clusters, current_level_ids_typed, store, next_level, strategy
+            )
 
             summary_buffer: list[SummaryNode] = []
 
@@ -220,7 +225,8 @@ class RaptorEngine:
             node_count = len(current_level_ids)
 
             if node_count > 1:
-                clusters = self._embed_and_cluster_next_level(current_level_ids, store)
+                next_level_ids_typed = cast(list[NodeID], current_level_ids)
+                clusters = self._embed_and_cluster_next_level(next_level_ids_typed, store)
             else:
                 clusters = []
 

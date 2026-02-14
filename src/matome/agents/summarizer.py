@@ -135,10 +135,10 @@ class SummarizationAgent:
         # 2. Control Character Check & Normalization
         # Security: Normalize unicode to prevent homograph/normalization attacks
         normalized_text = unicodedata.normalize("NFKC", text)
-        if len(normalized_text) != len(text):
-            # Check length again if normalization changed it drastically
-            if len(normalized_text) > max_input_length:
-                 raise ValueError("Normalized text exceeds maximum length.")
+        # Check length again if normalization changed it drastically
+        if len(normalized_text) != len(text) and len(normalized_text) > max_input_length:
+            msg = "Normalized text exceeds maximum length."
+            raise ValueError(msg)
 
         allowed_controls = {"\n", "\t", "\r"}
 
