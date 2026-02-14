@@ -49,7 +49,7 @@ class InteractiveRaptorEngine:
         # Ensure IDs are strings as expected by get_nodes
         child_ids = [str(idx) for idx in node.children_indices]
 
-        # get_nodes returns a generator
+        # get_nodes returns a generator and fetches in batches
         for child in self.store.get_nodes(child_ids):
             if child is not None:
                 yield child
@@ -64,8 +64,6 @@ class InteractiveRaptorEngine:
             return None
 
         # Get nodes at max level
-        # store.get_node_ids_by_level returns iterator of IDs
-        # We assume there is only one root at the max level, or we just pick the first one.
         ids_iter = self.store.get_node_ids_by_level(max_level)
         try:
             root_id = next(ids_iter)
@@ -76,7 +74,6 @@ class InteractiveRaptorEngine:
         if isinstance(node, SummaryNode):
             return node
 
-        # If for some reason it's a chunk (shouldn't happen given get_max_level checks summaries), ignore
         return None
 
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
@@ -101,7 +98,6 @@ class InteractiveRaptorEngine:
             msg = "Summarizer agent is not initialized. Cannot refine node."
             raise RuntimeError(msg)
 
-        # Validate inputs first to fail fast
         if not instruction or not instruction.strip():
             msg = "Instruction cannot be empty."
             raise ValueError(msg)
@@ -120,20 +116,16 @@ class InteractiveRaptorEngine:
             msg = "Only SummaryNodes can be refined."
             raise TypeError(msg)
 
-        # Gather source text from children
-        # We process children via iterator to optimize for memory, but currently
-        # we need to materialize them to validate count (integrity) and concatenate text.
-        # Given that a single summary node typically has < 50 children, this is
-        # acceptable for memory usage within an interactive session.
-        # Future optimization: stream text directly to LLM if API supports it,
-        # or validate count via DB before fetching content.
+        # Batch retrieval is handled by get_children calling store.get_nodes
+        # We consume the generator into a list here because we need all text for context context
+        # In extremely large scale scenarios, we might need to truncate or sample,
+        # but children count per node is usually limited by clustering branching factor (e.g. 10-20).
         children = list(self.get_children(node))
 
         if not children:
             msg = f"Node {node_id} has no accessible children. Cannot refine."
             raise ValueError(msg)
 
-        # Validate that we retrieved all expected children
         if len(children) != len(node.children_indices):
             msg = f"Node {node_id} expects {len(node.children_indices)} children but found {len(children)}. Cannot refine with incomplete data."
             logger.error(msg)
@@ -142,35 +134,29 @@ class InteractiveRaptorEngine:
         child_texts = [child.text for child in children]
         source_text = "\n\n".join(child_texts)
 
-        # Determine base strategy from node's DIKW level
-        # Use enum value directly for lookup
+        # Truncate source text if it exceeds limits to prevent context overflow errors
+        if len(source_text) > self.config.max_input_length:
+             logger.warning(f"Refinement source text for node {node_id} truncated to {self.config.max_input_length} chars.")
+             source_text = source_text[:self.config.max_input_length]
+
         level_key = node.metadata.dikw_level.value
         base_strategy_cls = STRATEGY_REGISTRY.get(level_key)
 
         base_strategy = base_strategy_cls() if base_strategy_cls else None
 
-        # Create refinement strategy
         strategy = RefinementStrategy(base_strategy=base_strategy)
 
-        # Execute refinement
-        # Note: SummarizationAgent handles prompt formatting with context
         new_text = self.summarizer.summarize(
             source_text,
             strategy=strategy,
             context={"instruction": instruction},
         )
 
-        # Wrap update logic in transaction
         with self.store.transaction():
-            # Update node fields
             node.text = new_text
             node.metadata.is_user_edited = True
             node.metadata.refinement_history.append(instruction)
-
-            # Re-embedding is optional/deferred for interactivity speed.
             node.embedding = None
-
-            # Persist changes using update_node
             self.store.update_node(node)
 
         logger.info(f"Refined node {node_id} with instruction: {instruction}")

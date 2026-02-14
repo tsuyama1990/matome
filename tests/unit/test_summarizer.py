@@ -13,6 +13,7 @@ from domain_models.config import ProcessingConfig
 from matome.agents.strategies import InformationStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import SummarizationError
+from matome.interfaces import PromptStrategy
 from matome.utils.prompts import COD_TEMPLATE, INFORMATION_TEMPLATE
 
 
@@ -150,7 +151,7 @@ def test_summarize_long_input_dos_prevention(
 
 def test_summarize_with_strategy(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test that the agent uses the provided strategy to format the prompt."""
-    strategy_mock = MagicMock()
+    strategy_mock = MagicMock(spec=PromptStrategy)
     strategy_mock.format_prompt.return_value = "Formatted Prompt"
 
     llm_mock = cast(MagicMock, agent.llm)
@@ -187,7 +188,7 @@ def test_summarize_strategy_template_integration(agent: SummarizationAgent, conf
 
 def test_summarize_with_context(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test that context is passed to the strategy."""
-    strategy_mock = MagicMock()
+    strategy_mock = MagicMock(spec=PromptStrategy)
     strategy_mock.format_prompt.return_value = "Prompt with Context"
 
     llm_mock = cast(MagicMock, agent.llm)

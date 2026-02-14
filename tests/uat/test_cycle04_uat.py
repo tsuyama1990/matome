@@ -1,126 +1,114 @@
-from collections.abc import Iterator
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import MagicMock
 
+import panel as pn
 import pytest
 
-from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk
-from matome.engines.cluster import GMMClusterer
-from matome.engines.raptor import RaptorEngine
-from matome.interfaces import Chunker, Summarizer
+from domain_models.manifest import NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
+from matome.engines.interactive_raptor import InteractiveRaptorEngine
+from matome.ui.canvas import MatomeCanvas
+from matome.ui.view_model import InteractiveSession
 
 
-class UATEmbedder:
-    def __init__(self, dim: int = 384) -> None:
-        self.dim = dim
-        self.config = MagicMock()
-
-    def embed_chunks(self, chunks: Iterator[Chunk]) -> Iterator[Chunk]:
-        # Process strictly as iterator
-        for _i, c in enumerate(chunks):
-            vec = [0.0] * self.dim
-            # 5 groups of 10 chunks logic
-            group_id = c.index // 10
-            if group_id < self.dim:
-                vec[group_id] = 1.0
-            c.embedding = vec
-            yield c
-
-    def embed_strings(self, texts: list[str]) -> Iterator[list[float]]:
-        for _ in texts:
-            vec = [0.0] * self.dim
-            vec[100] = 1.0
-            yield vec
-
-
-@pytest.fixture
-def uat_config() -> ProcessingConfig:
-    return ProcessingConfig(
-        umap_n_neighbors=5,
-        umap_min_dist=0.0,
-    )
-
-
-def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
+class TestCycle04UAT:
     """
-    Scenario 11: Single-Level Summarization (Priority: Medium)
+    UAT for Cycle 04: Interactive Refinement.
+    Verifies the end-to-end flow of refining a node via the GUI components.
     """
-    chunker = create_autospec(Chunker, instance=True)
 
-    def chunk_gen() -> Iterator[Chunk]:
-        for i in range(3):
-            yield Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
+    @pytest.fixture
+    def mock_engine(self) -> MagicMock:
+        engine = MagicMock(spec=InteractiveRaptorEngine)
+        engine.get_root_node.return_value = None
+        engine.get_node.return_value = None
+        engine.get_children.return_value = []
+        return engine
 
-    chunker.split_text.return_value = chunk_gen()
+    @pytest.fixture
+    def session(self, mock_engine: MagicMock) -> InteractiveSession:
+        return InteractiveSession(engine=mock_engine)
 
-    embedder = UATEmbedder()
-    clusterer = GMMClusterer()
+    @pytest.fixture
+    def canvas(self, session: InteractiveSession) -> MatomeCanvas:
+        return MatomeCanvas(session)
 
-    summarizer = create_autospec(Summarizer, instance=True)
-    summarizer.summarize.return_value = "Summary Root"
+    def test_refinement_flow(self, canvas: MatomeCanvas, session: InteractiveSession, mock_engine: MagicMock) -> None:
+        """
+        Scenario: User selects a node, enters instruction, clicks Refine.
+        Expected: Engine is called, Node is updated, UI reflects changes.
+        """
+        # 1. Setup Initial State
+        original_node = SummaryNode(
+            id="node_1",
+            text="Original Text",
+            level=2,
+            children_indices=[],
+            metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        )
+        refined_node = SummaryNode(
+            id="node_1", # ID stays same
+            text="Refined Text",
+            level=2,
+            children_indices=[],
+            metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE, is_user_edited=True, refinement_history=["Simplify"])
+        )
 
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
-    tree = engine.run("Short doc")
+        # Mock engine behavior
+        # When get_node is called, return original_node initially
+        # But after refinement, selected_node is updated in session.
+        # Note: session.select_node calls engine.get_node.
+        mock_engine.get_node.side_effect = lambda nid: original_node if nid == "node_1" else None
+        mock_engine.refine_node.return_value = refined_node
 
-    assert tree.root_node.level == 1
-    assert len(tree.leaf_chunk_ids) == 3
-    assert tree.root_node.text == "Summary Root"
+        # 2. Simulate User Selection
+        session.select_node("node_1")
+        assert session.selected_node == original_node
 
+        # 3. Simulate UI Interaction
+        # Access the bound function from _render_details
+        render_func = canvas._render_details()
 
-def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
-    """
-    Scenario 12: Multi-Level Tree Construction (Priority: High)
-    """
-    chunker = create_autospec(Chunker, instance=True)
+        # Invoke it to get the Column
+        # Since it is bound to session params, calling it without args should use current param values
+        ui_column = render_func()
 
-    def chunk_gen_large() -> Iterator[Chunk]:
-        for i in range(50):
-            yield Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
+        # Inspect UI Column
+        # Structure check:
+        # We look for the Refinement Panel.
+        # It should be the last element (index 4)
+        assert len(ui_column) >= 5
+        refinement_panel = ui_column[4]
+        assert isinstance(refinement_panel, pn.Column)
 
-    chunker.split_text.return_value = chunk_gen_large()
+        # Refinement Panel: [Markdown, TextArea, Row(Button, Spinner)]
+        # Index 1 should be TextArea
+        textarea = refinement_panel[1]
+        assert isinstance(textarea, pn.widgets.TextAreaInput)
 
-    embedder = UATEmbedder()
-    clusterer = GMMClusterer()
+        # Index 2 should be Row
+        button_row = refinement_panel[2]
+        assert isinstance(button_row, pn.Row)
 
-    summarizer = create_autospec(Summarizer, instance=True)
-    summarizer.summarize.return_value = "Summary Node"
+        button = button_row[0]
+        assert isinstance(button, pn.widgets.Button)
+        assert button.name == "Refine"
 
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, uat_config)  # type: ignore
-    tree = engine.run("Long doc")
+        # 4. Perform Action
+        textarea.value = "Simplify"
 
-    assert tree.root_node.level >= 2
-    assert len(tree.leaf_chunk_ids) == 50
-    # Check that we have intermediate summaries via children indices logic or store
-    # Since tree doesn't have all_nodes, we assume recursive process worked if level >= 2
+        # Simulate button click
+        # We trigger the click event by incrementing clicks
+        button.clicks += 1
 
+        # 5. Verify Outcome
+        mock_engine.refine_node.assert_called_with("node_1", "Simplify")
+        assert session.selected_node == refined_node
+        assert session.selected_node.text == "Refined Text"
+        assert session.is_processing is False
 
-def test_uat_scenario_13_summary_coherence() -> None:
-    """
-    Scenario 13: Summary Coherence Check (Priority: High)
-    """
-    config = ProcessingConfig(umap_n_neighbors=2, umap_min_dist=0.0)
+        # Verify UI update (optional, but good to check)
+        # Re-rendering should show new text
+        ui_column_updated = render_func()
+        content_markdown = ui_column_updated[3]
+        assert "Refined Text" in content_markdown.object
 
-    chunker = create_autospec(Chunker, instance=True)
-    def chunk_gen_coherent() -> Iterator[Chunk]:
-        yield Chunk(index=0, text="Climate change is real.", start_char_idx=0, end_char_idx=20)
-        yield Chunk(index=1, text="Sea levels are rising.", start_char_idx=20, end_char_idx=40)
-
-    chunker.split_text.return_value = chunk_gen_coherent()
-
-    embedder = UATEmbedder()
-    clusterer = GMMClusterer()
-
-    summarizer = create_autospec(Summarizer, instance=True)
-    summarizer.summarize.return_value = "Global Warming Summary"
-
-    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)  # type: ignore
-    tree = engine.run("Climate doc")
-
-    assert tree.root_node.text == "Global Warming Summary"
-
-    calls = summarizer.summarize.call_args_list
-    assert len(calls) > 0
-    args, _ = calls[0]
-    input_text = args[0]
-    assert "Climate change is real." in input_text
-    assert "Sea levels are rising." in input_text
