@@ -235,5 +235,55 @@ def export(
     typer.echo("Export from DB is not fully implemented in this cycle.")
 
 
+@app.command()
+def serve(
+    store_path: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+            readable=True,
+            help="Path to the chunks.db file.",
+        ),
+    ],
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to serve on.")] = 5006,
+) -> None:
+    """
+    Launch the interactive GUI.
+    """
+    import panel as pn
+
+    from matome.engines.interactive_raptor import InteractiveRaptorEngine
+    from matome.ui.canvas import MatomeCanvas
+    from matome.ui.view_model import InteractiveSession
+
+    # Initialize Panel extension
+    pn.extension(sizing_mode="stretch_width")
+
+    typer.echo(f"Starting Matome GUI on port {port}...")
+
+    store = DiskChunkStore(db_path=store_path)
+
+    try:
+        config = ProcessingConfig()  # Default config for now
+        # Read-only mode: summarizer=None
+        engine = InteractiveRaptorEngine(store=store, summarizer=None, config=config)
+        session = InteractiveSession(engine=engine)
+
+        # Load initial tree
+        session.load_tree()
+
+        canvas = MatomeCanvas(session)
+
+        # Serve
+        pn.serve(canvas.view, port=port, show=False, title="Matome")  # type: ignore[no-untyped-call]
+    except Exception as e:
+        typer.echo(f"Error serving GUI: {e}", err=True)
+        raise typer.Exit(code=1) from e
+    finally:
+        store.close()
+
+
 if __name__ == "__main__":
     app()

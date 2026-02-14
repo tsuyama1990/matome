@@ -427,6 +427,25 @@ class DiskChunkStore:
             msg = f"Failed to count nodes at level {level}: {e}"
             raise StoreError(msg) from e
 
+    def get_max_level(self) -> int:
+        """
+        Get the maximum level present in the store.
+        Returns 0 if no summary nodes exist.
+        """
+        stmt = select(
+            func.max(
+                cast(func.json_extract(self.nodes_table.c.content, "$.level"), Integer)
+            )
+        ).where(self.nodes_table.c.type == "summary")
+
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(stmt)
+                return result.scalar() or 0
+        except SQLAlchemyError as e:
+            msg = f"Failed to get max level: {e}"
+            raise StoreError(msg) from e
+
     @contextmanager
     def transaction(self) -> Iterator[Connection]:
         """

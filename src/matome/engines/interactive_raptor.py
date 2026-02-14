@@ -21,7 +21,7 @@ class InteractiveRaptorEngine:
     def __init__(
         self,
         store: DiskChunkStore,
-        summarizer: SummarizationAgent,
+        summarizer: SummarizationAgent | None,
         config: ProcessingConfig,
     ) -> None:
         self.store = store
@@ -56,6 +56,31 @@ class InteractiveRaptorEngine:
 
         return children
 
+    def get_root_node(self) -> SummaryNode | None:
+        """
+        Retrieve the root node of the tree.
+        Assumes the root is the (single) node at the highest level.
+        """
+        max_level = self.store.get_max_level()
+        if max_level == 0:
+            return None
+
+        # Get nodes at max level
+        # store.get_node_ids_by_level returns iterator of IDs
+        # We assume there is only one root at the max level, or we just pick the first one.
+        ids_iter = self.store.get_node_ids_by_level(max_level)
+        try:
+            root_id = next(ids_iter)
+        except StopIteration:
+            return None
+
+        node = self.store.get_node(root_id)
+        if isinstance(node, SummaryNode):
+            return node
+
+        # If for some reason it's a chunk (shouldn't happen given get_max_level checks summaries), ignore
+        return None
+
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
         Refine a specific node based on user instruction.
@@ -72,7 +97,12 @@ class InteractiveRaptorEngine:
         Raises:
             ValueError: If node is missing, instruction is empty, or node has no children.
             TypeError: If the node is not a SummaryNode.
+            RuntimeError: If summarizer agent is not initialized.
         """
+        if self.summarizer is None:
+            msg = "Summarizer agent is not initialized. Cannot refine node."
+            raise RuntimeError(msg)
+
         node = self.store.get_node(node_id)
         if not node:
             msg = f"Node {node_id} not found."

@@ -1,18 +1,19 @@
 # Matome 2.0: Knowledge Installation System
 
 ![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Python](https://img.shields.io/badge/python-3.11%2B-blue)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 **Matome 2.0** is an interactive "Knowledge Installation" system that transforms long-form text into a structured DIKW (Data, Information, Knowledge, Wisdom) hierarchy. Unlike static summarizers, it allows you to explore information at varying levels of abstraction—from philosophical wisdom down to actionable checklists—and interactively refine the content to match your mental model.
 
 ## Features
 
+-   **Interactive GUI (Matome Canvas):** Visualize the knowledge tree and navigate from Wisdom to Data using a modern web interface.
 -   **DIKW Generation (Strategy Pattern):**
     -   **Wisdom (Level 1):** Generates abstract, philosophical insights (Root Node).
     -   **Knowledge (Level 2):** Synthesizes frameworks and mental models (Intermediate Nodes).
     -   **Information (Level 3):** Extracts actionable checklists and steps (Leaf Summaries).
--   **Interactive Refinement:** Refine individual summary nodes with natural language instructions (Backend API implemented).
+-   **Interactive Refinement:** Refine individual summary nodes with natural language instructions.
 -   **Semantic Zooming:** Navigate documents like a map, zooming from "Big Idea" to "Evidence".
 -   **Traceability:** Every summary links back to source chunks ("Data").
 -   **Scalability:** Uses streaming processing and disk-based storage (`SQLite`) with WAL mode for concurrency to handle large documents without memory overflows.
@@ -51,7 +52,15 @@ uv run matome run input.txt --mode dikw --output-dir my_results
 -   `--mode default`: Uses standard summarization.
 -   `--no-verify`: Skip the verification step (faster).
 
-### 2. View Results
+### 2. Visualize with GUI
+
+Launch the interactive Matome Canvas to explore the generated knowledge structure.
+
+```bash
+uv run matome serve results/chunks.db
+```
+
+### 3. View Results (Static)
 
 Matome exports results in multiple formats:
 -   `summary_all.md`: A readable Markdown file organized by hierarchy.
@@ -67,7 +76,7 @@ matome/
 │   ├── matome/
 │   │   ├── agents/     # SummarizationAgent with Strategy Pattern
 │   │   ├── engines/    # Scalable RaptorEngine (Streaming)
-│   │   ├── ui/         # Panel GUI (Future Cycle)
+│   │   ├── ui/         # Panel GUI (View & ViewModel)
 │   │   └── utils/      # DiskChunkStore (SQLite)
 ```
 

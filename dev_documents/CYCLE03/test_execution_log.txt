@@ -1,0 +1,57 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+plugins: cov-7.0.0, langsmith-0.6.9, anyio-4.12.1
+collected 13 items
+
+tests/unit/test_view_model.py ......                                     [ 46%]
+tests/unit/test_canvas.py ..                                             [ 61%]
+tests/unit/test_interactive_raptor_extended.py ....                      [ 92%]
+tests/uat/test_cycle03_gui.py .                                          [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+
+Name                                       Stmts   Miss  Cover   Missing
+------------------------------------------------------------------------
+src/domain_models/__init__.py                  5      0   100%
+src/domain_models/config.py                   81     15    81%   53, 57-60, 232-235, 241, 247, 255-256, 264, 271
+src/domain_models/constants.py                34      0   100%
+src/domain_models/manifest.py                 62     14    77%   49-51, 54-59, 62-69
+src/domain_models/types.py                     9      0   100%
+src/domain_models/verification.py             20      3    85%   51-56
+src/matome/__init__.py                         4      0   100%
+src/matome/agents/__init__.py                  0      0   100%
+src/matome/agents/strategies.py               42     16    62%   22, 31, 43, 47, 59, 63, 76, 80-82, 92, 97, 104-110
+src/matome/agents/summarizer.py              129     99    23%   44-66, 84-124, 131-134, 138-140, 145-154, 158-164, 169-182, 189-201, 210-236, 242-251
+src/matome/agents/verifier.py                 91     91     0%   6-171
+src/matome/cli.py                            116    116     0%   1-289
+src/matome/config.py                          10      5    50%   19-22, 32
+src/matome/engines/__init__.py                 0      0   100%
+src/matome/engines/chunker.py                  3      3     0%   1-4
+src/matome/engines/cluster.py                184    184     0%   1-412
+src/matome/engines/embedder.py                51     36    29%   24-27, 32-35, 50-60, 64-93, 100-113
+src/matome/engines/interactive_raptor.py      76     47    38%   36, 48-57, 66, 82, 106-176
+src/matome/engines/raptor.py                 243    217    11%   40-44, 51-66, 76-109, 113-115, 121-155, 168-222, 240-277, 288-319, 327-354, 369-479
+src/matome/engines/semantic_chunker.py        86     86     0%   1-202
+src/matome/engines/token_chunker.py           68     68     0%   1-156
+src/matome/exceptions/__init__.py              4      0   100%
+src/matome/exporters/__init__.py               3      0   100%
+src/matome/exporters/markdown.py              39     30    23%   10-12, 17-19, 30-49, 56-67, 84
+src/matome/exporters/obsidian.py             117     84    28%   51-58, 70-84, 97-103, 107-109, 117-123, 129-148, 152-174, 183-250
+src/matome/interfaces.py                      21      0   100%
+src/matome/ui/__init__.py                      0      0   100%
+src/matome/ui/canvas.py                       67     42    37%   35-60, 63-101, 106, 109-112
+src/matome/ui/view_model.py                   43      1    98%   43
+src/matome/utils/__init__.py                   0      0   100%
+src/matome/utils/compat.py                    17      8    53%   30-31, 39-44
+src/matome/utils/io.py                        15     15     0%   1-31
+src/matome/utils/prompts.py                    5      0   100%
+src/matome/utils/store.py                    239    154    36%   83-88, 102-104, 116-118, 137-139, 146-147, 158-177, 181, 185, 230-239, 249-293, 300-321, 327-346, 350-374, 382-407, 414-428, 435-447, 455-460, 470-471, 474, 477
+src/matome/utils/text.py                      30     30     0%   1-65
+------------------------------------------------------------------------
+TOTAL                                       1914   1364    29%
+============================= 13 passed in 37.25s ==============================
+/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
