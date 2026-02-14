@@ -71,10 +71,13 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
             )
 
     def reader() -> None:
-        # Batch retrieval is more efficient than loop of single gets
+        # Batch retrieval via iterator consumption
         ids = ["999"] + [str(i) for i in range(5)]
         for _ in range(READ_LOOPS):
-            list(store.get_nodes(ids))
+            # Consume generator without storing all in list if large, but small here is fine
+            # To prove streaming, we iterate
+            for _ in store.get_nodes(ids):
+                pass
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         f1 = executor.submit(writer)
@@ -175,6 +178,7 @@ def test_db_corruption_handling(tmp_path: Path) -> None:
     # We patch the engine's connect/begin to return a connection that fails on execute
     with patch.object(store.engine, 'connect') as mock_connect:
         mock_conn = mock_connect.return_value.__enter__.return_value
+        # OperationalError requires params (None is acceptable) and orig (exception object)
         mock_conn.execute.side_effect = OperationalError("disk I/O error", params=None, orig=Exception("Disk Error"))
 
         # Test get_node handles DB error by propagating it (standardized behavior)

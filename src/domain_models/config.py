@@ -152,6 +152,11 @@ class ProcessingConfig(BaseModel):
         default=500, ge=1, description="Batch size for database read operations."
     )
 
+    # Interactive Configuration
+    max_instruction_length: int = Field(
+        default=1000, ge=1, description="Maximum length of refinement instructions."
+    )
+
     # Summarization Configuration
     summarization_model: str = Field(
         default_factory=lambda: _safe_getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZER),

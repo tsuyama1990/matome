@@ -36,7 +36,7 @@ def test_uat_c02_01_single_node_refinement() -> None:
     mock_agent.summarize.return_value = "Refined wisdom text."
 
     # Initialize Engine
-    config: ProcessingConfig = MagicMock()
+    config = ProcessingConfig(max_instruction_length=1000)
     engine = InteractiveRaptorEngine(store=store, summarizer=mock_agent, config=config)
 
     # Execute Refinement

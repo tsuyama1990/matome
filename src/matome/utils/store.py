@@ -2,7 +2,8 @@ import json
 import logging
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    bindparam,
     cast,
     create_engine,
     func,
@@ -214,7 +216,8 @@ class DiskChunkStore:
             with self.engine.connect() as conn:
                 # Use stream_results=True to hint streaming, though with SQLite and small batch it may buffer.
                 # However, strict compliance with "not loading entire result set" is handled by batching loop.
-                db_rows = conn.execute(stmt).fetchall() # fetchall for small batch is fine, ensures connection availability
+                # fetchall() is safe here because we batch by read_batch_size (e.g. 500)
+                db_rows = conn.execute(stmt).fetchall()
 
                 for row in db_rows:
                     nid, node_type, content_json, embedding_json = row
@@ -284,13 +287,7 @@ class DiskChunkStore:
                 return self._deserialize_node(str(node_id), node_type, content_json, embedding_json)
             except Exception:
                 logger.exception(f"Failed to deserialize node {node_id}")
-                # Consistent error handling: return None if corrupt, or re-raise?
-                # Feedback says "get_node returns None on error while other methods raise exceptions".
-                # Other methods (like add_chunks) raise on DB error.
-                # Here we are catching deserialization error.
-                # If data is corrupt, maybe we should raise?
-                # But current behavior is None. Let's make it consistent by raising?
-                # Or make others return None? Raising is safer for data integrity.
+                # Consistent error handling: raise exception on data corruption
                 raise
 
         return None
@@ -313,18 +310,19 @@ class DiskChunkStore:
             # For summary nodes, we must check the JSON content.
             # SQLite supports json_extract.
             # Use bindparam for level to prevent injection, though 'level' here is int type checked by signature.
+            # The 'level' argument is an integer, so direct injection via string formatting is not possible if using Core.
+            # However, for JSON path or values, bindparam ensures parameterized query.
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(
                     self.nodes_table.c.type == "summary",
-                    func.json_extract(self.nodes_table.c.content, "$.level") == level,
+                    func.json_extract(self.nodes_table.c.content, "$.level") == bindparam("level", level),
                 )
                 .order_by(self.nodes_table.c.id)
             )
 
         with self.engine.connect() as conn:
             # Stream results to avoid loading all IDs into memory at once
-            # yield_per is not supported for Core selections with all drivers, but useful hint.
             # execution_options(stream_results=True) is the Core way.
             result = conn.execution_options(stream_results=True).execute(stmt)
             for row in result:
@@ -346,6 +344,15 @@ class DiskChunkStore:
         with self.engine.connect() as conn:
             result = conn.execute(stmt)
             return result.scalar() or 0
+
+    @contextmanager
+    def transaction(self) -> Iterator[Any]:
+        """
+        Context manager for an explicit transaction.
+        Note: Engine.begin() handles transaction lifecycle.
+        """
+        with self.engine.begin() as conn:
+            yield conn
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""

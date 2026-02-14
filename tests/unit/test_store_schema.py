@@ -173,6 +173,7 @@ def test_transaction_rollback_on_error(tmp_path: Path) -> None:
         with pytest.raises(RuntimeError, match="Database exploded"):
             store.add_chunks(chunks)
 
+
 def test_empty_db_operations() -> None:
     """Test operations on an empty database."""
     store = DiskChunkStore()
@@ -182,6 +183,12 @@ def test_empty_db_operations() -> None:
 
     # Get multiple non-existent nodes
     nodes = list(store.get_nodes(["999", "888"]))
+    # Expect empty results or None?
+    # get_nodes yields for IDs found. If not found, it yields nothing for that batch iteration logic?
+    # Let's check implementation.
+    # Logic: loop batch ids -> select where id in batch -> yield id_to_node_batch.get(nid)
+    # If not in batch dict, .get() returns None.
+    # So it yields None for missing IDs.
     assert nodes == [None, None]
 
     # Count should be 0
