@@ -2,10 +2,10 @@ import json
 import logging
 import shutil
 import tempfile
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from sqlalchemy import (
     Column,
@@ -126,8 +126,13 @@ class DiskChunkStore:
             msg = f"Node {node_id} has empty content."
             raise ValueError(msg)
 
-        embedding = json.loads(embedding_json) if embedding_json else None
-        data = json.loads(content_json)
+        try:
+            embedding = json.loads(embedding_json) if embedding_json else None
+            data = json.loads(content_json)
+        except json.JSONDecodeError as e:
+            msg = f"Failed to decode JSON for node {node_id}: {e}"
+            raise ValueError(msg) from e
+
         if embedding is not None:
             data["embedding"] = embedding
 
@@ -197,8 +202,8 @@ class DiskChunkStore:
         Retrieve multiple nodes by ID in a single batch.
         Yields results to stream processing and avoid OOM.
 
-        Note: The order of yielded nodes corresponds to the database return order for the batch,
-        not necessarily the input list order, though we batch by ID list slices.
+        The yielded nodes match the order of the input `node_ids` for each batch processing step.
+        If a node is not found, None is yielded in its place.
         """
         if not node_ids:
             return
@@ -214,29 +219,26 @@ class DiskChunkStore:
                 self.nodes_table.c.embedding,
             ).where(self.nodes_table.c.id.in_(batch_ids))
 
+            # To preserve order within batch and handle missing keys, we must load the batch into a dict.
+            # This is O(Batch_Size) memory, which is safe given standard batch sizes (e.g. 500-1000).
+            id_to_node_batch: dict[str, Chunk | SummaryNode] = {}
+
             with self.engine.connect() as conn:
-                # Use stream_results=True to hint streaming
-                result = conn.execution_options(stream_results=True).execute(stmt)
+                db_rows = conn.execute(stmt).fetchall()
 
-                # Create a lookup for this batch to yield in order, or yield directly?
-                # The requirement says "Yields results directly from database cursor without materializing list".
-                # If we need to preserve order or map 1:1 to input IDs, we might need a dict.
-                # However, for pure streaming without memory overhead, we should yield as they come.
-                # But consumers might expect 1:1 mapping (e.g., getting children by index list).
-                # If we yield directly, we lose 1:1 mapping if some are missing.
-                # Given strict "NEVER load into memory", we yield available nodes.
-                # If order is crucial, the consumer must handle it.
-                # For `InteractiveRaptorEngine.get_children`, we just want the list of children.
-
-                # To be strict on memory:
-                for row in result:
+                for row in db_rows:
                     nid, node_type, content_json, embedding_json = row
                     try:
-                        yield self._deserialize_node(nid, node_type, content_json, embedding_json)
+                        node = self._deserialize_node(nid, node_type, content_json, embedding_json)
+                        id_to_node_batch[nid] = node
                     except Exception:
                         logger.exception(f"Failed to deserialize node {nid}")
-                        # If strict error handling: raise
+                        # Raise consistent exception
                         raise
+
+            # Yield nodes for the current batch in requested order
+            for nid in batch_ids:
+                yield id_to_node_batch.get(nid)
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
         """
@@ -327,7 +329,7 @@ class DiskChunkStore:
             )
 
         with self.engine.connect() as conn:
-            # Stream results using server-side cursor if supported, or yield per row
+            # Stream results to avoid loading all IDs into memory at once
             # execution_options(stream_results=True) is the Core way.
             result = conn.execution_options(stream_results=True).execute(stmt)
             for row in result:

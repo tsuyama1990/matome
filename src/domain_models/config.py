@@ -2,7 +2,7 @@ import os
 from enum import Enum
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
@@ -245,6 +245,14 @@ class ProcessingConfig(BaseModel):
     def validate_tokenizer_model(cls, v: str) -> str:
         """Validate tokenizer model against whitelist."""
         return _validate_model_name(v, ALLOWED_TOKENIZER_MODELS, "Tokenizer model")
+
+    @model_validator(mode="after")
+    def validate_chunking_consistency(self) -> Self:
+        """Ensure chunking parameters are consistent."""
+        if self.semantic_chunking_mode:
+            if self.semantic_chunking_threshold > 1.0 or self.semantic_chunking_threshold < 0.0:
+                raise ValueError("Semantic chunking threshold must be between 0.0 and 1.0")
+        return self
 
     @classmethod
     def default(cls) -> Self:

@@ -83,7 +83,8 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
             # Simple consistency check within the loop
             # Note: We can't assert inside thread easily without propagating
             if not found_base:
-                raise RuntimeError("Base node 999 vanished during concurrent read")
+                msg = "Base node 999 vanished during concurrent read"
+                raise RuntimeError(msg)
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         f1 = executor.submit(writer)

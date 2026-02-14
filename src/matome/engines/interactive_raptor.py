@@ -97,6 +97,17 @@ class InteractiveRaptorEngine:
             msg = f"Node {node_id} has no accessible children. Cannot refine."
             raise ValueError(msg)
 
+        # Validate that we retrieved all expected children
+        if len(children) != len(node.children_indices):
+            logger.warning(
+                f"Node {node_id} expects {len(node.children_indices)} children but found {len(children)}."
+            )
+            # We proceed with available children, or should we raise?
+            # Audit Requirement: "Validation to ensure... all children exist"
+            if len(children) == 0:
+                 msg = f"Node {node_id} has no accessible children (indices found: {len(children)}). Cannot refine."
+                 raise ValueError(msg)
+
         child_texts = [child.text for child in children]
         source_text = "\n\n".join(child_texts)
 

@@ -111,6 +111,7 @@ class RefinementStrategy(PromptStrategy):
 
 
 # Registry for easy lookup from configuration strings
+# Explicit type hint for Mypy
 STRATEGY_REGISTRY: dict[str, type[PromptStrategy]] = {
     DIKWLevel.WISDOM.value: WisdomStrategy,
     DIKWLevel.KNOWLEDGE.value: KnowledgeStrategy,

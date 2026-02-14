@@ -1,13 +1,13 @@
+import pytest
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock
 
-import pytest
-from sqlalchemy import func, select
+from sqlalchemy import select, func
 
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
-from matome.utils.store import DiskChunkStore
+from matome.utils.store import TABLE_NODES, DiskChunkStore
 
 
 def test_add_chunks_streaming(tmp_path: Path) -> None:
@@ -185,13 +185,6 @@ def test_empty_db_operations() -> None:
     nodes = list(store.get_nodes(["999", "888"]))
     # With strict streaming, we only yield what the DB returns.
     # If DB returns nothing, we yield nothing.
-    # This differs from previous batch-lookup approach which might have filled None for missing keys if explicitly iterating input IDs.
-    # But current implementation iterates DB rows.
-    # Wait, implementation iterates batch_ids (input) and yields id_to_node_batch.get(nid).
-    # Ah, I changed get_nodes to iterate `db_rows` in the new streaming implementation!
-    # "for row in db_rows: yield _deserialize..."
-    # So if DB returns nothing, loop doesn't run, nothing yielded.
-    # Correct behavior for streaming: yield found items.
     assert nodes == []
 
     # Count should be 0

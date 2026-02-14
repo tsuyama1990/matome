@@ -49,6 +49,8 @@ def test_refine_node_success(
     # Use iterator for get_nodes return to simulate streaming
     mock_store.get_node.return_value = summary_node
     mock_store.get_nodes.return_value = iter([child_chunk])
+    # Mock transaction context manager
+    mock_store.transaction.return_value.__enter__.return_value = MagicMock()
 
     instruction = "Make it shorter"
 
@@ -160,6 +162,7 @@ def test_refine_node_unknown_dikw(
     )
     mock_store.get_node.return_value = node
     mock_store.get_nodes.return_value = iter([Chunk(index=1, text="C", start_char_idx=0, end_char_idx=1)])
+    mock_store.transaction.return_value.__enter__.return_value = MagicMock()
 
     # Should work and use default strategy inside RefinementStrategy
     interactive_engine.refine_node("s1", "Refine")
@@ -183,6 +186,7 @@ def test_refine_node_update_failure(
     )
     mock_store.get_node.return_value = node
     mock_store.get_nodes.return_value = iter([Chunk(index=1, text="C", start_char_idx=0, end_char_idx=1)])
+    mock_store.transaction.return_value.__enter__.return_value = MagicMock()
 
     mock_store.update_node.side_effect = RuntimeError("DB Write Failed")
 
@@ -191,3 +195,5 @@ def test_refine_node_update_failure(
 
     # Ideally verify transaction rollback if we implemented transactional logic in engine,
     # but currently engine relies on store's atomic update_node or external transaction.
+    # The transaction context __exit__ would handle rollback on exception.
+    mock_store.transaction.assert_called_once()

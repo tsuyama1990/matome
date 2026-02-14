@@ -1,3 +1,4 @@
+import contextlib
 import threading
 import time
 from collections.abc import Iterator
@@ -146,10 +147,8 @@ def test_uat_concurrency_error_handling() -> None:
     def failing_writer() -> None:
         # Simulate an error during write
         with patch.object(store.engine, 'connect', side_effect=Exception("DB Locked")):
-            try:
+            with contextlib.suppress(Exception):
                 store.update_node(node)
-            except Exception:
-                pass # Expected
 
     def successful_reader() -> None:
         # Should still be able to read (if connection pool allows or separate conn)
