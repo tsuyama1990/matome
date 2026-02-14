@@ -5,6 +5,7 @@ from collections.abc import Iterable, Iterator
 from typing import cast
 
 from domain_models.config import ProcessingConfig
+from domain_models.constants import MAX_RECURSION_DEPTH
 from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel, NodeID
 from matome.agents.strategies import (
@@ -19,8 +20,6 @@ from matome.utils.compat import batched
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
-
-MAX_RECURSION_DEPTH = 10
 
 
 class StopRecursionError(Exception):
@@ -228,8 +227,6 @@ class RaptorEngine:
                 f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
             )
             if node_count < 20:
-                # Force single cluster if small enough
-                # We need IDs.
                 node_ids = list(store.get_node_ids_by_level(level))
                 return [Cluster(id=0, level=level, node_indices=node_ids)]
             else:
@@ -409,17 +406,12 @@ class RaptorEngine:
         strategy: PromptStrategy
     ) -> Iterator[SummaryNode]:
         """Process a single cluster."""
-        # IDs are available directly in cluster
         node_ids_in_cluster = cluster.node_indices
 
-        # Stream nodes for this cluster only
         cluster_texts: list[str] = []
         children_indices: list[NodeID] = []
         current_length = 0
 
-        # Retrieve nodes for this cluster streamingly if supported by store
-        # Our get_nodes streams, but we collect to list to join text
-        # For a single cluster, this is O(cluster_size) which is small
         for node in store.get_nodes([str(nid) for nid in node_ids_in_cluster]):
             if not node:
                 continue

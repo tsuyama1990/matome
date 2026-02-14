@@ -29,6 +29,8 @@ from domain_models.constants import (
     DEFAULT_MAX_WORD_LENGTH,
     DEFAULT_OVERLAP,
     DEFAULT_RANDOM_STATE,
+    HIGH_PRECISION_MAX_TOKENS,
+    HIGH_PRECISION_OVERLAP,
     DEFAULT_SEMANTIC_CHUNKING_MODE,
     DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
     DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
@@ -290,4 +292,4 @@ class ProcessingConfig(BaseModel):
         """
         Returns a configuration optimized for higher precision (smaller chunks).
         """
-        return cls(max_tokens=200, overlap=20)
+        return cls(max_tokens=HIGH_PRECISION_MAX_TOKENS, overlap=HIGH_PRECISION_OVERLAP)

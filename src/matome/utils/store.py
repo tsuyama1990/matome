@@ -184,6 +184,12 @@ class DiskChunkStore:
         """Store multiple summary nodes in a batch."""
         self._add_nodes(nodes, "summary")
 
+    def _validate_content_length(self, content: str) -> None:
+        """Validate content length."""
+        if len(content) > MAX_DB_CONTENT_LENGTH:
+            msg = f"Node content length ({len(content)}) exceeds limit ({MAX_DB_CONTENT_LENGTH})."
+            raise ValueError(msg)
+
     def _add_nodes(self, nodes: Iterable[Chunk | SummaryNode], node_type: str) -> None:
         """
         Helper to batch insert nodes.
@@ -199,10 +205,7 @@ class DiskChunkStore:
 
                 for node in node_batch:
                     content_json = node.model_dump_json(exclude={"embedding"})
-
-                    if len(content_json) > MAX_DB_CONTENT_LENGTH:
-                        msg = f"Node content length ({len(content_json)}) exceeds limit ({MAX_DB_CONTENT_LENGTH})."
-                        raise ValueError(msg)
+                    self._validate_content_length(content_json)
 
                     embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
                     node_id = str(node.index) if isinstance(node, Chunk) else node.id

@@ -2,15 +2,13 @@ import contextlib
 import logging
 import os
 import tempfile
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any, BinaryIO
 
 import numpy as np
 from sklearn.cluster import MiniBatchKMeans
 from sklearn.decomposition import IncrementalPCA
-from sklearn.mixture import GaussianMixture
-from umap import UMAP
 
 from domain_models.config import ClusteringAlgorithm, ProcessingConfig
 from domain_models.constants import MIN_CLUSTERING_SAMPLES
@@ -22,12 +20,11 @@ logger = logging.getLogger(__name__)
 
 class GMMClusterer:
     """
-    Engine for clustering text chunks/nodes using UMAP and GMM.
+    Engine for clustering text chunks/nodes.
     Implements the Clusterer protocol.
 
-    Uses memory mapping to handle large datasets without loading everything into RAM.
-    While UMAP/GMM require the full dataset structure for global optimization,
-    np.memmap allows the OS to handle paging efficiently, preventing OOM on the Python side.
+    Uses IncrementalPCA and MiniBatchKMeans to provide true streaming clustering,
+    ensuring memory safety even for very large datasets.
     """
 
     def cluster_nodes(
@@ -73,9 +70,6 @@ class GMMClusterer:
             mm_array = np.memmap(tf_emb, dtype="float32", mode="r", shape=(n_samples, dim))
 
             try:
-                if n_samples > config.large_scale_threshold:
-                    return self._perform_approximate_clustering(mm_array, n_samples, path_ids, config)
-
                 return self._perform_clustering(mm_array, n_samples, path_ids, config)
             finally:
                 del mm_array
@@ -175,62 +169,62 @@ class GMMClusterer:
     def _perform_clustering(
         self, data: np.ndarray, n_samples: int, path_ids: Path, config: ProcessingConfig
     ) -> list[Cluster]:
-        """Execute UMAP reduction and GMM clustering."""
-        n_neighbors = config.umap_n_neighbors
-        min_dist = config.umap_min_dist
+        """
+        Execute streaming clustering using IncrementalPCA and MiniBatchKMeans.
+        Avoids loading the entire dataset into memory.
+        """
         n_components = config.umap_n_components
-
-        effective_n_neighbors = max(min(n_neighbors, n_samples - 1), 2)
-
-        if effective_n_neighbors != n_neighbors:
-            logger.warning(
-                f"Adjusted UMAP n_neighbors from {n_neighbors} to {effective_n_neighbors} "
-                f"due to small dataset size ({n_samples} samples)."
-            )
+        # Use config.n_clusters or heuristic.
+        n_clusters = config.n_clusters or min(int(np.sqrt(n_samples)), 50)
 
         logger.info(
-            f"Starting clustering for {n_samples} nodes. "
-            f"UMAP params: neighbors={effective_n_neighbors}, min_dist={min_dist}."
+            f"Starting Clustering for {n_samples} nodes. "
+            f"PCA components={n_components}, KMeans clusters={n_clusters}."
         )
 
         try:
-            reducer = UMAP(
-                n_neighbors=effective_n_neighbors,
-                min_dist=min_dist,
-                n_components=n_components,
+            # 1. Incremental PCA Training
+            ipca = IncrementalPCA(n_components=n_components)
+            batch_size = config.write_batch_size
+
+            # Loop over memmap in batches
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                ipca.partial_fit(batch)
+
+            # 2. MiniBatchKMeans Training
+            # We must transform and feed to KMeans
+            kmeans = MiniBatchKMeans(
+                n_clusters=n_clusters,
                 random_state=config.random_state,
+                batch_size=batch_size,
+                n_init="auto",
             )
-            reduced_embeddings = reducer.fit_transform(data)
 
-            if config.n_clusters:
-                gmm_n_components = config.n_clusters
-            else:
-                gmm_n_components = self._calculate_optimal_clusters(
-                    reduced_embeddings, config.random_state
-                )
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                reduced_batch = ipca.transform(batch)
+                kmeans.partial_fit(reduced_batch)
 
-            logger.info(f"Clustering into {gmm_n_components} components.")
-            gmm = GaussianMixture(n_components=gmm_n_components, random_state=config.random_state)
-            gmm.fit(reduced_embeddings)
+            # 3. Predict Labels (Final Pass)
+            labels_list = []
+            for i in range(0, n_samples, batch_size):
+                batch = data[i : i + batch_size]
+                reduced_batch = ipca.transform(batch)
+                batch_labels = kmeans.predict(reduced_batch)
+                labels_list.append(batch_labels)
 
-            probs = gmm.predict_proba(reduced_embeddings)
-            return self._form_clusters_soft(
-                probs, gmm_n_components, config.clustering_probability_threshold, path_ids
-            )
+            labels = np.concatenate(labels_list)
+            return self._form_clusters(labels, path_ids)
 
         except Exception as e:
-            logger.exception("Clustering process failed.")
+            logger.exception("Clustering failed.")
             msg = f"Clustering failed: {e}"
             raise RuntimeError(msg) from e
 
     def _form_clusters(self, labels: np.ndarray, path_ids: Path) -> list[Cluster]:
         """Convert hard clustering labels into Cluster objects via streaming."""
-        # We need to map labels to clusters.
-        # Since we stream IDs, we iterate through labels and IDs simultaneously.
-
         # cluster_id -> list[NodeID]
-        # We hold result in memory. This is O(N) for IDs.
-        # But we avoid loading ALL IDs first. We stream-read them.
         cluster_map: dict[int, list[NodeID]] = {}
 
         with path_ids.open("r", encoding="utf-8") as f:
@@ -248,121 +242,5 @@ class GMMClusterer:
         for cluster_id, mapped_ids in cluster_map.items():
             if mapped_ids:
                 clusters.append(Cluster(id=cluster_id, level=0, node_indices=mapped_ids))
-        return clusters
-
-    def _form_clusters_soft(
-        self, probs: np.ndarray, n_clusters: int, threshold: float, path_ids: Path
-    ) -> list[Cluster]:
-        """Convert GMM probabilities into Cluster objects (Soft Clustering) via streaming."""
-        cluster_map: dict[int, list[NodeID]] = {i: [] for i in range(n_clusters)}
-
-        with path_ids.open("r", encoding="utf-8") as f:
-            for i, line in enumerate(f):
-                nid = line.strip()
-                if not nid:
-                    continue
-
-                node_probs = probs[i]
-                assigned_indices = np.where(node_probs >= threshold)[0]
-
-                if len(assigned_indices) == 0:
-                    max_idx = np.argmax(node_probs)
-                    cluster_map[int(max_idx)].append(nid)
-                else:
-                    for cluster_idx in assigned_indices:
-                        cluster_map[int(cluster_idx)].append(nid)
-
-        clusters: list[Cluster] = []
-        for cluster_id, mapped_ids in cluster_map.items():
-            if mapped_ids:
-                clusters.append(Cluster(id=cluster_id, level=0, node_indices=mapped_ids))
 
         return clusters
-
-    def _perform_approximate_clustering(
-        self, data: np.ndarray, n_samples: int, path_ids: Path, config: ProcessingConfig
-    ) -> list[Cluster]:
-        """Execute streaming clustering using IncrementalPCA and MiniBatchKMeans."""
-        n_components = config.umap_n_components
-        n_clusters = config.n_clusters or min(int(np.sqrt(n_samples)), 50)
-
-        try:
-            ipca = IncrementalPCA(n_components=n_components)
-            batch_size = config.write_batch_size
-
-            # 1. Partial Fit PCA
-            for i in range(0, n_samples, batch_size):
-                batch = data[i : i + batch_size]
-                ipca.partial_fit(batch)
-
-            kmeans = MiniBatchKMeans(
-                n_clusters=n_clusters,
-                random_state=config.random_state,
-                batch_size=batch_size,
-                n_init="auto",
-            )
-
-            # 2. Fit KMeans
-            for i in range(0, n_samples, batch_size):
-                batch = data[i : i + batch_size]
-                reduced_batch = ipca.transform(batch)
-                kmeans.partial_fit(reduced_batch)
-
-            # 3. Predict and Stream IDs
-            # To avoid storing all labels, we can predict batch, read batch of IDs, and assign.
-            # But _form_clusters needs to know unique labels? No, it just groups.
-            # We can accumulate clusters in memory (list of IDs).
-
-            cluster_map: dict[int, list[NodeID]] = {k: [] for k in range(n_clusters)}
-
-            with path_ids.open("r", encoding="utf-8") as f:
-                for i in range(0, n_samples, batch_size):
-                    batch = data[i : i + batch_size]
-                    reduced_batch = ipca.transform(batch)
-                    batch_labels = kmeans.predict(reduced_batch)
-
-                    # Read batch IDs
-                    # We assume line reading syncs with i
-                    for label in batch_labels:
-                        line = f.readline()
-                        while line and not line.strip(): # Skip empty lines if any
-                            line = f.readline()
-                        if not line:
-                            break
-                        nid = line.strip()
-                        cluster_map[int(label)].append(nid)
-
-            clusters: list[Cluster] = []
-            for cluster_id, mapped_ids in cluster_map.items():
-                if mapped_ids:
-                    clusters.append(Cluster(id=cluster_id, level=0, node_indices=mapped_ids))
-            return clusters
-
-        except Exception as e:
-            logger.exception("Approximate clustering failed.")
-            msg = f"Approximate clustering failed: {e}"
-            raise RuntimeError(msg) from e
-
-    def _calculate_optimal_clusters(self, embeddings: np.ndarray, random_state: int) -> int:
-        """Helper to find optimal number of clusters using BIC."""
-        max_clusters = min(20, len(embeddings))
-        if max_clusters < 2:
-            return 1
-
-        bics = []
-        n_range = range(2, max_clusters + 1)
-
-        try:
-            for n in n_range:
-                gmm = GaussianMixture(n_components=n, random_state=random_state)
-                gmm.fit(embeddings)
-                bics.append(gmm.bic(embeddings))
-
-            if not bics:
-                return 1
-            optimal_n = n_range[np.argmin(bics)]
-            return int(optimal_n)
-
-        except Exception:
-            logger.exception("Unexpected error during BIC calculation.")
-            raise
