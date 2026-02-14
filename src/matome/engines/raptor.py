@@ -245,7 +245,7 @@ class RaptorEngine:
         Summarize clusters and store the resulting nodes.
         """
         new_nodes_iter = self._summarize_clusters(
-            clusters, input_level, store, output_level, strategy
+            clusters, store, output_level, strategy
         )
 
         summary_buffer: list[SummaryNode] = []
@@ -384,7 +384,6 @@ class RaptorEngine:
     def _summarize_clusters(
         self,
         clusters: list[Cluster],
-        input_level: int,
         store: DiskChunkStore,
         output_level: int,
         strategy: PromptStrategy,

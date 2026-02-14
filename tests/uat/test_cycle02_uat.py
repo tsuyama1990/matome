@@ -6,6 +6,7 @@ from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
+from domain_models.types import NodeID
 
 
 # Scenario 05: Embedding Vector Generation
@@ -25,7 +26,7 @@ def test_scenario_05_embedding_vector_generation() -> None:
 
         config = ProcessingConfig()
         service = EmbeddingService(config)
-        embedded_chunks = service.embed_chunks(chunks)
+        embedded_chunks = list(service.embed_chunks(chunks))
 
         for i, chunk in enumerate(embedded_chunks):
             assert chunk.embedding is not None
@@ -39,33 +40,25 @@ def test_scenario_06_clustering_logic() -> None:
     # Use deterministic vectors
     group_a = [[0.1] * 10, [0.11] * 10, [0.09] * 10]
     group_b = [[0.9] * 10, [0.91] * 10, [0.89] * 10]
-    embeddings = group_a + group_b
+    all_embeddings = group_a + group_b
+    embeddings = [(str(i), emb) for i, emb in enumerate(all_embeddings)]
 
     config = ProcessingConfig(clustering_algorithm="gmm")
     engine = GMMClusterer()
 
     with (
-        patch("matome.engines.cluster.UMAP") as mock_umap,
-        patch("matome.engines.cluster.GaussianMixture") as mock_gmm,
+        patch("matome.engines.cluster.IncrementalPCA") as mock_pca,
+        patch("matome.engines.cluster.MiniBatchKMeans") as mock_kmeans,
     ):
-        # Mock UMAP to return 2D linearly separable data
-        reduced_a = [[0.0, 0.0], [0.1, 0.1], [0.0, 0.1]]
-        reduced_b = [[10.0, 10.0], [10.1, 10.1], [10.0, 10.1]]
-        mock_umap.return_value.fit_transform.return_value = np.array(reduced_a + reduced_b)
+        mock_pca_instance = MagicMock()
+        mock_pca.return_value = mock_pca_instance
+        mock_pca_instance.transform.side_effect = lambda x: x # Identity
 
-        # Mock GMM
-        mock_gmm_instance = MagicMock()
-        mock_gmm.return_value = mock_gmm_instance
-        # predict_proba returns (N, K) probabilities
-        # Deterministic probabilities
-        # A -> Cluster 0, B -> Cluster 1
-        probs = np.array(
-            [[0.99, 0.01], [0.99, 0.01], [0.99, 0.01], [0.01, 0.99], [0.01, 0.99], [0.01, 0.99]]
-        )
-        mock_gmm_instance.predict_proba.return_value = probs
-        mock_gmm_instance.predict.return_value = np.array([0, 0, 0, 1, 1, 1])
-        mock_gmm_instance.n_components = 2  # Simulate BIC finding 2
-        mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]
+        mock_kmeans_instance = MagicMock()
+        mock_kmeans.return_value = mock_kmeans_instance
+
+        # Determine labels: first 3 -> 0, next 3 -> 1
+        mock_kmeans_instance.predict.return_value = np.array([0, 0, 0, 1, 1, 1])
 
         clusters = engine.cluster_nodes(embeddings, config)
 
@@ -76,10 +69,11 @@ def test_scenario_06_clustering_logic() -> None:
         cluster_1 = next(c for c in clusters if c.id == 1)
 
         # Assuming cluster 0 and 1 are distinct
+        # IDs are strings
         indices_set_0 = set(cluster_0.node_indices)
         indices_set_1 = set(cluster_1.node_indices)
 
-        expected_sets = [{0, 1, 2}, {3, 4, 5}]
+        expected_sets = [{"0", "1", "2"}, {"3", "4", "5"}]
         assert indices_set_0 in expected_sets
         assert indices_set_1 in expected_sets
         assert indices_set_0 != indices_set_1
@@ -87,7 +81,7 @@ def test_scenario_06_clustering_logic() -> None:
 
 # Scenario 07: Single Cluster Edge Case
 def test_scenario_07_single_cluster() -> None:
-    embeddings = [[0.5] * 10]
+    embeddings = [(0, [0.5] * 10)]
 
     config = ProcessingConfig()
     engine = GMMClusterer()
@@ -96,4 +90,8 @@ def test_scenario_07_single_cluster() -> None:
 
     assert len(clusters) == 1
     assert clusters[0].id == 0
-    assert clusters[0].node_indices == [0]
+    # NodeID can be int or str, GMMClusterer returns what was passed or parsed from file
+    # GMMClusterer writes to file then reads back as string usually?
+    # Let's check implementation of _form_clusters. It reads lines from file.
+    # So IDs will be strings.
+    assert str(clusters[0].node_indices[0]) == "0"

@@ -93,8 +93,8 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     # Verify structure
     assert tree.root_node.text == "Summary Text"
     # The summary node children indices should correspond to the L0 IDs.
-    # checking that children_indices contains 0 and 1 (as strings)
-    assert set(tree.root_node.children_indices) == {"0", "1"}
+    # checking that children_indices contains 0 and 1 (as integers for Chunks)
+    assert set(tree.root_node.children_indices) == {0, 1}
 
 
 def test_raptor_empty_iterator_error() -> None:

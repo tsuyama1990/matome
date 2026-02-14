@@ -5,55 +5,43 @@ import pytest
 
 from domain_models.config import ProcessingConfig
 from matome.engines.cluster import GMMClusterer
+from domain_models.types import NodeID
 
 
 @pytest.fixture
-def sample_embeddings() -> list[list[float]]:
-    # 6 embeddings with 2 groups (to pass > 5 threshold)
+def sample_embeddings() -> list[tuple[NodeID, list[float]]]:
+    # 6 embeddings with 2 groups
     # Group 1: indices 0, 1, 2
     # Group 2: indices 3, 4, 5
-    return [[1.0, 1.0], [1.0, 1.0], [1.0, 1.0], [2.0, 2.0], [2.0, 2.0], [2.0, 2.0]]
+    # Format: (NodeID, Embedding)
+    return [
+        (0, [1.0, 1.0]), (1, [1.0, 1.0]), (2, [1.0, 1.0]),
+        (3, [2.0, 2.0]), (4, [2.0, 2.0]), (5, [2.0, 2.0])
+    ]
 
 
-@patch("matome.engines.cluster.UMAP")
-@patch("matome.engines.cluster.GaussianMixture")
-def test_clustering_with_gmm_soft(
-    mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sample_embeddings: list[list[float]]
+@patch("matome.engines.cluster.MiniBatchKMeans")
+@patch("matome.engines.cluster.IncrementalPCA")
+def test_clustering_workflow(
+    mock_pca_cls: MagicMock, mock_kmeans_cls: MagicMock, sample_embeddings: list[tuple[NodeID, list[float]]]
 ) -> None:
     # Setup mocks
-    mock_umap_instance = MagicMock()
-    mock_umap_cls.return_value = mock_umap_instance
-    reduced_embeddings = np.array(
-        [[0.1, 0.1], [0.1, 0.1], [0.1, 0.1], [0.9, 0.9], [0.9, 0.9], [0.9, 0.9]]
-    )
-    mock_umap_instance.fit_transform.return_value = reduced_embeddings
+    mock_pca_instance = MagicMock()
+    mock_pca_cls.return_value = mock_pca_instance
+    # transform returns array of shape (batch_size, n_components)
+    mock_pca_instance.transform.side_effect = lambda x: x # Identity for test
 
-    mock_gmm_instance = MagicMock()
-    mock_gmm_cls.return_value = mock_gmm_instance
+    mock_kmeans_instance = MagicMock()
+    mock_kmeans_cls.return_value = mock_kmeans_instance
 
-    # Soft Clustering Probabilities (N=6, K=2)
-    # 0,1,2 -> Cluster 0 (Prob ~0.9, 0.1)
-    # 3,4,5 -> Cluster 1 (Prob ~0.1, 0.9)
-    # Node 2 is ambiguous -> (Prob 0.45, 0.55). Max is 1, but if threshold is 0.4, both selected.
-    # Let's test that logic.
-    probs = np.array(
-        [
-            [0.9, 0.1],
-            [0.9, 0.1],
-            [0.45, 0.55],  # Ambiguous
-            [0.1, 0.9],
-            [0.1, 0.9],
-            [0.1, 0.9],
-        ]
-    )
-    mock_gmm_instance.predict_proba.return_value = probs
+    # Predict labels: 0 for first 3, 1 for next 3
+    # Note: loop runs 3 times (partial_fit PCA, partial_fit KMeans, predict KMeans)
+    # The predict loop iterates in batches.
+    # If batch size is default 1000, it processes all 6 at once.
+    mock_kmeans_instance.predict.return_value = np.array([0, 0, 0, 1, 1, 1])
 
-    # Mock BIC scores to select 2 clusters
-    mock_gmm_instance.bic.side_effect = [10.0, 20.0, 30.0, 40.0, 50.0]
-
-    # Instantiate engine with threshold 0.4
     engine = GMMClusterer()
-    config = ProcessingConfig(clustering_algorithm="gmm", clustering_probability_threshold=0.4)
+    config = ProcessingConfig(write_batch_size=100, umap_n_components=2)
 
     # Perform clustering
     clusters = engine.cluster_nodes(iter(sample_embeddings), config)
@@ -63,17 +51,18 @@ def test_clustering_with_gmm_soft(
 
     # Check cluster 0
     c0 = next(c for c in clusters if c.id == 0)
-    # Node 2 (0.45) >= 0.4, so it should be in C0
-    assert set(c0.node_indices) == {0, 1, 2}
+    assert set(c0.node_indices) == {"0", "1", "2"}
 
     # Check cluster 1
     c1 = next(c for c in clusters if c.id == 1)
-    # Node 2 (0.55) >= 0.4, so it should be in C1 too
-    assert set(c1.node_indices) == {2, 3, 4, 5}
+    assert set(c1.node_indices) == {"3", "4", "5"}
 
     # Verify calls
-    mock_umap_cls.assert_called_once()
-    mock_gmm_instance.predict_proba.assert_called()
+    mock_pca_cls.assert_called()
+    mock_kmeans_cls.assert_called()
+    mock_pca_instance.partial_fit.assert_called()
+    mock_kmeans_instance.partial_fit.assert_called()
+    mock_kmeans_instance.predict.assert_called()
 
 
 def test_empty_embeddings() -> None:
@@ -82,33 +71,8 @@ def test_empty_embeddings() -> None:
     assert engine.cluster_nodes([], config) == []
 
 
-@patch("matome.engines.cluster.UMAP")
-@patch("matome.engines.cluster.GaussianMixture")
-def test_fixed_n_clusters(
-    mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sample_embeddings: list[list[float]]
-) -> None:
-    # Setup mocks
-    mock_umap_instance = MagicMock()
-    mock_umap_cls.return_value = mock_umap_instance
-    mock_umap_instance.fit_transform.return_value = np.array(sample_embeddings)
-
-    mock_gmm_instance = MagicMock()
-    mock_gmm_cls.return_value = mock_gmm_instance
-    # Needs predict_proba
-    mock_gmm_instance.predict_proba.return_value = np.zeros((len(sample_embeddings), 3))
-
-    # Config with fixed clusters
-    config = ProcessingConfig(n_clusters=3)
-    engine = GMMClusterer()
-
-    engine.cluster_nodes(sample_embeddings, config)
-
-    # Should create GMM with n_components=3
-    mock_gmm_cls.assert_called_with(n_components=3, random_state=42)
-
-
-def test_very_small_dataset_skip(sample_embeddings: list[list[float]]) -> None:
-    # Test skipping UMAP/GMM for <= 5 samples
+def test_very_small_dataset_skip(sample_embeddings: list[tuple[NodeID, list[float]]]) -> None:
+    # Test skipping PCA/KMeans for <= 5 samples
     # Test with 5 samples
     small_embeddings = sample_embeddings[:5]
 
@@ -116,38 +80,45 @@ def test_very_small_dataset_skip(sample_embeddings: list[list[float]]) -> None:
     engine = GMMClusterer()
 
     with (
-        patch("matome.engines.cluster.UMAP") as mock_umap,
-        patch("matome.engines.cluster.GaussianMixture") as mock_gmm,
+        patch("matome.engines.cluster.IncrementalPCA") as mock_pca,
+        patch("matome.engines.cluster.MiniBatchKMeans") as mock_kmeans,
     ):
         # Pass as iterable
         clusters = engine.cluster_nodes(iter(small_embeddings), config)
 
         assert len(clusters) == 1
         assert clusters[0].id == 0
+        # All 5 nodes in one cluster
         assert len(clusters[0].node_indices) == 5
 
         # Verify engines NOT called
-        mock_umap.assert_not_called()
-        mock_gmm.assert_not_called()
+        mock_pca.assert_not_called()
+        mock_kmeans.assert_not_called()
 
 
-@patch("matome.engines.cluster.UMAP")
-@patch("matome.engines.cluster.GaussianMixture")
-def test_umap_config_params(
-    mock_gmm_cls: MagicMock, mock_umap_cls: MagicMock, sample_embeddings: list[list[float]]
+@patch("matome.engines.cluster.MiniBatchKMeans")
+@patch("matome.engines.cluster.IncrementalPCA")
+def test_config_params(
+    mock_pca_cls: MagicMock, mock_kmeans_cls: MagicMock, sample_embeddings: list[tuple[NodeID, list[float]]]
 ) -> None:
-    """Test that UMAP is initialized with config parameters."""
-    mock_umap_instance = MagicMock()
-    mock_umap_cls.return_value = mock_umap_instance
-    mock_umap_instance.fit_transform.return_value = np.array(sample_embeddings)
-    mock_gmm_cls.return_value.predict_proba.return_value = np.zeros((len(sample_embeddings), 3))
+    """Test that algorithms are initialized with config parameters."""
+    mock_pca_instance = MagicMock()
+    mock_pca_cls.return_value = mock_pca_instance
+    mock_pca_instance.transform.side_effect = lambda x: x
 
-    config = ProcessingConfig(umap_n_components=3, umap_n_neighbors=5, umap_min_dist=0.0)
+    mock_kmeans_instance = MagicMock()
+    mock_kmeans_cls.return_value = mock_kmeans_instance
+    mock_kmeans_instance.predict.return_value = np.zeros(len(sample_embeddings))
+
+    config = ProcessingConfig(umap_n_components=5, random_state=123, n_clusters=2)
     engine = GMMClusterer()
     engine.cluster_nodes(sample_embeddings, config)
 
-    # Check UMAP call
-    call_kwargs = mock_umap_cls.call_args.kwargs
-    assert call_kwargs["n_components"] == 3
-    assert call_kwargs["n_neighbors"] == 5
-    assert call_kwargs["min_dist"] == 0.0
+    # Check PCA call (umap_n_components maps to n_components in new implementation)
+    pca_kwargs = mock_pca_cls.call_args.kwargs
+    assert pca_kwargs["n_components"] == 5
+
+    # Check KMeans call
+    kmeans_kwargs = mock_kmeans_cls.call_args.kwargs
+    assert kmeans_kwargs["random_state"] == 123
+    assert kmeans_kwargs["n_clusters"] == 2

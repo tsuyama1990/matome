@@ -10,6 +10,7 @@ from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
 from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.interfaces import Chunker, Clusterer, Summarizer
+from domain_models.types import NodeID
 
 
 def test_interface_compliance() -> None:
@@ -94,10 +95,10 @@ def test_full_pipeline_flow() -> None:
         chunks_with_embeddings = list(embedder.embed_chunks(chunks))
         assert all(c.embedding is not None for c in chunks_with_embeddings)
 
-        valid_embeddings: list[list[float]] = []
+        valid_embeddings: list[tuple[NodeID, list[float]]] = []
         for c in chunks_with_embeddings:
             assert c.embedding is not None, "Embedding should not be None"
-            valid_embeddings.append(c.embedding)
+            valid_embeddings.append((str(c.index), c.embedding))
 
         # Ensure we patch GMM/UMAP randomness if needed, but config.random_state handles it
         clusters = clusterer.cluster_nodes(valid_embeddings, config)
@@ -105,9 +106,17 @@ def test_full_pipeline_flow() -> None:
         assert len(clusters) > 0
 
         cluster = clusters[0]
+        # In GMMClusterer test, we are not guaranteed that indices are mapped 1-to-1 if edge cases occur
+        # but here we have enough data.
+        # Check if node_indices are valid strings or ints
+
+        # We need to find chunks corresponding to cluster indices
+        # Indices are strings now
         cluster_text_parts = []
         for idx in cluster.node_indices:
-            cluster_text_parts.append(chunks_with_embeddings[int(idx)].text)
+             # Find chunk with this index
+             target = next(c for c in chunks_with_embeddings if str(c.index) == str(idx))
+             cluster_text_parts.append(target.text)
 
         cluster_text = " ".join(cluster_text_parts)
         summary = summarizer.summarize(cluster_text, config)
@@ -121,7 +130,7 @@ def test_pipeline_streaming_logic() -> None:
     """
     # Create a large enough list of dummy embeddings
     # 20 items, batch size 5 => 4 batches
-    embeddings = [[0.1 * i] * 10 for i in range(20)]
+    embeddings = [(str(i), [0.1 * i] * 10) for i in range(20)]
 
     config = ProcessingConfig(write_batch_size=5, umap_n_neighbors=2, umap_n_components=2)
 

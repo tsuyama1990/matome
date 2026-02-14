@@ -245,7 +245,7 @@ def test_raptor_cluster_edge_cases(
     summarizer.summarize.return_value = "Mock Summary"
 
     # Run private method directly to verify generator logic
-    results = list(engine._summarize_clusters(clusters, 0, store, 1, strategy))
+    results = list(engine._summarize_clusters(clusters, store, 1, strategy))
 
     # Only c3 should produce a result
     assert len(results) == 1
@@ -293,7 +293,7 @@ def test_raptor_cluster_truncation(
 
     summarizer.summarize.return_value = "Summary"
 
-    results = list(engine._summarize_clusters([cluster], 0, store, 1, strategy))
+    results = list(engine._summarize_clusters([cluster], store, 1, strategy))
 
     assert len(results) == 1
 

@@ -345,29 +345,32 @@ def serve(
 
     typer.echo(f"Starting Matome GUI on port {port}...")
 
-    store = DiskChunkStore(db_path=store_path)
+    # Use context manager to ensure store is closed properly upon exit (e.g. Ctrl+C)
     try:
-        config = ProcessingConfig()  # Default config for now
+        with DiskChunkStore(db_path=store_path) as store:
+            config = ProcessingConfig()  # Default config for now
 
-        # Initialize SummarizationAgent for interactive refinement
-        # Note: Requires OPENROUTER_API_KEY environment variable
-        summarizer = SummarizationAgent(config)
+            # Initialize SummarizationAgent for interactive refinement
+            # Note: Requires OPENROUTER_API_KEY environment variable
+            summarizer = SummarizationAgent(config)
 
-        engine = InteractiveRaptorEngine(store=store, summarizer=summarizer, config=config)
-        session = InteractiveSession(engine=engine)
+            engine = InteractiveRaptorEngine(store=store, summarizer=summarizer, config=config)
+            session = InteractiveSession(engine=engine)
 
-        # Load initial tree
-        session.load_tree()
+            # Load initial tree
+            session.load_tree()
 
-        canvas = MatomeCanvas(session)
+            canvas = MatomeCanvas(session)
 
-        # Serve
-        pn.serve(canvas.view, port=port, show=False, title="Matome")  # type: ignore[no-untyped-call]
+            # Serve (blocks until stopped)
+            # We explicitly pass canvas.view (method) which pn.serve calls or we can call it.
+            # pn.serve accepts functions returning Viewable or Viewable objects.
+            # Passing canvas.view is fine as it returns Template which is Viewable-like.
+            pn.serve(canvas.view, port=port, show=False, title="Matome")  # type: ignore[no-untyped-call]
+
     except Exception as e:
         typer.echo(f"Error serving GUI: {e}", err=True)
         raise typer.Exit(code=1) from e
-    finally:
-        store.close()
 
 
 if __name__ == "__main__":

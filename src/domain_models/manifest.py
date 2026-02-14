@@ -87,7 +87,7 @@ class NodeMetadata(BaseModel):
     refinement_history: list[str] = Field(
         default_factory=list, description="History of refinement instructions applied."
     )
-    cluster_id: str | int | None = Field(
+    cluster_id: NodeID | None = Field(
         default=None, description="ID of the cluster that generated this node."
     )
     type: str | None = Field(default=None, description="Type of the node (e.g., single_chunk_root).")

@@ -152,12 +152,14 @@ class InteractiveRaptorEngine:
             context={"instruction": instruction},
         )
 
-        with self.store.transaction():
-            node.text = new_text
-            node.metadata.is_user_edited = True
-            node.metadata.refinement_history.append(instruction)
-            node.embedding = None
-            self.store.update_node(node)
+        # Update node in memory
+        node.text = new_text
+        node.metadata.is_user_edited = True
+        node.metadata.refinement_history.append(instruction)
+        node.embedding = None
+
+        # Persist to DB using store's transaction management (update_node handles its own transaction)
+        self.store.update_node(node)
 
         logger.info(f"Refined node {node_id} with instruction: {instruction}")
         return node

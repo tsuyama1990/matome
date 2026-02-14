@@ -47,7 +47,7 @@ def test_clustering_error_handling() -> None:
     bad_config = config.model_copy(update={"clustering_algorithm": "kmeans"})
 
     with pytest.raises(ValueError, match="Unsupported clustering algorithm"):
-        engine.cluster_nodes([[0.1]], bad_config)
+        engine.cluster_nodes([(0, [0.1])], bad_config)
 
 
 def test_summarization_error_handling() -> None:

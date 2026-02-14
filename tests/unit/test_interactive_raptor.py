@@ -197,7 +197,4 @@ def test_refine_node_update_failure(
     with pytest.raises(RuntimeError, match="DB Write Failed"):
         interactive_engine.refine_node("s1", "Refine")
 
-    # Ideally verify transaction rollback if we implemented transactional logic in engine,
-    # but currently engine relies on store's atomic update_node or external transaction.
-    # The transaction context __exit__ would handle rollback on exception.
-    mock_store.transaction.assert_called_once()
+    # Transaction usage removed in favor of atomic update_node or external transaction control

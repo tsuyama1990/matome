@@ -1,6 +1,7 @@
 from typing import Any
 
 import panel as pn
+from panel.viewable import Viewable
 
 from domain_models.manifest import Chunk, SummaryNode
 from matome.ui.view_model import InteractiveSession
@@ -26,15 +27,15 @@ class MatomeCanvas:
 
     def _render_main_area(self) -> pn.Column:
         return pn.Column(
-            self._render_breadcrumbs,
-            self._render_pyramid_view,
+            self._render_breadcrumbs(),
+            self._render_pyramid_view(),
             sizing_mode="stretch_width"
         )
 
-    def _render_breadcrumbs(self) -> pn.viewable.Viewable:
+    def _render_breadcrumbs(self) -> Viewable:
         def _breadcrumbs(breadcrumbs: list[SummaryNode | Chunk]) -> pn.Row:
             try:
-                items: list[pn.viewable.Viewable] = []
+                items: list[Viewable] = []
                 for i, node in enumerate(breadcrumbs):
                     if isinstance(node, SummaryNode):
                         label = f"L{node.level}: {node.metadata.dikw_level.value.upper()}"
@@ -60,20 +61,15 @@ class MatomeCanvas:
                 return pn.pane.Markdown(f"Error rendering breadcrumbs: {e}", style={"color": "red"})  # type: ignore[no-untyped-call]
 
         # We bind to the parameter itself
-        # Explicitly cast to Viewable to satisfy MyPy since pn.bind can return various types
         return pn.bind(_breadcrumbs, self.session.param.breadcrumbs)  # type: ignore[no-any-return]
 
-    def _render_pyramid_nodes(self, nodes: list[SummaryNode | Chunk]) -> pn.viewable.Viewable:
+    def _render_pyramid_nodes(self, nodes: list[SummaryNode | Chunk]) -> Viewable:
         """Internal method to render pyramid nodes."""
         try:
             if not nodes:
-                # If no children, maybe we are at leaf or root just loaded?
-                # If root is loaded, it should be in breadcrumbs and visible?
-                # Actually, current_view_nodes are children of selected node.
-                # If selected node is leaf, no children.
                 return pn.pane.Markdown("No child nodes to display.", sizing_mode="stretch_width")  # type: ignore[no-untyped-call]
 
-            cards: list[pn.viewable.Viewable] = []
+            cards: list[Viewable] = []
             for node in nodes:
                 if isinstance(node, SummaryNode):
                     title = f"{node.metadata.dikw_level.value.upper()}"
@@ -105,7 +101,7 @@ class MatomeCanvas:
         except Exception as e:
             return pn.pane.Markdown(f"Error rendering nodes: {e}", style={"color": "red"})  # type: ignore[no-untyped-call]
 
-    def _render_pyramid_view(self) -> pn.viewable.Viewable:
+    def _render_pyramid_view(self) -> Viewable:
         return pn.bind(self._render_pyramid_nodes, self.session.param.current_view_nodes)  # type: ignore[no-any-return]
 
     def _handle_selection(self, nid: str | int) -> None:
@@ -188,5 +184,5 @@ class MatomeCanvas:
         except Exception as e:
             return pn.Column(pn.pane.Markdown(f"Error rendering details: {e}", styles={"color": "red"}))  # type: ignore[no-untyped-call]
 
-    def _render_details(self) -> pn.viewable.Viewable:
+    def _render_details(self) -> Viewable:
         return pn.bind(self._render_node_details, self.session.param.selected_node, self.session.param.is_processing)  # type: ignore[no-any-return]
