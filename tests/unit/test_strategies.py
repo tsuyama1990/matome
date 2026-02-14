@@ -1,6 +1,11 @@
 
 from domain_models.types import DIKWLevel
-from matome.agents.strategies import InformationStrategy, KnowledgeStrategy, WisdomStrategy
+from matome.agents.strategies import (
+    ChainOfDensityStrategy,
+    InformationStrategy,
+    KnowledgeStrategy,
+    WisdomStrategy,
+)
 
 
 def test_wisdom_strategy_level() -> None:
@@ -40,4 +45,17 @@ def test_information_strategy_prompt() -> None:
     text = "Step 1: Do this. Step 2: Do that."
     prompt = strategy.format_prompt(text)
     assert "actionable" in prompt.lower() or "checklist" in prompt.lower()
+    assert text in prompt
+
+
+def test_chain_of_density_strategy_level() -> None:
+    strategy = ChainOfDensityStrategy()
+    assert strategy.dikw_level == DIKWLevel.DATA
+
+
+def test_chain_of_density_strategy_prompt() -> None:
+    strategy = ChainOfDensityStrategy()
+    text = "Some raw data."
+    prompt = strategy.format_prompt(text)
+    assert "chain of density" in prompt.lower() or "high-density" in prompt.lower()
     assert text in prompt

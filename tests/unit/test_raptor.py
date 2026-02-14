@@ -65,7 +65,8 @@ def test_raptor_run_short_text(
 
     # 3. Clustering
     def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        for _ in embeddings: pass # Consume generator to trigger store writes without storing
+        for _ in embeddings:
+            pass  # Consume generator to trigger store writes without storing
         return [Cluster(id=0, level=0, node_indices=[0])]
 
     clusterer.cluster_nodes.side_effect = cluster_side_effect
@@ -128,7 +129,8 @@ def test_raptor_strategy_selection(
     result_iter = iter(cluster_results)
 
     def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        for _ in embeddings: pass # Consume without storing
+        for _ in embeddings:
+            pass  # Consume without storing
         return next(result_iter)
 
     clusterer.cluster_nodes.side_effect = cluster_side_effect
@@ -169,9 +171,10 @@ def test_raptor_error_handling(
     embedder.embed_chunks.return_value = iter([Chunk(index=0, text="t", start_char_idx=0, end_char_idx=1, embedding=[0.1]*768)])
 
     def fail_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        for _ in embeddings: pass # Consume without storing
+        for _ in embeddings:
+            pass  # Consume without storing
         msg = "Clustering failed"
-        raise ClusteringError(msg) # Use specific exception type
+        raise ClusteringError(msg)  # Use specific exception type
 
     clusterer.cluster_nodes.side_effect = fail_side_effect
 
@@ -185,11 +188,11 @@ def test_raptor_input_validation(
     chunker, embedder, clusterer, summarizer = mock_dependencies
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
-    with pytest.raises(ValueError, match="Input text must be a non-empty string"):
+    with pytest.raises(MatomeError, match="Input text must be a non-empty string"):
         engine.run("")
 
     large_text = "a" * (config.max_input_length + 100)
-    with pytest.raises(ValueError, match="Input text length"):
+    with pytest.raises(MatomeError, match="Input text length"):
         engine.run(large_text)
 
 
@@ -220,20 +223,90 @@ def test_raptor_cluster_edge_cases(
     strategy = InformationStrategy()
 
     # Mock store to return None for index 1 (missing node)
-    def get_node_side_effect(nid):
-        if nid == 1:
+    def get_node_side_effect(nid: int | str) -> Chunk | None:
+        if str(nid) == "1":
             return None
-        return Chunk(index=nid, text=f"text_{nid}", start_char_idx=0, end_char_idx=5)
+        return Chunk(index=int(nid), text=f"text_{nid}", start_char_idx=0, end_char_idx=5)
 
     store.get_node.side_effect = get_node_side_effect
+    # Mock get_node_ids_by_level to return the current level IDs for mapping
+    store.get_node_ids_by_level.return_value = iter(current_level_ids)
+
+    # Mock get_nodes for batch retrieval
+    def get_nodes_side_effect(node_ids: list[str]) -> list[Chunk | None]:
+        return [get_node_side_effect(nid) for nid in node_ids]
+
+    store.get_nodes.side_effect = get_nodes_side_effect
 
     # Mock summarizer return value
     summarizer.summarize.return_value = "Mock Summary"
 
     # Run private method directly to verify generator logic
-    results = list(engine._summarize_clusters(clusters, current_level_ids, store, 1, strategy))
+    results = list(engine._summarize_clusters(clusters, 0, store, 1, strategy))
 
     # Only c3 should produce a result
     assert len(results) == 1
     assert results[0].metadata.cluster_id == 2
     assert results[0].children_indices == [0]
+
+
+def test_raptor_cluster_truncation(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
+    """Test that cluster texts are truncated if they exceed limits."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+
+    # Set a valid limit for testing (must be >= 100)
+    config_small = ProcessingConfig(max_input_length=100)
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config_small)
+
+    store = MagicMock()
+    # 3 chunks, each 60 chars. Total 180 > 100.
+    t1 = "A" * 60
+    t2 = "B" * 60
+    t3 = "C" * 60
+
+    c1 = Chunk(index=1, text=t1, start_char_idx=0, end_char_idx=60)
+    c2 = Chunk(index=2, text=t2, start_char_idx=60, end_char_idx=120)
+    c3 = Chunk(index=3, text=t3, start_char_idx=120, end_char_idx=180)
+
+    def get_node_side_effect(nid: int | str) -> Chunk | None:
+        return {1: c1, 2: c2, 3: c3}.get(int(nid))
+
+    store.get_node.side_effect = get_node_side_effect
+
+    current_level_ids: list[NodeID] = [1, 2, 3]
+    # Mock get_node_ids_by_level
+    store.get_node_ids_by_level.return_value = iter(current_level_ids)
+
+    # Mock get_nodes
+    def get_nodes_side_effect(node_ids: list[str]) -> list[Chunk | None]:
+        return [get_node_side_effect(nid) for nid in node_ids]
+
+    store.get_nodes.side_effect = get_nodes_side_effect
+
+    cluster = Cluster(id=0, level=0, node_indices=[0, 1, 2]) # Points to ids 1, 2, 3
+    strategy = InformationStrategy()
+
+    summarizer.summarize.return_value = "Summary"
+
+    results = list(engine._summarize_clusters([cluster], 0, store, 1, strategy))
+
+    assert len(results) == 1
+
+    # summarizer should be called with truncated text
+    args, _ = summarizer.summarize.call_args
+    passed_text = args[0]
+
+    # 60 + 60 = 120. Loop 1 (60) OK. Loop 2 (120) Break.
+    # So passed text should contain only t1 (or t1+t2 depending on exact logic).
+    # Logic: if current_length + text_len > max: break.
+    # 0 + 60 <= 100 OK. current=60.
+    # 60 + 60 > 100 Break.
+    # Only t1 included.
+
+    assert t1 in passed_text
+    assert t2 not in passed_text
+    assert t3 not in passed_text
+
+    assert len(passed_text) <= 100

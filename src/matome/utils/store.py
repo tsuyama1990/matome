@@ -8,11 +8,14 @@ from typing import Any
 
 from sqlalchemy import (
     Column,
+    Integer,
     MetaData,
     String,
     Table,
     Text,
+    cast,
     create_engine,
+    func,
     insert,
     select,
     text,
@@ -29,6 +32,10 @@ COL_ID = "id"
 COL_TYPE = "type"
 COL_CONTENT = "content"  # Stores JSON of the node (excluding embedding)
 COL_EMBEDDING = "embedding"  # Stores JSON of the embedding list
+
+# Configuration Constants
+DEFAULT_WRITE_BATCH_SIZE = 1000
+DEFAULT_READ_BATCH_SIZE = 500
 
 
 class DiskChunkStore:
@@ -116,7 +123,6 @@ class DiskChunkStore:
         Helper to batch insert nodes.
         Streaming safe: processes input iterable in batches without full materialization.
         """
-        BATCH_SIZE = 1000
         # Use Core Insert with REPLACE logic for SQLite
         stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
@@ -124,7 +130,7 @@ class DiskChunkStore:
 
         # Iterate over the input iterable using batched() to handle chunks efficiently
         # without loading the entire dataset into memory.
-        for node_batch in batched(nodes, BATCH_SIZE):
+        for node_batch in batched(nodes, DEFAULT_WRITE_BATCH_SIZE):
             buffer: list[dict[str, Any]] = []
 
             for node in node_batch:
@@ -148,6 +154,55 @@ class DiskChunkStore:
             # Flush batch
             with self.engine.begin() as conn:
                 conn.execute(stmt, buffer)
+
+    def get_nodes(self, node_ids: list[str]) -> Iterable[Chunk | SummaryNode | None]:
+        """
+        Retrieve multiple nodes by ID in a single batch.
+        Yields results to stream processing and avoid OOM.
+        """
+        if not node_ids:
+            return
+
+        # SQLite limit for variables is usually 999 or 32766. Use safe batch size.
+        # Query in batches to respect SQLite variable limits
+        for i in range(0, len(node_ids), DEFAULT_READ_BATCH_SIZE):
+            batch_ids = node_ids[i : i + DEFAULT_READ_BATCH_SIZE]
+            stmt = select(
+                self.nodes_table.c.id,
+                self.nodes_table.c.type,
+                self.nodes_table.c.content,
+                self.nodes_table.c.embedding,
+            ).where(self.nodes_table.c.id.in_(batch_ids))
+
+            # Store batch result in a temporary dict to preserve order within the batch relative to request
+            # But since we stream, we can't easily preserve global order if we process batches independently.
+            # However, batch_ids corresponds to a slice of the input list.
+            # So within this loop iteration, we process ids node_ids[i : i+BATCH].
+
+            id_to_node_batch: dict[str, Chunk | SummaryNode] = {}
+
+            with self.engine.connect() as conn:
+                db_rows = conn.execute(stmt)
+                for row in db_rows:
+                    nid, node_type, content_json, embedding_json = row
+                    try:
+                        embedding = json.loads(embedding_json) if embedding_json else None
+                        if node_type == "chunk":
+                            data = json.loads(content_json)
+                            if embedding is not None:
+                                data["embedding"] = embedding
+                            id_to_node_batch[nid] = Chunk.model_validate(data)
+                        elif node_type == "summary":
+                            data = json.loads(content_json)
+                            if embedding is not None:
+                                data["embedding"] = embedding
+                            id_to_node_batch[nid] = SummaryNode.model_validate(data)
+                    except Exception:
+                        logger.exception(f"Failed to deserialize node {nid}")
+
+            # Yield nodes for the current batch in requested order
+            for nid in batch_ids:
+                yield id_to_node_batch.get(nid)
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
         """
@@ -207,6 +262,57 @@ class DiskChunkStore:
                 return None
 
         return None
+
+    def get_node_ids_by_level(self, level: int) -> Iterable[str]:
+        """
+        Stream node IDs for a specific hierarchical level.
+        Note: Since 'level' is stored inside the JSON content, this might be slow on large datasets
+        without an index or extracted column. For the current scope (SQLite), it's acceptable.
+        """
+        # Optimized: If level is 0, we can filter by type='chunk' which is faster.
+        if level == 0:
+            # Must order by integer value of ID to match processing stream order
+            stmt = (
+                select(self.nodes_table.c.id)
+                .where(self.nodes_table.c.type == "chunk")
+                .order_by(cast(self.nodes_table.c.id, Integer))
+            )
+        else:
+            # For summary nodes, we must check the JSON content.
+            # SQLite supports json_extract.
+            # Order by ID for deterministic behavior, though strict order matters less here
+            # as long as embedding and clustering usage is consistent.
+            stmt = (
+                select(self.nodes_table.c.id)
+                .where(
+                    self.nodes_table.c.type == "summary",
+                    func.json_extract(self.nodes_table.c.content, "$.level") == level,
+                )
+                .order_by(self.nodes_table.c.id)
+            )
+
+        with self.engine.connect() as conn:
+            # Stream results to avoid loading all IDs into memory at once
+            result = conn.execute(stmt)
+            for row in result:
+                yield row[0]
+
+    def get_node_count(self, level: int) -> int:
+        """
+        Get the number of nodes at a specific level.
+        Efficient count query.
+        """
+        if level == 0:
+            stmt = select(func.count()).where(self.nodes_table.c.type == "chunk")
+        else:
+            stmt = select(func.count()).where(
+                self.nodes_table.c.type == "summary",
+                func.json_extract(self.nodes_table.c.content, "$.level") == level,
+            )
+
+        with self.engine.connect() as conn:
+            result = conn.execute(stmt)
+            return result.scalar() or 0
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""

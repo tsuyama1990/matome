@@ -85,16 +85,16 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     # Verify leaf_chunk_ids are populated
     assert len(tree.leaf_chunk_ids) == 2
 
-    # Verify IDs match
-    assert set(tree.leaf_chunk_ids) == {0, 1}
+    # Verify IDs match (should be strings as they come from store)
+    assert set(tree.leaf_chunk_ids) == {"0", "1"}
 
     # Note: Text is not in the tree anymore, would need to fetch from store.
 
     # Verify structure
     assert tree.root_node.text == "Summary Text"
     # The summary node children indices should correspond to the L0 IDs.
-    # checking that children_indices contains 0 and 1
-    assert set(tree.root_node.children_indices) == {0, 1}
+    # checking that children_indices contains 0 and 1 (as strings)
+    assert set(tree.root_node.children_indices) == {"0", "1"}
 
 
 def test_raptor_empty_iterator_error() -> None:
@@ -117,5 +117,35 @@ def test_raptor_empty_iterator_error() -> None:
     # Should likely raise ValueError or return empty tree depending on implementation.
     # Implementation says: if node_count == 0 pass, then _finalize_tree checks if current_level_ids is empty.
 
-    with pytest.raises(ValueError, match="No nodes remaining"):
+    from matome.exceptions import MatomeError
+    with pytest.raises(MatomeError, match="No nodes remaining"):
         engine.run("empty")
+
+
+def test_streaming_store_integration() -> None:
+    """
+    Verify that the store returns a generator for IDs, ensuring streaming.
+    """
+    from types import GeneratorType
+
+    from matome.utils.store import DiskChunkStore
+
+    with DiskChunkStore() as store:
+        # Add some chunks
+        chunks = [Chunk(index=i, text=f"t{i}", start_char_idx=i, end_char_idx=i+1, embedding=[0.1]) for i in range(10)]
+        store.add_chunks(chunks)
+
+        # Verify get_node_ids_by_level returns a generator
+        ids_iter = store.get_node_ids_by_level(0)
+        # It might be a generator or an iterator, but definitely not a list
+        assert isinstance(ids_iter, (Iterator, GeneratorType))
+        assert not isinstance(ids_iter, list)
+
+        # Verify we can consume it
+        ids = list(ids_iter)
+        assert len(ids) == 10
+        assert ids[0] == "0"
+        assert ids[9] == "9"
+
+        # Verify interactions (implicit via data correctness, but we can verify engine if mocked)
+        # Here we are testing the real store logic with SQLite, so data correctness IS the verification.
