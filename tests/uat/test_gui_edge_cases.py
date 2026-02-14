@@ -86,4 +86,6 @@ class TestGuiEdgeCases:
              assert isinstance(details_col, pn.Column)
              from panel.pane import Markdown
              assert isinstance(details_col[0], Markdown)
-             assert "Error rendering details: Widget Boom" in details_col[0].object
+             # In new canvas, we log exception but still return a markdown with generic error or specific message
+             # The code says: return pn.Column(pn.pane.Markdown("Error rendering details", styles={"color": "red"}))
+             assert "Error rendering details" in details_col[0].object

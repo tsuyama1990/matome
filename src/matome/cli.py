@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import panel as pn
 import typer
@@ -38,40 +38,48 @@ app = typer.Typer(
 DEFAULT_CONFIG = ProcessingConfig.default()
 
 
+def _fail_with_error(message: str) -> NoReturn:
+    """Centralized error handling: Log error and exit with code 1."""
+    typer.echo(message, err=True)
+    logger.error(message)
+    raise typer.Exit(code=1)
+
+
 def _handle_file_too_large(size: int, limit: int) -> None:
     """Handle error when file is too large."""
-    typer.echo(
-        f"File too large: {size} bytes. Limit is {limit / (1024*1024):.2f}MB.", err=True
+    _fail_with_error(
+        f"File too large: {size} bytes. Limit is {limit / (1024*1024):.2f}MB."
     )
-    raise typer.Exit(code=1)
-
-
-def _handle_invalid_output_dir(message: str) -> None:
-    """Handle invalid output directory error."""
-    typer.echo(f"Invalid output directory: {message}", err=True)
-    raise typer.Exit(code=1)
 
 
 def _validate_output_dir(output_dir: Path) -> None:
     """
     Validate output directory to prevent path traversal or unsafe locations.
-    Assuming we only want to write to subdirectories of CWD or safe absolute paths.
+    Enforces that the path must be relative to the current working directory
+    and resolves symbolic links to ensure safety.
     """
     try:
+        # Resolve path to handle '..' and absolute paths
+        # strict=False because the directory might not exist yet
         resolved = output_dir.resolve()
         cwd = Path.cwd().resolve()
 
         # Security check: Ensure path is relative to CWD to prevent writing to arbitrary system locations
         if not resolved.is_relative_to(cwd):
-             _handle_invalid_output_dir(f"Path must be within current working directory ({cwd})")
+             _fail_with_error(f"Path must be within current working directory ({cwd})")
+
+        # Check for symbolic link attacks if the path exists (or its parents)
+        # Note: resolve() already follows symlinks, so is_relative_to checks the *target* location.
+        # However, checking explicitly if the input path component itself is a symlink can be useful policy.
+        if output_dir.is_symlink():
+             _fail_with_error(f"Output directory cannot be a symbolic link: {output_dir}")
 
         # Prevent traversal outside intended parent if strict mode (optional)
-        # For now, we ensure we can create it and it's not a file.
         if resolved.exists() and not resolved.is_dir():
-             _handle_invalid_output_dir(f"Path {output_dir} exists and is not a directory.")
+             _fail_with_error(f"Path {output_dir} exists and is not a directory.")
 
     except Exception as e:
-        _handle_invalid_output_dir(str(e))
+        _fail_with_error(f"Invalid output directory: {e!s}")
 
 
 def _stream_file_content(path: Path) -> Iterator[str]:
@@ -82,11 +90,9 @@ def _stream_file_content(path: Path) -> Iterator[str]:
         with path.open("r", encoding="utf-8") as f:
             yield from f
     except UnicodeDecodeError as e:
-        typer.echo(f"File encoding error: {e}. Please ensure the file is valid UTF-8.", err=True)
-        raise typer.Exit(code=1) from e
+        _fail_with_error(f"File encoding error: {e}. Please ensure the file is valid UTF-8.")
     except Exception as e:
-        typer.echo(f"Error reading file stream: {e}", err=True)
-        raise typer.Exit(code=1) from e
+        _fail_with_error(f"Error reading file stream: {e}")
 
 
 def _initialize_components(config: ProcessingConfig) -> tuple[
@@ -127,9 +133,8 @@ def _run_pipeline(
         # Pass the stream generator directly
         return engine.run(text_stream, store=store)
     except Exception as e:
-        typer.echo(f"Error during RAPTOR execution: {e}", err=True)
         logger.exception("RAPTOR execution failed.")
-        raise typer.Exit(code=1) from e
+        _fail_with_error(f"Error during RAPTOR execution: {e}")
 
 
 def _verify_results(
@@ -160,8 +165,8 @@ def _verify_results(
             f.write(result.model_dump_json(indent=2))
 
     except Exception as e:
-        typer.echo(f"Verification failed: {e}", err=True)
         logger.exception("Verification failed.")
+        typer.echo(f"Verification failed: {e}", err=True)
 
 
 def _export_results(
@@ -181,8 +186,8 @@ def _export_results(
         obs_exporter = ObsidianCanvasExporter(config)
         obs_exporter.export(tree, output_dir / "summary_kj.canvas", store)
     except Exception as e:
-        typer.echo(f"Export failed: {e}", err=True)
         logger.exception("Export failed.")
+        typer.echo(f"Export failed: {e}", err=True)
 
 
 @app.command()
@@ -271,8 +276,7 @@ def run(
         if file_stats.st_size > config.max_file_size_bytes:
             _handle_file_too_large(file_stats.st_size, config.max_file_size_bytes)
     except OSError as e:
-        typer.echo(f"Error accessing file: {e}", err=True)
-        raise typer.Exit(code=1) from e
+        _fail_with_error(f"Error accessing file: {e}")
 
     # Create stream generator
     text_stream = _stream_file_content(input_file)
@@ -366,8 +370,8 @@ def serve(
             pn.serve(canvas.view, port=port, show=False, title="Matome")  # type: ignore[no-untyped-call]
 
     except Exception as e:
-        typer.echo(f"Error serving GUI: {e}", err=True)
-        raise typer.Exit(code=1) from e
+        logger.exception("Error serving GUI")
+        _fail_with_error(f"Error serving GUI: {e}")
 
 
 if __name__ == "__main__":

@@ -28,6 +28,6 @@ def test_refine_node_missing_children() -> None:
     # But returns empty generator for children (simulating missing/deleted children or mismatch)
     store.get_nodes.return_value = iter([])
 
-    # This should raise "Node s1 expects 2 children but found 0"
-    with pytest.raises(ValueError, match="expects 2 children but found 0"):
+    # This should raise "Node s1 has no accessible children. Cannot refine."
+    with pytest.raises(ValueError, match="has no accessible children"):
         engine.refine_node("s1", "instruction")

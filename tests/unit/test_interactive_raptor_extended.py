@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import SummaryNode, NodeMetadata
+from domain_models.manifest import NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.exceptions import MatomeError
