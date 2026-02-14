@@ -63,7 +63,7 @@ class InformationStrategy(PromptStrategy):
         return INFORMATION_TEMPLATE.format(context=text)
 
 
-class BaseSummaryStrategy(PromptStrategy):
+class ChainOfDensityStrategy(PromptStrategy):
     """
     Default strategy using Chain of Density or simple summarization.
     Used for backward compatibility or when DIKW mode is off.
@@ -89,7 +89,7 @@ class RefinementStrategy(PromptStrategy):
     """
 
     def __init__(self, base_strategy: PromptStrategy | None = None) -> None:
-        self.base_strategy = base_strategy or BaseSummaryStrategy()
+        self.base_strategy = base_strategy or ChainOfDensityStrategy()
 
     @property
     def dikw_level(self) -> DIKWLevel:
@@ -114,6 +114,6 @@ STRATEGY_REGISTRY: dict[str, type[PromptStrategy]] = {
     DIKWLevel.WISDOM.value: WisdomStrategy,
     DIKWLevel.KNOWLEDGE.value: KnowledgeStrategy,
     DIKWLevel.INFORMATION.value: InformationStrategy,
-    "default": BaseSummaryStrategy,
+    "default": ChainOfDensityStrategy,
     "refinement": RefinementStrategy,
 }

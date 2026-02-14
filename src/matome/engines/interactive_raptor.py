@@ -2,7 +2,10 @@ import logging
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, SummaryNode
-from matome.agents.strategies import STRATEGY_REGISTRY, RefinementStrategy
+from matome.agents.strategies import (
+    STRATEGY_REGISTRY,
+    RefinementStrategy,
+)
 from matome.agents.summarizer import SummarizationAgent
 from matome.utils.store import DiskChunkStore
 

@@ -117,7 +117,8 @@ def test_raptor_empty_iterator_error() -> None:
     # Should likely raise ValueError or return empty tree depending on implementation.
     # Implementation says: if node_count == 0 pass, then _finalize_tree checks if current_level_ids is empty.
 
-    with pytest.raises(ValueError, match="No nodes remaining"):
+    from matome.exceptions import MatomeError
+    with pytest.raises(MatomeError, match="No nodes remaining"):
         engine.run("empty")
 
 
@@ -145,3 +146,6 @@ def test_streaming_store_integration() -> None:
         assert len(ids) == 10
         assert ids[0] == "0"
         assert ids[9] == "9"
+
+        # Verify interactions (implicit via data correctness, but we can verify engine if mocked)
+        # Here we are testing the real store logic with SQLite, so data correctness IS the verification.

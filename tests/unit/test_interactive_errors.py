@@ -27,5 +27,5 @@ def test_refine_node_missing_children() -> None:
 
     # But returns None for children (simulating missing/deleted children)
 
-    with pytest.raises(ValueError, match="no accessible children"):
+    with pytest.raises(ValueError, match="Node s1 has no accessible children. Cannot refine."):
         engine.refine_node("s1", "instruction")

@@ -9,11 +9,11 @@ from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, S
 from domain_models.types import DIKWLevel, NodeID
 from matome.agents.strategies import (
     STRATEGY_REGISTRY,
-    BaseSummaryStrategy,
+    ChainOfDensityStrategy,
     WisdomStrategy,
 )
 from matome.engines.embedder import EmbeddingService
-from matome.exceptions import ClusteringError, MatomeError, SummarizationError
+from matome.exceptions import MatomeError, SummarizationError
 from matome.interfaces import Chunker, Clusterer, PromptStrategy, Summarizer
 from matome.utils.compat import batched
 from matome.utils.store import DiskChunkStore
@@ -63,7 +63,7 @@ class RaptorEngine:
         if strategy_class:
             return strategy_class()
 
-        return BaseSummaryStrategy()
+        return ChainOfDensityStrategy()
 
     def _process_level_zero(
         self, initial_chunks: Iterable[Chunk], store: DiskChunkStore
@@ -104,7 +104,7 @@ class RaptorEngine:
             clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
         except Exception as e:
              msg = "Clustering failed at Level 0"
-             raise ClusteringError(msg) from e
+             raise MatomeError(msg) from e
 
         return clusters, stats["node_count"]
 
@@ -112,7 +112,7 @@ class RaptorEngine:
         """Helper to validate chunk embedding exists."""
         if chunk.embedding is None:
             msg = f"Chunk {chunk.index} missing embedding."
-            raise ValueError(msg)
+            raise MatomeError(msg)
 
     def run(self, text: str, store: DiskChunkStore | None = None) -> DocumentTree:
         """
@@ -120,11 +120,11 @@ class RaptorEngine:
         """
         if not text or not isinstance(text, str):
             msg = "Input text must be a non-empty string."
-            raise ValueError(msg)
+            raise MatomeError(msg)
 
         if len(text) > self.config.max_input_length:
             msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
-            raise ValueError(msg)
+            raise MatomeError(msg)
 
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
@@ -141,7 +141,7 @@ class RaptorEngine:
 
             if node_count == 0:
                  msg = "No nodes remaining."
-                 raise ValueError(msg)
+                 raise MatomeError(msg)
 
             # We need L0 IDs for finalizing the tree.
             l0_ids = list(active_store.get_node_ids_by_level(0))
@@ -222,11 +222,12 @@ class RaptorEngine:
             clusters = self._embed_and_cluster_next_level(level, store) if node_count > 1 else []
 
         # Should be unreachable if logic is correct, but safe fallback
-        ids = list(store.get_node_ids_by_level(level))
-        if not ids:
+        ids_iter = store.get_node_ids_by_level(level)
+        try:
+            return next(iter(ids_iter))
+        except StopIteration as e:
              msg = "Recursion ended with no root."
-             raise MatomeError(msg)
-        return ids[0]
+             raise MatomeError(msg) from e
 
     def _embed_and_cluster_next_level(
         self, level: int, store: DiskChunkStore
@@ -273,7 +274,7 @@ class RaptorEngine:
             return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
         except Exception as e:
             msg = "Clustering failed during recursion"
-            raise ClusteringError(msg) from e
+            raise MatomeError(msg) from e
 
     def _finalize_tree(
         self,
@@ -289,14 +290,14 @@ class RaptorEngine:
                  # Empty tree is valid for empty input
                  pass
             msg = "No nodes remaining."
-            raise ValueError(msg)
+            raise MatomeError(msg)
 
         root_id = current_level_ids[0]
         root_node_obj = store.get_node(root_id)
 
         if not root_node_obj:
             msg = f"Root node {root_id} not found in store."
-            raise ValueError(msg)
+            raise MatomeError(msg)
 
         # Ensure root embedding
         if root_node_obj.embedding is None:
@@ -395,80 +396,84 @@ class RaptorEngine:
                     while needed_ptr < len(sorted_needed_indices) and sorted_needed_indices[needed_ptr] == current_idx:
                          needed_ptr += 1
 
-        # 3. Summarize using the map
-        # Optimization: Fetch all needed nodes in batch using get_nodes
-        all_node_ids = []
-        cluster_node_map: dict[NodeID, list[NodeID]] = {}
+        # 3. Summarize using the map, processing in batches to avoid OOM
+        # Batch size for processing clusters
+        CLUSTER_BATCH_SIZE = 20
 
-        for cluster in clusters:
-            ids_for_cluster = []
-            for idx_raw in cluster.node_indices:
-                idx = int(idx_raw)
-                nid = index_to_id.get(idx)
-                if nid is not None:
-                    ids_for_cluster.append(nid)
+        for cluster_batch in batched(clusters, CLUSTER_BATCH_SIZE):
+            batch_node_ids = []
+            cluster_node_map: dict[NodeID, list[NodeID]] = {}
 
-            cluster_node_map[cluster.id] = ids_for_cluster
-            all_node_ids.extend(ids_for_cluster)
+            # Collect IDs for this batch
+            for cluster in cluster_batch:
+                ids_for_cluster = []
+                for idx_raw in cluster.node_indices:
+                    idx = int(idx_raw)
+                    nid = index_to_id.get(idx)
+                    if nid is not None:
+                        ids_for_cluster.append(nid)
 
-        # Retrieve nodes in batch
-        # Convert IDs to strings for get_nodes
-        fetched_nodes_list = store.get_nodes([str(nid) for nid in all_node_ids])
-        fetched_node_lookup = {
-            str(n.index if isinstance(n, Chunk) else n.id): n
-            for n in fetched_nodes_list if n
-        }
+                cluster_node_map[cluster.id] = ids_for_cluster
+                batch_node_ids.extend(ids_for_cluster)
 
-        for cluster in clusters:
-            children_indices: list[NodeID] = []
-            cluster_texts: list[str] = []
+            # Fetch nodes for this batch only
+            fetched_nodes_list = store.get_nodes([str(nid) for nid in batch_node_ids])
+            fetched_node_lookup = {
+                str(n.index if isinstance(n, Chunk) else n.id): n
+                for n in fetched_nodes_list if n
+            }
 
-            current_length = 0
+            # Process clusters in this batch
+            for cluster in cluster_batch:
+                children_indices: list[NodeID] = []
+                cluster_texts: list[str] = []
 
-            needed_ids = cluster_node_map.get(cluster.id, [])
+                current_length = 0
 
-            for nid_ref in needed_ids:
-                node = fetched_node_lookup.get(str(nid_ref))
-                if not node:
+                needed_ids = cluster_node_map.get(cluster.id, [])
+
+                for nid_ref in needed_ids:
+                    node = fetched_node_lookup.get(str(nid_ref))
+                    if not node:
+                        continue
+
+                    text_len = len(node.text)
+                    if current_length + text_len > self.config.max_input_length:
+                         logger.warning(f"Cluster {cluster.id} exceeding max length. Truncating nodes.")
+                         break
+
+                    children_indices.append(nid_ref)
+                    cluster_texts.append(node.text)
+                    current_length += text_len
+
+                if not cluster_texts:
                     continue
 
-                text_len = len(node.text)
-                if current_length + text_len > self.config.max_input_length:
-                     logger.warning(f"Cluster {cluster.id} exceeding max length. Truncating nodes.")
-                     break
+                combined_text = "\n\n".join(cluster_texts)
 
-                children_indices.append(nid_ref)
-                cluster_texts.append(node.text)
-                current_length += text_len
+                # Additional safety check for total length after join (headers etc)
+                if len(combined_text) > self.config.max_input_length:
+                     combined_text = combined_text[:self.config.max_input_length]
 
-            if not cluster_texts:
-                continue
+                try:
+                    summary_text = self.summarizer.summarize(combined_text, self.config, strategy)
+                except SummarizationError:
+                    logger.exception(f"Summarization failed for cluster {cluster.id}")
+                    summary_text = "Summarization failed."
 
-            combined_text = "\n\n".join(cluster_texts)
+                node_id_str = str(uuid.uuid4())
 
-            # Additional safety check for total length after join (headers etc)
-            if len(combined_text) > self.config.max_input_length:
-                 combined_text = combined_text[:self.config.max_input_length]
+                metadata = NodeMetadata(
+                    dikw_level=strategy.dikw_level,
+                    cluster_id=cluster.id
+                )
 
-            try:
-                summary_text = self.summarizer.summarize(combined_text, self.config, strategy)
-            except SummarizationError:
-                logger.exception(f"Summarization failed for cluster {cluster.id}")
-                summary_text = "Summarization failed."
+                summary_node = SummaryNode(
+                    id=node_id_str,
+                    text=summary_text,
+                    level=output_level,
+                    children_indices=children_indices,
+                    metadata=metadata,
+                )
 
-            node_id_str = str(uuid.uuid4())
-
-            metadata = NodeMetadata(
-                dikw_level=strategy.dikw_level,
-                cluster_id=cluster.id
-            )
-
-            summary_node = SummaryNode(
-                id=node_id_str,
-                text=summary_text,
-                level=output_level,
-                children_indices=children_indices,
-                metadata=metadata,
-            )
-
-            yield summary_node
+                yield summary_node

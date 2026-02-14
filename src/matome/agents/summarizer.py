@@ -15,7 +15,7 @@ from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
 from domain_models.constants import PROMPT_INJECTION_PATTERNS
-from matome.agents.strategies import BaseSummaryStrategy
+from matome.agents.strategies import ChainOfDensityStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
 from matome.interfaces import PromptStrategy
@@ -78,11 +78,11 @@ class SummarizationAgent:
         Args:
             text: The text to summarize.
             config: Optional config override. Uses self.config if None.
-            strategy: Optional PromptStrategy. Defaults to BaseSummaryStrategy (Chain of Density).
+            strategy: Optional PromptStrategy. Defaults to ChainOfDensityStrategy (Chain of Density).
             context: Optional context dictionary to pass to the strategy (e.g. user instructions).
         """
         effective_config = config or self.config
-        effective_strategy = strategy or BaseSummaryStrategy()
+        effective_strategy = strategy or ChainOfDensityStrategy()
         request_id = str(uuid.uuid4())
 
         if not text:
@@ -191,6 +191,12 @@ class SummarizationAgent:
             # Use re.sub with compiled pattern if possible, or just flags
             # Ensure we catch variations
             sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
+
+        # Validate length after sanitization just in case replacement significantly increases size
+        # (unlikely with [Filtered], but good practice)
+        if len(sanitized) > self.config.max_input_length:
+             msg = "Sanitized text exceeds maximum length."
+             raise ValueError(msg)
 
         return sanitized
 
