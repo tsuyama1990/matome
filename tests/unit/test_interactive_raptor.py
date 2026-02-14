@@ -68,8 +68,8 @@ def test_refine_node_success(
     # Check that summarizer was called with correct context
     args, kwargs = mock_summarizer.summarize.call_args
     assert kwargs["context"]["instruction"] == instruction
-    # Check that store.add_summary was called to save changes
-    mock_store.add_summary.assert_called_once_with(summary_node)
+    # Check that store.update_node was called to save changes
+    mock_store.update_node.assert_called_once_with(summary_node)
 
 
 def test_refine_node_not_found(interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:

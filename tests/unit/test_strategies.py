@@ -59,3 +59,36 @@ def test_chain_of_density_strategy_prompt() -> None:
     prompt = strategy.format_prompt(text)
     assert "chain of density" in prompt.lower() or "high-density" in prompt.lower()
     assert text in prompt
+
+from unittest.mock import MagicMock
+from matome.agents.strategies import RefinementStrategy
+
+def test_refinement_strategy_appending() -> None:
+    """Test that RefinementStrategy appends instruction to base prompt."""
+    base_mock = MagicMock()
+    base_mock.format_prompt.return_value = "Base Prompt."
+    base_mock.dikw_level = DIKWLevel.WISDOM
+
+    strategy = RefinementStrategy(base_strategy=base_mock)
+
+    context = {"instruction": "Make it better."}
+    prompt = strategy.format_prompt("Source Text", context)
+
+    # Check that base strategy was called
+    base_mock.format_prompt.assert_called_with("Source Text", context)
+
+    # Check structure
+    assert "Base Prompt." in prompt
+    assert "USER INSTRUCTION: Make it better." in prompt
+    assert prompt.endswith("USER INSTRUCTION: Make it better.") or "USER INSTRUCTION: Make it better." in prompt
+
+def test_refinement_strategy_no_instruction() -> None:
+    """Test RefinementStrategy without instruction (should fall back to base)."""
+    base_mock = MagicMock()
+    base_mock.format_prompt.return_value = "Base Prompt."
+
+    strategy = RefinementStrategy(base_strategy=base_mock)
+
+    prompt = strategy.format_prompt("Source Text", {})
+
+    assert prompt == "Base Prompt."

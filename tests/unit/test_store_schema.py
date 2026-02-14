@@ -86,3 +86,69 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
         assert embedding_json == "[0.9, 0.9]"
 
     store.close()
+
+from unittest.mock import MagicMock
+
+from domain_models.manifest import NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
+
+def test_update_node_persistence() -> None:
+    """Test that update_node actually updates the record."""
+    store = DiskChunkStore()
+    node = SummaryNode(
+        id="u1",
+        text="Original",
+        level=1,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
+    )
+    store.add_summary(node)
+
+    # Verify original
+    fetched = store.get_node("u1")
+    assert fetched.text == "Original"
+
+    # Update
+    node.text = "Updated"
+    store.update_node(node)
+
+    # Verify update
+    fetched_updated = store.get_node("u1")
+    assert fetched_updated.text == "Updated"
+
+def test_update_node_non_existent() -> None:
+    """Test updating a non-existent node (should probably do nothing or fail silently with UPDATE)."""
+    store = DiskChunkStore()
+    node = SummaryNode(
+        id="non_existent",
+        text="Ghost",
+        level=1,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
+    )
+
+    # Should not raise error
+    store.update_node(node)
+
+    # Should not exist
+    assert store.get_node("non_existent") is None
+
+def test_update_node_with_embedding() -> None:
+    """Test updating a node that has an embedding."""
+    store = DiskChunkStore()
+    node = SummaryNode(
+        id="u_emb",
+        text="Text",
+        level=1,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
+        embedding=[0.1, 0.2]
+    )
+    store.add_summary(node)
+
+    # Update embedding
+    node.embedding = [0.3, 0.4]
+    store.update_node(node)
+
+    fetched = store.get_node("u_emb")
+    assert fetched.embedding == [0.3, 0.4]

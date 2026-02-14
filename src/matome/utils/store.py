@@ -224,6 +224,22 @@ class DiskChunkStore:
         with self.engine.begin() as conn:
             conn.execute(stmt)
 
+    def update_node(self, node: SummaryNode) -> None:
+        """
+        Update an existing summary node.
+        """
+        content_json = node.model_dump_json(exclude={"embedding"})
+        embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+
+        stmt = (
+            update(self.nodes_table)
+            .where(self.nodes_table.c.id == node.id)
+            .values(content=content_json, embedding=embedding_json)
+        )
+
+        with self.engine.begin() as conn:
+            conn.execute(stmt)
+
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
         # Use SQLAlchemy Core expression for parameterized select

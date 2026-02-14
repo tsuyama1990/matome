@@ -1,7 +1,10 @@
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from domain_models.manifest import Chunk
+from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
 from matome.utils.store import DiskChunkStore
 
 
@@ -78,5 +81,81 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
         f1.result()
         f2.result()
         f3.result()
+
+    store.close()
+
+def test_store_concurrency_stress(tmp_path: Path) -> None:
+    """
+    Integration test for DiskChunkStore concurrency using actual file on disk.
+    Verifies WAL mode effectiveness.
+    """
+    db_path = tmp_path / "concurrent_stress.db"
+    store = DiskChunkStore(db_path=db_path)
+
+    # Setup initial state
+    node_id = "stress_node"
+    node = SummaryNode(
+        id=node_id,
+        text="Start",
+        level=1,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
+    )
+    store.add_summary(node)
+
+    stop_event = threading.Event()
+    exceptions = []
+
+    # Reader Thread
+    def read_loop():
+        # Open a separate store instance to simulate separate connection/process
+        reader_store = DiskChunkStore(db_path=db_path)
+        while not stop_event.is_set():
+            try:
+                n = reader_store.get_node(node_id)
+                if n is None:
+                    exceptions.append("Node missing!")
+            except Exception as e:
+                exceptions.append(f"Read Error: {e}")
+            time.sleep(0.001)
+        reader_store.close()
+
+    # Writer Thread
+    def write_loop():
+        writer_store = DiskChunkStore(db_path=db_path)
+        count = 0
+        while not stop_event.is_set():
+            try:
+                n = SummaryNode(
+                    id=node_id,
+                    text=f"Update {count}",
+                    level=1,
+                    children_indices=[],
+                    metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
+                )
+                writer_store.update_node(n)
+                count += 1
+            except Exception as e:
+                exceptions.append(f"Write Error: {e}")
+            time.sleep(0.002)
+        writer_store.close()
+
+    t_read = threading.Thread(target=read_loop)
+    t_write = threading.Thread(target=write_loop)
+
+    t_read.start()
+    t_write.start()
+
+    time.sleep(1.0)
+    stop_event.set()
+
+    t_read.join()
+    t_write.join()
+
+    assert not exceptions, f"Exceptions encountered: {exceptions}"
+
+    # Verify final state
+    final_node = store.get_node(node_id)
+    assert final_node.text.startswith("Update"), "Node was not updated."
 
     store.close()

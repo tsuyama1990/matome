@@ -121,8 +121,8 @@ class InteractiveRaptorEngine:
         # But for now, let's just save the text update.
         node.embedding = None
 
-        # Use add_summaries to update (since it uses INSERT OR REPLACE)
-        self.store.add_summary(node)
+        # Persist changes using update_node
+        self.store.update_node(node)
 
         logger.info(f"Refined node {node_id} with instruction: {instruction}")
         return node

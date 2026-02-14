@@ -106,7 +106,8 @@ class RefinementStrategy(PromptStrategy):
             # Fallback to base strategy if no instruction
             return self.base_strategy.format_prompt(text, context)
 
-        return REFINEMENT_INSTRUCTION_TEMPLATE.format(context=text, instruction=instruction)
+        base_prompt = self.base_strategy.format_prompt(text, context)
+        return f"{base_prompt}\n\nUSER INSTRUCTION: {instruction}"
 
 
 # Registry for easy lookup from configuration strings

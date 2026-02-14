@@ -12,9 +12,10 @@
     -   **Wisdom (Level 1):** Generates abstract, philosophical insights (Root Node).
     -   **Knowledge (Level 2):** Synthesizes frameworks and mental models (Intermediate Nodes).
     -   **Information (Level 3):** Extracts actionable checklists and steps (Leaf Summaries).
+-   **Interactive Refinement:** Refine individual summary nodes with natural language instructions (Backend API implemented).
 -   **Semantic Zooming:** Navigate documents like a map, zooming from "Big Idea" to "Evidence".
 -   **Traceability:** Every summary links back to source chunks ("Data").
--   **Scalability:** Uses streaming processing and disk-based storage (`SQLite`) to handle large documents without memory overflows.
+-   **Scalability:** Uses streaming processing and disk-based storage (`SQLite`) with WAL mode for concurrency to handle large documents without memory overflows.
 -   **Local First:** Your data stays on your machine (except for LLM calls).
 
 ## Prerequisites
