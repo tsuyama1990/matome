@@ -87,33 +87,38 @@ def test_scenario_17_cli_usability() -> None:
         # But we assert exit code is not 0 (failure).
 
 
-# Scenario 18: Use partial real components (Chunker) and mocked LLMs/Embedder/Clusterer
-# We mock Clusterer because real clustering with 1 item might be unstable depending on implementation details
-# and we want to test orchestration.
 @patch("matome.cli._validate_output_dir")
-# Use REAL JapaneseTokenChunker (not patched)
+@patch("matome.cli.JapaneseTokenChunker")
 @patch("matome.cli.GMMClusterer")
 @patch("matome.cli.SummarizationAgent")
 @patch("matome.cli.VerifierAgent")
 @patch("matome.cli.EmbeddingService")
-def test_scenario_18_full_e2e_pipeline_partial_real(
+def test_scenario_18_full_e2e_pipeline(
     mock_embedder_cls: MagicMock,
     mock_verifier_cls: MagicMock,
     mock_summarizer_cls: MagicMock,
     mock_clusterer_cls: MagicMock,
-    # mock_chunker_cls: MagicMock, # Not mocked
+    mock_chunker_cls: MagicMock,
     mock_validate_dir: MagicMock,
     sample_text_file: Path,
     tmp_path: Path,
 ) -> None:
     """
-    Scenario 18: Partial End-to-End Test.
-    Goal: Verify the entire workflow from ingestion to export using some real components.
-    We use real Chunker, but mock Embedder, Clusterer, and LLMs for determinism.
+    Scenario 18: Full End-to-End Test.
+    Goal: Verify the entire workflow from ingestion to export.
+    We mock the heavy engines (Embedder, LLMs) but keep the orchestration logic.
     """
     output_dir = tmp_path / "uat_results"
 
-    # 1. Embedder Setup
+    # Setup mocks
+
+    # 1. Chunker
+    mock_chunker_instance = mock_chunker_cls.return_value
+    mock_chunker_instance.split_text.return_value = iter([
+        Chunk(index=0, text="Chunk content", start_char_idx=0, end_char_idx=13)
+    ])
+
+    # 2. Embedder
     mock_embedder_instance = mock_embedder_cls.return_value
 
     def mock_embed_chunks(chunks: list[Chunk]) -> Iterator[Chunk]:
@@ -124,23 +129,22 @@ def test_scenario_18_full_e2e_pipeline_partial_real(
     mock_embedder_instance.embed_chunks.side_effect = mock_embed_chunks
     mock_embedder_instance.embed_strings.return_value = [[0.1] * 10]
 
-    # 2. Clusterer Setup
+    # 3. Clusterer
     mock_clusterer_instance = mock_clusterer_cls.return_value
 
     # IMPORTANT: cluster_nodes MUST consume the generator to trigger store writes in RaptorEngine
     def cluster_side_effect(embeddings: Any, config: Any) -> list[Cluster]:
         for _ in embeddings:
             pass
-        # Return 1 cluster for the chunk(s)
         return [Cluster(id=0, level=0, node_indices=[0])]
 
     mock_clusterer_instance.cluster_nodes.side_effect = cluster_side_effect
 
-    # 3. Summarizer Setup
+    # 4. Summarizer
     mock_summarizer_instance = mock_summarizer_cls.return_value
     mock_summarizer_instance.summarize.return_value = "Summary of cluster."
 
-    # 4. Verifier Setup
+    # 5. Verifier
     mock_verifier_instance = mock_verifier_cls.return_value
     mock_result = MagicMock()
     mock_result.score = 1.0
@@ -156,7 +160,7 @@ def test_scenario_18_full_e2e_pipeline_partial_real(
             "--output-dir",
             str(output_dir),
             "--max-tokens",
-            "100", # Enough for the sample text
+            "10",
         ],
     )
 
@@ -165,5 +169,19 @@ def test_scenario_18_full_e2e_pipeline_partial_real(
     assert "Tree construction complete" in result.stdout
     assert "Verification Score" in result.stdout
 
+    # Verify data flow assertions
+    mock_chunker_instance.split_text.assert_called_once()
+    mock_embedder_instance.embed_chunks.assert_called_once()
+    mock_clusterer_instance.cluster_nodes.assert_called()
+    mock_summarizer_instance.summarize.assert_called()
+    mock_verifier_instance.verify.assert_called()
+
+    # Verify files created
     assert (output_dir / "summary_all.md").exists()
+    assert (output_dir / "summary_kj.canvas").exists()
     assert (output_dir / "chunks.db").exists()
+
+    # Verify content was written
+    with (output_dir / "summary_all.md").open("r", encoding="utf-8") as f:
+        content = f.read()
+        assert "Summary of cluster." in content

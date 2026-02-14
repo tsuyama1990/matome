@@ -5,6 +5,7 @@ import panel as pn
 from panel.viewable import Viewable
 
 from domain_models.manifest import Chunk, SummaryNode
+from domain_models.types import NodeID
 from matome.ui.view_model import InteractiveSession
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,9 @@ class MatomeCanvas:
         self.session = session
         self._template: pn.template.MaterialTemplate | None = None
         # Default format if not in config (though config usually has it, this is a UI-specific constant)
-        self._level_format = "L{level}: {dikw}"
+        # Assuming session.engine.config has level_format (added in recent refactor)
+        # Fallback to default if not present
+        self._level_format = getattr(session.engine.config, "level_format", "L{level}: {dikw}")
 
     def view(self) -> pn.template.MaterialTemplate:
         """Return the main template."""
@@ -117,7 +120,7 @@ class MatomeCanvas:
         """Bind the pyramid view to the current view nodes."""
         return pn.bind(self._render_pyramid_nodes, self.session.param.current_view_nodes)  # type: ignore[no-any-return]
 
-    def _handle_selection(self, node_id: str | int) -> None:
+    def _handle_selection(self, node_id: NodeID) -> None:
         """Handle node selection with error handling."""
         try:
             self.session.select_node(node_id)

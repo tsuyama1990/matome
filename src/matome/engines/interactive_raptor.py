@@ -3,6 +3,7 @@ from collections.abc import Iterator
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, SummaryNode
+from domain_models.types import NodeID
 from matome.agents.strategies import (
     STRATEGY_REGISTRY,
     RefinementStrategy,
@@ -30,7 +31,7 @@ class InteractiveRaptorEngine:
         self.summarizer = summarizer
         self.config = config
 
-    def get_node(self, node_id: str | int) -> SummaryNode | Chunk | None:
+    def get_node(self, node_id: NodeID) -> SummaryNode | Chunk | None:
         """
         Retrieve a node (Summary or Chunk) by its unique ID.
         Delegates to the underlying DiskChunkStore.

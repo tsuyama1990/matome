@@ -202,6 +202,9 @@ class ProcessingConfig(BaseModel):
     max_file_size_bytes: int = Field(
         default=DEFAULT_MAX_FILE_SIZE_BYTES, ge=1024, description="Maximum allowed file size for input text."
     )
+    level_format: str = Field(
+        default="L{level}: {dikw}", description="Format string for displaying levels in the UI."
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(

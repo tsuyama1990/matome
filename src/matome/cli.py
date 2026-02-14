@@ -82,13 +82,18 @@ def _validate_output_dir(output_dir: Path) -> None:
         _fail_with_error(f"Invalid output directory: {e!s}")
 
 
-def _stream_file_content(path: Path) -> Iterator[str]:
+def _stream_file_content(path: Path, chunk_size: int = 4096) -> Iterator[str]:
     """
-    Stream file content line by line (or chunk by chunk) to avoid loading into memory.
+    Stream file content chunk by chunk to avoid loading into memory.
+    Yields decoded text chunks.
     """
     try:
-        with path.open("r", encoding="utf-8") as f:
-            yield from f
+        with path.open("r", encoding="utf-8", buffering=chunk_size) as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
     except UnicodeDecodeError as e:
         _fail_with_error(f"File encoding error: {e}. Please ensure the file is valid UTF-8.")
     except Exception as e:
@@ -178,8 +183,9 @@ def _export_results(
     """Export results to various formats."""
     typer.echo("Exporting results...")
     try:
-        # Stream markdown export to file
-        with (output_dir / "summary_all.md").open("w", encoding="utf-8") as f:
+        # Stream markdown export to file with buffering
+        markdown_path = output_dir / "summary_all.md"
+        with markdown_path.open("w", encoding="utf-8", buffering=8192) as f:
             for line in stream_markdown(tree, store):
                 f.write(line)
 

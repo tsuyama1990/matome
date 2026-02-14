@@ -260,18 +260,20 @@ def test_raptor_cluster_truncation(
     chunker, embedder, clusterer, summarizer = mock_dependencies
 
     # Set a valid limit for testing (must be >= 100)
-    config_small = ProcessingConfig(max_input_length=100)
+    limit = 100
+    chunk_len = 60
+    config_small = ProcessingConfig(max_input_length=limit)
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config_small)
 
     store = MagicMock()
     # 3 chunks, each 60 chars. Total 180 > 100.
-    t1 = "A" * 60
-    t2 = "B" * 60
-    t3 = "C" * 60
+    t1 = "A" * chunk_len
+    t2 = "B" * chunk_len
+    t3 = "C" * chunk_len
 
-    c1 = Chunk(index=1, text=t1, start_char_idx=0, end_char_idx=60)
-    c2 = Chunk(index=2, text=t2, start_char_idx=60, end_char_idx=120)
-    c3 = Chunk(index=3, text=t3, start_char_idx=120, end_char_idx=180)
+    c1 = Chunk(index=1, text=t1, start_char_idx=0, end_char_idx=chunk_len)
+    c2 = Chunk(index=2, text=t2, start_char_idx=chunk_len, end_char_idx=chunk_len*2)
+    c3 = Chunk(index=3, text=t3, start_char_idx=chunk_len*2, end_char_idx=chunk_len*3)
 
     def get_node_side_effect(nid: int | str) -> Chunk | None:
         return {1: c1, 2: c2, 3: c3}.get(int(nid))
@@ -312,7 +314,7 @@ def test_raptor_cluster_truncation(
     assert t2 not in passed_text
     assert t3 not in passed_text
 
-    assert len(passed_text) <= 100
+    assert len(passed_text) <= limit
 
 def test_raptor_store_error(
     mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig

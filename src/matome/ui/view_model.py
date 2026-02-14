@@ -3,6 +3,7 @@ from typing import Any
 import param
 
 from domain_models.manifest import Chunk, SummaryNode
+from domain_models.types import NodeID
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 
 
@@ -39,7 +40,7 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
             self.breadcrumbs = []
             self.current_view_nodes = []
 
-    def select_node(self, node_id: str | int) -> None:
+    def select_node(self, node_id: NodeID) -> None:
         """Select a node and update view state."""
         node = self.engine.get_node(node_id)
         if not node:
