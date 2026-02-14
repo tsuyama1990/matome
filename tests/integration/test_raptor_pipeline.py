@@ -4,7 +4,8 @@ from unittest.mock import create_autospec
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, DocumentTree
+from domain_models.manifest import Chunk, DocumentTree, SummaryNode
+from domain_models.types import DIKWLevel
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
@@ -18,11 +19,11 @@ class DummyEmbedder(EmbeddingService):
         self.config = create_autospec(ProcessingConfig)
 
     def embed_chunks(self, chunks: Iterable[Chunk]) -> Iterator[Chunk]:
-        # Consume iterator
-        chunk_list = list(chunks)
-        for i, c in enumerate(chunk_list):
+        # Process as iterator
+        for i, c in enumerate(chunks):
             vec = [0.0] * self.dim
-            if i < len(chunk_list) // 2:
+            # Simple logic to create 2 clusters
+            if i % 2 == 0:
                 vec[0] = 1.0 + (i * 0.01)
             else:
                 vec[1] = 1.0 + (i * 0.01)
@@ -47,29 +48,26 @@ def config() -> ProcessingConfig:
 def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     """
     Test the RAPTOR pipeline with real Clusterer and mocked other components.
-    Uses proper mock specifications via create_autospec.
+    Verifies DIKW level assignment and memory-safe processing.
     """
-    # Mock Chunker (Protocol)
     chunker = create_autospec(Chunker, instance=True)
-    chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(10)
-    ]
-    chunker.split_text.return_value = iter(chunks)
 
-    # Real Clusterer (Implementation)
+    # Generator for chunks to simulate streaming
+    def chunk_generator() -> Iterator[Chunk]:
+        for i in range(10):
+            yield Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
+
+    chunker.split_text.return_value = chunk_generator()
+
     clusterer = GMMClusterer()
 
-    # Mock Summarizer (Protocol)
     summarizer = create_autospec(Summarizer, instance=True)
     summarizer.summarize.return_value = "Summary Text"
 
-    # Dummy Embedder (Subclass)
     embedder = DummyEmbedder()
 
-    # Instantiate Engine with strictly typed mocks/objects
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
-    # Use a store to verify persistence
     with DiskChunkStore() as store:
         tree = engine.run("Dummy text", store=store)
 
@@ -77,22 +75,30 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         assert tree.root_node is not None
         assert len(tree.leaf_chunk_ids) == 10
         assert tree.root_node.level >= 1
-        if tree.root_node.level > 1:
-            assert len(tree.all_nodes) > 1
 
-        # Verify embeddings are present in store
+        assert tree.root_node.metadata.dikw_level == DIKWLevel.WISDOM
+
+        # Check children of root (Level 1)
+        # If root is Level 2 (chunks -> L1 -> Root), then L1 should be INFORMATION (or KNOWLEDGE if depth > 2)
+        # With 10 chunks and GMM, we likely get L1 nodes.
+        # Let's verify at least one child exists and has correct level
+        if tree.root_node.children_indices:
+            child_id = tree.root_node.children_indices[0]
+            child_node = store.get_node(child_id)
+            if child_node and isinstance(child_node, SummaryNode):
+                # If level is 1 (directly above chunks), it should be INFORMATION
+                if child_node.level == 1:
+                    assert child_node.metadata.dikw_level == DIKWLevel.INFORMATION
+                # If intermediate level
+                elif child_node.level > 1:
+                    assert child_node.metadata.dikw_level == DIKWLevel.KNOWLEDGE
+
         first_chunk = store.get_node(tree.leaf_chunk_ids[0])
         assert first_chunk is not None
         assert first_chunk.embedding is not None, "Leaf chunks must retain embeddings."
 
-        # Verify root embedding
-        # Root might be in store (SummaryNode) or if level 0, it's chunk.
-        # But get_node works for both.
         root_fetched = store.get_node(tree.root_node.id)
         if root_fetched:
             assert root_fetched.embedding is not None, "Root node must have an embedding in store."
 
         assert tree.root_node.embedding is not None, "Root node object must have an embedding."
-
-        for node in tree.all_nodes.values():
-            assert node.embedding is not None, f"Summary node {node.id} must have an embedding."

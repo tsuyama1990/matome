@@ -1,14 +1,16 @@
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-from domain_models.manifest import Chunk, DocumentTree, SummaryNode
+from domain_models.manifest import Chunk, DocumentTree, NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
 from matome.exporters.obsidian import ObsidianCanvasExporter
 
 
 @pytest.fixture
-def uat_tree() -> DocumentTree:
+def uat_tree_data() -> tuple[DocumentTree, dict[int | str, Chunk | SummaryNode]]:
     """
     Create a complex tree for UAT:
     Root
@@ -22,20 +24,53 @@ def uat_tree() -> DocumentTree:
     c2 = Chunk(index=2, text="Chunk 2", start_char_idx=6, end_char_idx=10)
     c3 = Chunk(index=3, text="Chunk 3", start_char_idx=11, end_char_idx=15)
 
-    node_a = SummaryNode(id="summary_a", text="Summary A", level=1, children_indices=[1, 2])
-    node_b = SummaryNode(id="summary_b", text="Summary B", level=1, children_indices=[3])
+    node_a = SummaryNode(
+        id="summary_a",
+        text="Summary A",
+        level=1,
+        children_indices=[1, 2],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+    )
+    node_b = SummaryNode(
+        id="summary_b",
+        text="Summary B",
+        level=1,
+        children_indices=[3],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+    )
     root = SummaryNode(
-        id="root", text="Root Summary", level=2, children_indices=["summary_a", "summary_b"]
+        id="root",
+        text="Root Summary",
+        level=2,
+        children_indices=["summary_a", "summary_b"],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM)
     )
 
-    return DocumentTree(
+    all_nodes: dict[int | str, Chunk | SummaryNode] = {
+        "root": root, "summary_a": node_a, "summary_b": node_b,
+        1: c1, 2: c2, 3: c3
+    }
+
+    tree = DocumentTree(
         root_node=root,
-        all_nodes={"root": root, "summary_a": node_a, "summary_b": node_b},
         leaf_chunk_ids=[c1.index, c2.index, c3.index],
     )
+    return tree, all_nodes
+
+@pytest.fixture
+def uat_tree(uat_tree_data: tuple[DocumentTree, dict[int | str, Chunk | SummaryNode]]) -> DocumentTree:
+    tree, _ = uat_tree_data
+    return tree
+
+@pytest.fixture
+def mock_store(uat_tree_data: tuple[DocumentTree, dict[int | str, Chunk | SummaryNode]]) -> MagicMock:
+    _, all_nodes = uat_tree_data
+    store = MagicMock()
+    store.get_node.side_effect = all_nodes.get
+    return store
 
 
-def test_scenario_14_canvas_generation(uat_tree: DocumentTree, tmp_path: Path) -> None:
+def test_scenario_14_canvas_generation(uat_tree: DocumentTree, mock_store: MagicMock, tmp_path: Path) -> None:
     """
     Scenario 14: Canvas File Generation (Priority: High)
     Goal: Ensure the exported .canvas file is valid JSON and importable by Obsidian.
@@ -43,7 +78,7 @@ def test_scenario_14_canvas_generation(uat_tree: DocumentTree, tmp_path: Path) -
     exporter = ObsidianCanvasExporter()
     output_path = tmp_path / "scenario_14.canvas"
 
-    exporter.export(uat_tree, output_path)
+    exporter.export(uat_tree, output_path, mock_store)
 
     assert output_path.exists()
 
@@ -59,7 +94,7 @@ def test_scenario_14_canvas_generation(uat_tree: DocumentTree, tmp_path: Path) -
     assert len(data["edges"]) == 5
 
 
-def test_scenario_15_visual_hierarchy(uat_tree: DocumentTree) -> None:
+def test_scenario_15_visual_hierarchy(uat_tree: DocumentTree, mock_store: MagicMock) -> None:
     """
     Scenario 15: Visual Hierarchy Check (Priority: Medium)
     Goal: Ensure the visual layout reflects the logical structure.
@@ -69,7 +104,7 @@ def test_scenario_15_visual_hierarchy(uat_tree: DocumentTree) -> None:
         * a1, a2 are below A; b1 is below B.
     """
     exporter = ObsidianCanvasExporter()
-    canvas = exporter.generate_canvas_data(uat_tree)
+    canvas = exporter.generate_canvas_data(uat_tree, mock_store)
 
     # Helper to get node by ID
     from matome.exporters.obsidian import CanvasNode

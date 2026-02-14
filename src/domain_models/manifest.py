@@ -2,7 +2,7 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from domain_models.types import Metadata, NodeID
+from domain_models.types import DIKWLevel, Metadata, NodeID
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -45,16 +45,11 @@ class Chunk(BaseModel):
         Validate that text is present and indices form a valid range.
         Also check embedding validity if present.
         """
-        # Ensure text is not just whitespace and not empty
-        # We strip to check, but we don't modify the actual text field here as it might be intentional?
-        # No, RAPTOR chunks should contain meaningful content.
         if not self.text or not self.text.strip():
             msg = "Chunk text cannot be empty or whitespace only."
             logger.error(msg)
             raise ValueError(msg)
 
-        # Simplified validation as requested by feedback
-        # Empty text is already rejected above, so we can be strict about range
         if self.start_char_idx > self.end_char_idx:
             msg = (
                 f"Invalid character range: start ({self.start_char_idx}) cannot be greater than "
@@ -63,10 +58,6 @@ class Chunk(BaseModel):
             logger.error(msg)
             raise ValueError(msg)
 
-        # Embedding Validation
-        # Explicit check for None is implied by logic: if self.embedding is not None, we validate it.
-        # If the schema allows None, we accept None.
-        # However, if it's NOT None, we strictly validate content.
         if self.embedding is not None:
             if len(self.embedding) == 0:
                 msg = "Embedding cannot be an empty list if provided."
@@ -78,6 +69,28 @@ class Chunk(BaseModel):
                 raise ValueError(msg)
 
         return self
+
+
+class NodeMetadata(BaseModel):
+    """
+    Metadata for SummaryNodes enforcing DIKW structure and refinement tracking.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    dikw_level: DIKWLevel = Field(
+        default=DIKWLevel.DATA, description="The DIKW level of the node."
+    )
+    is_user_edited: bool = Field(
+        default=False, description="Whether the node has been manually refined."
+    )
+    refinement_history: list[str] = Field(
+        default_factory=list, description="History of refinement instructions applied."
+    )
+    cluster_id: str | int | None = Field(
+        default=None, description="ID of the cluster that generated this node."
+    )
+    type: str | None = Field(default=None, description="Type of the node (e.g., single_chunk_root).")
 
 
 class SummaryNode(BaseModel):
@@ -94,8 +107,8 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        ..., description="Structured metadata including DIKW level."
     )
 
 
@@ -119,14 +132,14 @@ class DocumentTree(BaseModel):
     Represents the full RAPTOR tree structure.
 
     Designed for scalability:
-    - Does not store full leaf chunks in memory to avoid O(N) memory usage for large documents.
+    - Does not store full leaf chunks or all summary nodes in memory to avoid O(N) memory usage.
     - Stores IDs allowing retrieval from the associated `DiskChunkStore`.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     root_node: SummaryNode = Field(..., description="The root summary node.")
-    all_nodes: dict[str, SummaryNode] = Field(..., description="Map of all summary nodes by ID.")
+    # all_nodes removed for scalability
     leaf_chunk_ids: list[NodeID] = Field(
         ..., description="IDs of the original leaf chunks (Level 0)."
     )

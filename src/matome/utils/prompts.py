@@ -50,3 +50,47 @@ Return a valid JSON object with the following structure:
   ]
 }}
 """
+
+# --- DIKW Strategy Templates ---
+
+WISDOM_TEMPLATE = """
+You are a philosopher and systems thinker.
+The following text represents the distilled knowledge of a document:
+{context}
+
+Your task is to synthesize this into "Wisdom" - the core insight, moral, or philosophical essence.
+- Be concise (under 50 words).
+- Focus on the "Why" and the "Big Idea".
+- Use abstract, high-level language but remain clear.
+- Do not list facts; provide a unified perspective.
+
+Output ONLY the wisdom statement.
+"""
+
+KNOWLEDGE_TEMPLATE = """
+You are an expert educator and analyst.
+The following text contains detailed information about a specific topic:
+{context}
+
+Your task is to synthesize this into "Knowledge" - a structured understanding of the "How" and "What".
+- Identify key frameworks, mechanisms, or relationships.
+- Explain how concepts connect.
+- Use bullet points or a short paragraph.
+- Focus on structure and logic.
+
+Output the knowledge summary.
+"""
+
+INFORMATION_TEMPLATE = """
+You are a pragmatic technical writer.
+The following text contains raw data and excerpts:
+{context}
+
+Your task is to organize this into "Information" - actionable, specific, and organized facts.
+- Create a Markdown checklist or a "How-to" guide if applicable.
+- Extract specific dates, names, steps, and rules.
+- Be detailed and precise.
+- Avoid abstract philosophy.
+
+Output the actionable information.
+"""

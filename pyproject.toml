@@ -51,6 +51,8 @@ packages = ["src/matome", "src/domain_models"]
 target-version = "py311"
 line-length = 100
 fix = true
+# Exclude tutorials from linting as they are documentation/examples
+exclude = ["tutorials/"]
 
 [tool.ruff.lint]
 # E/F/I: Basic, B: Bugbear, S: Bandit, UP: pyupgrade

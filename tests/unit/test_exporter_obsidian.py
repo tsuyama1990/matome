@@ -1,46 +1,66 @@
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
-from domain_models.manifest import DocumentTree, SummaryNode
+from domain_models.manifest import Chunk, DocumentTree, NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
 from matome.exporters.obsidian import CanvasFile, ObsidianCanvasExporter
 
 
 @pytest.fixture
-def sample_tree() -> DocumentTree:
-    """Create a sample DocumentTree with Root -> [Node A, Node B] -> [Chunk 1, Chunk 2]."""
+def nodes_and_chunks() -> tuple[dict[int | str, Chunk | SummaryNode], SummaryNode]:
     # Summary Nodes
     node_a = SummaryNode(
         id="node_a",
         text="Summary A",
         level=1,
         children_indices=[0],  # Points to Chunk 0
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
     )
     node_b = SummaryNode(
         id="node_b",
         text="Summary B",
         level=1,
         children_indices=[1],  # Points to Chunk 1
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
     )
     root = SummaryNode(
         id="root",
         text="Root Summary",
         level=2,
         children_indices=["node_a", "node_b"],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM)
     )
 
-    all_nodes = {
+    chunk0 = Chunk(index=0, text="Chunk 0", start_char_idx=0, end_char_idx=10)
+    chunk1 = Chunk(index=1, text="Chunk 1", start_char_idx=10, end_char_idx=20)
+
+    all_nodes: dict[int | str, Chunk | SummaryNode] = {
         "root": root,
         "node_a": node_a,
         "node_b": node_b,
+        0: chunk0,
+        1: chunk1
     }
 
+    return all_nodes, root
+
+@pytest.fixture
+def sample_tree(nodes_and_chunks: tuple[dict[int | str, Chunk | SummaryNode], SummaryNode]) -> DocumentTree:
+    _, root = nodes_and_chunks
     return DocumentTree(
         root_node=root,
-        all_nodes=all_nodes,
         leaf_chunk_ids=[0, 1],
     )
+
+@pytest.fixture
+def mock_store(nodes_and_chunks: tuple[dict[int | str, Chunk | SummaryNode], SummaryNode]) -> MagicMock:
+    all_nodes, _ = nodes_and_chunks
+    store = MagicMock()
+    store.get_node.side_effect = all_nodes.get
+    return store
 
 
 def test_canvas_schema_validation() -> None:
@@ -68,10 +88,10 @@ def test_canvas_schema_validation() -> None:
     assert canvas.edges[0].from_node == "n1"  # Pydantic model uses snake_case
 
 
-def test_generate_canvas_data(sample_tree: DocumentTree) -> None:
+def test_generate_canvas_data(sample_tree: DocumentTree, mock_store: MagicMock) -> None:
     """Test generating canvas data from a DocumentTree."""
     exporter = ObsidianCanvasExporter()
-    canvas = exporter.generate_canvas_data(sample_tree)
+    canvas = exporter.generate_canvas_data(sample_tree, mock_store)
 
     assert isinstance(canvas, CanvasFile)
 
@@ -90,7 +110,7 @@ def test_generate_canvas_data(sample_tree: DocumentTree) -> None:
     child_a = next(n for n in canvas.nodes if n.id == "node_a")
     child_b = next(n for n in canvas.nodes if n.id == "node_b")
 
-    # Spec says "Children go to y + 400"
+    # Spec says "Children go to y + 400" or similar based on GAP_Y
     assert child_a.y > root_node.y
     assert child_b.y > root_node.y
 
@@ -106,12 +126,12 @@ def test_generate_canvas_data(sample_tree: DocumentTree) -> None:
     assert edge_root_a is not None
 
 
-def test_export_file(sample_tree: DocumentTree, tmp_path: Path) -> None:
+def test_export_file(sample_tree: DocumentTree, mock_store: MagicMock, tmp_path: Path) -> None:
     """Test exporting to a file."""
     exporter = ObsidianCanvasExporter()
     output_file = tmp_path / "test.canvas"
 
-    exporter.export(sample_tree, output_file)
+    exporter.export(sample_tree, output_file, mock_store)
 
     assert output_file.exists()
 
