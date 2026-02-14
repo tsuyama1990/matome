@@ -28,6 +28,7 @@ from domain_models.constants import (
     DEFAULT_SEMANTIC_CHUNKING_MODE,
     DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
     DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
+    DEFAULT_SERVER_PORT,
     DEFAULT_STORE_READ_BATCH_SIZE,
     DEFAULT_STORE_WRITE_BATCH_SIZE,
     DEFAULT_SUMMARIZER,
@@ -185,7 +186,7 @@ class ProcessingConfig(BaseModel):
         default=DEFAULT_MAX_INSTRUCTION_LENGTH, ge=1, description="Maximum length of refinement instructions."
     )
     server_port: int = Field(
-        default=5006, ge=1024, le=65535, description="Default port for the interactive GUI server."
+        default=DEFAULT_SERVER_PORT, ge=1024, le=65535, description="Default port for the interactive GUI server."
     )
 
     # Summarization Configuration

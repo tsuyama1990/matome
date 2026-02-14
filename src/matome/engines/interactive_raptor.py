@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, SummaryNode
@@ -35,26 +36,23 @@ class InteractiveRaptorEngine:
         """
         return self.store.get_node(node_id)
 
-    def get_children(self, node: SummaryNode) -> list[SummaryNode | Chunk]:
+    def get_children(self, node: SummaryNode) -> Iterator[SummaryNode | Chunk]:
         """
         Retrieve the immediate children of a given summary node.
+        Returns an iterator to support streaming processing.
 
         Returns:
-            list[SummaryNode | Chunk]: The immediate children of the given node.
+            Iterator[SummaryNode | Chunk]: The immediate children of the given node.
         """
         # Batch retrieve children for efficiency (avoid N+1)
         # children_indices is a list of node IDs.
         # Ensure IDs are strings as expected by get_nodes
         child_ids = [str(idx) for idx in node.children_indices]
 
-        # get_nodes returns a generator, consume it into a list
-        # Filter out None values in case of data inconsistency
-        children = []
+        # get_nodes returns a generator
         for child in self.store.get_nodes(child_ids):
             if child is not None:
-                children.append(child)
-
-        return children
+                yield child
 
     def get_root_node(self) -> SummaryNode | None:
         """
@@ -122,7 +120,9 @@ class InteractiveRaptorEngine:
             raise ValueError(msg)
 
         # Gather source text from children
-        children = self.get_children(node)
+        # Materialize list here because we need to validate length and concat text
+        # This is acceptable for a single refinement operation (local scope)
+        children = list(self.get_children(node))
         if not children:
             msg = f"Node {node_id} has no accessible children. Cannot refine."
             raise ValueError(msg)

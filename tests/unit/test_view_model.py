@@ -13,30 +13,30 @@ from matome.utils.store import DiskChunkStore
 class TestInteractiveSession:
 
     @pytest.fixture
-    def mock_store(self):
+    def mock_store(self) -> MagicMock:
         return MagicMock(spec=DiskChunkStore)
 
     @pytest.fixture
-    def mock_engine(self, mock_store):
+    def mock_engine(self, mock_store: MagicMock) -> MagicMock:
         config = ProcessingConfig()
         # Use a real instance with mock store, mocking methods as needed
         engine = InteractiveRaptorEngine(store=mock_store, summarizer=None, config=config)
-        engine.get_root_node = MagicMock()
-        engine.get_node = MagicMock()
-        engine.get_children = MagicMock()
-        return engine
+        engine.get_root_node = MagicMock()  # type: ignore[method-assign]
+        engine.get_node = MagicMock()  # type: ignore[method-assign]
+        engine.get_children = MagicMock()  # type: ignore[method-assign]
+        return engine  # type: ignore[return-value]
 
     @pytest.fixture
-    def session(self, mock_engine):
+    def session(self, mock_engine: MagicMock) -> InteractiveSession:
         return InteractiveSession(engine=mock_engine)
 
-    def test_init(self, session, mock_engine):
+    def test_init(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
         assert session.engine == mock_engine
         assert session.selected_node is None
         assert session.breadcrumbs == []
         assert session.current_view_nodes == []
 
-    def test_load_tree_success(self, session, mock_engine):
+    def test_load_tree_success(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
         """Test loading the tree successfully sets the root node."""
         root = SummaryNode(
             id="root_123",
@@ -56,13 +56,13 @@ class TestInteractiveSession:
         assert session.breadcrumbs == [root]
         mock_engine.get_root_node.assert_called_once()
 
-    def test_load_tree_empty(self, session, mock_engine):
+    def test_load_tree_empty(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
         """Test behavior when no tree is found."""
         mock_engine.get_root_node.return_value = None
         session.load_tree()
         assert session.root_node is None
 
-    def test_select_node_summary(self, session, mock_engine):
+    def test_select_node_summary(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
         """Test selecting a summary node."""
         parent = SummaryNode(
             id="root_123",
@@ -100,7 +100,7 @@ class TestInteractiveSession:
         assert session.breadcrumbs == [parent, child]
         assert session.current_view_nodes == [grandchild]
 
-    def test_select_node_chunk(self, session, mock_engine):
+    def test_select_node_chunk(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
         """Test selecting a chunk node (leaf)."""
         # ... setup similar to above but selecting a chunk ...
         # For brevity, let's assume selecting a chunk works similarly
@@ -113,7 +113,7 @@ class TestInteractiveSession:
         assert session.selected_node == chunk
         assert session.current_view_nodes == []
 
-    def test_navigate_up(self, session, mock_engine):
+    def test_navigate_up(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
         """Test selecting a node already in breadcrumbs (navigating up)."""
         root = SummaryNode(id="root", text="R", level=3, children_indices=[], metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM))
         child = SummaryNode(id="child", text="C", level=2, children_indices=[], metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE))

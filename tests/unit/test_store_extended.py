@@ -1,9 +1,11 @@
+from pathlib import Path
+
 from domain_models.manifest import NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.utils.store import DiskChunkStore
 
 
-def test_get_max_level(tmp_path):
+def test_get_max_level(tmp_path: Path) -> None:
     store = DiskChunkStore(db_path=tmp_path / "test.db")
 
     # Empty store

@@ -210,6 +210,13 @@ def run(
         typer.echo("Running in DIKW mode (Wisdom/Knowledge/Information).")
 
     try:
+        # Check file size before reading to prevent loading massive files into memory
+        file_stats = input_file.stat()
+        # 500MB Limit (just a safety net, though 100k-10M structures implies smaller text)
+        if file_stats.st_size > 500 * 1024 * 1024:
+            typer.echo(f"File too large: {file_stats.st_size} bytes. Limit is 500MB.", err=True)
+            raise typer.Exit(code=1)
+
         text = input_file.read_text(encoding="utf-8")
     except Exception as e:
         typer.echo(f"Error reading file: {e}", err=True)

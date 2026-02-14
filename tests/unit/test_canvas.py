@@ -2,8 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
-from domain_models.types import DIKWLevel
 from matome.ui.canvas import MatomeCanvas
 from matome.ui.view_model import InteractiveSession
 
@@ -55,12 +53,6 @@ class TestMatomeCanvas:
         """Test internal logic of rendering details via direct call to bound function."""
         canvas = MatomeCanvas(mock_session)
 
-        # We need to access the inner function to test logic without Panel's reactive engine
-        # Since _render_details returns a bound function, let's extract the logic or redefine it for test
-        # Alternatively, we can inspect the bound function if Panel exposes it, but that's internal.
-        # Strategy: We can temporarily unbind or just trust the integration test for visual verification.
-        # But we can unit test the logic if we refactor or use a trick.
-        # Let's verify the View doesn't crash on None
-
-        # Direct verification of behavior via integration test is better for UI logic
-        pass
+        # Simple verification that the method exists and returns a bindable object
+        # Logic testing is delegated to integration tests or manual UAT as Panel internals are hard to mock.
+        assert canvas._render_details() is not None
