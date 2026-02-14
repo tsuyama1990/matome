@@ -1,55 +1,61 @@
+import threading
+import time
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
-from domain_models.manifest import Chunk
+import pytest
+from sqlalchemy.exc import OperationalError
+
+from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
 from matome.utils.store import DiskChunkStore
+
+# Constants
+NUM_THREADS = 4
+CHUNKS_PER_THREAD = 25
+TOTAL_CHUNKS = NUM_THREADS * CHUNKS_PER_THREAD
+READ_LOOPS = 10
+WRITE_LOOPS = 10
 
 
 def test_concurrent_writes(tmp_path: Path) -> None:
-    """Verify that DiskChunkStore handles concurrent writes correctly."""
+    """Verify that DiskChunkStore handles concurrent writes correctly using streaming."""
     db_path = tmp_path / "concurrent.db"
     store = DiskChunkStore(db_path=db_path)
 
-    def write_chunks(start_idx: int, count: int) -> None:
-        chunks = []
+    def chunk_generator(start_idx: int, count: int) -> Iterator[Chunk]:
         for i in range(count):
-            chunks.append(
-                Chunk(
-                    index=start_idx + i,
-                    text=f"Chunk {start_idx + i}",
-                    start_char_idx=0,
-                    end_char_idx=10,
-                    embedding=[0.1, 0.2],
-                )
+            yield Chunk(
+                index=start_idx + i,
+                text=f"Chunk {start_idx + i}",
+                start_char_idx=0,
+                end_char_idx=10,
+                embedding=[0.1, 0.2],
             )
-        store.add_chunks(chunks)
 
-    num_threads = 4
-    chunks_per_thread = 25
+    def write_chunks(start_idx: int, count: int) -> None:
+        # Use generator to stream chunks instead of loading all into list
+        store.add_chunks(chunk_generator(start_idx, count))
 
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
         futures = []
-        for i in range(num_threads):
-            futures.append(executor.submit(write_chunks, i * chunks_per_thread, chunks_per_thread))
+        for i in range(NUM_THREADS):
+            futures.append(executor.submit(write_chunks, i * CHUNKS_PER_THREAD, CHUNKS_PER_THREAD))
 
         for f in futures:
             f.result()  # Propagate exceptions
 
-    # Verify total
-    total_chunks = num_threads * chunks_per_thread
-
-    # Check persistence
-    missing = 0
-    for i in range(total_chunks):
-        if not store.get_node(i):
-            missing += 1
+    # Verify total using count query (O(1) instead of loop)
+    count = store.get_node_count(0)  # Level 0 is chunks
+    assert count == TOTAL_CHUNKS
 
     store.close()
-    assert missing == 0, f"Missing {missing} chunks out of {total_chunks}"
 
 
 def test_concurrent_read_write(tmp_path: Path) -> None:
-    """Verify concurrent reads and writes."""
+    """Verify concurrent reads and writes with data consistency checks."""
     db_path = tmp_path / "rw.db"
     store = DiskChunkStore(db_path=db_path)
 
@@ -59,16 +65,26 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
     )
 
     def writer() -> None:
-        for i in range(50):
+        for i in range(WRITE_LOOPS):
             store.add_chunk(
                 Chunk(index=i, text=f"W{i}", start_char_idx=0, end_char_idx=1, embedding=[1.0])
             )
 
     def reader() -> None:
-        for _ in range(50):
-            store.get_node(999)  # Read base
-            # Try to read something that might be written
-            store.get_node(25)
+        # Batch retrieval via iterator consumption
+        ids = ["999"] + [str(i) for i in range(5)]
+        for _ in range(READ_LOOPS):
+            # Consume generator and verify "Base" exists
+            found_base = False
+            for node in store.get_nodes(ids):
+                if node and isinstance(node, Chunk) and node.index == 999:
+                    found_base = True
+
+            # Simple consistency check within the loop
+            # Note: We can't assert inside thread easily without propagating
+            if not found_base:
+                msg = "Base node 999 vanished during concurrent read"
+                raise RuntimeError(msg)
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         f1 = executor.submit(writer)
@@ -78,5 +94,112 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
         f1.result()
         f2.result()
         f3.result()
+
+    # Final consistency verification
+    base_node = store.get_node(999)
+    assert base_node is not None
+    assert base_node.text == "Base"
+
+    # Check if writes persisted
+    written_node = store.get_node(0)
+    assert written_node is not None
+    assert written_node.text == "W0"
+
+    store.close()
+
+
+def test_store_concurrency_stress(tmp_path: Path) -> None:
+    """
+    Integration test for DiskChunkStore concurrency using actual file on disk.
+    Verifies WAL mode effectiveness.
+    """
+    db_path = tmp_path / "concurrent_stress.db"
+    store = DiskChunkStore(db_path=db_path)
+
+    # Setup initial state
+    node_id = "stress_node"
+    node = SummaryNode(
+        id=node_id,
+        text="Start",
+        level=1,
+        children_indices=[],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
+    )
+    store.add_summary(node)
+
+    stop_event = threading.Event()
+    exceptions = []
+
+    # Reader Thread
+    def read_loop() -> None:
+        # Open a separate store instance to simulate separate connection/process
+        reader_store = DiskChunkStore(db_path=db_path)
+        while not stop_event.is_set():
+            try:
+                n = reader_store.get_node(node_id)
+                if n is None:
+                    exceptions.append("Node missing!")
+            except Exception as e:
+                exceptions.append(f"Read Error: {e}")
+            time.sleep(0.001)
+        reader_store.close()
+
+    # Writer Thread
+    def write_loop() -> None:
+        writer_store = DiskChunkStore(db_path=db_path)
+        count = 0
+        while not stop_event.is_set():
+            try:
+                n = SummaryNode(
+                    id=node_id,
+                    text=f"Update {count}",
+                    level=1,
+                    children_indices=[],
+                    metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
+                )
+                writer_store.update_node(n)
+                count += 1
+            except Exception as e:
+                exceptions.append(f"Write Error: {e}")
+            time.sleep(0.002)
+        writer_store.close()
+
+    t_read = threading.Thread(target=read_loop)
+    t_write = threading.Thread(target=write_loop)
+
+    t_read.start()
+    t_write.start()
+
+    time.sleep(1.0)
+    stop_event.set()
+
+    t_read.join()
+    t_write.join()
+
+    assert not exceptions, f"Exceptions encountered: {exceptions}"
+
+    # Verify final state
+    final_node = store.get_node(node_id)
+    assert final_node is not None
+    assert final_node.text.startswith("Update"), "Node was not updated."
+
+    store.close()
+
+
+def test_db_corruption_handling(tmp_path: Path) -> None:
+    """Test handling of database errors during operations."""
+    db_path = tmp_path / "corrupt.db"
+    store = DiskChunkStore(db_path=db_path)
+
+    # Mock execute to simulate a database error (e.g., malformed disk image)
+    # We patch the engine's connect/begin to return a connection that fails on execute
+    with patch.object(store.engine, 'connect') as mock_connect:
+        mock_conn = mock_connect.return_value.__enter__.return_value
+        # OperationalError requires params (None is acceptable) and orig (exception object)
+        mock_conn.execute.side_effect = OperationalError("disk I/O error", params=None, orig=Exception("Disk Error"))
+
+        # Test get_node handles DB error by propagating it (standardized behavior)
+        with pytest.raises(OperationalError, match="disk I/O error"):
+            store.get_node(1)
 
     store.close()

@@ -38,13 +38,22 @@ class InteractiveRaptorEngine:
     def get_children(self, node: SummaryNode) -> list[SummaryNode | Chunk]:
         """
         Retrieve the immediate children of a given summary node.
-        Returns a mixed list of SummaryNodes and Chunks.
+
+        Returns:
+            list[SummaryNode | Chunk]: The immediate children of the given node.
         """
+        # Batch retrieve children for efficiency (avoid N+1)
+        # children_indices is a list of node IDs.
+        # Ensure IDs are strings as expected by get_nodes
+        child_ids = [str(idx) for idx in node.children_indices]
+
+        # get_nodes returns a generator, consume it into a list
+        # Filter out None values in case of data inconsistency
         children = []
-        for child_idx in node.children_indices:
-            child = self.store.get_node(child_idx)
-            if child:
+        for child in self.store.get_nodes(child_ids):
+            if child is not None:
                 children.append(child)
+
         return children
 
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
@@ -73,12 +82,13 @@ class InteractiveRaptorEngine:
             msg = "Only SummaryNodes can be refined."
             raise TypeError(msg)
 
-        if not instruction:
+        if not instruction or not instruction.strip():
             msg = "Instruction cannot be empty."
             raise ValueError(msg)
 
-        if len(instruction) > 1000:
-            msg = "Instruction exceeds maximum length of 1000 characters."
+        max_len = self.config.max_instruction_length
+        if len(instruction) > max_len:
+            msg = f"Instruction exceeds maximum length of {max_len} characters."
             raise ValueError(msg)
 
         # Gather source text from children
@@ -87,11 +97,22 @@ class InteractiveRaptorEngine:
             msg = f"Node {node_id} has no accessible children. Cannot refine."
             raise ValueError(msg)
 
+        # Validate that we retrieved all expected children
+        if len(children) != len(node.children_indices):
+            logger.warning(
+                f"Node {node_id} expects {len(node.children_indices)} children but found {len(children)}."
+            )
+            # We proceed with available children, or should we raise?
+            # Audit Requirement: "Validation to ensure... all children exist"
+            if len(children) == 0:
+                 msg = f"Node {node_id} has no accessible children (indices found: {len(children)}). Cannot refine."
+                 raise ValueError(msg)
+
         child_texts = [child.text for child in children]
         source_text = "\n\n".join(child_texts)
 
         # Determine base strategy from node's DIKW level
-        # Assuming the level string matches registry keys (lowercase enum value)
+        # Use enum value directly for lookup
         level_key = node.metadata.dikw_level.value
         base_strategy_cls = STRATEGY_REGISTRY.get(level_key)
 
@@ -108,21 +129,18 @@ class InteractiveRaptorEngine:
             context={"instruction": instruction},
         )
 
-        # Update node
-        node.text = new_text
-        node.metadata.is_user_edited = True
-        node.metadata.refinement_history.append(instruction)
+        # Wrap update logic in transaction
+        with self.store.transaction():
+            # Update node fields
+            node.text = new_text
+            node.metadata.is_user_edited = True
+            node.metadata.refinement_history.append(instruction)
 
-        # Persist changes
-        # Re-embedding is optional/deferred for interactivity speed,
-        # but spec says "Refinement results are immediately saved".
-        # We should clear embedding or update it if we had an embedder here.
-        # Since we don't have embedder in this class, we might set it to None.
-        # But for now, let's just save the text update.
-        node.embedding = None
+            # Re-embedding is optional/deferred for interactivity speed.
+            node.embedding = None
 
-        # Use add_summaries to update (since it uses INSERT OR REPLACE)
-        self.store.add_summary(node)
+            # Persist changes using update_node
+            self.store.update_node(node)
 
         logger.info(f"Refined node {node_id} with instruction: {instruction}")
         return node

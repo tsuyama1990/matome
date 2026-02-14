@@ -15,7 +15,7 @@ matome/
 ├── src/
 │   ├── matome/
 │   │   ├── engines/
-│   │   │   ├── **interactive.py**  # [Implement] The core InteractiveRaptorEngine class
+│   │   │   ├── **interactive_raptor.py**  # [Implement] The core InteractiveRaptorEngine class
 │   │   │   └── raptor.py       # [Refactor] Extract shared logic if necessary
 │   │   ├── utils/
 │   │   │   └── store.py        # [Refactor] Add Context Managers & WAL mode
@@ -29,7 +29,7 @@ matome/
 ### Key Components
 
 1.  **InteractiveRaptorEngine:**
-    Located in `src/matome/engines/interactive.py`.
+    Located in `src/matome/engines/interactive_raptor.py`.
     -   **Responsibility:** Orchestrate user-initiated updates.
     -   **Methods:**
         -   `get_node(node_id)`: Retrieve a node.
@@ -82,6 +82,27 @@ class InteractiveRaptorEngine:
 -   **Atomic Updates:** SQLite's atomic commit ensures that a node update is all-or-nothing.
 -   **Locking:** The `is_user_edited` flag in metadata prevents future batch processes (if any) from overwriting user customizations.
 
+### Data Models
+
+```python
+class NodeMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    dikw_level: DIKWLevel = Field(default=DIKWLevel.DATA)
+    is_user_edited: bool = Field(default=False)
+    refinement_history: list[str] = Field(default_factory=list)
+    cluster_id: str | int | None = Field(default=None)
+    type: str | None = Field(default=None)
+
+class SummaryNode(BaseModel):
+    id: str
+    text: str
+    level: int
+    children_indices: list[NodeID]
+    metadata: NodeMetadata
+    embedding: list[float] | None = None
+```
+
 ## 4. Implementation Approach
 
 1.  **Step 1: Enhance DiskChunkStore**
@@ -91,11 +112,12 @@ class InteractiveRaptorEngine:
 
 2.  **Step 2: Implement RefinementStrategy**
     -   Create a class `RefinementStrategy(PromptStrategy)`.
-    -   It takes a `base_strategy` and `instruction` in `__init__`.
-    -   `format_prompt` calls `base_strategy.format_prompt` and appends "USER INSTRUCTION: {instruction}".
+    -   It takes a `base_strategy` in `__init__`.
+    -   `format_prompt` calls `base_strategy.format_prompt(text, context)` to get the base prompt.
+    -   It then appends `\n\nUSER INSTRUCTION: {instruction}` to the base prompt.
 
 3.  **Step 3: Implement InteractiveRaptorEngine**
-    -   Create the class structure.
+    -   Create the class structure in `src/matome/engines/interactive_raptor.py`.
     -   Implement `refine_node` logic as described above.
     -   Add error handling (e.g., if node not found).
 

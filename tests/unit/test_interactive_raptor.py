@@ -46,14 +46,11 @@ def test_refine_node_success(
         metadata=NodeMetadata(dikw_level=DIKWLevel.WISDOM),
     )
 
-    def get_node_side_effect(nid: int | str) -> SummaryNode | Chunk | None:
-        if nid == node_id:
-            return summary_node
-        if nid == 1:
-            return child_chunk
-        return None
-
-    mock_store.get_node.side_effect = get_node_side_effect
+    # Use iterator for get_nodes return to simulate streaming
+    mock_store.get_node.return_value = summary_node
+    mock_store.get_nodes.return_value = iter([child_chunk])
+    # Mock transaction context manager
+    mock_store.transaction.return_value.__enter__.return_value = MagicMock()
 
     instruction = "Make it shorter"
 
@@ -68,13 +65,13 @@ def test_refine_node_success(
     # Check that summarizer was called with correct context
     args, kwargs = mock_summarizer.summarize.call_args
     assert kwargs["context"]["instruction"] == instruction
-    # Check that store.add_summary was called to save changes
-    mock_store.add_summary.assert_called_once_with(summary_node)
+    # Check that store.update_node was called to save changes
+    mock_store.update_node.assert_called_once_with(summary_node)
 
 
 def test_refine_node_not_found(interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:
     mock_store.get_node.return_value = None
-    with pytest.raises(ValueError, match="Node missing not found"):
+    with pytest.raises(ValueError, match="Node .* not found"):
         interactive_engine.refine_node("missing", "instruction")
 
 
@@ -101,10 +98,8 @@ def test_get_children(
     c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=2)
     c2 = Chunk(index=2, text="C2", start_char_idx=3, end_char_idx=5)
 
-    def get_node_side_effect(nid: int | str) -> Chunk | None:
-        return {1: c1, 2: c2}.get(nid)  # type: ignore
-
-    mock_store.get_node.side_effect = get_node_side_effect
+    # get_nodes returns iterator
+    mock_store.get_nodes.return_value = iter([c1, c2])
 
     # Act
     children = interactive_engine.get_children(summary_node)
@@ -113,6 +108,7 @@ def test_get_children(
     assert len(children) == 2
     assert c1 in children
     assert c2 in children
+    mock_store.get_nodes.assert_called_once()
 
 
 def test_refine_node_invalid_instruction(
@@ -133,6 +129,10 @@ def test_refine_node_invalid_instruction(
     with pytest.raises(ValueError, match="Instruction cannot be empty"):
         interactive_engine.refine_node("s1", "")
 
+    # Test whitespace-only instruction
+    with pytest.raises(ValueError, match="Instruction cannot be empty"):
+        interactive_engine.refine_node("s1", "   ")
+
     # Test too long instruction
     long_instruction = "a" * 1001
     with pytest.raises(ValueError, match="Instruction exceeds maximum length"):
@@ -145,3 +145,55 @@ def test_get_node_proxy(
     """Verify get_node proxies to store correctly."""
     interactive_engine.get_node("123")
     mock_store.get_node.assert_called_with("123")
+
+
+def test_refine_node_unknown_dikw(
+    interactive_engine: InteractiveRaptorEngine,
+    mock_store: MagicMock,
+    mock_summarizer: MagicMock
+) -> None:
+    """Test refinement with node having data level (no specific strategy)."""
+    node = SummaryNode(
+        id="s1",
+        text="Summary",
+        level=1,
+        children_indices=[1],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA) # Default level, might not be in registry
+    )
+    mock_store.get_node.return_value = node
+    mock_store.get_nodes.return_value = iter([Chunk(index=1, text="C", start_char_idx=0, end_char_idx=1)])
+    mock_store.transaction.return_value.__enter__.return_value = MagicMock()
+
+    # Should work and use default strategy inside RefinementStrategy
+    interactive_engine.refine_node("s1", "Refine")
+
+    # Verify summarization called
+    mock_summarizer.summarize.assert_called_once()
+
+
+def test_refine_node_update_failure(
+    interactive_engine: InteractiveRaptorEngine,
+    mock_store: MagicMock,
+    mock_summarizer: MagicMock
+) -> None:
+    """Test behavior when store update fails."""
+    node = SummaryNode(
+        id="s1",
+        text="Summary",
+        level=1,
+        children_indices=[1],
+        metadata=NodeMetadata()
+    )
+    mock_store.get_node.return_value = node
+    mock_store.get_nodes.return_value = iter([Chunk(index=1, text="C", start_char_idx=0, end_char_idx=1)])
+    mock_store.transaction.return_value.__enter__.return_value = MagicMock()
+
+    mock_store.update_node.side_effect = RuntimeError("DB Write Failed")
+
+    with pytest.raises(RuntimeError, match="DB Write Failed"):
+        interactive_engine.refine_node("s1", "Refine")
+
+    # Ideally verify transaction rollback if we implemented transactional logic in engine,
+    # but currently engine relies on store's atomic update_node or external transaction.
+    # The transaction context __exit__ would handle rollback on exception.
+    mock_store.transaction.assert_called_once()
