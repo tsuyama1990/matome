@@ -5,6 +5,7 @@ import pytest
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, DocumentTree
+from domain_models.types import DIKWLevel
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
@@ -48,6 +49,7 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     """
     Test the RAPTOR pipeline with real Clusterer and mocked other components.
     Uses proper mock specifications via create_autospec.
+    Verifies DIKW level assignment.
     """
     # Mock Chunker (Protocol)
     chunker = create_autospec(Chunker, instance=True)
@@ -77,6 +79,10 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         assert tree.root_node is not None
         assert len(tree.leaf_chunk_ids) == 10
         assert tree.root_node.level >= 1
+
+        # Verify DIKW Levels
+        # Root should be WISDOM
+        assert tree.root_node.metadata.dikw_level == DIKWLevel.WISDOM
 
         # Verify embeddings are present in store
         first_chunk = store.get_node(tree.leaf_chunk_ids[0])

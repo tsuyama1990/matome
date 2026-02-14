@@ -59,7 +59,7 @@ def sample_tree(nodes_and_chunks: tuple[dict[int | str, Chunk | SummaryNode], Su
 def mock_store(nodes_and_chunks: tuple[dict[int | str, Chunk | SummaryNode], SummaryNode]) -> MagicMock:
     all_nodes, _ = nodes_and_chunks
     store = MagicMock()
-    store.get_node.side_effect = lambda nid: all_nodes.get(nid)
+    store.get_node.side_effect = all_nodes.get
     return store
 
 

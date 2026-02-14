@@ -117,7 +117,7 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     assert tree.root_node.level >= 2
     assert len(tree.leaf_chunk_ids) == 50
     # Check that we have intermediate summaries
-    # assert len(tree.all_nodes) > 1  # Removed
+    # (Removed check for tree.all_nodes since it was removed)
 
 
 def test_uat_scenario_13_summary_coherence() -> None:

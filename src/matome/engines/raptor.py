@@ -2,7 +2,6 @@ import contextlib
 import logging
 import uuid
 from collections.abc import Iterable, Iterator
-from typing import cast
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
@@ -44,17 +43,19 @@ class RaptorEngine:
         self.summarizer = summarizer
         self.config = config
 
+        # Strategy lookup map to avoid complex conditionals
+        self._strategy_map: dict[str, type[PromptStrategy]] = {
+            "wisdom": WisdomStrategy,
+            "knowledge": KnowledgeStrategy,
+            "information": InformationStrategy,
+        }
+
     def _get_strategy_for_level(self, current_level: int, is_final_layer: bool) -> PromptStrategy:
         """
         Determine the PromptStrategy based on the current level and topology.
-
-        Args:
-            current_level: The level of nodes being summarized (0=Chunks, 1=L1 Summaries).
-            is_final_layer: True if this is the final reduction (producing the Root).
         """
         mapping = self.config.strategy_mapping
 
-        # If mapping is empty (legacy mode), return BaseSummaryStrategy
         if not mapping:
             return BaseSummaryStrategy()
 
@@ -63,19 +64,13 @@ class RaptorEngine:
         if is_final_layer:
              strategy_name = mapping.get(DIKWLevel.WISDOM, "wisdom")
         elif current_level == 0:
-             # Summarizing chunks -> produces L1 (Information)
              strategy_name = mapping.get(DIKWLevel.INFORMATION, "information")
         else:
-             # Summarizing summaries -> produces L2+ (Knowledge)
              strategy_name = mapping.get(DIKWLevel.KNOWLEDGE, "knowledge")
 
-        # Factory logic
-        if strategy_name == "wisdom":
-            return WisdomStrategy()
-        if strategy_name == "knowledge":
-            return KnowledgeStrategy()
-        if strategy_name == "information":
-            return InformationStrategy()
+        strategy_class = self._strategy_map.get(strategy_name)
+        if strategy_class:
+            return strategy_class()
 
         return BaseSummaryStrategy()
 
@@ -94,10 +89,10 @@ class RaptorEngine:
                 chunk_stream = self.embedder.embed_chunks(initial_chunks)
 
                 for chunk_batch_tuple in batched(chunk_stream, self.config.chunk_buffer_size):
-                    chunk_batch = list(chunk_batch_tuple)
-                    store.add_chunks(chunk_batch)
+                    # Keep as tuple, do NOT convert to list to save memory
+                    store.add_chunks(chunk_batch_tuple)
 
-                    for chunk in chunk_batch:
+                    for chunk in chunk_batch_tuple:
                         if chunk.embedding is None:
                             msg = f"Chunk {chunk.index} missing embedding."
                             raise ValueError(msg)
@@ -110,12 +105,14 @@ class RaptorEngine:
                         logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")
             except Exception as e:
                 logger.exception("Level 0 processing failed.")
-                raise MatomeError("Level 0 processing failed") from e
+                msg = "Level 0 processing failed"
+                raise MatomeError(msg) from e
 
         try:
             clusters = self.clusterer.cluster_nodes(l0_embedding_generator(), self.config)
         except Exception as e:
-             raise ClusteringError("Clustering failed at Level 0") from e
+             msg = "Clustering failed at Level 0"
+             raise ClusteringError(msg) from e
 
         return clusters, current_level_ids
 
@@ -124,7 +121,8 @@ class RaptorEngine:
         Execute the RAPTOR pipeline.
         """
         if not text or not isinstance(text, str):
-            raise ValueError("Input text must be a non-empty string.")
+            msg = "Input text must be a non-empty string."
+            raise ValueError(msg)
 
         if len(text) > self.config.max_input_length:
             msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
@@ -133,7 +131,6 @@ class RaptorEngine:
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
 
-        # store_ctx logic
         store_ctx: contextlib.AbstractContextManager[DiskChunkStore] = (
             DiskChunkStore() if store is None else contextlib.nullcontext(store)
         )
@@ -170,7 +167,6 @@ class RaptorEngine:
             if node_count <= 1:
                 break
 
-            # Force reduction logic
             if len(clusters) == node_count and node_count > 1:
                 logger.warning(
                     f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
@@ -183,14 +179,10 @@ class RaptorEngine:
 
             logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
-            # Determine Strategy
-            # If we have 1 cluster, this summarization produces the Root Node.
             is_final = len(clusters) == 1
             strategy = self._get_strategy_for_level(level, is_final)
             logger.info(f"Using strategy {type(strategy).__name__} for Level {level} (Final={is_final})")
 
-            # Summarization
-            # next_level is level + 1
             next_level = level + 1
             new_nodes_iter = self._summarize_clusters(clusters, current_level_ids, store, next_level, strategy)
 
@@ -237,12 +229,12 @@ class RaptorEngine:
                         )
 
             for batch in batched(node_text_generator(), self.config.embedding_batch_size):
-                unzipped = list(zip(*batch, strict=True))
-                if not unzipped:
-                    continue
+                # Optimize: Don't convert to list if possible, or unzip efficiently.
+                # zip(*batch) creates two tuples.
+                ids_tuple, texts_tuple = zip(*batch, strict=True)
 
-                ids_tuple = unzipped[0]
-                texts_tuple = cast(tuple[str, ...], unzipped[1])
+                if not ids_tuple:
+                    continue
 
                 try:
                     embeddings = self.embedder.embed_strings(texts_tuple)
@@ -251,12 +243,14 @@ class RaptorEngine:
                         yield embedding
                 except Exception as e:
                     logger.exception("Failed to embed batch during next level clustering.")
-                    raise MatomeError("Embedding failed during recursion") from e
+                    msg = "Embedding failed during recursion"
+                    raise MatomeError(msg) from e
 
         try:
             return self.clusterer.cluster_nodes(lx_embedding_generator(), self.config)
         except Exception as e:
-            raise ClusteringError("Clustering failed during recursion") from e
+            msg = "Clustering failed during recursion"
+            raise ClusteringError(msg) from e
 
     def _finalize_tree(
         self,
@@ -269,7 +263,7 @@ class RaptorEngine:
         """
         if not current_level_ids:
             if not l0_ids:
-                 # Empty
+                 # Empty tree is valid for empty input
                  pass
             msg = "No nodes remaining."
             raise ValueError(msg)
@@ -278,7 +272,8 @@ class RaptorEngine:
         root_node_obj = store.get_node(root_id)
 
         if not root_node_obj:
-            raise ValueError("Root node not found in store.")
+            msg = f"Root node {root_id} not found in store."
+            raise ValueError(msg)
 
         # Ensure root embedding
         if root_node_obj.embedding is None:
@@ -302,19 +297,19 @@ class RaptorEngine:
     def _handle_single_chunk_root(self, chunk: Chunk, store: DiskChunkStore) -> SummaryNode:
         """Handle case where input text fits in a single chunk."""
         node_id = str(uuid.uuid4())
-        # We might want to "Summarize" this single chunk into a Wisdom node?
-        # Or just wrap it.
-        # Spec says Root is Wisdom.
-        # If we just wrap, the text is raw data.
-        # Ideally we should call summarizer with WisdomStrategy on this chunk.
-
         strategy = WisdomStrategy()
-        # We need to call summarizer manually?
-        # Yes, upgrading single chunk to Wisdom.
+
+        summary_text = ""
         try:
              summary_text = self.summarizer.summarize(chunk.text, self.config, strategy)
         except Exception:
              # Fallback to chunk text if summarization fails
+             logger.warning("Single chunk summarization failed, falling back to raw text.")
+             summary_text = chunk.text
+
+        # Validation
+        if not summary_text or not summary_text.strip():
+             logger.warning("Summarization produced empty text, falling back to raw chunk.")
              summary_text = chunk.text
 
         root_node = SummaryNode(
@@ -327,7 +322,6 @@ class RaptorEngine:
                 type="single_chunk_root"
             ),
         )
-        # We must save this new node to store!
         store.add_summaries([root_node])
         return root_node
 
@@ -364,23 +358,16 @@ class RaptorEngine:
 
             # Validation: Length of combined text
             combined_text_len = sum(len(t) for t in cluster_texts)
-            if combined_text_len > self.config.max_input_length:
-                 # Truncate or fail?
-                 # Fail is safer to avoid hidden data loss, but might break pipeline.
-                 # Warn and truncate?
-                 logger.warning(f"Cluster {cluster.id} text length ({combined_text_len}) exceeds limit. Truncating.")
-                 # Naive truncation isn't great, but better than DoS.
-                 # We construct joined text then truncate? That uses memory.
-                 # We should truncate during construction.
-
             combined_text = "\n\n".join(cluster_texts)
-            if len(combined_text) > self.config.max_input_length:
+
+            if combined_text_len > self.config.max_input_length:
+                 logger.warning(f"Cluster {cluster.id} text length ({combined_text_len}) exceeds limit. Truncating.")
                  combined_text = combined_text[:self.config.max_input_length]
 
             try:
                 summary_text = self.summarizer.summarize(combined_text, self.config, strategy)
-            except SummarizationError as e:
-                logger.error(f"Summarization failed for cluster {cluster.id}: {e}")
+            except SummarizationError:
+                logger.exception(f"Summarization failed for cluster {cluster.id}")
                 summary_text = "Summarization failed."
 
             node_id_str = str(uuid.uuid4())

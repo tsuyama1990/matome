@@ -4,12 +4,11 @@ from unittest.mock import MagicMock, create_autospec
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
-from domain_models.types import DIKWLevel
-from matome.agents.strategies import InformationStrategy, KnowledgeStrategy, WisdomStrategy
+from domain_models.manifest import Chunk, Cluster, DocumentTree
+from matome.agents.strategies import InformationStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
-from matome.exceptions import ClusteringError, MatomeError
+from matome.exceptions import MatomeError
 from matome.interfaces import Chunker, Clusterer, Summarizer
 
 
@@ -88,7 +87,6 @@ def test_raptor_run_short_text(
     # Ensure it used Wisdom strategy
     # Passed as 3rd arg (positional)
     args, kwargs = summarizer.summarize.call_args
-    # args: (text, config, strategy)
     assert len(args) >= 3
     assert isinstance(args[2], WisdomStrategy)
 
@@ -171,7 +169,8 @@ def test_raptor_error_handling(
 
     def fail_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
         list(embeddings)
-        raise Exception("Clustering failed")
+        msg = "Clustering failed"
+        raise Exception(msg)
 
     clusterer.cluster_nodes.side_effect = fail_side_effect
 

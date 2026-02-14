@@ -19,5 +19,5 @@ try:
     model = SentenceTransformer("intfloat/multilingual-e5-large")
     logger.info(f"Model loaded in {time.time() - start:.2f}s")
     logger.info(f"Model device: {model.device}")
-except Exception as e:
-    logger.error(f"Failed to load model: {e}")
+except Exception:
+    logger.exception("Failed to load model")

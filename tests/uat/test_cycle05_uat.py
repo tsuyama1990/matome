@@ -66,7 +66,7 @@ def uat_tree(uat_tree_data: tuple[DocumentTree, dict[int | str, Chunk | SummaryN
 def mock_store(uat_tree_data: tuple[DocumentTree, dict[int | str, Chunk | SummaryNode]]) -> MagicMock:
     _, all_nodes = uat_tree_data
     store = MagicMock()
-    store.get_node.side_effect = lambda nid: all_nodes.get(nid)
+    store.get_node.side_effect = all_nodes.get
     return store
 
 
