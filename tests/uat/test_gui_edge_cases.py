@@ -1,13 +1,14 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
 import panel as pn
+import pytest
 
+from domain_models.manifest import NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
+from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.ui.canvas import MatomeCanvas
 from matome.ui.view_model import InteractiveSession
-from matome.engines.interactive_raptor import InteractiveRaptorEngine
-from domain_models.manifest import SummaryNode, NodeMetadata
-from domain_models.types import DIKWLevel
+
 
 class TestGuiEdgeCases:
     """
@@ -38,10 +39,19 @@ class TestGuiEdgeCases:
 
         # Call internal method directly
         details_col = canvas._render_node_details(None, False)
+        # Type assertion for MyPy
+        assert isinstance(details_col, pn.Column)
+        # Casting to Any or dynamic access for test simplicity
+        # Use simple object access which is valid for Markdown pane but mypy doesn't know details_col[0] is Markdown
+        # We can use typing.cast or just ignore since we asserted isinstance above?
+        # MyPy sees Viewable which doesn't have object. We need to cast.
+        from panel.pane import Markdown
+        assert isinstance(details_col[0], Markdown)
         assert "Select a node" in details_col[0].object
 
         # Use internal method for pyramid view
         pyramid_view = canvas._render_pyramid_nodes([])
+        assert isinstance(pyramid_view, Markdown)
         assert "No child nodes" in pyramid_view.object
 
     def test_missing_node_selection(self, canvas: MatomeCanvas, session: InteractiveSession, mock_engine: MagicMock) -> None:
@@ -53,6 +63,9 @@ class TestGuiEdgeCases:
         assert session.selected_node is None
 
         details_col = canvas._render_node_details(None, False)
+        assert isinstance(details_col, pn.Column)
+        from panel.pane import Markdown
+        assert isinstance(details_col[0], Markdown)
         assert "Select a node" in details_col[0].object
 
     def test_broken_node_rendering(self, canvas: MatomeCanvas, session: InteractiveSession) -> None:
@@ -71,4 +84,6 @@ class TestGuiEdgeCases:
              details_col = canvas._render_node_details(valid_node, False)
 
              assert isinstance(details_col, pn.Column)
+             from panel.pane import Markdown
+             assert isinstance(details_col[0], Markdown)
              assert "Error rendering details: Widget Boom" in details_col[0].object
