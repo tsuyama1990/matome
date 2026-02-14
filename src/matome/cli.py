@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
+import panel as pn
 import typer
 
 from domain_models.config import ProcessingConfig
@@ -10,10 +11,13 @@ from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
+from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.engines.raptor import RaptorEngine
 from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.exporters.markdown import stream_markdown
 from matome.exporters.obsidian import ObsidianCanvasExporter
+from matome.ui.canvas import MatomeCanvas
+from matome.ui.view_model import InteractiveSession
 from matome.utils.store import DiskChunkStore
 
 # Configure logging to stderr so it doesn't interfere with stdout output if needed
@@ -27,6 +31,9 @@ app = typer.Typer(
     help="Matome: Long Context Summarization System using RAPTOR and Japanese Semantic Chunking.",
     add_completion=False,
 )
+
+# Initialize defaults once to use in help text
+DEFAULT_CONFIG = ProcessingConfig()
 
 
 def _initialize_components(config: ProcessingConfig) -> tuple[
@@ -150,15 +157,31 @@ def run(
         ),
     ] = Path("results"),
     model: Annotated[
-        str, typer.Option("--model", "-m", help="Summarization model to use.")
-    ] = "openai/gpt-4o-mini",
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Summarization model to use.",
+        ),
+    ] = DEFAULT_CONFIG.summarization_model,
     verifier_model: Annotated[
-        str, typer.Option("--verifier-model", "-v", help="Verification model to use.")
-    ] = "openai/gpt-4o-mini",
+        str,
+        typer.Option(
+            "--verifier-model",
+            "-v",
+            help="Verification model to use.",
+        ),
+    ] = DEFAULT_CONFIG.verification_model,
     verify: Annotated[
-        bool, typer.Option("--verify/--no-verify", help="Enable/Disable verification.")
-    ] = True,
-    max_tokens: Annotated[int, typer.Option(help="Max tokens per chunk.")] = 500,
+        bool,
+        typer.Option(
+            "--verify/--no-verify",
+            help="Enable/Disable verification.",
+        ),
+    ] = DEFAULT_CONFIG.verifier_enabled,
+    max_tokens: Annotated[
+        int, typer.Option(help="Max tokens per chunk.")
+    ] = DEFAULT_CONFIG.max_tokens,
     mode: Annotated[
         str,
         typer.Option(
@@ -252,12 +275,6 @@ def serve(
     """
     Launch the interactive GUI.
     """
-    import panel as pn
-
-    from matome.engines.interactive_raptor import InteractiveRaptorEngine
-    from matome.ui.canvas import MatomeCanvas
-    from matome.ui.view_model import InteractiveSession
-
     # Initialize Panel extension
     pn.extension(sizing_mode="stretch_width")
 

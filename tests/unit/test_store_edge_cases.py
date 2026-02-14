@@ -196,6 +196,8 @@ def test_streaming_connection_failure(tmp_path: Path) -> None:
     # We patch execute to simulate a DB failure during streaming
     with patch.object(store.engine, 'connect') as mock_connect:
         mock_conn = mock_connect.return_value.__enter__.return_value
+        # Mock execution_options to return the connection itself so execute is called on the mock
+        mock_conn.execution_options.return_value = mock_conn
         # Use Exception instead of None for orig to satisfy typing
         mock_conn.execute.side_effect = OperationalError("Lost connection", params=None, orig=Exception("Lost"))
 
