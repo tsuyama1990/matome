@@ -2,9 +2,11 @@ import json
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from domain_models.manifest import Chunk
 from matome.utils.store import DiskChunkStore, StoreError
@@ -183,5 +185,21 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
     # Depending on race, it will be one of the updates or init, but valid.
     assert isinstance(final_node, Chunk)
     assert final_node.text.startswith("Update") or final_node.text == "Init"
+
+    store.close()
+
+def test_streaming_connection_failure(tmp_path: Path) -> None:
+    """Test that streaming handles connection failures during iteration."""
+    store = DiskChunkStore(tmp_path / "streaming_fail.db")
+    store.add_chunk(Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=1))
+
+    # We patch execute to simulate a DB failure during streaming
+    with patch.object(store.engine, 'connect') as mock_connect:
+        mock_conn = mock_connect.return_value.__enter__.return_value
+        # Use Exception instead of None for orig to satisfy typing
+        mock_conn.execute.side_effect = OperationalError("Lost connection", params=None, orig=Exception("Lost"))
+
+        with pytest.raises(StoreError, match="Failed to retrieve nodes batch"):
+            list(store.get_nodes(["1"]))
 
     store.close()

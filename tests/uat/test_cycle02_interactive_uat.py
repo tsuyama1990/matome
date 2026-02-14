@@ -1,20 +1,15 @@
 import contextlib
 import threading
 import time
-from collections.abc import Iterator
 from unittest.mock import MagicMock, patch
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
+from domain_models.manifest import NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.utils.store import DiskChunkStore
+from tests.conftest import generate_chunks, generate_summary_node
 
-
-def chunk_generator(start_index: int, count: int) -> Iterator[Chunk]:
-    """Generator for chunks."""
-    for i in range(count):
-        yield Chunk(index=start_index + i, text=f"Child {i}", start_char_idx=i*10, end_char_idx=(i+1)*10)
 
 def test_uat_c02_01_single_node_refinement() -> None:
     """
@@ -32,8 +27,8 @@ def test_uat_c02_01_single_node_refinement() -> None:
     )
     store.add_summary(node)
 
-    # Add children chunks using generator
-    store.add_chunks(chunk_generator(0, 2))
+    # Add children chunks using generator utility
+    store.add_chunks(generate_chunks(2, start_index=0))
 
     # Setup Mock Agent
     mock_agent = MagicMock()
@@ -69,13 +64,8 @@ def test_uat_c02_02_concurrency() -> None:
     Verify that the database supports concurrent read/write operations without locking.
     """
     store = DiskChunkStore()
-    node = SummaryNode(
-        id="concurrent_node",
-        text="Initial text",
-        level=1,
-        children_indices=[],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
-    )
+    node = generate_summary_node("concurrent_node", dikw_level=DIKWLevel.DATA)
+    node.text = "Initial text"
     store.add_summary(node)
 
     stop_event = threading.Event()
@@ -84,9 +74,6 @@ def test_uat_c02_02_concurrency() -> None:
     def reader_task() -> None:
         while not stop_event.is_set():
             try:
-                # Use batch get_nodes even for single ID if we want to test streaming/performance
-                # But here we test simple access.
-                # Let's assume we want to read it.
                 n = store.get_node("concurrent_node")
                 if n is None:
                     errors.append("Node not found during read")
@@ -100,13 +87,8 @@ def test_uat_c02_02_concurrency() -> None:
             try:
                 # Update text
                 new_text = f"Updated text {counter}"
-                updated_node = SummaryNode(
-                    id="concurrent_node",
-                    text=new_text,
-                    level=1,
-                    children_indices=[],
-                    metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
-                )
+                updated_node = generate_summary_node("concurrent_node", dikw_level=DIKWLevel.DATA)
+                updated_node.text = new_text
                 store.update_node(updated_node)
                 counter += 1
             except Exception as e:
@@ -138,7 +120,7 @@ def test_uat_concurrency_error_handling() -> None:
     """Test that concurrent errors are handled gracefully (simulated)."""
     # This simulates a scenario where one thread might fail, ensuring it doesn't crash the other
     store = DiskChunkStore()
-    node = SummaryNode(id="n1", text="T", level=1, children_indices=[], metadata=NodeMetadata())
+    node = generate_summary_node("n1")
     store.add_summary(node)
 
     def failing_writer() -> None:

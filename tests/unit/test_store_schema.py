@@ -112,8 +112,8 @@ def test_update_node_non_existent() -> None:
         metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
     )
 
-    # Should raise error now
-    with pytest.raises(StoreError, match="not found"):
+    # Should raise error now with specific message
+    with pytest.raises(StoreError, match="Node non_existent not found"):
         store.update_node(node)
 
     # Should not exist
@@ -150,12 +150,7 @@ def test_transaction_rollback_on_error(tmp_path: Path) -> None:
     c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=1)
     store.add_chunk(c1)
 
-    # Force a database error by executing faulty SQL inside a transaction directly.
-    # Note: store.add_chunks handles everything internally, making it hard to inject a mid-flight error
-    # without patching. However, we already have `test_transaction_rollback_explicit` in edge_cases
-    # which proves the `transaction` context manager works.
-    # This test is somewhat redundant but we will keep it simple and clean up unused vars.
-
+    # Use explicit transaction block to verify rollback on error
     try:
         with store.transaction() as conn:
             # Valid insert

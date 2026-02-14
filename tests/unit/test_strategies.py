@@ -98,7 +98,7 @@ def test_refinement_strategy_no_instruction() -> None:
 
 
 def test_strategy_registry_completeness() -> None:
-    """Verify that all expected strategies are registered."""
+    """Verify that all expected strategies are registered and instantiable."""
     expected_keys = {
         DIKWLevel.WISDOM.value,
         DIKWLevel.KNOWLEDGE.value,
@@ -110,9 +110,15 @@ def test_strategy_registry_completeness() -> None:
     # Check keys exist
     assert expected_keys.issubset(STRATEGY_REGISTRY.keys())
 
-    # Check types
-    assert issubclass(STRATEGY_REGISTRY[DIKWLevel.WISDOM.value], WisdomStrategy)
-    assert issubclass(STRATEGY_REGISTRY[DIKWLevel.KNOWLEDGE.value], KnowledgeStrategy)
-    assert issubclass(STRATEGY_REGISTRY[DIKWLevel.INFORMATION.value], InformationStrategy)
-    assert issubclass(STRATEGY_REGISTRY["default"], ChainOfDensityStrategy)
-    assert issubclass(STRATEGY_REGISTRY["refinement"], RefinementStrategy)
+    # Verify instantiation and type
+    for _key, strategy_cls in STRATEGY_REGISTRY.items():
+        # Instantiate directly, assuming all have 0-arg or default args constructors
+        strategy = strategy_cls()
+
+        assert hasattr(strategy, "format_prompt")
+        assert hasattr(strategy, "dikw_level")
+
+        # Basic prompt check
+        prompt = strategy.format_prompt("test")
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0

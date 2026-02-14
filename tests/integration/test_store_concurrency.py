@@ -1,5 +1,6 @@
 import threading
 import time
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
@@ -7,10 +8,10 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.exc import OperationalError
 
-from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
+from domain_models.manifest import Chunk
 from domain_models.types import DIKWLevel
 from matome.utils.store import DiskChunkStore, StoreError
-from tests.conftest import generate_chunks
+from tests.conftest import generate_chunks, generate_summary_node
 from tests.test_config import TEST_CONFIG
 
 
@@ -53,16 +54,23 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
     )
 
     def writer() -> None:
-        # Batching writes instead of single item loop
-        chunks_to_write = [
-            Chunk(index=i, text=f"W{i}", start_char_idx=0, end_char_idx=1, embedding=[1.0])
-            for i in range(TEST_CONFIG.WRITE_LOOPS)
-        ]
-        store.add_chunks(chunks_to_write)
+        # Stream chunks using generator instead of list comprehension
+        def chunk_gen() -> Iterator[Chunk]:
+            for i in range(TEST_CONFIG.WRITE_LOOPS):
+                yield Chunk(
+                    index=i,
+                    text=f"W{i}",
+                    start_char_idx=0,
+                    end_char_idx=1,
+                    embedding=[1.0]
+                )
+
+        store.add_chunks(chunk_gen())
 
     def reader() -> None:
         # Batch retrieval via iterator consumption
         ids = ["999"] + [str(i) for i in range(5)]
+
         for _ in range(TEST_CONFIG.READ_LOOPS):
             # Consume generator and verify "Base" exists
             found_base = False
@@ -107,13 +115,8 @@ def test_store_concurrency_stress(tmp_path: Path) -> None:
 
     # Setup initial state
     node_id = "stress_node"
-    node = SummaryNode(
-        id=node_id,
-        text="Start",
-        level=1,
-        children_indices=[],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
-    )
+    node = generate_summary_node(node_id, level=1, dikw_level=DIKWLevel.DATA)
+    node.text = "Start"
     store.add_summary(node)
 
     stop_event = threading.Event()
@@ -139,13 +142,8 @@ def test_store_concurrency_stress(tmp_path: Path) -> None:
         count = 0
         while not stop_event.is_set():
             try:
-                n = SummaryNode(
-                    id=node_id,
-                    text=f"Update {count}",
-                    level=1,
-                    children_indices=[],
-                    metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
-                )
+                n = generate_summary_node(node_id, level=1, dikw_level=DIKWLevel.DATA)
+                n.text = f"Update {count}"
                 writer_store.update_node(n)
                 count += 1
             except Exception as e:
@@ -181,7 +179,6 @@ def test_db_corruption_handling(tmp_path: Path) -> None:
     store = DiskChunkStore(db_path=db_path)
 
     # Mock execute to simulate a database error (e.g., malformed disk image)
-    # We patch the engine's connect/begin to return a connection that fails on execute
     with patch.object(store.engine, 'connect') as mock_connect:
         mock_conn = mock_connect.return_value.__enter__.return_value
         # OperationalError requires params (None is acceptable) and orig (exception object)
