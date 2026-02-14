@@ -18,6 +18,7 @@ from domain_models.constants import (
     DEFAULT_EMBEDDING,
     DEFAULT_EMBEDDING_BATCH_SIZE,
     DEFAULT_LLM_TEMPERATURE,
+    DEFAULT_MAX_FILE_SIZE_BYTES,
     DEFAULT_MAX_INPUT_LENGTH,
     DEFAULT_MAX_INSTRUCTION_LENGTH,
     DEFAULT_MAX_RETRIES,
@@ -28,6 +29,7 @@ from domain_models.constants import (
     DEFAULT_SEMANTIC_CHUNKING_MODE,
     DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
     DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
+    DEFAULT_SERVER_PORT,
     DEFAULT_STORE_READ_BATCH_SIZE,
     DEFAULT_STORE_WRITE_BATCH_SIZE,
     DEFAULT_SUMMARIZER,
@@ -183,6 +185,12 @@ class ProcessingConfig(BaseModel):
     # Interactive Configuration
     max_instruction_length: int = Field(
         default=DEFAULT_MAX_INSTRUCTION_LENGTH, ge=1, description="Maximum length of refinement instructions."
+    )
+    server_port: int = Field(
+        default=DEFAULT_SERVER_PORT, ge=1024, le=65535, description="Default port for the interactive GUI server."
+    )
+    max_file_size_bytes: int = Field(
+        default=DEFAULT_MAX_FILE_SIZE_BYTES, ge=1024, description="Maximum allowed file size for input text."
     )
 
     # Summarization Configuration

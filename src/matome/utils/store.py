@@ -25,10 +25,11 @@ from sqlalchemy import (
     text,
     update,
 )
-from sqlalchemy.engine import Connection, Engine, Result
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 from domain_models.manifest import Chunk, SummaryNode
+from matome.utils.compat import batched
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ COL_EMBEDDING: Final[str] = "embedding"  # Stores JSON of the embedding list
 # Configuration Constants
 DEFAULT_WRITE_BATCH_SIZE: Final[int] = 1000
 DEFAULT_READ_BATCH_SIZE: Final[int] = 500
+# Allow alphanumeric, underscore, hyphen only to prevent injection
 VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
@@ -131,6 +133,12 @@ class DiskChunkStore:
                 "idx_nodes_level",
                 func.json_extract(text(COL_CONTENT), "$.level"),
             ),
+            # Composite index for optimization of get_node_ids_by_level
+            Index(
+                "idx_nodes_type_level",
+                COL_TYPE,
+                func.json_extract(text(COL_CONTENT), "$.level"),
+            ),
         )
         try:
             metadata.create_all(self.engine)
@@ -162,6 +170,9 @@ class DiskChunkStore:
         try:
             embedding = json.loads(embedding_json) if embedding_json else None
             data = json.loads(content_json)
+            if not isinstance(data, dict):
+                msg = f"Node {node_id} content is not a JSON object."
+                raise TypeError(msg)
         except json.JSONDecodeError as e:
             msg = f"Failed to decode JSON for node {node_id}: {e}"
             raise ValueError(msg) from e
@@ -200,8 +211,6 @@ class DiskChunkStore:
         # Use Core Insert with REPLACE logic for SQLite
         stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
-        from matome.utils.compat import batched
-
         try:
             # Iterate over the input iterable using batched() to handle chunks efficiently
             for node_batch in batched(nodes, self.write_batch_size):
@@ -238,24 +247,22 @@ class DiskChunkStore:
             msg = f"Unexpected error adding nodes: {e}"
             raise StoreError(msg) from e
 
-    def get_nodes(self, node_ids: list[str]) -> Iterator[Chunk | SummaryNode | None]:
+    def get_nodes(self, node_ids: Iterable[str]) -> Iterator[Chunk | SummaryNode | None]:
         """
-        Retrieve multiple nodes by ID in a single batch.
-        Yields results to stream processing and avoid OOM.
+        Retrieve multiple nodes by ID.
+        Iterates over input IDs in batches, queries DB, and yields results.
 
-        The yielded nodes match the order of the input `node_ids`.
-        Missing nodes yield `None`.
+        Note: This prioritizes memory safety over preserving exact input order if IDs are duplicates or missing.
+        However, to be useful for reconstruction, it attempts to yield in order of requested batches.
         """
-        if not node_ids:
-            return
-
-        # Query in batches
-        for i in range(0, len(node_ids), self.read_batch_size):
-            batch_ids = node_ids[i : i + self.read_batch_size]
-
-            # Validate IDs in batch
-            for nid in batch_ids:
-                self._validate_node_id(nid)
+        # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
+        for batch_ids in batched(node_ids, self.read_batch_size):
+            # Validate IDs in batch efficiently
+            # Assuming batch_ids is tuple/list of strings from batched()
+            if any(not VALID_NODE_ID_PATTERN.match(nid) for nid in batch_ids):
+                # Identify specific culprit if validation fails
+                for nid in batch_ids:
+                    self._validate_node_id(nid)
 
             stmt = select(
                 self.nodes_table.c.id,
@@ -266,11 +273,11 @@ class DiskChunkStore:
 
             try:
                 with self.engine.connect() as conn:
-                    result: Result[Any] = conn.execute(stmt)
+                    # stream_results=True minimizes memory usage for the result set
+                    result = conn.execution_options(stream_results=True).execute(stmt)
 
-                    # We need random access to result rows to match input order
-                    # Fetch all for this *small* batch is unavoidable if we want to fill non-existent holes.
-                    # Optimization: create dict from rows
+                    # Create a lookup for this batch to ensure we yield in the requested order (or None)
+                    # We accept loading the *batch* results into memory (e.g. 500 items) for this mapping.
                     rows_map = {row.id: row for row in result}
 
                     for nid in batch_ids:
@@ -387,6 +394,7 @@ class DiskChunkStore:
             )
         else:
             # Uses the index on json_extract(content, '$.level')
+            # SQLAlchemy handles binding of `level` safely when used in comparison.
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(
@@ -425,6 +433,25 @@ class DiskChunkStore:
                 return result.scalar() or 0
         except SQLAlchemyError as e:
             msg = f"Failed to count nodes at level {level}: {e}"
+            raise StoreError(msg) from e
+
+    def get_max_level(self) -> int:
+        """
+        Get the maximum level present in the store.
+        Returns 0 if no summary nodes exist.
+        """
+        stmt = select(
+            func.max(
+                cast(func.json_extract(self.nodes_table.c.content, "$.level"), Integer)
+            )
+        ).where(self.nodes_table.c.type == "summary")
+
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(stmt)
+                return result.scalar() or 0
+        except SQLAlchemyError as e:
+            msg = f"Failed to get max level: {e}"
             raise StoreError(msg) from e
 
     @contextmanager

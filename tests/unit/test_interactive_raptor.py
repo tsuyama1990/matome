@@ -102,9 +102,13 @@ def test_get_children(
     mock_store.get_nodes.return_value = iter([c1, c2])
 
     # Act
-    children = interactive_engine.get_children(summary_node)
+    children_iter = interactive_engine.get_children(summary_node)
 
-    # Assert
+    # Assert return type is iterator
+    assert iter(children_iter) is children_iter
+
+    # Materialize to check content
+    children = list(children_iter)
     assert len(children) == 2
     assert c1 in children
     assert c2 in children
