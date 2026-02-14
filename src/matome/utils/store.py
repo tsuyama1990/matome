@@ -132,6 +132,12 @@ class DiskChunkStore:
                 "idx_nodes_level",
                 func.json_extract(text(COL_CONTENT), "$.level"),
             ),
+            # Composite index for optimization of get_node_ids_by_level
+            Index(
+                "idx_nodes_type_level",
+                COL_TYPE,
+                func.json_extract(text(COL_CONTENT), "$.level"),
+            ),
         )
         try:
             metadata.create_all(self.engine)
@@ -250,10 +256,12 @@ class DiskChunkStore:
         """
         # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
         for batch_ids in batched(node_ids, self.read_batch_size):
-            # batch_ids is a tuple of strings
-            # Validate IDs in batch
-            for nid in batch_ids:
-                self._validate_node_id(nid)
+            # Validate IDs in batch efficiently
+            # Assuming batch_ids is tuple/list of strings from batched()
+            if any(not VALID_NODE_ID_PATTERN.match(nid) for nid in batch_ids):
+                # Identify specific culprit if validation fails
+                for nid in batch_ids:
+                    self._validate_node_id(nid)
 
             stmt = select(
                 self.nodes_table.c.id,

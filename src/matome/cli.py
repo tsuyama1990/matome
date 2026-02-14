@@ -33,7 +33,14 @@ app = typer.Typer(
 )
 
 # Initialize defaults once to use in help text
-DEFAULT_CONFIG = ProcessingConfig()
+# We use defaults from config model directly in CLI definition
+DEFAULT_CONFIG = ProcessingConfig.default()
+
+
+def _handle_file_too_large(size: int) -> None:
+    """Handle error when file is too large."""
+    typer.echo(f"File too large: {size} bytes. Limit is 500MB.", err=True)
+    raise typer.Exit(code=1)
 
 
 def _initialize_components(config: ProcessingConfig) -> tuple[
@@ -214,8 +221,7 @@ def run(
         file_stats = input_file.stat()
         # 500MB Limit (just a safety net, though 100k-10M structures implies smaller text)
         if file_stats.st_size > 500 * 1024 * 1024:
-            typer.echo(f"File too large: {file_stats.st_size} bytes. Limit is 500MB.", err=True)
-            raise typer.Exit(code=1)
+            _handle_file_too_large(file_stats.st_size)
 
         text = input_file.read_text(encoding="utf-8")
     except Exception as e:
