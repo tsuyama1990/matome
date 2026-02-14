@@ -190,11 +190,12 @@ def test_refine_node_update_failure(
     )
     mock_store.get_node.return_value = node
     mock_store.get_nodes.return_value = iter([Chunk(index=1, text="C", start_char_idx=0, end_char_idx=1)])
-    mock_store.transaction.return_value.__enter__.return_value = MagicMock()
 
+    # Simulate DB failure on update
     mock_store.update_node.side_effect = RuntimeError("DB Write Failed")
 
     with pytest.raises(RuntimeError, match="DB Write Failed"):
         interactive_engine.refine_node("s1", "Refine")
 
-    # Transaction usage removed in favor of atomic update_node or external transaction control
+    # Verify update attempted
+    mock_store.update_node.assert_called_once()

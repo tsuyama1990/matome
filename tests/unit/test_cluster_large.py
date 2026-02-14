@@ -1,9 +1,8 @@
-from unittest.mock import MagicMock, patch
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
-import pytest
 
 from domain_models.config import ProcessingConfig
 from matome.engines.cluster import GMMClusterer
@@ -42,7 +41,6 @@ def test_approximate_clustering_path() -> None:
             # predict returns labels for batch
             mock_kmeans.predict.side_effect = lambda x: np.array([0, 1] * (len(x) // 2))
 
-            # _perform_clustering(data, n_samples, path_ids, config)
             clusters = clusterer._perform_clustering(data, 30, path_ids, config)
 
             assert MockIPCA.called

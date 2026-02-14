@@ -1,8 +1,11 @@
 from unittest.mock import MagicMock
-import pytest
+
 import panel as pn
+import pytest
+
 from matome.ui.canvas import MatomeCanvas
 from matome.ui.view_model import InteractiveSession
+
 
 class TestMatomeCanvas:
     @pytest.fixture

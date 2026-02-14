@@ -62,10 +62,7 @@ def _validate_output_dir(output_dir: Path) -> None:
         cwd = Path.cwd().resolve()
 
         # Security check: Ensure path is relative to CWD to prevent writing to arbitrary system locations
-        # unless explicitly authorized (for this CLI tool, limiting to CWD is a safe default)
         if not resolved.is_relative_to(cwd):
-             # Exception: We might allow /tmp for testing or specific user provided paths if verified.
-             # But for strict security:
              _handle_invalid_output_dir(f"Path must be within current working directory ({cwd})")
 
         # Prevent traversal outside intended parent if strict mode (optional)

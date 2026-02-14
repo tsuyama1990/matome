@@ -1,5 +1,7 @@
 import json
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -7,7 +9,7 @@ from langchain_core.messages import AIMessage
 from typer.testing import CliRunner
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Cluster, Chunk
+from domain_models.manifest import Chunk, Cluster
 from matome.agents.verifier import VerifierAgent
 from matome.cli import app
 
@@ -119,7 +121,7 @@ def test_scenario_18_full_e2e_pipeline(
     # 2. Embedder
     mock_embedder_instance = mock_embedder_cls.return_value
 
-    def mock_embed_chunks(chunks):  # type: ignore[no-untyped-def]
+    def mock_embed_chunks(chunks: list[Chunk]) -> Iterator[Chunk]:
         for c in chunks:
             c.embedding = [0.1] * 10
             yield c
@@ -131,7 +133,7 @@ def test_scenario_18_full_e2e_pipeline(
     mock_clusterer_instance = mock_clusterer_cls.return_value
 
     # IMPORTANT: cluster_nodes MUST consume the generator to trigger store writes in RaptorEngine
-    def cluster_side_effect(embeddings, config):
+    def cluster_side_effect(embeddings: Any, config: Any) -> list[Cluster]:
         for _ in embeddings:
             pass
         return [Cluster(id=0, level=0, node_indices=[0])]

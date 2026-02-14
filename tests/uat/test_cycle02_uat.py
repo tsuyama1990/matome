@@ -6,7 +6,6 @@ from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
-from domain_models.types import NodeID
 
 
 # Scenario 05: Embedding Vector Generation

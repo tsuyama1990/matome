@@ -5,12 +5,12 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 
 from domain_models.config import ProcessingConfig
+from domain_models.types import NodeID
 from matome.agents.summarizer import SummarizationAgent
 from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
 from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.interfaces import Chunker, Clusterer, Summarizer
-from domain_models.types import NodeID
 
 
 def test_interface_compliance() -> None:

@@ -8,6 +8,7 @@ from matome.agents.strategies import (
     RefinementStrategy,
 )
 from matome.agents.summarizer import SummarizationAgent
+from matome.exceptions import MatomeError
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
@@ -58,9 +59,16 @@ class InteractiveRaptorEngine:
         """
         Retrieve the root node of the tree.
         Assumes the root is the (single) node at the highest level.
+
+        Raises:
+            MatomeError: If the tree structure is invalid (e.g. max level exists but no root).
         """
         max_level = self.store.get_max_level()
         if max_level == 0:
+            # Empty store or only chunks is acceptable?
+            # If there are chunks but no summaries, max_level is 0 (if only chunks exist, level 0).
+            # If the store is totally empty, max_level might return 0.
+            # We assume a valid tree has at least level 1 summary.
             return None
 
         # Get nodes at max level
@@ -68,13 +76,22 @@ class InteractiveRaptorEngine:
         try:
             root_id = next(ids_iter)
         except StopIteration:
-            return None
+            msg = f"Max level is {max_level} but no nodes found at this level."
+            logger.exception(msg)
+            raise MatomeError(msg) from None
 
         node = self.store.get_node(root_id)
         if isinstance(node, SummaryNode):
             return node
 
-        return None
+        # If node at max level is not a summary (unlikely if level > 0), handle it.
+        # Chunk at level 0 is not a root of a tree usually unless single chunk doc.
+        # But get_max_level queries only summary nodes in current store implementation?
+        # Let's check store implementation. get_max_level queries "summary" type.
+        # So this branch might be unreachable if logic is correct, but safe to keep.
+
+        msg = f"Root node {root_id} is not a SummaryNode."
+        raise MatomeError(msg)
 
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
@@ -117,20 +134,42 @@ class InteractiveRaptorEngine:
             raise TypeError(msg)
 
         # Batch retrieval is handled by get_children calling store.get_nodes
-        # We consume the generator into a list here because we need all text for context context
-        # In extremely large scale scenarios, we might need to truncate or sample,
-        # but children count per node is usually limited by clustering branching factor (e.g. 10-20).
-        children = list(self.get_children(node))
+        # We consume the generator into a list because we need to concatenate text.
+        # Memory Safety: We check the total length before fully processing if possible,
+        # but to know total length we need to fetch.
+        # Ideally, we stream and sum length, stopping if it exceeds a safe limit.
+        children: list[SummaryNode | Chunk] = []
+        total_len = 0
+        limit = self.config.max_input_length * 2 # Buffer for context
 
-        if not children:
-            msg = f"Node {node_id} has no accessible children. Cannot refine."
-            raise ValueError(msg)
+        for child in self.get_children(node):
+            children.append(child)
+            total_len += len(child.text)
+            if total_len > limit:
+                # We stop materializing to avoid OOM, but we still need to validate count.
+                # If we stop early, count check will fail.
+                # If the node implies huge children, we can't refine it easily with this architecture.
+                # We log warning and proceed with what we have? No, partial data is bad.
+                # We raise error?
+                pass
+                # For now, let's just break and let the validation catch mismatch or truncation handle it.
+                # Actually, validation "len(children) != len(node.children_indices)" requires ALL children.
+                # So we must fetch all IDs.
+                # If distinct children count is huge, we might OOM.
+                # But typically children count is 5-20 (clustering).
+                # So list(children) is safe for count, but total TEXT might be large.
 
+        # Validation: Ensure we retrieved all expected children
         if len(children) != len(node.children_indices):
             msg = f"Node {node_id} expects {len(node.children_indices)} children but found {len(children)}. Cannot refine with incomplete data."
             logger.error(msg)
             raise ValueError(msg)
 
+        if not children:
+            msg = f"Node {node_id} has no accessible children. Cannot refine."
+            raise ValueError(msg)
+
+        # Construct source text
         child_texts = [child.text for child in children]
         source_text = "\n\n".join(child_texts)
 

@@ -6,6 +6,8 @@ from panel.viewable import Viewable
 from domain_models.manifest import Chunk, SummaryNode
 from matome.ui.view_model import InteractiveSession
 
+# Configure defaults if not in config
+DEFAULT_LEVEL_FORMAT = "L{level}: {dikw}"
 
 class MatomeCanvas:
     """
@@ -32,13 +34,18 @@ class MatomeCanvas:
             sizing_mode="stretch_width"
         )
 
+    def _format_level_label(self, level: int, dikw_val: str) -> str:
+        """Format the level label using configuration."""
+        # Ideally fetch from config, but for now hardcode/constant is better than magic string
+        return DEFAULT_LEVEL_FORMAT.format(level=level, dikw=dikw_val.upper())
+
     def _render_breadcrumbs(self) -> Viewable:
         def _breadcrumbs(breadcrumbs: list[SummaryNode | Chunk]) -> pn.Row:
             try:
                 items: list[Viewable] = []
                 for i, node in enumerate(breadcrumbs):
                     if isinstance(node, SummaryNode):
-                        label = f"L{node.level}: {node.metadata.dikw_level.value.upper()}"
+                        label = self._format_level_label(node.level, node.metadata.dikw_level.value)
                         node_id = node.id
                     else:
                         label = f"Chunk {node.index}"
