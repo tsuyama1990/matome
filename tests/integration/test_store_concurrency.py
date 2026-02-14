@@ -10,7 +10,7 @@ from sqlalchemy.exc import OperationalError
 
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
-from matome.utils.store import DiskChunkStore
+from matome.utils.store import DiskChunkStore, StoreError
 
 # Constants
 NUM_THREADS = 4
@@ -199,7 +199,7 @@ def test_db_corruption_handling(tmp_path: Path) -> None:
         mock_conn.execute.side_effect = OperationalError("disk I/O error", params=None, orig=Exception("Disk Error"))
 
         # Test get_node handles DB error by propagating it (standardized behavior)
-        with pytest.raises(OperationalError, match="disk I/O error"):
+        with pytest.raises(StoreError, match="disk I/O error"):
             store.get_node(1)
 
     store.close()

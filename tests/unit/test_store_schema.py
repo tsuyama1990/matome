@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
-from matome.utils.store import DiskChunkStore
+from matome.utils.store import DiskChunkStore, StoreError
 
 
 def test_add_chunks_streaming(tmp_path: Path) -> None:
@@ -170,7 +170,7 @@ def test_transaction_rollback_on_error(tmp_path: Path) -> None:
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(store.engine, "begin", MagicMock(return_value=BrokenConnection()))
 
-        with pytest.raises(RuntimeError, match="Database exploded"):
+        with pytest.raises(StoreError, match="Database exploded"):
             store.add_chunks(chunks)
 
 

@@ -1,20 +1,22 @@
+import contextlib
 import json
 import logging
+import re
 import shutil
 import tempfile
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from sqlalchemy import (
     Column,
+    Index,
     Integer,
     MetaData,
     String,
     Table,
     Text,
-    bindparam,
     cast,
     create_engine,
     func,
@@ -23,21 +25,27 @@ from sqlalchemy import (
     text,
     update,
 )
+from sqlalchemy.engine import Connection, Engine, Result
 
 from domain_models.manifest import Chunk, SummaryNode
 
 logger = logging.getLogger(__name__)
 
 # Constants for DB Schema
-TABLE_NODES = "nodes"
-COL_ID = "id"
-COL_TYPE = "type"
-COL_CONTENT = "content"  # Stores JSON of the node (excluding embedding)
-COL_EMBEDDING = "embedding"  # Stores JSON of the embedding list
+TABLE_NODES: Final[str] = "nodes"
+COL_ID: Final[str] = "id"
+COL_TYPE: Final[str] = "type"
+COL_CONTENT: Final[str] = "content"  # Stores JSON of the node (excluding embedding)
+COL_EMBEDDING: Final[str] = "embedding"  # Stores JSON of the embedding list
 
 # Configuration Constants
-DEFAULT_WRITE_BATCH_SIZE = 1000
-DEFAULT_READ_BATCH_SIZE = 500
+DEFAULT_WRITE_BATCH_SIZE: Final[int] = 1000
+DEFAULT_READ_BATCH_SIZE: Final[int] = 500
+VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
+class StoreError(Exception):
+    """Base exception for storage errors."""
 
 
 class DiskChunkStore:
@@ -86,21 +94,22 @@ class DiskChunkStore:
 
         # Configure connection pooling for performance
         # SQLite handles concurrency poorly with multiple writers, but we use WAL mode.
-        # Pool size and timeout help manage contention.
-        # isolation_level=None allows manual transaction control if needed, but AUTOCOMMIT is default.
-        # For WAL, standard is fine. We explicitly set PRAGMAs.
-        self.engine = create_engine(
+        self.engine: Engine = create_engine(
             db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800
         )
         self._setup_db()
 
     def _setup_db(self) -> None:
         """Initialize the database schema."""
-        with self.engine.begin() as conn:
-            # Enable WAL mode for performance
-            conn.execute(text("PRAGMA journal_mode=WAL;"))
-            # Synchronous NORMAL is faster and safe enough for WAL
-            conn.execute(text("PRAGMA synchronous=NORMAL;"))
+        try:
+            with self.engine.begin() as conn:
+                # Enable WAL mode for performance
+                conn.execute(text("PRAGMA journal_mode=WAL;"))
+                # Synchronous NORMAL is faster and safe enough for WAL
+                conn.execute(text("PRAGMA synchronous=NORMAL;"))
+        except Exception as e:
+            msg = f"Failed to configure database PRAGMAs: {e}"
+            raise StoreError(msg) from e
 
         # Define schema using SQLAlchemy Core
         metadata = MetaData()
@@ -111,8 +120,26 @@ class DiskChunkStore:
             Column(COL_TYPE, String),
             Column(COL_CONTENT, Text),  # Main node data
             Column(COL_EMBEDDING, Text),  # Embedding separated for efficient updates
+            # Index on extracted JSON level field for performance
+            Index(
+                "idx_nodes_level",
+                func.json_extract(text(COL_CONTENT), "$.level"),
+            ),
         )
-        metadata.create_all(self.engine)
+        try:
+            metadata.create_all(self.engine)
+        except Exception as e:
+            msg = f"Failed to create database schema: {e}"
+            raise StoreError(msg) from e
+
+    def _validate_node_id(self, node_id: str) -> str:
+        """Validate node ID format to prevent injection/corruption."""
+        # Convert integer indices to string if necessary, but caller usually handles this.
+        # Here we strictly validate string format.
+        if not VALID_NODE_ID_PATTERN.match(node_id):
+            msg = f"Invalid node ID format: {node_id}"
+            raise ValueError(msg)
+        return node_id
 
     def _deserialize_node(
         self,
@@ -169,48 +196,54 @@ class DiskChunkStore:
 
         from matome.utils.compat import batched
 
-        # Iterate over the input iterable using batched() to handle chunks efficiently
-        # without loading the entire dataset into memory.
-        for node_batch in batched(nodes, self.write_batch_size):
-            buffer: list[dict[str, Any]] = []
+        try:
+            # Iterate over the input iterable using batched() to handle chunks efficiently
+            for node_batch in batched(nodes, self.write_batch_size):
+                buffer: list[dict[str, Any]] = []
 
-            for node in node_batch:
-                # Pydantic v2 model_dump_json supports `exclude={'embedding'}`.
-                content_json = node.model_dump_json(exclude={"embedding"})
+                for node in node_batch:
+                    content_json = node.model_dump_json(exclude={"embedding"})
+                    embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+                    node_id = str(node.index) if isinstance(node, Chunk) else node.id
 
-                # Embedding JSON
-                embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+                    # Validate ID
+                    self._validate_node_id(node_id)
 
-                node_id = str(node.index) if isinstance(node, Chunk) else node.id
+                    buffer.append(
+                        {
+                            "id": node_id,
+                            "type": node_type,
+                            "content": content_json,
+                            "embedding": embedding_json,
+                        }
+                    )
 
-                buffer.append(
-                    {
-                        "id": node_id,
-                        "type": node_type,
-                        "content": content_json,
-                        "embedding": embedding_json,
-                    }
-                )
+                # Flush batch with transaction
+                with self.engine.begin() as conn:
+                    conn.execute(stmt, buffer)
+        except Exception as e:
+            msg = f"Failed to add nodes to store: {e}"
+            raise StoreError(msg) from e
 
-            # Flush batch
-            with self.engine.begin() as conn:
-                conn.execute(stmt, buffer)
-
-    def get_nodes(self, node_ids: list[str]) -> Iterable[Chunk | SummaryNode | None]:
+    def get_nodes(self, node_ids: list[str]) -> Iterator[Chunk | SummaryNode | None]:
         """
         Retrieve multiple nodes by ID in a single batch.
         Yields results to stream processing and avoid OOM.
 
-        The yielded nodes match the order of the input `node_ids` for each batch processing step.
-        If a node is not found, None is yielded in its place.
+        The yielded nodes match the order of the input `node_ids`.
+        Missing nodes yield `None`.
         """
         if not node_ids:
             return
 
-        # SQLite limit for variables is usually 999 or 32766. Use safe batch size.
-        # Query in batches to respect SQLite variable limits
+        # Query in batches
         for i in range(0, len(node_ids), self.read_batch_size):
             batch_ids = node_ids[i : i + self.read_batch_size]
+
+            # Validate IDs in batch
+            for nid in batch_ids:
+                self._validate_node_id(nid)
+
             stmt = select(
                 self.nodes_table.c.id,
                 self.nodes_table.c.type,
@@ -218,26 +251,30 @@ class DiskChunkStore:
                 self.nodes_table.c.embedding,
             ).where(self.nodes_table.c.id.in_(batch_ids))
 
-            # To preserve order within batch and handle missing keys, we must load the batch into a dict.
-            # This is O(Batch_Size) memory, which is safe given standard batch sizes (e.g. 500-1000).
-            id_to_node_batch: dict[str, Chunk | SummaryNode] = {}
+            try:
+                with self.engine.connect() as conn:
+                    result: Result[Any] = conn.execute(stmt)
 
-            with self.engine.connect() as conn:
-                db_rows = conn.execute(stmt).fetchall()
+                    # We need random access to result rows to match input order
+                    # Fetch all for this *small* batch is unavoidable if we want to fill non-existent holes.
+                    # Optimization: create dict from rows
+                    rows_map = {row.id: row for row in result}
 
-                for row in db_rows:
-                    nid, node_type, content_json, embedding_json = row
-                    try:
-                        node = self._deserialize_node(nid, node_type, content_json, embedding_json)
-                        id_to_node_batch[nid] = node
-                    except Exception:
-                        logger.exception(f"Failed to deserialize node {nid}")
-                        # Raise consistent exception
-                        raise
-
-            # Yield nodes for the current batch in requested order
-            for nid in batch_ids:
-                yield id_to_node_batch.get(nid)
+                    for nid in batch_ids:
+                        row = rows_map.get(nid)
+                        if row:
+                            try:
+                                yield self._deserialize_node(
+                                    row.id, row.type, row.content, row.embedding
+                                )
+                            except Exception:
+                                logger.exception(f"Error deserializing node {nid}")
+                                yield None
+                        else:
+                            yield None
+            except Exception as e:
+                msg = f"Failed to retrieve nodes batch: {e}"
+                raise StoreError(msg) from e
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
         """
@@ -247,17 +284,22 @@ class DiskChunkStore:
         if embedding is None:
             return
 
+        node_id_str = str(node_id)
+        self._validate_node_id(node_id_str)
         embedding_json = json.dumps(embedding)
 
-        # Use SQLAlchemy Core expression for parameterized update
         stmt = (
             update(self.nodes_table)
-            .where(self.nodes_table.c.id == str(node_id))
+            .where(self.nodes_table.c.id == node_id_str)
             .values(embedding=embedding_json)
         )
 
-        with self.engine.begin() as conn:
-            conn.execute(stmt)
+        try:
+            with self.engine.begin() as conn:
+                conn.execute(stmt)
+        except Exception as e:
+            msg = f"Failed to update embedding for node {node_id}: {e}"
+            raise StoreError(msg) from e
 
     def update_node(self, node: SummaryNode) -> None:
         """
@@ -266,73 +308,78 @@ class DiskChunkStore:
         content_json = node.model_dump_json(exclude={"embedding"})
         embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
 
+        self._validate_node_id(node.id)
+
         stmt = (
             update(self.nodes_table)
             .where(self.nodes_table.c.id == node.id)
             .values(content=content_json, embedding=embedding_json)
         )
 
-        with self.engine.begin() as conn:
-            conn.execute(stmt)
+        try:
+            with self.engine.begin() as conn:
+                conn.execute(stmt)
+        except Exception as e:
+            msg = f"Failed to update node {node.id}: {e}"
+            raise StoreError(msg) from e
 
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
-        # Use SQLAlchemy Core expression for parameterized select
+        node_id_str = str(node_id)
+        self._validate_node_id(node_id_str)
+
         stmt = select(
             self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
-        ).where(self.nodes_table.c.id == str(node_id))
+        ).where(self.nodes_table.c.id == node_id_str)
 
-        with self.engine.connect() as conn:
-            result = conn.execute(stmt)
-            row = result.fetchone()
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(stmt)
+                row = result.fetchone()
 
-            if not row:
-                return None
+                if not row:
+                    return None
 
-            node_type, content_json, embedding_json = row
-
-            try:
-                return self._deserialize_node(str(node_id), node_type, content_json, embedding_json)
-            except Exception:
-                logger.exception(f"Failed to deserialize node {node_id}")
-                # Standardized: raise exception on corruption
+                node_type, content_json, embedding_json = row
+                return self._deserialize_node(node_id_str, node_type, content_json, embedding_json)
+        except Exception as e:
+            if isinstance(e, ValueError): # From deserialize
                 raise
+            msg = f"Failed to retrieve node {node_id}: {e}"
+            raise StoreError(msg) from e
 
-        return None
-
-    def get_node_ids_by_level(self, level: int) -> Iterable[str]:
+    def get_node_ids_by_level(self, level: int) -> Iterator[str]:
         """
         Stream node IDs for a specific hierarchical level.
-        Note: Since 'level' is stored inside the JSON content, this might be slow on large datasets
-        without an index or extracted column. For the current scope (SQLite), it's acceptable.
+        Uses database index for efficiency.
         """
         # Optimized: If level is 0, we can filter by type='chunk' which is faster.
         if level == 0:
-            # Must order by integer value of ID to match processing stream order
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(self.nodes_table.c.type == "chunk")
                 .order_by(cast(self.nodes_table.c.id, Integer))
             )
         else:
-            # For summary nodes, we must check the JSON content.
-            # SQLite supports json_extract.
-            # Use bindparam for level to prevent injection.
+            # Uses the index on json_extract(content, '$.level')
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(
                     self.nodes_table.c.type == "summary",
-                    func.json_extract(self.nodes_table.c.content, "$.level") == bindparam("level", level),
+                    func.json_extract(self.nodes_table.c.content, "$.level") == level,
                 )
                 .order_by(self.nodes_table.c.id)
             )
 
-        with self.engine.connect() as conn:
-            # Stream results to avoid loading all IDs into memory at once
-            # execution_options(stream_results=True) is the Core way.
-            result = conn.execution_options(stream_results=True).execute(stmt)
-            for row in result:
-                yield row[0]
+        try:
+            with self.engine.connect() as conn:
+                # Stream results to avoid loading all IDs into memory at once
+                result = conn.execution_options(stream_results=True).execute(stmt)
+                for row in result:
+                    yield row[0]
+        except Exception as e:
+            msg = f"Failed to stream node IDs for level {level}: {e}"
+            raise StoreError(msg) from e
 
     def get_node_count(self, level: int) -> int:
         """
@@ -347,27 +394,37 @@ class DiskChunkStore:
                 func.json_extract(self.nodes_table.c.content, "$.level") == level,
             )
 
-        with self.engine.connect() as conn:
-            result = conn.execute(stmt)
-            return result.scalar() or 0
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(stmt)
+                return result.scalar() or 0
+        except Exception as e:
+            msg = f"Failed to count nodes at level {level}: {e}"
+            raise StoreError(msg) from e
 
     @contextmanager
-    def transaction(self) -> Iterator[Any]:
+    def transaction(self) -> Iterator[Connection]:
         """
         Context manager for an explicit transaction.
         Note: Engine.begin() handles transaction lifecycle.
         """
-        with self.engine.begin() as conn:
-            yield conn
+        try:
+            with self.engine.begin() as conn:
+                yield conn
+        except Exception as e:
+            msg = f"Transaction failed: {e}"
+            raise StoreError(msg) from e
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""
 
     def close(self) -> None:
         """Close the engine and cleanup temp files."""
-        self.engine.dispose()
+        with contextlib.suppress(Exception):
+            self.engine.dispose()
         if self.temp_dir:
-            shutil.rmtree(self.temp_dir, ignore_errors=True)
+            with contextlib.suppress(Exception):
+                shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     def __enter__(self) -> "DiskChunkStore":
         return self
