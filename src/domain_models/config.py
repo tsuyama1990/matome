@@ -184,6 +184,9 @@ class ProcessingConfig(BaseModel):
     max_instruction_length: int = Field(
         default=DEFAULT_MAX_INSTRUCTION_LENGTH, ge=1, description="Maximum length of refinement instructions."
     )
+    server_port: int = Field(
+        default=5006, ge=1024, le=65535, description="Default port for the interactive GUI server."
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(

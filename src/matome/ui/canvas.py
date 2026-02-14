@@ -31,7 +31,7 @@ class MatomeCanvas:
             sizing_mode="stretch_width"
         )
 
-    def _render_breadcrumbs(self) -> Any:
+    def _render_breadcrumbs(self) -> pn.viewable.Viewable:
         def _breadcrumbs(breadcrumbs: list[SummaryNode | Chunk]) -> pn.Row:
             try:
                 items = []
@@ -64,10 +64,11 @@ class MatomeCanvas:
                 return pn.pane.Markdown(f"Error rendering breadcrumbs: {e}", style={"color": "red"})  # type: ignore[no-untyped-call]
 
         # We bind to the parameter itself
-        return pn.bind(_breadcrumbs, self.session.param.breadcrumbs)
+        # Explicitly cast to Viewable to satisfy MyPy since pn.bind can return various types
+        return pn.bind(_breadcrumbs, self.session.param.breadcrumbs)  # type: ignore[no-any-return]
 
-    def _render_pyramid_view(self) -> Any:
-        def _view_nodes(nodes: list[SummaryNode | Chunk]) -> Any:
+    def _render_pyramid_view(self) -> pn.viewable.Viewable:
+        def _view_nodes(nodes: list[SummaryNode | Chunk]) -> pn.viewable.Viewable:
             try:
                 if not nodes:
                     # If no children, maybe we are at leaf or root just loaded?
@@ -112,9 +113,9 @@ class MatomeCanvas:
             except Exception as e:
                 return pn.pane.Markdown(f"Error rendering nodes: {e}", style={"color": "red"})  # type: ignore[no-untyped-call]
 
-        return pn.bind(_view_nodes, self.session.param.current_view_nodes)
+        return pn.bind(_view_nodes, self.session.param.current_view_nodes)  # type: ignore[no-any-return]
 
-    def _render_details(self) -> Any:
+    def _render_details(self) -> pn.viewable.Viewable:
         def _details(node: SummaryNode | Chunk | None) -> pn.Column:
             try:
                 if not node:
@@ -146,4 +147,4 @@ class MatomeCanvas:
             except Exception as e:
                 return pn.Column(pn.pane.Markdown(f"Error rendering details: {e}", style={"color": "red"}))  # type: ignore[no-untyped-call]
 
-        return pn.bind(_details, self.session.param.selected_node)
+        return pn.bind(_details, self.session.param.selected_node)  # type: ignore[no-any-return]

@@ -270,7 +270,7 @@ def serve(
             help="Path to the chunks.db file.",
         ),
     ],
-    port: Annotated[int, typer.Option("--port", "-p", help="Port to serve on.")] = 5006,
+    port: Annotated[int, typer.Option("--port", "-p", help="Port to serve on.")] = DEFAULT_CONFIG.server_port,
 ) -> None:
     """
     Launch the interactive GUI.
