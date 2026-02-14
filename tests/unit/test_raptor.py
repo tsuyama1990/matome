@@ -188,7 +188,7 @@ def test_raptor_input_validation(
     chunker, embedder, clusterer, summarizer = mock_dependencies
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
-    with pytest.raises(MatomeError, match="Input text must be a non-empty string"):
+    with pytest.raises(MatomeError, match="Input text cannot be empty."):
         engine.run("")
 
     large_text = "a" * (config.max_input_length + 100)

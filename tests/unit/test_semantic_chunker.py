@@ -89,8 +89,8 @@ def test_split_text_special_characters(mock_embedder: MagicMock) -> None:
     ]
 
     chunks = list(chunker.split_text(text, config))
-    assert len(chunks) > 0
-    # For 2 sentences (1 gap), threshold == distance, so merge unless > threshold.
-    # With 90th percentile of [1.0], threshold is 1.0. 1.0 > 1.0 is False.
+    assert len(chunks) == 2
+    # Expect split because [1,0] and [0,1] are orthogonal (sim=0, dist=1.0)
+    # Default threshold (0.8 sim / 0.2 dist) -> Split
     assert "Test!" in chunks[0].text
-    assert "Another line." in chunks[0].text
+    assert "Another line." in chunks[1].text

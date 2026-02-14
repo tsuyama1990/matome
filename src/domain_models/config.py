@@ -232,6 +232,14 @@ class ProcessingConfig(BaseModel):
         },
         description="Mapping of DIKW levels to strategy names.",
     )
+    dikw_topology: dict[str, DIKWLevel] = Field(
+        default_factory=lambda: {
+            "root": DIKWLevel.WISDOM,
+            "intermediate": DIKWLevel.KNOWLEDGE,
+            "leaf": DIKWLevel.INFORMATION,
+        },
+        description="Mapping of tree topology positions ('root', 'intermediate', 'leaf') to DIKW levels.",
+    )
 
     @field_validator("embedding_model", mode="after")
     @classmethod

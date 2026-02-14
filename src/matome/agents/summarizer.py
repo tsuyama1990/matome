@@ -14,7 +14,7 @@ from langchain_openai import ChatOpenAI
 from tenacity import Retrying, stop_after_attempt, wait_exponential
 
 from domain_models.config import ProcessingConfig
-from domain_models.constants import PROMPT_INJECTION_PATTERNS
+from domain_models.constants import PROMPT_INJECTION_PATTERNS, SYSTEM_INJECTION_PATTERNS
 from matome.agents.strategies import ChainOfDensityStrategy
 from matome.config import get_openrouter_api_key, get_openrouter_base_url
 from matome.exceptions import SummarizationError
@@ -172,11 +172,7 @@ class SummarizationAgent:
                   raise ValueError(msg)
 
         # 5. SQL/System Injection Check
-        suspicious_patterns = [
-            r"\b(DROP|DELETE|UPDATE|INSERT)\s+(TABLE|FROM|INTO)\b",
-            r"\b(rm|sudo|chmod|chown)\s+-[a-zA-Z]+\b",
-        ]
-        for pattern in suspicious_patterns:
+        for pattern in SYSTEM_INJECTION_PATTERNS:
             if re.search(pattern, text, flags=re.IGNORECASE):
                 msg = f"Input text contains suspicious pattern (SQL/Command Injection): {pattern}"
                 raise ValueError(msg)

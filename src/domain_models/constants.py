@@ -9,6 +9,20 @@ PROMPT_INJECTION_PATTERNS = [
     r"(?i)ignore\s+all\s+instructions",
     r"(?i)system\s+prompt",
     r"(?i)simulated\s+response",
+    r"(?i)base64",
+    r"(?i)encoded\s+text",
+    r"(?i)developer\s+mode",
+    r"(?i)jailbreak",
+    r"(?i)DAN\s+mode",
+    r"(?i)unrestricted\s+mode",
+]
+
+SYSTEM_INJECTION_PATTERNS = [
+    r"(?i)\b(DROP|DELETE|UPDATE|INSERT|ALTER)\s+(TABLE|FROM|INTO|DATABASE)\b",
+    r"(?i)\b(rm|sudo|chmod|chown|wget|curl|nc|netcat)\s+",
+    r"(?i)\b(cat|ls|pwd|whoami)\s+",
+    r"(?i)/bin/sh",
+    r"(?i)/bin/bash",
 ]
 
 # Defaults

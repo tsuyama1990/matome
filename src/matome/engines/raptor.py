@@ -47,16 +47,17 @@ class RaptorEngine:
         """
         Determine the PromptStrategy based on the current level and topology.
         """
-        target_dikw: DIKWLevel
+        topology_key: str
         if is_final_layer:
-            target_dikw = DIKWLevel.WISDOM
+            topology_key = "root"
         elif current_level == 0:
-            target_dikw = DIKWLevel.INFORMATION
+            topology_key = "leaf"
         else:
-            target_dikw = DIKWLevel.KNOWLEDGE
+            topology_key = "intermediate"
+
+        target_dikw = self.config.dikw_topology.get(topology_key, DIKWLevel.KNOWLEDGE)
 
         # Map DIKW level to strategy name using config mapping
-        # Config mapping defaults to "wisdom" -> "wisdom" etc.
         strategy_name = self.config.strategy_mapping.get(target_dikw, target_dikw.value)
 
         strategy_class = STRATEGY_REGISTRY.get(strategy_name)
@@ -114,16 +115,20 @@ class RaptorEngine:
             msg = f"Chunk {chunk.index} missing embedding."
             raise MatomeError(msg)
 
-    def run(self, text: str, store: DiskChunkStore | None = None) -> DocumentTree:
+    def run(self, text: str | Iterable[str], store: DiskChunkStore | None = None) -> DocumentTree:
         """
         Execute the RAPTOR pipeline.
         """
-        if not text or not isinstance(text, str):
-            msg = "Input text must be a non-empty string."
+        if not text:
+            msg = "Input text cannot be empty."
             raise MatomeError(msg)
 
-        if len(text) > self.config.max_input_length:
-            msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
+        if isinstance(text, str):
+            if len(text) > self.config.max_input_length:
+                msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
+                raise MatomeError(msg)
+        elif not isinstance(text, Iterable):
+            msg = "Input text must be a string or iterable of strings."
             raise MatomeError(msg)
 
         logger.info("Starting RAPTOR process: Chunking text.")
@@ -143,14 +148,14 @@ class RaptorEngine:
                  msg = "No nodes remaining."
                  raise MatomeError(msg)
 
-            # We need L0 IDs for finalizing the tree.
-            l0_ids = list(active_store.get_node_ids_by_level(0))
-            l0_ids_typed = cast(list[NodeID], l0_ids)
-
             # Recursive Summarization
             final_root_id = self._process_recursion(
                 clusters, node_count, active_store
             )
+
+            # Retrieve L0 IDs for finalizing the tree (deferred to save memory during recursion)
+            l0_ids = list(active_store.get_node_ids_by_level(0))
+            l0_ids_typed = cast(list[NodeID], l0_ids)
 
             return self._finalize_tree([final_root_id], active_store, l0_ids_typed)
 
@@ -166,10 +171,9 @@ class RaptorEngine:
         Returns the ID of the root node.
         """
         level = start_level
+        node_count = prev_node_count
 
         while True:
-            # Use count query instead of loading all IDs
-            node_count = store.get_node_count(level)
             logger.info(f"Processing Level {level}. Node count: {node_count}")
 
             if node_count == 0:
@@ -203,8 +207,10 @@ class RaptorEngine:
             )
 
             summary_buffer: list[SummaryNode] = []
+            next_level_count = 0
 
             for node in new_nodes_iter:
+                next_level_count += 1
                 summary_buffer.append(node)
 
                 if len(summary_buffer) >= self.config.chunk_buffer_size:
@@ -215,9 +221,7 @@ class RaptorEngine:
                 store.add_summaries(summary_buffer)
 
             level = next_level
-
-            # Check next level count
-            node_count = store.get_node_count(level)
+            node_count = next_level_count
 
             clusters = self._embed_and_cluster_next_level(level, store) if node_count > 1 else []
 
@@ -253,16 +257,17 @@ class RaptorEngine:
             batch_size = min(self.config.embedding_batch_size, 100)
 
             for batch in batched(node_text_generator(), batch_size):
-                # Optimize: Don't convert to list if possible, or unzip efficiently.
-                # zip(*batch) creates two tuples.
-                ids_tuple, texts_tuple = zip(*batch, strict=True)
-
-                if not ids_tuple:
+                # Optimize: Avoid zip(*batch) to reduce intermediate tuple creation
+                batch_list = list(batch)
+                if not batch_list:
                     continue
 
+                ids_list = [item[0] for item in batch_list]
+                texts_list = [item[1] for item in batch_list]
+
                 try:
-                    embeddings = self.embedder.embed_strings(texts_tuple)
-                    for nid, embedding in zip(ids_tuple, embeddings, strict=True):
+                    embeddings = self.embedder.embed_strings(texts_list)
+                    for nid, embedding in zip(ids_list, embeddings, strict=True):
                         store.update_node_embedding(nid, embedding)
                         yield embedding
                 except Exception as e:
