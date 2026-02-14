@@ -1,26 +1,70 @@
-# User Test Scenario & Tutorial Plan
+# User Test Scenario & Tutorial Plan (Refined)
 
-## Aha! Moment
-/home/tomo/project/matome/test_data/エミン流「会社四季報」最強の読み方.txt
-を読み込ませて
-The "Grok" Moment (直感的な理解)
-ファイルを開いた瞬間、大量のテキストではなく、たった一つの**「強烈な教訓（Wisdom）」**が表示され、本の核心を一瞬で理解できた瞬間。
-「うわ、この本2000文字もあったのに、言いたいことって結局これだけか！」
-The "Zoom-In" Thrill (能動的な探求)
-気になった教訓をクリックすると、それが**「なぜそう言えるのか（Knowledge）」、「具体的に何をすべきか（Action）」**へと、まるでGoogle Earthのように詳細化されていく瞬間。
-「なるほど、この哲学は『PSR割安株』と『定点観測』という2つの柱で成り立っているのか」
-AIの解釈が気に入らないとき、「ここはもっと辛口に書き直して」と指示すると、ツリー構造の一部だけが即座に書き換わり、自分だけの最強のまとめ（ナレッジベース）が完成する瞬間。
+## 1. Tutorial Strategy
 
-## Prerequisites
-Environment:
-Python 3.10+ 環境（uv または pip で依存関係インストール済み）
-panel, watchfiles ライブラリがインストールされていること。
-.env ファイルに有効な OPENAI_API_KEY が設定されていること（GPT-4o推奨）。
-Data Preparation:
-対象ファイル: test_data/エミン流「会社四季報」最強の読み方.txt が配置されていること。
-DB初期化: テスト前に results/chunks.db が存在しない（またはクリアされている）こと。
-Execution Command:
-Batch Process (初回生成): python -m matome.cli run test_data/エミン流「会社四季報」最強の読み方.txt --mode dikw
+To ensure a seamless onboarding experience and rigorous testing, we will consolidate all user scenarios into a single executable `marimo` notebook. This approach serves dual purposes:
+1.  **Interactive Documentation:** Users can modify code cells and see results instantly, learning by doing.
+2.  **Automated UAT:** The notebook acts as a system test script that verifies the API contract.
 
-## Success Criteria
-以下の出力が得られれば、テストは**合格（Pass）**です。Scenario A: DIKW階層構造の生成品質 (Semantic Zooming)自動生成された summary_dikw.md または Canvas初期画面において、以下の階層性が明確に表現されていること。階層期待される出力内容（具体例）判定基準 (Pass/Fail)L1: Wisdom(Root)「四季報は読むな、変化を感じろ。市場の歪みは15年の定点観測の中に現れる。」（※20〜50文字程度の、抽象度が高い哲学的メッセージ）□ 詳細な数値や固有名詞が含まれていないこと。□ 読者の価値観を揺さぶる「命令形」や「断定」であること。L2: Knowledge(Branches)1. 時間軸の裁定取引: 「プロは短期を見るが、個人は長期の変化（アノマリー）を味方につけろ」2. PSRの逆張り思考: 「利益は操作できるが売上は嘘をつかない。不人気な高収益体質を狙え」□ 「Why（なぜそうなるのか）」のロジックが説明されていること。□ 3〜5個の主要な概念にグルーピングされていること。L3: Action(Twigs)【実践チェックリスト】- [ ] 過去の四季報の付箋の色を比較する- [ ] PSR 1倍割れ かつ 自己資本比率50%以上 をスクリーニング- [ ] 「世界初」のワードが出たらウォッチリストに入れる□ **「明日から実行できる」**具体的な行動指針になっていること。□ 具体的な数値（1倍、50%など）や固有名詞が含まれていること。Scenario B: インタラクティブ修正の反映 (Interactive Refinement)Canvas UI上での操作が正しく機能すること。ドリルダウン動作:[ ] L1 (Wisdom) をクリックすると、関連する L2 (Knowledge) カードだけが表示/展開されること。[ ] ユーザーが迷子にならずに L1 ⇔ L3 を行き来できること。書き換え動作 (Refinement):Action: L3のノードを選択し、「このPSRの説明を、投資初心者の中学生でもわかるように例え話を使って書き直して」と入力する。Expected Output:「PSRというのは、お店の人気度を測る『行列メーター』のようなものです。利益（お小遣い）は隠せても、行列（売上）は隠せません。だから...」DB Verification: chunks.db を再読み込みした際、修正後のテキストが保存されていること。Scenario C: 原文へのトレーサビリティ (Source Verification)AIが勝手なことを言っていないか確認できること。[ ] L3 (Action) の「ソースを表示」ボタンを押すと、**「エミン流...txt」の該当箇所の抜粋（Chunk）**が表示されること。[ ] ハルシネーション（原文にない創作）が含まれていないか、原文と比較して検証可能であること。
+### Mock Mode vs. Real Mode
+-   **Mock Mode (Default for CI/Dev):**
+    -   Uses pre-generated responses for `SummarizationAgent` to avoid API costs and latency.
+    -   Ensures deterministic output for testing logic and UI flow.
+    -   Activated by setting `OPENAI_API_KEY="mock"` or passing a flag.
+-   **Real Mode:**
+    -   Connects to the actual OpenAI API.
+    -   Used for quality assurance (Wisdom/Knowledge content check).
+
+## 2. Tutorial Plan
+
+We will create **one master tutorial file**: `tutorials/UAT_AND_TUTORIAL.py`.
+
+### Structure of `UAT_AND_TUTORIAL.py`:
+
+1.  **Introduction & Setup:**
+    -   Install dependencies (`uv sync`).
+    -   Import `matome` modules.
+    -   Setup `DiskChunkStore` (temporary DB).
+
+2.  **Part 1: The "Grok" Moment (Cycle 01)**
+    -   Load sample text ("Investment Philosophy").
+    -   Run `RaptorEngine` in `dikw` mode.
+    -   **Action:** Display the generated "Wisdom" (Root Node).
+    -   **Validation:** Assert `metadata.dikw_level == "wisdom"`.
+
+3.  **Part 2: Semantic Zooming (Cycle 03)**
+    -   Traverse the tree programmatically.
+    -   **Action:** Display children of Root (Knowledge).
+    -   **Action:** Display children of Knowledge (Information).
+    -   **Validation:** Assert hierarchy depth and node counts.
+
+4.  **Part 3: Interactive Refinement (Cycle 02 & 04)**
+    -   **Action:** Select a Knowledge node.
+    -   **Action:** Call `interactive_engine.refine_node(node_id, "Explain like I'm 5")`.
+    -   **Validation:** Assert the node text changed and `is_user_edited` is True.
+
+5.  **Part 4: Traceability (Cycle 05)**
+    -   **Action:** Call `interactive_engine.get_source_chunks(node_id)`.
+    -   **Validation:** Assert that a list of `Chunk` objects is returned and they match the original text.
+
+6.  **Part 5: Launching the GUI**
+    -   Instructions on how to run `matome serve` to explore the tree visually.
+
+## 3. Tutorial Validation
+
+To validate the tutorial itself:
+-   We will run `uv run marimo edit tutorials/UAT_AND_TUTORIAL.py` locally.
+-   We will ensure all cells execute without error in "Mock Mode".
+-   The final cell will print a success message: **"🎉 All Systems Go: Matome 2.0 is ready for Knowledge Installation."**
+
+## 4. Specific Test Scenarios (Mapping to Cycles)
+
+| ID | Cycle | Scenario Name | Description |
+| :--- | :--- | :--- | :--- |
+| UAT-01 | C01 | Wisdom Generation | Generate a tree and verify Root is "Wisdom". |
+| UAT-02 | C01 | Information Gen | Verify Leaf Summaries are "Actionable". |
+| UAT-03 | C02 | Single Refinement | Update a node via Python API and persist to DB. |
+| UAT-04 | C02 | Concurrency | Read/Write simultaneously without locking DB. |
+| UAT-05 | C03 | Pyramid View | Launch GUI and see the hierarchical layout. |
+| UAT-06 | C04 | UI Refinement | Edit a node via the Chat Interface in GUI. |
+| UAT-07 | C05 | Source Verification | Click "Show Source" and see original text chunks. |
