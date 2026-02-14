@@ -33,6 +33,10 @@ COL_TYPE = "type"
 COL_CONTENT = "content"  # Stores JSON of the node (excluding embedding)
 COL_EMBEDDING = "embedding"  # Stores JSON of the embedding list
 
+# Configuration Constants
+DEFAULT_WRITE_BATCH_SIZE = 1000
+DEFAULT_READ_BATCH_SIZE = 500
+
 
 class DiskChunkStore:
     """
@@ -119,7 +123,6 @@ class DiskChunkStore:
         Helper to batch insert nodes.
         Streaming safe: processes input iterable in batches without full materialization.
         """
-        BATCH_SIZE = 1000
         # Use Core Insert with REPLACE logic for SQLite
         stmt = insert(self.nodes_table).prefix_with("OR REPLACE")
 
@@ -127,7 +130,7 @@ class DiskChunkStore:
 
         # Iterate over the input iterable using batched() to handle chunks efficiently
         # without loading the entire dataset into memory.
-        for node_batch in batched(nodes, BATCH_SIZE):
+        for node_batch in batched(nodes, DEFAULT_WRITE_BATCH_SIZE):
             buffer: list[dict[str, Any]] = []
 
             for node in node_batch:
@@ -160,14 +163,12 @@ class DiskChunkStore:
         if not node_ids:
             return []
 
-        # SQLite limit for variables is usually 999 or 32766. Use safe batch size.
-        BATCH_SIZE = 500
         results: list[Chunk | SummaryNode | None] = []
         id_to_node: dict[str, Chunk | SummaryNode] = {}
 
-        # Query in batches
-        for i in range(0, len(node_ids), BATCH_SIZE):
-            batch_ids = node_ids[i : i + BATCH_SIZE]
+        # Query in batches to respect SQLite variable limits
+        for i in range(0, len(node_ids), DEFAULT_READ_BATCH_SIZE):
+            batch_ids = node_ids[i : i + DEFAULT_READ_BATCH_SIZE]
             stmt = select(
                 self.nodes_table.c.id,
                 self.nodes_table.c.type,

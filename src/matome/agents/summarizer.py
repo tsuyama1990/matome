@@ -126,56 +126,60 @@ class SummarizationAgent:
     def _validate_input(self, text: str, max_input_length: int, max_word_length: int) -> None:
         """
         Sanitize and validate input text.
+        Raises ValueError if validation fails.
         """
-        # 1. Length Check (Document)
+        self._check_length(text, max_input_length)
+        self._check_control_chars(text, max_input_length)
+        self._check_dos_vectors(text, max_word_length)
+        self._check_injection_patterns(text)
+
+    def _check_length(self, text: str, max_input_length: int) -> None:
+        """Check document length."""
         if len(text) > max_input_length:
             msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
             raise ValueError(msg)
 
-        # 2. Control Character Check & Normalization
+    def _check_control_chars(self, text: str, max_input_length: int) -> None:
+        """Check for invalid control characters and unicode normalization."""
         # Security: Normalize unicode to prevent homograph/normalization attacks
         normalized_text = unicodedata.normalize("NFKC", text)
-        # Check length again if normalization changed it drastically
         if len(normalized_text) != len(text) and len(normalized_text) > max_input_length:
             msg = "Normalized text exceeds maximum length."
             raise ValueError(msg)
 
         allowed_controls = {"\n", "\t", "\r"}
-
         for char in normalized_text:
             if unicodedata.category(char).startswith("C") and char not in allowed_controls:
                 msg = f"Input text contains invalid control character: {char!r} (U+{ord(char):04X})"
                 raise ValueError(msg)
 
-        # 3. Tokenizer DoS Protection
+    def _check_dos_vectors(self, text: str, max_word_length: int) -> None:
+        """Check for tokenizer DoS vectors (extremely long words)."""
         words = text.split()
         if not words:
             return
-
         longest_word_len = max((len(w) for w in words), default=0)
         if longest_word_len > max_word_length:
             msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
             raise ValueError(msg)
 
-        # 4. Prompt Injection Check (Validation Phase)
-        # Check for high-risk patterns that should trigger rejection
+    def _check_injection_patterns(self, text: str) -> None:
+        """Check for prompt and system command injection patterns."""
+        # 4. Prompt Injection Check
         for pattern in PROMPT_INJECTION_PATTERNS:
              if re.search(pattern, text, flags=re.IGNORECASE):
-                  # Log the attempt for security auditing
-                  logger.warning(f"Potential prompt injection detected: {pattern}")
+                  msg = f"Potential prompt injection detected: {pattern}"
+                  raise ValueError(msg)
 
-        # 5. SQL Injection & System Command Check (Sanitization Phase)
-        # Basic heuristic to detect potential injection attempts in input text
-        # Although less critical for LLM summarization, this adds a defense-in-depth layer.
+        # 5. SQL/System Injection Check
         suspicious_patterns = [
             r"\b(DROP|DELETE|UPDATE|INSERT)\s+(TABLE|FROM|INTO)\b",
             r"\b(rm|sudo|chmod|chown)\s+-[a-zA-Z]+\b",
         ]
         for pattern in suspicious_patterns:
             if re.search(pattern, text, flags=re.IGNORECASE):
-                logger.warning(f"Input text contains suspicious pattern: {pattern}")
-                # We don't raise error here to avoid false positives on technical docs,
-                # but logging allows monitoring.
+                msg = f"Input text contains suspicious pattern (SQL/Command Injection): {pattern}"
+                raise ValueError(msg)
 
     def _sanitize_prompt_injection(self, text: str) -> str:
         """

@@ -242,8 +242,6 @@ def test_raptor_cluster_edge_cases(
     summarizer.summarize.return_value = "Mock Summary"
 
     # Run private method directly to verify generator logic
-    # Note: _summarize_clusters signature changed to take (clusters, input_level, store, output_level, strategy)
-    # input_level is 0 (chunks), output_level is 1
     results = list(engine._summarize_clusters(clusters, 0, store, 1, strategy))
 
     # Only c3 should produce a result
@@ -273,7 +271,7 @@ def test_raptor_cluster_truncation(
     c3 = Chunk(index=3, text=t3, start_char_idx=120, end_char_idx=180)
 
     def get_node_side_effect(nid: int | str) -> Chunk | None:
-        return {1: c1, 2: c2, 3: c3}.get(int(nid))  # type: ignore
+        return {1: c1, 2: c2, 3: c3}.get(int(nid))
 
     store.get_node.side_effect = get_node_side_effect
 
@@ -292,7 +290,6 @@ def test_raptor_cluster_truncation(
 
     summarizer.summarize.return_value = "Summary"
 
-    # input_level=0, output_level=1
     results = list(engine._summarize_clusters([cluster], 0, store, 1, strategy))
 
     assert len(results) == 1

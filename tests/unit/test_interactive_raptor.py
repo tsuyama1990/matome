@@ -113,3 +113,35 @@ def test_get_children(
     assert len(children) == 2
     assert c1 in children
     assert c2 in children
+
+
+def test_refine_node_invalid_instruction(
+    interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock
+) -> None:
+    """Test that refining with invalid instruction raises ValueError."""
+    # Setup a valid node
+    node = SummaryNode(
+        id="s1",
+        text="Summary",
+        level=1,
+        children_indices=[1],
+        metadata=NodeMetadata()
+    )
+    mock_store.get_node.return_value = node
+
+    # Test empty instruction
+    with pytest.raises(ValueError, match="Instruction cannot be empty"):
+        interactive_engine.refine_node("s1", "")
+
+    # Test too long instruction
+    long_instruction = "a" * 1001
+    with pytest.raises(ValueError, match="Instruction exceeds maximum length"):
+        interactive_engine.refine_node("s1", long_instruction)
+
+
+def test_get_node_proxy(
+    interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock
+) -> None:
+    """Verify get_node proxies to store correctly."""
+    interactive_engine.get_node("123")
+    mock_store.get_node.assert_called_with("123")

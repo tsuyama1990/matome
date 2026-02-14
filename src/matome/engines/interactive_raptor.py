@@ -74,6 +74,10 @@ class InteractiveRaptorEngine:
             msg = "Instruction cannot be empty."
             raise ValueError(msg)
 
+        if len(instruction) > 1000:
+            msg = "Instruction exceeds maximum length of 1000 characters."
+            raise ValueError(msg)
+
         # Gather source text from children
         children = self.get_children(node)
         if not children:

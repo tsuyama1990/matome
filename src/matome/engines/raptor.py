@@ -427,8 +427,8 @@ class RaptorEngine:
 
             needed_ids = cluster_node_map.get(cluster.id, [])
 
-            for node_id in needed_ids:
-                node = fetched_node_lookup.get(str(node_id))
+            for nid_ref in needed_ids:
+                node = fetched_node_lookup.get(str(nid_ref))
                 if not node:
                     continue
 
@@ -437,7 +437,7 @@ class RaptorEngine:
                      logger.warning(f"Cluster {cluster.id} exceeding max length. Truncating nodes.")
                      break
 
-                children_indices.append(node_id)
+                children_indices.append(nid_ref)
                 cluster_texts.append(node.text)
                 current_length += text_len
 
