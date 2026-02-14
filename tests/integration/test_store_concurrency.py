@@ -8,16 +8,11 @@ from unittest.mock import patch
 import pytest
 from sqlalchemy.exc import OperationalError
 
-from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
+from domain_models.manifest import Chunk
 from domain_models.types import DIKWLevel
-from matome.utils.store import DiskChunkStore
-
-# Constants
-NUM_THREADS = 4
-CHUNKS_PER_THREAD = 25
-TOTAL_CHUNKS = NUM_THREADS * CHUNKS_PER_THREAD
-READ_LOOPS = 10
-WRITE_LOOPS = 10
+from matome.utils.store import DiskChunkStore, StoreError
+from tests.conftest import generate_chunks, generate_summary_node
+from tests.test_config import TEST_CONFIG
 
 
 def test_concurrent_writes(tmp_path: Path) -> None:
@@ -25,31 +20,25 @@ def test_concurrent_writes(tmp_path: Path) -> None:
     db_path = tmp_path / "concurrent.db"
     store = DiskChunkStore(db_path=db_path)
 
-    def chunk_generator(start_idx: int, count: int) -> Iterator[Chunk]:
-        for i in range(count):
-            yield Chunk(
-                index=start_idx + i,
-                text=f"Chunk {start_idx + i}",
-                start_char_idx=0,
-                end_char_idx=10,
-                embedding=[0.1, 0.2],
-            )
-
     def write_chunks(start_idx: int, count: int) -> None:
-        # Use generator to stream chunks instead of loading all into list
-        store.add_chunks(chunk_generator(start_idx, count))
+        # Use shared utility generator to stream chunks directly
+        store.add_chunks(generate_chunks(count, start_index=start_idx))
 
-    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+    with ThreadPoolExecutor(max_workers=TEST_CONFIG.NUM_THREADS) as executor:
         futures = []
-        for i in range(NUM_THREADS):
-            futures.append(executor.submit(write_chunks, i * CHUNKS_PER_THREAD, CHUNKS_PER_THREAD))
+        for i in range(TEST_CONFIG.NUM_THREADS):
+            futures.append(executor.submit(
+                write_chunks,
+                i * TEST_CONFIG.CHUNKS_PER_THREAD,
+                TEST_CONFIG.CHUNKS_PER_THREAD
+            ))
 
         for f in futures:
             f.result()  # Propagate exceptions
 
     # Verify total using count query (O(1) instead of loop)
     count = store.get_node_count(0)  # Level 0 is chunks
-    assert count == TOTAL_CHUNKS
+    assert count == TEST_CONFIG.total_chunks
 
     store.close()
 
@@ -65,15 +54,24 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
     )
 
     def writer() -> None:
-        for i in range(WRITE_LOOPS):
-            store.add_chunk(
-                Chunk(index=i, text=f"W{i}", start_char_idx=0, end_char_idx=1, embedding=[1.0])
-            )
+        # Stream chunks using generator instead of list comprehension
+        def chunk_gen() -> Iterator[Chunk]:
+            for i in range(TEST_CONFIG.WRITE_LOOPS):
+                yield Chunk(
+                    index=i,
+                    text=f"W{i}",
+                    start_char_idx=0,
+                    end_char_idx=1,
+                    embedding=[1.0]
+                )
+
+        store.add_chunks(chunk_gen())
 
     def reader() -> None:
         # Batch retrieval via iterator consumption
         ids = ["999"] + [str(i) for i in range(5)]
-        for _ in range(READ_LOOPS):
+
+        for _ in range(TEST_CONFIG.READ_LOOPS):
             # Consume generator and verify "Base" exists
             found_base = False
             for node in store.get_nodes(ids):
@@ -81,7 +79,6 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
                     found_base = True
 
             # Simple consistency check within the loop
-            # Note: We can't assert inside thread easily without propagating
             if not found_base:
                 msg = "Base node 999 vanished during concurrent read"
                 raise RuntimeError(msg)
@@ -118,13 +115,8 @@ def test_store_concurrency_stress(tmp_path: Path) -> None:
 
     # Setup initial state
     node_id = "stress_node"
-    node = SummaryNode(
-        id=node_id,
-        text="Start",
-        level=1,
-        children_indices=[],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
-    )
+    node = generate_summary_node(node_id, level=1, dikw_level=DIKWLevel.DATA)
+    node.text = "Start"
     store.add_summary(node)
 
     stop_event = threading.Event()
@@ -150,13 +142,8 @@ def test_store_concurrency_stress(tmp_path: Path) -> None:
         count = 0
         while not stop_event.is_set():
             try:
-                n = SummaryNode(
-                    id=node_id,
-                    text=f"Update {count}",
-                    level=1,
-                    children_indices=[],
-                    metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
-                )
+                n = generate_summary_node(node_id, level=1, dikw_level=DIKWLevel.DATA)
+                n.text = f"Update {count}"
                 writer_store.update_node(n)
                 count += 1
             except Exception as e:
@@ -192,14 +179,19 @@ def test_db_corruption_handling(tmp_path: Path) -> None:
     store = DiskChunkStore(db_path=db_path)
 
     # Mock execute to simulate a database error (e.g., malformed disk image)
-    # We patch the engine's connect/begin to return a connection that fails on execute
     with patch.object(store.engine, 'connect') as mock_connect:
         mock_conn = mock_connect.return_value.__enter__.return_value
         # OperationalError requires params (None is acceptable) and orig (exception object)
         mock_conn.execute.side_effect = OperationalError("disk I/O error", params=None, orig=Exception("Disk Error"))
 
         # Test get_node handles DB error by propagating it (standardized behavior)
-        with pytest.raises(OperationalError, match="disk I/O error"):
+        with pytest.raises(StoreError, match="disk I/O error"):
             store.get_node(1)
 
-    store.close()
+    # Ensure cleanup is called/safe even after error
+    # We can't assert 'close' was called internally unless we spy on it,
+    # but we can call it and ensure no exception.
+    try:
+        store.close()
+    except Exception as e:
+        pytest.fail(f"store.close() raised exception: {e}")

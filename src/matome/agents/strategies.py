@@ -107,7 +107,9 @@ class RefinementStrategy(PromptStrategy):
             return self.base_strategy.format_prompt(text, context)
 
         base_prompt = self.base_strategy.format_prompt(text, context)
-        return f"{base_prompt}\n\nUSER INSTRUCTION: {instruction}"
+        return REFINEMENT_INSTRUCTION_TEMPLATE.format(
+            context=base_prompt, instruction=instruction
+        )
 
 
 # Registry for easy lookup from configuration strings

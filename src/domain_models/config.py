@@ -249,9 +249,11 @@ class ProcessingConfig(BaseModel):
     @model_validator(mode="after")
     def validate_chunking_consistency(self) -> Self:
         """Ensure chunking parameters are consistent."""
-        if self.semantic_chunking_mode:
-            if self.semantic_chunking_threshold > 1.0 or self.semantic_chunking_threshold < 0.0:
-                raise ValueError("Semantic chunking threshold must be between 0.0 and 1.0")
+        if self.semantic_chunking_mode and (
+            self.semantic_chunking_threshold > 1.0 or self.semantic_chunking_threshold < 0.0
+        ):
+            msg = "Semantic chunking threshold must be between 0.0 and 1.0"
+            raise ValueError(msg)
         return self
 
     @classmethod

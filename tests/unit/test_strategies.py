@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 from domain_models.types import DIKWLevel
 from matome.agents.strategies import (
+    STRATEGY_REGISTRY,
     ChainOfDensityStrategy,
     InformationStrategy,
     KnowledgeStrategy,
@@ -64,7 +65,7 @@ def test_chain_of_density_strategy_prompt() -> None:
 
 
 def test_refinement_strategy_appending() -> None:
-    """Test that RefinementStrategy appends instruction to base prompt."""
+    """Test that RefinementStrategy wraps base prompt with instruction."""
     base_mock = MagicMock()
     base_mock.format_prompt.return_value = "Base Prompt."
     base_mock.dikw_level = DIKWLevel.WISDOM
@@ -77,10 +78,11 @@ def test_refinement_strategy_appending() -> None:
     # Check that base strategy was called
     base_mock.format_prompt.assert_called_with("Source Text", context)
 
-    # Check structure
+    # Check structure with REFINEMENT_INSTRUCTION_TEMPLATE
     assert "Base Prompt." in prompt
-    assert "USER INSTRUCTION: Make it better." in prompt
-    assert prompt.endswith("USER INSTRUCTION: Make it better.") or "USER INSTRUCTION: Make it better." in prompt
+    assert "User Instruction:" in prompt
+    assert "Make it better." in prompt
+    assert "Original Text/Context:" in prompt
 
 
 def test_refinement_strategy_no_instruction() -> None:
@@ -93,3 +95,30 @@ def test_refinement_strategy_no_instruction() -> None:
     prompt = strategy.format_prompt("Source Text", {})
 
     assert prompt == "Base Prompt."
+
+
+def test_strategy_registry_completeness() -> None:
+    """Verify that all expected strategies are registered and instantiable."""
+    expected_keys = {
+        DIKWLevel.WISDOM.value,
+        DIKWLevel.KNOWLEDGE.value,
+        DIKWLevel.INFORMATION.value,
+        "default",
+        "refinement",
+    }
+
+    # Check keys exist
+    assert expected_keys.issubset(STRATEGY_REGISTRY.keys())
+
+    # Verify instantiation and type
+    for _key, strategy_cls in STRATEGY_REGISTRY.items():
+        # Instantiate directly, assuming all have 0-arg or default args constructors
+        strategy = strategy_cls()
+
+        assert hasattr(strategy, "format_prompt")
+        assert hasattr(strategy, "dikw_level")
+
+        # Basic prompt check
+        prompt = strategy.format_prompt("test")
+        assert isinstance(prompt, str)
+        assert len(prompt) > 0

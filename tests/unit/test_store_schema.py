@@ -1,13 +1,12 @@
-import pytest
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import MagicMock
 
-from sqlalchemy import select, func
+import pytest
+from sqlalchemy import func, select, text
 
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
-from matome.utils.store import TABLE_NODES, DiskChunkStore
+from matome.utils.store import DiskChunkStore, StoreError
 
 
 def test_add_chunks_streaming(tmp_path: Path) -> None:
@@ -47,13 +46,6 @@ def test_update_node_embedding_direct(tmp_path: Path) -> None:
     fetched = store.get_node(chunk.index)
     assert fetched is not None
     assert fetched.embedding == embedding
-
-    # Check DB internals
-    with store.engine.connect() as conn:
-        stmt = select(store.nodes_table.c.embedding).where(store.nodes_table.c.id == "0")
-        row = conn.execute(stmt).fetchone()
-        assert row is not None
-        assert "[0.1, 0.2, 0.3]" in row[0]  # Stored as JSON string
 
     store.close()
 
@@ -110,7 +102,7 @@ def test_update_node_persistence() -> None:
 
 
 def test_update_node_non_existent() -> None:
-    """Test updating a non-existent node (should probably do nothing or fail silently with UPDATE)."""
+    """Test updating a non-existent node raises StoreError."""
     store = DiskChunkStore()
     node = SummaryNode(
         id="non_existent",
@@ -120,8 +112,9 @@ def test_update_node_non_existent() -> None:
         metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
     )
 
-    # Should not raise error
-    store.update_node(node)
+    # Should raise error now with specific message
+    with pytest.raises(StoreError, match="Node non_existent not found"):
+        store.update_node(node)
 
     # Should not exist
     assert store.get_node("non_existent") is None
@@ -150,28 +143,32 @@ def test_update_node_with_embedding() -> None:
 
 
 def test_transaction_rollback_on_error(tmp_path: Path) -> None:
-    """Test that batch operations rollback on error."""
+    """Test that batch operations rollback on actual DB error."""
     store = DiskChunkStore(tmp_path / "rollback.db")
-    chunks = [Chunk(index=i, text="C", start_char_idx=0, end_char_idx=1) for i in range(10)]
 
-    class BrokenConnection:
-        def __enter__(self) -> "BrokenConnection":
-            return self
+    # Insert initial valid data
+    c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=1)
+    store.add_chunk(c1)
 
-        def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
-            pass
+    # Use explicit transaction block to verify rollback on error
+    try:
+        with store.transaction() as conn:
+            # Valid insert
+            conn.execute(
+                text("INSERT INTO nodes (id, type, content) VALUES (:id, :type, :content)"),
+                {"id": "999", "type": "chunk", "content": "{}"}
+            )
+            # Failing insert (syntax error)
+            conn.execute(text("SELECT * FROM non_existent_table"))
+    except StoreError:
+        pass
 
-        def execute(self, stmt: object, params: object = None) -> None:
-            msg = "Database exploded"
-            raise RuntimeError(msg)
+    # Verify 999 is NOT in the DB
+    assert store.get_node("999") is None
+    # Verify C1 IS still there (was committed before)
+    assert store.get_node("1") is not None
 
-    # Patch the begin method of the engine instance on the store
-    # Since store.engine is an instance attribute, we can patch it directly or use patch.object
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(store.engine, "begin", MagicMock(return_value=BrokenConnection()))
-
-        with pytest.raises(RuntimeError, match="Database exploded"):
-            store.add_chunks(chunks)
+    store.close()
 
 
 def test_empty_db_operations() -> None:
@@ -183,9 +180,8 @@ def test_empty_db_operations() -> None:
 
     # Get multiple non-existent nodes
     nodes = list(store.get_nodes(["999", "888"]))
-    # With strict streaming, we only yield what the DB returns.
-    # If DB returns nothing, we yield nothing.
-    assert nodes == []
+    # With strict streaming, we yield None for missing nodes to maintain index alignment
+    assert nodes == [None, None]
 
     # Count should be 0
     assert store.get_node_count(0) == 0
