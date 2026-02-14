@@ -1,5 +1,6 @@
 import threading
 import time
+from collections.abc import Iterator
 from unittest.mock import MagicMock
 
 from domain_models.config import ProcessingConfig
@@ -8,6 +9,11 @@ from domain_models.types import DIKWLevel
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.utils.store import DiskChunkStore
 
+
+def chunk_generator(start_index: int, count: int) -> Iterator[Chunk]:
+    """Generator for chunks."""
+    for i in range(count):
+        yield Chunk(index=start_index + i, text=f"Child {i}", start_char_idx=i*10, end_char_idx=(i+1)*10)
 
 def test_uat_c02_01_single_node_refinement() -> None:
     """
@@ -25,10 +31,8 @@ def test_uat_c02_01_single_node_refinement() -> None:
     )
     store.add_summary(node)
 
-    # Add children chunks
-    c1 = Chunk(index=0, text="Child 1", start_char_idx=0, end_char_idx=10)
-    c2 = Chunk(index=1, text="Child 2", start_char_idx=11, end_char_idx=20)
-    store.add_chunks([c1, c2])
+    # Add children chunks using generator
+    store.add_chunks(chunk_generator(0, 2))
 
     # Setup Mock Agent
     mock_agent = MagicMock()
@@ -79,6 +83,9 @@ def test_uat_c02_02_concurrency() -> None:
     def reader_task() -> None:
         while not stop_event.is_set():
             try:
+                # Use batch get_nodes even for single ID if we want to test streaming/performance
+                # But here we test simple access.
+                # Let's assume we want to read it.
                 n = store.get_node("concurrent_node")
                 if n is None:
                     errors.append("Node not found during read")

@@ -74,8 +74,8 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
         # Batch retrieval via iterator consumption
         ids = ["999"] + [str(i) for i in range(5)]
         for _ in range(READ_LOOPS):
-            # Consume generator without storing all in list if large, but small here is fine
-            # To prove streaming, we iterate
+            # Consume generator without storing all in list
+            # We iterate over the generator to drain it
             for _ in store.get_nodes(ids):
                 pass
 

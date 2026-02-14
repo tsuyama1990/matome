@@ -12,9 +12,30 @@ from domain_models.constants import (
     DEFAULT_CANVAS_GAP_Y,
     DEFAULT_CANVAS_NODE_HEIGHT,
     DEFAULT_CANVAS_NODE_WIDTH,
+    DEFAULT_CHUNK_BUFFER_SIZE,
+    DEFAULT_CLUSTERING_PROBABILITY_THRESHOLD,
+    DEFAULT_CLUSTERING_WRITE_BATCH_SIZE,
     DEFAULT_EMBEDDING,
+    DEFAULT_EMBEDDING_BATCH_SIZE,
+    DEFAULT_LLM_TEMPERATURE,
+    DEFAULT_MAX_INPUT_LENGTH,
+    DEFAULT_MAX_INSTRUCTION_LENGTH,
+    DEFAULT_MAX_RETRIES,
+    DEFAULT_MAX_SUMMARY_TOKENS,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_MAX_WORD_LENGTH,
+    DEFAULT_OVERLAP,
+    DEFAULT_SEMANTIC_CHUNKING_MODE,
+    DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
+    DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
+    DEFAULT_STORE_READ_BATCH_SIZE,
+    DEFAULT_STORE_WRITE_BATCH_SIZE,
     DEFAULT_SUMMARIZER,
     DEFAULT_TOKENIZER,
+    DEFAULT_UMAP_MIN_DIST,
+    DEFAULT_UMAP_N_COMPONENTS,
+    DEFAULT_UMAP_N_NEIGHBORS,
+    DEFAULT_VERIFIER_ENABLED,
     LARGE_SCALE_THRESHOLD,
 )
 from domain_models.types import DIKWLevel
@@ -43,9 +64,9 @@ class ProcessingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     # Chunking Configuration
-    max_tokens: int = Field(default=500, ge=1, description="Maximum number of tokens per chunk.")
+    max_tokens: int = Field(default=DEFAULT_MAX_TOKENS, ge=1, description="Maximum number of tokens per chunk.")
     overlap: int = Field(
-        default=0, ge=0, description="Number of overlapping tokens between chunks."
+        default=DEFAULT_OVERLAP, ge=0, description="Number of overlapping tokens between chunks."
     )
     tokenizer_model: str = Field(
         default_factory=lambda: _safe_getenv("TOKENIZER_MODEL", DEFAULT_TOKENIZER),
@@ -54,16 +75,16 @@ class ProcessingConfig(BaseModel):
 
     # Semantic Chunking Configuration
     semantic_chunking_mode: bool = Field(
-        default=False, description="Whether to use semantic chunking instead of token chunking."
+        default=DEFAULT_SEMANTIC_CHUNKING_MODE, description="Whether to use semantic chunking instead of token chunking."
     )
     semantic_chunking_threshold: float = Field(
-        default=0.8,
+        default=DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
         ge=0.0,
         le=1.0,
         description="Cosine similarity threshold for merging sentences.",
     )
     semantic_chunking_percentile: int = Field(
-        default=90,
+        default=DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
         ge=0,
         le=100,
         description="Percentile threshold for breakpoint detection (if using percentile mode).",
@@ -75,7 +96,7 @@ class ProcessingConfig(BaseModel):
         description="HuggingFace model name for embeddings.",
     )
     embedding_batch_size: int = Field(
-        default=32, ge=1, description="Batch size for embedding generation."
+        default=DEFAULT_EMBEDDING_BATCH_SIZE, ge=1, description="Batch size for embedding generation."
     )
 
     # Clustering Configuration
@@ -88,23 +109,23 @@ class ProcessingConfig(BaseModel):
     )
     random_state: int = Field(default=42, description="Random seed for reproducibility.")
     umap_n_neighbors: int = Field(
-        default=15,
+        default=DEFAULT_UMAP_N_NEIGHBORS,
         ge=2,
         description="UMAP parameter: Number of neighbors for dimensionality reduction.",
     )
     umap_min_dist: float = Field(
-        default=0.1, ge=0.0, description="UMAP parameter: Minimum distance between points."
+        default=DEFAULT_UMAP_MIN_DIST, ge=0.0, description="UMAP parameter: Minimum distance between points."
     )
     umap_n_components: int = Field(
-        default=2, ge=2, description="UMAP parameter: Number of dimensions to reduce to."
+        default=DEFAULT_UMAP_N_COMPONENTS, ge=2, description="UMAP parameter: Number of dimensions to reduce to."
     )
     write_batch_size: int = Field(
-        default=1000,
+        default=DEFAULT_CLUSTERING_WRITE_BATCH_SIZE,
         ge=1,
         description="Batch size for writing vectors to disk during clustering.",
     )
     clustering_probability_threshold: float = Field(
-        default=0.1,
+        default=DEFAULT_CLUSTERING_PROBABILITY_THRESHOLD,
         ge=0.0,
         le=1.0,
         description="Minimum probability for assigning a node to a cluster (soft clustering).",
@@ -115,7 +136,7 @@ class ProcessingConfig(BaseModel):
         description="Threshold for switching to approximate clustering.",
     )
     chunk_buffer_size: int = Field(
-        default=50,
+        default=DEFAULT_CHUNK_BUFFER_SIZE,
         ge=1,
         description="Buffer size for batch database writes in Raptor engine.",
     )
@@ -146,15 +167,15 @@ class ProcessingConfig(BaseModel):
 
     # Store Configuration
     store_write_batch_size: int = Field(
-        default=1000, ge=1, description="Batch size for database write operations."
+        default=DEFAULT_STORE_WRITE_BATCH_SIZE, ge=1, description="Batch size for database write operations."
     )
     store_read_batch_size: int = Field(
-        default=500, ge=1, description="Batch size for database read operations."
+        default=DEFAULT_STORE_READ_BATCH_SIZE, ge=1, description="Batch size for database read operations."
     )
 
     # Interactive Configuration
     max_instruction_length: int = Field(
-        default=1000, ge=1, description="Maximum length of refinement instructions."
+        default=DEFAULT_MAX_INSTRUCTION_LENGTH, ge=1, description="Maximum length of refinement instructions."
     )
 
     # Summarization Configuration
@@ -163,24 +184,24 @@ class ProcessingConfig(BaseModel):
         description="Model to use for summarization.",
     )
     max_summary_tokens: int = Field(
-        default=200, ge=1, description="Target token count for summaries."
+        default=DEFAULT_MAX_SUMMARY_TOKENS, ge=1, description="Target token count for summaries."
     )
     max_retries: int = Field(
-        default=3, ge=0, description="Maximum number of retries for LLM calls."
+        default=DEFAULT_MAX_RETRIES, ge=0, description="Maximum number of retries for LLM calls."
     )
     llm_temperature: float = Field(
-        default=0.0, ge=0.0, le=1.0, description="Sampling temperature for LLM."
+        default=DEFAULT_LLM_TEMPERATURE, ge=0.0, le=1.0, description="Sampling temperature for LLM."
     )
     max_word_length: int = Field(
-        default=1000, ge=100, description="Maximum length of a single word for input validation."
+        default=DEFAULT_MAX_WORD_LENGTH, ge=100, description="Maximum length of a single word for input validation."
     )
     max_input_length: int = Field(
-        default=500_000, ge=100, description="Maximum length of input text for summarization."
+        default=DEFAULT_MAX_INPUT_LENGTH, ge=100, description="Maximum length of input text for summarization."
     )
 
     # Verification Configuration
     verifier_enabled: bool = Field(
-        default=True, description="Whether to perform verification after summarization."
+        default=DEFAULT_VERIFIER_ENABLED, description="Whether to perform verification after summarization."
     )
     verification_model: str = Field(
         default_factory=lambda: _safe_getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
