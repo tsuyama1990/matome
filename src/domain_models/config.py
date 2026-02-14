@@ -1,6 +1,6 @@
 import os
 from enum import Enum
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -40,6 +40,12 @@ class ProcessingConfig(BaseModel):
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # General Configuration
+    processing_mode: Literal["basic", "dikw"] = Field(
+        default="basic",
+        description="Mode of operation: 'basic' (classic RAPTOR) or 'dikw' (DIKW Pyramid).",
+    )
 
     # Chunking Configuration
     max_tokens: int = Field(default=500, ge=1, description="Maximum number of tokens per chunk.")
