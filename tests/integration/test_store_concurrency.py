@@ -55,7 +55,7 @@ def test_concurrent_writes(tmp_path: Path) -> None:
 
 
 def test_concurrent_read_write(tmp_path: Path) -> None:
-    """Verify concurrent reads and writes."""
+    """Verify concurrent reads and writes with data consistency checks."""
     db_path = tmp_path / "rw.db"
     store = DiskChunkStore(db_path=db_path)
 
@@ -74,10 +74,16 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
         # Batch retrieval via iterator consumption
         ids = ["999"] + [str(i) for i in range(5)]
         for _ in range(READ_LOOPS):
-            # Consume generator without storing all in list
-            # We iterate over the generator to drain it
-            for _ in store.get_nodes(ids):
-                pass
+            # Consume generator and verify "Base" exists
+            found_base = False
+            for node in store.get_nodes(ids):
+                if node and isinstance(node, Chunk) and node.index == 999:
+                    found_base = True
+
+            # Simple consistency check within the loop
+            # Note: We can't assert inside thread easily without propagating
+            if not found_base:
+                raise RuntimeError("Base node 999 vanished during concurrent read")
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         f1 = executor.submit(writer)
@@ -87,6 +93,16 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
         f1.result()
         f2.result()
         f3.result()
+
+    # Final consistency verification
+    base_node = store.get_node(999)
+    assert base_node is not None
+    assert base_node.text == "Base"
+
+    # Check if writes persisted
+    written_node = store.get_node(0)
+    assert written_node is not None
+    assert written_node.text == "W0"
 
     store.close()
 

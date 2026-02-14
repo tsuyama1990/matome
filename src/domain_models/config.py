@@ -52,6 +52,13 @@ def _safe_getenv(key: str, default: str) -> str:
         return default
     return val
 
+def _validate_model_name(value: str, allowed: set[str], name: str) -> str:
+    """Helper to validate model names against whitelist."""
+    if value not in allowed:
+        msg = f"{name} '{value}' is not allowed. Allowed: {sorted(allowed)}"
+        raise ValueError(msg)
+    return value
+
 
 class ProcessingConfig(BaseModel):
     """
@@ -210,7 +217,7 @@ class ProcessingConfig(BaseModel):
 
     # Strategy Configuration
     strategy_mapping: dict[DIKWLevel, str] = Field(
-        default={
+        default_factory=lambda: {
             DIKWLevel.WISDOM: "wisdom",
             DIKWLevel.KNOWLEDGE: "knowledge",
             DIKWLevel.INFORMATION: "information",
@@ -225,33 +232,19 @@ class ProcessingConfig(BaseModel):
         if not v or not v.strip():
             msg = "Embedding model name cannot be empty."
             raise ValueError(msg)
-        if v not in ALLOWED_EMBEDDING_MODELS:
-            msg = (
-                f"Embedding model '{v}' is not in the allowed list. "
-                f"Allowed: {sorted(ALLOWED_EMBEDDING_MODELS)}"
-            )
-            raise ValueError(msg)
-        return v
+        return _validate_model_name(v, ALLOWED_EMBEDDING_MODELS, "Embedding model")
 
     @field_validator("summarization_model", "verification_model", mode="after")
     @classmethod
     def validate_llm_model(cls, v: str) -> str:
         """Validate LLM model name against whitelist."""
-        if v not in ALLOWED_SUMMARIZATION_MODELS:
-            msg = f"LLM model '{v}' is not allowed. Allowed: {sorted(ALLOWED_SUMMARIZATION_MODELS)}"
-            raise ValueError(msg)
-        return v
+        return _validate_model_name(v, ALLOWED_SUMMARIZATION_MODELS, "LLM model")
 
     @field_validator("tokenizer_model", mode="after")
     @classmethod
     def validate_tokenizer_model(cls, v: str) -> str:
         """Validate tokenizer model against whitelist."""
-        if v not in ALLOWED_TOKENIZER_MODELS:
-            msg = (
-                f"Tokenizer model '{v}' is not allowed. Allowed: {sorted(ALLOWED_TOKENIZER_MODELS)}"
-            )
-            raise ValueError(msg)
-        return v
+        return _validate_model_name(v, ALLOWED_TOKENIZER_MODELS, "Tokenizer model")
 
     @classmethod
     def default(cls) -> Self:

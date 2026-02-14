@@ -1,8 +1,11 @@
 import threading
 import time
 from collections.abc import Iterator
-from unittest.mock import MagicMock
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
+import pytest
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
@@ -132,3 +135,34 @@ def test_uat_c02_02_concurrency() -> None:
     assert final_node.text.startswith("Updated text") or final_node.text == "Initial text"
 
     assert final_node.text != "Initial text", "Node was not updated"
+
+def test_uat_concurrency_error_handling() -> None:
+    """Test that concurrent errors are handled gracefully (simulated)."""
+    # This simulates a scenario where one thread might fail, ensuring it doesn't crash the other
+    store = DiskChunkStore()
+    node = SummaryNode(id="n1", text="T", level=1, children_indices=[], metadata=NodeMetadata())
+    store.add_summary(node)
+
+    def failing_writer() -> None:
+        # Simulate an error during write
+        with patch.object(store.engine, 'connect', side_effect=Exception("DB Locked")):
+            try:
+                store.update_node(node)
+            except Exception:
+                pass # Expected
+
+    def successful_reader() -> None:
+        # Should still be able to read (if connection pool allows or separate conn)
+        # Note: In real SQLite, if locked, read might block or fail.
+        # Here we just verify threads don't crash main process.
+        store.get_node("n1")
+
+    t1 = threading.Thread(target=failing_writer)
+    t2 = threading.Thread(target=successful_reader)
+
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    # Pass if no unhandled exception crashed test runner

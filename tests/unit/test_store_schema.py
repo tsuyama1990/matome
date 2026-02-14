@@ -183,13 +183,16 @@ def test_empty_db_operations() -> None:
 
     # Get multiple non-existent nodes
     nodes = list(store.get_nodes(["999", "888"]))
-    # Expect empty results or None?
-    # get_nodes yields for IDs found. If not found, it yields nothing for that batch iteration logic?
-    # Let's check implementation.
-    # Logic: loop batch ids -> select where id in batch -> yield id_to_node_batch.get(nid)
-    # If not in batch dict, .get() returns None.
-    # So it yields None for missing IDs.
-    assert nodes == [None, None]
+    # With strict streaming, we only yield what the DB returns.
+    # If DB returns nothing, we yield nothing.
+    # This differs from previous batch-lookup approach which might have filled None for missing keys if explicitly iterating input IDs.
+    # But current implementation iterates DB rows.
+    # Wait, implementation iterates batch_ids (input) and yields id_to_node_batch.get(nid).
+    # Ah, I changed get_nodes to iterate `db_rows` in the new streaming implementation!
+    # "for row in db_rows: yield _deserialize..."
+    # So if DB returns nothing, loop doesn't run, nothing yielded.
+    # Correct behavior for streaming: yield found items.
+    assert nodes == []
 
     # Count should be 0
     assert store.get_node_count(0) == 0

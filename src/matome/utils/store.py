@@ -14,7 +14,6 @@ from sqlalchemy import (
     String,
     Table,
     Text,
-    bindparam,
     cast,
     create_engine,
     func,
@@ -22,6 +21,7 @@ from sqlalchemy import (
     select,
     text,
     update,
+    bindparam,
 )
 
 from domain_models.manifest import Chunk, SummaryNode
@@ -133,10 +133,11 @@ class DiskChunkStore:
 
         if node_type == "chunk":
             return Chunk.model_validate(data)
-        if node_type == "summary":
+        elif node_type == "summary":
             return SummaryNode.model_validate(data)
-        msg = f"Unknown node type: {node_type} for node {node_id}"
-        raise ValueError(msg)
+        else:
+            msg = f"Unknown node type: {node_type} for node {node_id}"
+            raise ValueError(msg)
 
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
@@ -195,6 +196,9 @@ class DiskChunkStore:
         """
         Retrieve multiple nodes by ID in a single batch.
         Yields results to stream processing and avoid OOM.
+
+        Note: The order of yielded nodes corresponds to the database return order for the batch,
+        not necessarily the input list order, though we batch by ID list slices.
         """
         if not node_ids:
             return
@@ -210,26 +214,29 @@ class DiskChunkStore:
                 self.nodes_table.c.embedding,
             ).where(self.nodes_table.c.id.in_(batch_ids))
 
-            # Store batch result in a temporary dict to preserve order within the batch relative to request
-            id_to_node_batch: dict[str, Chunk | SummaryNode] = {}
-
             with self.engine.connect() as conn:
-                # Use stream_results=True to hint streaming, though with SQLite and small batch it may buffer.
-                # However, strict compliance with "not loading entire result set" is handled by batching loop.
-                # fetchall() is safe here because we batch by read_batch_size (e.g. 500)
-                db_rows = conn.execute(stmt).fetchall()
+                # Use stream_results=True to hint streaming
+                result = conn.execution_options(stream_results=True).execute(stmt)
 
-                for row in db_rows:
+                # Create a lookup for this batch to yield in order, or yield directly?
+                # The requirement says "Yields results directly from database cursor without materializing list".
+                # If we need to preserve order or map 1:1 to input IDs, we might need a dict.
+                # However, for pure streaming without memory overhead, we should yield as they come.
+                # But consumers might expect 1:1 mapping (e.g., getting children by index list).
+                # If we yield directly, we lose 1:1 mapping if some are missing.
+                # Given strict "NEVER load into memory", we yield available nodes.
+                # If order is crucial, the consumer must handle it.
+                # For `InteractiveRaptorEngine.get_children`, we just want the list of children.
+
+                # To be strict on memory:
+                for row in result:
                     nid, node_type, content_json, embedding_json = row
                     try:
-                        node = self._deserialize_node(nid, node_type, content_json, embedding_json)
-                        id_to_node_batch[nid] = node
+                        yield self._deserialize_node(nid, node_type, content_json, embedding_json)
                     except Exception:
                         logger.exception(f"Failed to deserialize node {nid}")
-
-            # Yield nodes for the current batch in requested order
-            for nid in batch_ids:
-                yield id_to_node_batch.get(nid)
+                        # If strict error handling: raise
+                        raise
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
         """
@@ -287,7 +294,7 @@ class DiskChunkStore:
                 return self._deserialize_node(str(node_id), node_type, content_json, embedding_json)
             except Exception:
                 logger.exception(f"Failed to deserialize node {node_id}")
-                # Consistent error handling: raise exception on data corruption
+                # Standardized: raise exception on corruption
                 raise
 
         return None
@@ -309,9 +316,7 @@ class DiskChunkStore:
         else:
             # For summary nodes, we must check the JSON content.
             # SQLite supports json_extract.
-            # Use bindparam for level to prevent injection, though 'level' here is int type checked by signature.
-            # The 'level' argument is an integer, so direct injection via string formatting is not possible if using Core.
-            # However, for JSON path or values, bindparam ensures parameterized query.
+            # Use bindparam for level to prevent injection.
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(
@@ -322,7 +327,7 @@ class DiskChunkStore:
             )
 
         with self.engine.connect() as conn:
-            # Stream results to avoid loading all IDs into memory at once
+            # Stream results using server-side cursor if supported, or yield per row
             # execution_options(stream_results=True) is the Core way.
             result = conn.execution_options(stream_results=True).execute(stmt)
             for row in result:

@@ -118,19 +118,18 @@ class InteractiveRaptorEngine:
             context={"instruction": instruction},
         )
 
-        # Update node
-        node.text = new_text
-        node.metadata.is_user_edited = True
-        node.metadata.refinement_history.append(instruction)
+        # Wrap update logic in transaction
+        with self.store.transaction():
+            # Update node fields
+            node.text = new_text
+            node.metadata.is_user_edited = True
+            node.metadata.refinement_history.append(instruction)
 
-        # Persist changes
-        # Re-embedding is optional/deferred for interactivity speed.
-        node.embedding = None
+            # Re-embedding is optional/deferred for interactivity speed.
+            node.embedding = None
 
-        # Persist changes using update_node
-        # Assuming store handles concurrency via WAL/Locking.
-        # Future improvement: wrap in store.transaction() if multiple writes needed.
-        self.store.update_node(node)
+            # Persist changes using update_node
+            self.store.update_node(node)
 
         logger.info(f"Refined node {node_id} with instruction: {instruction}")
         return node
