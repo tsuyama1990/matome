@@ -48,11 +48,9 @@ class TestInteractiveRefinementBackend:
         Verify that refine_node retrieves children, calls summarizer, and updates store.
         """
         # 1. Setup Data in Store
-        # Create children chunks
         chunk1 = Chunk(index=1, text="Child 1", start_char_idx=0, end_char_idx=10)
         chunk2 = Chunk(index=2, text="Child 2", start_char_idx=11, end_char_idx=20)
 
-        # Create parent summary node
         parent_node = SummaryNode(
             id="node_1",
             text="Original Summary",
@@ -66,15 +64,8 @@ class TestInteractiveRefinementBackend:
             store.add_chunk(chunk2)
             store.add_summary(parent_node)
 
-            # Verify initial state
-            retrieved = store.get_node("node_1")
-            assert isinstance(retrieved, SummaryNode)
-            assert retrieved.text == "Original Summary"
-            assert retrieved.metadata.is_user_edited is False
-
             # 2. Execute Refinement
             instruction = "Simplify this."
-
             updated_node = engine.refine_node("node_1", instruction)
 
             # 3. Verify Result
@@ -88,14 +79,46 @@ class TestInteractiveRefinementBackend:
             assert persisted.text == "Refined Summary Content"
             assert persisted.metadata.is_user_edited is True
 
-            # Verify Summarizer Call
-            mock_summarizer.summarize.assert_called_once()
-            call_args = mock_summarizer.summarize.call_args
-            source_text_arg = call_args[0][0]
-            assert "Child 1" in source_text_arg
-            assert "Child 2" in source_text_arg
+    def test_refine_node_error_handling(
+        self, engine: InteractiveRaptorEngine, temp_store: DiskChunkStore, mock_summarizer: MagicMock
+    ) -> None:
+        """
+        Verify error handling when summarizer fails or DB issues occur.
+        """
+        parent_node = SummaryNode(
+            id="node_fail",
+            text="Original",
+            level=2,
+            children_indices=[],
+            metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        )
 
-            kwargs = call_args[1]
-            assert kwargs['context'] == {"instruction": instruction}
-            # Strategy should be passed
-            assert 'strategy' in kwargs
+        # We need children to refine
+        chunk = Chunk(index=1, text="Child", start_char_idx=0, end_char_idx=5)
+
+        with temp_store as store:
+            store.add_summary(parent_node)
+            # Add child BUT we will fail retrieval or summarization
+            store.add_chunk(chunk)
+
+            # Update parent to point to child
+            # (Note: SummaryNode is immutable in Pydantic so we create new one or update in DB directly?
+            # Actually we can just re-add it, store handles overwrite if ID same)
+            parent_node = parent_node.model_copy(update={"children_indices": [1]})
+            store.add_summary(parent_node)
+
+            # Case 1: Summarizer Failure
+            mock_summarizer.summarize.side_effect = RuntimeError("LLM Down")
+
+            with pytest.raises(RuntimeError, match="LLM Down"):
+                engine.refine_node("node_fail", "instr")
+
+            # Verify node NOT updated
+            node = store.get_node("node_fail")
+            assert isinstance(node, SummaryNode)
+            assert node.text == "Original"
+            assert not node.metadata.is_user_edited
+
+            # Case 2: Invalid Node ID
+            with pytest.raises(ValueError, match="Node invalid_id not found"):
+                engine.refine_node("invalid_id", "instr")

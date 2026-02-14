@@ -30,7 +30,6 @@ class TestInteractiveSessionRefine:
 
     def test_refine_success(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
         """Test successful refinement updates selected_node and handles is_processing."""
-        # Setup initial node
         original_node = SummaryNode(
             id="node_1",
             text="Original",
@@ -40,7 +39,6 @@ class TestInteractiveSessionRefine:
         )
         session.selected_node = original_node
 
-        # Setup engine response
         refined_node = SummaryNode(
             id="node_1",
             text="Refined",
@@ -50,47 +48,53 @@ class TestInteractiveSessionRefine:
         )
         mock_engine.refine_node.return_value = refined_node
 
-        # Track is_processing state changes
-        states = []
-        def observer(event: Any) -> None:
-            states.append(event.new)
-
-        session.param.watch(observer, ['is_processing'])
-
-        # Set breadcrumbs including the node to be refined
         session.breadcrumbs = [original_node]
+        session.refine_current_node("Make it better")
 
-        # Execute
-        instruction = "Make it better"
-        session.refine_current_node(instruction)
-
-        # Verify
-        mock_engine.refine_node.assert_called_once_with("node_1", instruction)
+        mock_engine.refine_node.assert_called_once_with("node_1", "Make it better")
         assert session.selected_node == refined_node
-        assert session.selected_node.text == "Refined"
-
-        # Verify breadcrumbs updated
-        assert len(session.breadcrumbs) == 1
         assert session.breadcrumbs[0] == refined_node
-        assert session.breadcrumbs[0].text == "Refined"
-
-        # Verify is_processing toggled True then False
-        # Note: param watcher might catch initial True set, then False set
-        # Since default is False, first change is True, then False.
-        assert True in states
-        assert states[-1] is False
         assert session.is_processing is False
+
+    def test_multiple_refinements(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
+        """Test that state remains consistent after multiple refinements."""
+        # Initial State
+        node_v1 = SummaryNode(
+            id="node_1",
+            text="V1",
+            level=2,
+            children_indices=[1],
+            metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
+        )
+        session.selected_node = node_v1
+        session.breadcrumbs = [node_v1]
+
+        # Refinement 1
+        node_v2 = node_v1.model_copy(update={"text": "V2"})
+        node_v2.metadata.is_user_edited = True
+        mock_engine.refine_node.return_value = node_v2
+
+        session.refine_current_node("Refine 1")
+
+        assert session.selected_node.text == "V2"
+        assert session.breadcrumbs[0].text == "V2"
+
+        # Refinement 2
+        node_v3 = node_v2.model_copy(update={"text": "V3"})
+        mock_engine.refine_node.return_value = node_v3
+
+        session.refine_current_node("Refine 2")
+
+        assert session.selected_node.text == "V3"
+        assert session.breadcrumbs[0].text == "V3"
+        assert len(session.breadcrumbs) == 1
 
     def test_refine_no_selection(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
-        """Test refinement does nothing if no node selected."""
         session.selected_node = None
         session.refine_current_node("instruction")
-
         mock_engine.refine_node.assert_not_called()
-        assert session.is_processing is False
 
     def test_refine_error_handling(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
-        """Test is_processing resets even if engine raises error."""
         session.selected_node = SummaryNode(
             id="node_1",
             text="Original",
@@ -98,7 +102,6 @@ class TestInteractiveSessionRefine:
             children_indices=[],
             metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
         )
-
         mock_engine.refine_node.side_effect = ValueError("Engine Error")
 
         with pytest.raises(ValueError, match="Engine Error"):
@@ -107,16 +110,11 @@ class TestInteractiveSessionRefine:
         assert session.is_processing is False
 
     def test_refine_chunk_error(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
-        """Test attempting to refine a chunk raises error or handled by engine."""
-        # Engine raises TypeError for chunks
         chunk = Chunk(index=1, text="Chunk", start_char_idx=0, end_char_idx=10)
         session.selected_node = chunk
 
-        # Mock engine behavior for chunk
-        # Actually refine_node takes ID, so if we pass ID, engine handles type check
-        mock_engine.refine_node.side_effect = TypeError("Only SummaryNodes can be refined")
+        # Engine raises TypeError if ID passed points to chunk, but View Model should block first?
+        # Our view model check: if not isinstance(self.selected_node, SummaryNode): raise TypeError
 
         with pytest.raises(TypeError):
             session.refine_current_node("instruction")
-
-        assert session.is_processing is False

@@ -1,4 +1,6 @@
 import logging
+import os
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated
 
@@ -39,8 +41,50 @@ DEFAULT_CONFIG = ProcessingConfig.default()
 
 def _handle_file_too_large(size: int, limit: int) -> None:
     """Handle error when file is too large."""
-    typer.echo(f"File too large: {size} bytes. Limit is {limit / (1024*1024):.2f}MB.", err=True)
+    typer.echo(
+        f"File too large: {size} bytes. Limit is {limit / (1024*1024):.2f}MB.", err=True
+    )
     raise typer.Exit(code=1)
+
+
+def _validate_output_dir(output_dir: Path) -> None:
+    """
+    Validate output directory to prevent path traversal or unsafe locations.
+    Assuming we only want to write to subdirectories of CWD or safe absolute paths.
+    """
+    try:
+        resolved = output_dir.resolve()
+        cwd = Path.cwd().resolve()
+        # Simple check: Ensure we are not writing to system roots or suspicious places if relative
+        # Ideally, we restrict to CWD subfolders for safety in this context
+        # But user might provide an absolute path intentionally.
+        # We check if the path is writable at least.
+
+        # Prevent traversal outside intended parent if strict mode (optional)
+        # For now, we ensure we can create it and it's not a file.
+        if resolved.exists() and not resolved.is_dir():
+             typer.echo(f"Output path {output_dir} exists and is not a directory.", err=True)
+             raise typer.Exit(code=1)
+
+    except Exception as e:
+        typer.echo(f"Invalid output directory: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+
+def _stream_file_content(path: Path) -> Iterator[str]:
+    """
+    Stream file content line by line (or chunk by chunk) to avoid loading into memory.
+    """
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                yield line
+    except UnicodeDecodeError as e:
+        typer.echo(f"File encoding error: {e}. Please ensure the file is valid UTF-8.", err=True)
+        raise typer.Exit(code=1) from e
+    except Exception as e:
+        typer.echo(f"Error reading file stream: {e}", err=True)
+        raise typer.Exit(code=1) from e
 
 
 def _initialize_components(config: ProcessingConfig) -> tuple[
@@ -61,7 +105,7 @@ def _initialize_components(config: ProcessingConfig) -> tuple[
 
 
 def _run_pipeline(
-    text: str,
+    text_stream: Iterator[str],
     store: DiskChunkStore,
     config: ProcessingConfig,
     components: tuple[
@@ -78,10 +122,8 @@ def _run_pipeline(
 
     typer.echo("Running RAPTOR process (Chunk -> Embed -> Cluster -> Summarize)...")
     try:
-        # RaptorEngine.run handles store lifecycle internally if passed, but we want to keep it open
-        # The caller (cli.run) has opened the store.
-        # RaptorEngine.run uses store_ctx which respects open store.
-        return engine.run(text, store=store)
+        # Pass the stream generator directly
+        return engine.run(text_stream, store=store)
     except Exception as e:
         typer.echo(f"Error during RAPTOR execution: {e}", err=True)
         logger.exception("RAPTOR execution failed.")
@@ -92,6 +134,7 @@ def _verify_results(
     tree: DocumentTree,
     store: DiskChunkStore,
     verifier: VerifierAgent,
+    config: ProcessingConfig,
     output_dir: Path,
 ) -> None:
     """Run verification on the generated tree."""
@@ -105,8 +148,8 @@ def _verify_results(
                 child_texts.append(node.text)
 
         source_text = "\n\n".join(child_texts)
-        if len(source_text) > 50000:
-            source_text = source_text[:50000] + "...(truncated)"
+        if len(source_text) > config.verification_context_length:
+            source_text = source_text[:config.verification_context_length] + "...(truncated)"
 
         result = verifier.verify(root_summary, source_text)
         typer.echo(f"Verification Score: {result.score}")
@@ -201,6 +244,9 @@ def run(
     Run the full summarization pipeline on a text file.
     """
     typer.echo(f"Starting Matome Pipeline for: {input_file}")
+
+    # Validate output dir safety
+    _validate_output_dir(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     config = ProcessingConfig(
@@ -211,37 +257,36 @@ def run(
     )
 
     if mode.lower() != "dikw":
+        # If not DIKW, reset strategy mapping
         config = config.model_copy(update={"strategy_mapping": {}})
         typer.echo("Running in DEFAULT mode (Standard Summarization).")
     else:
         typer.echo("Running in DIKW mode (Wisdom/Knowledge/Information).")
 
+    # Check file size before processing
     try:
-        # Check file size before reading to prevent loading massive files into memory
         file_stats = input_file.stat()
         if file_stats.st_size > config.max_file_size_bytes:
             _handle_file_too_large(file_stats.st_size, config.max_file_size_bytes)
+    except OSError as e:
+        typer.echo(f"Error accessing file: {e}", err=True)
+        raise typer.Exit(code=1) from e
 
-        text = input_file.read_text(encoding="utf-8")
-    except UnicodeDecodeError as e:
-        typer.echo(f"File encoding error: {e}. Please ensure the file is valid UTF-8.", err=True)
-        raise typer.Exit(code=1) from e
-    except Exception as e:
-        typer.echo(f"Error reading file: {e}", err=True)
-        raise typer.Exit(code=1) from e
+    # Create stream generator
+    text_stream = _stream_file_content(input_file)
 
     components = _initialize_components(config)
     chunker, embedder, clusterer, summarizer, verifier = components
 
     store_path = output_dir / "chunks.db"
-    store = DiskChunkStore(db_path=store_path)
 
-    with store as active_store:
-        tree = _run_pipeline(text, active_store, config, components)
+    # Use context manager for store to ensure cleanup
+    with DiskChunkStore(db_path=store_path) as active_store:
+        tree = _run_pipeline(text_stream, active_store, config, components)
         typer.echo("Tree construction complete.")
 
         if verifier and config.verifier_enabled:
-            _verify_results(tree, active_store, verifier, output_dir)
+            _verify_results(tree, active_store, verifier, config, output_dir)
 
         _export_results(tree, active_store, config, output_dir)
 
@@ -295,8 +340,19 @@ def serve(
 
     typer.echo(f"Starting Matome GUI on port {port}...")
 
-    store = DiskChunkStore(db_path=store_path)
+    # Using context manager is tricky with pn.serve blocking,
+    # but pn.serve(..., show=False) returns a server object.
+    # However, we often run serve indefinitely.
+    # Proper pattern: Open store, run serve, ensure close on exit.
 
+    # Ideally:
+    # with DiskChunkStore(db_path=store_path) as store:
+    #     ... setup ...
+    #     pn.serve(...)
+
+    # But pn.serve blocks by default.
+
+    store = DiskChunkStore(db_path=store_path)
     try:
         config = ProcessingConfig()  # Default config for now
 

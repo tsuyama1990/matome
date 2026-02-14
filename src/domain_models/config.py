@@ -232,6 +232,11 @@ class ProcessingConfig(BaseModel):
         default_factory=lambda: _safe_getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
         description="Model to use for verification (defaults to summarization model).",
     )
+    verification_context_length: int = Field(
+        default=50000,
+        ge=1000,
+        description="Maximum length of context used for verification to avoid token limits.",
+    )
 
     # Strategy Configuration
     strategy_mapping: dict[DIKWLevel, str] = Field(
