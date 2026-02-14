@@ -2,11 +2,8 @@ import contextlib
 import threading
 import time
 from collections.abc import Iterator
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
@@ -146,9 +143,11 @@ def test_uat_concurrency_error_handling() -> None:
 
     def failing_writer() -> None:
         # Simulate an error during write
-        with patch.object(store.engine, 'connect', side_effect=Exception("DB Locked")):
-            with contextlib.suppress(Exception):
-                store.update_node(node)
+        with (
+            patch.object(store.engine, "connect", side_effect=Exception("DB Locked")),
+            contextlib.suppress(Exception),
+        ):
+            store.update_node(node)
 
     def successful_reader() -> None:
         # Should still be able to read (if connection pool allows or separate conn)

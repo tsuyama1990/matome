@@ -64,7 +64,7 @@ def test_chain_of_density_strategy_prompt() -> None:
 
 
 def test_refinement_strategy_appending() -> None:
-    """Test that RefinementStrategy appends instruction to base prompt."""
+    """Test that RefinementStrategy wraps base prompt with instruction."""
     base_mock = MagicMock()
     base_mock.format_prompt.return_value = "Base Prompt."
     base_mock.dikw_level = DIKWLevel.WISDOM
@@ -77,10 +77,11 @@ def test_refinement_strategy_appending() -> None:
     # Check that base strategy was called
     base_mock.format_prompt.assert_called_with("Source Text", context)
 
-    # Check structure
+    # Check structure with REFINEMENT_INSTRUCTION_TEMPLATE
     assert "Base Prompt." in prompt
-    assert "USER INSTRUCTION: Make it better." in prompt
-    assert prompt.endswith("USER INSTRUCTION: Make it better.") or "USER INSTRUCTION: Make it better." in prompt
+    assert "User Instruction:" in prompt
+    assert "Make it better." in prompt
+    assert "Original Text/Context:" in prompt
 
 
 def test_refinement_strategy_no_instruction() -> None:

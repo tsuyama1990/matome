@@ -1,13 +1,13 @@
-import pytest
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from sqlalchemy import select, func
+import pytest
+from sqlalchemy import func, select
 
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
-from matome.utils.store import TABLE_NODES, DiskChunkStore
+from matome.utils.store import DiskChunkStore
 
 
 def test_add_chunks_streaming(tmp_path: Path) -> None:
@@ -183,9 +183,8 @@ def test_empty_db_operations() -> None:
 
     # Get multiple non-existent nodes
     nodes = list(store.get_nodes(["999", "888"]))
-    # With strict streaming, we only yield what the DB returns.
-    # If DB returns nothing, we yield nothing.
-    assert nodes == []
+    # With strict streaming, we yield None for missing nodes to maintain index alignment
+    assert nodes == [None, None]
 
     # Count should be 0
     assert store.get_node_count(0) == 0

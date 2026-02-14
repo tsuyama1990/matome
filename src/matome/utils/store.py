@@ -2,10 +2,10 @@ import json
 import logging
 import shutil
 import tempfile
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 from sqlalchemy import (
     Column,
@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    bindparam,
     cast,
     create_engine,
     func,
@@ -21,7 +22,6 @@ from sqlalchemy import (
     select,
     text,
     update,
-    bindparam,
 )
 
 from domain_models.manifest import Chunk, SummaryNode
@@ -138,11 +138,10 @@ class DiskChunkStore:
 
         if node_type == "chunk":
             return Chunk.model_validate(data)
-        elif node_type == "summary":
+        if node_type == "summary":
             return SummaryNode.model_validate(data)
-        else:
-            msg = f"Unknown node type: {node_type} for node {node_id}"
-            raise ValueError(msg)
+        msg = f"Unknown node type: {node_type} for node {node_id}"
+        raise ValueError(msg)
 
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
