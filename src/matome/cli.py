@@ -286,6 +286,21 @@ def serve(
         ),
     ],
     port: Annotated[int, typer.Option("--port", "-p", help="Port to serve on.")] = DEFAULT_CONFIG.server_port,
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Summarization model to use for refinement.",
+        ),
+    ] = DEFAULT_CONFIG.summarization_model,
+    enable_refinement: Annotated[
+        bool,
+        typer.Option(
+            "--enable-refinement/--disable-refinement",
+            help="Enable/Disable interactive refinement capabilities.",
+        ),
+    ] = True,
 ) -> None:
     """
     Launch the interactive GUI.
@@ -298,9 +313,17 @@ def serve(
     store = DiskChunkStore(db_path=store_path)
 
     try:
-        config = ProcessingConfig()  # Default config for now
-        # Read-only mode: summarizer=None
-        engine = InteractiveRaptorEngine(store=store, summarizer=None, config=config)
+        config = ProcessingConfig(summarization_model=model)
+
+        summarizer = None
+        if enable_refinement:
+            try:
+                summarizer = SummarizationAgent(config)
+            except Exception as e:
+                typer.echo(f"Warning: Failed to initialize summarizer ({e}). Interactive refinement will be disabled.")
+                summarizer = None
+
+        engine = InteractiveRaptorEngine(store=store, summarizer=summarizer, config=config)
         session = InteractiveSession(engine=engine)
 
         # Load initial tree

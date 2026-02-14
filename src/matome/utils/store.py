@@ -107,21 +107,9 @@ class DiskChunkStore:
 
         self._setup_db()
 
-    def _setup_db(self) -> None:
-        """Initialize the database schema."""
-        try:
-            with self.engine.begin() as conn:
-                # Enable WAL mode for performance
-                conn.execute(text("PRAGMA journal_mode=WAL;"))
-                # Synchronous NORMAL is faster and safe enough for WAL
-                conn.execute(text("PRAGMA synchronous=NORMAL;"))
-        except SQLAlchemyError as e:
-            msg = f"Failed to configure database PRAGMAs: {e}"
-            raise StoreError(msg) from e
-
-        # Define schema using SQLAlchemy Core
-        metadata = MetaData()
-        self.nodes_table = Table(
+    def _define_schema(self, metadata: MetaData) -> Table:
+        """Define the database schema."""
+        return Table(
             TABLE_NODES,
             metadata,
             Column(COL_ID, String, primary_key=True),
@@ -140,6 +128,22 @@ class DiskChunkStore:
                 func.json_extract(text(COL_CONTENT), "$.level"),
             ),
         )
+
+    def _setup_db(self) -> None:
+        """Initialize the database schema."""
+        try:
+            with self.engine.begin() as conn:
+                # Enable WAL mode for performance
+                conn.execute(text("PRAGMA journal_mode=WAL;"))
+                # Synchronous NORMAL is faster and safe enough for WAL
+                conn.execute(text("PRAGMA synchronous=NORMAL;"))
+        except SQLAlchemyError as e:
+            msg = f"Failed to configure database PRAGMAs: {e}"
+            raise StoreError(msg) from e
+
+        # Define schema using SQLAlchemy Core
+        metadata = MetaData()
+        self.nodes_table = self._define_schema(metadata)
         try:
             metadata.create_all(self.engine)
         except SQLAlchemyError as e:
@@ -203,6 +207,22 @@ class DiskChunkStore:
         """Store multiple summary nodes in a batch."""
         self._add_nodes(nodes, "summary")
 
+    def _prepare_node_record(self, node: Chunk | SummaryNode, node_type: str) -> dict[str, Any]:
+        """Prepare a single node record for insertion."""
+        content_json = node.model_dump_json(exclude={"embedding"})
+        embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
+        node_id = str(node.index) if isinstance(node, Chunk) else node.id
+
+        # Validate ID
+        self._validate_node_id(node_id)
+
+        return {
+            "id": node_id,
+            "type": node_type,
+            "content": content_json,
+            "embedding": embedding_json,
+        }
+
     def _add_nodes(self, nodes: Iterable[Chunk | SummaryNode], node_type: str) -> None:
         """
         Helper to batch insert nodes.
@@ -214,24 +234,9 @@ class DiskChunkStore:
         try:
             # Iterate over the input iterable using batched() to handle chunks efficiently
             for node_batch in batched(nodes, self.write_batch_size):
-                buffer: list[dict[str, Any]] = []
-
-                for node in node_batch:
-                    content_json = node.model_dump_json(exclude={"embedding"})
-                    embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
-                    node_id = str(node.index) if isinstance(node, Chunk) else node.id
-
-                    # Validate ID
-                    self._validate_node_id(node_id)
-
-                    buffer.append(
-                        {
-                            "id": node_id,
-                            "type": node_type,
-                            "content": content_json,
-                            "embedding": embedding_json,
-                        }
-                    )
+                buffer = [
+                    self._prepare_node_record(node, node_type) for node in node_batch
+                ]
 
                 # Flush batch with transaction
                 with self.engine.begin() as conn:
