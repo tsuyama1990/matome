@@ -223,9 +223,9 @@ def test_raptor_cluster_edge_cases(
     clusters = [c1, c2, c3]
     strategy = InformationStrategy()
 
-    # Mock store to return None for index 1 (missing node)
+    # Mock store to return None for index 1 (missing node) and 99 (invalid)
     def get_node_side_effect(nid: int | str) -> Chunk | None:
-        if str(nid) == "1":
+        if str(nid) in ("1", "99"):
             return None
         return Chunk(index=int(nid), text=f"text_{nid}", start_char_idx=0, end_char_idx=5)
 

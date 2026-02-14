@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from domain_models.constants import MAX_DB_CONTENT_LENGTH
 from domain_models.manifest import Chunk, SummaryNode
 from matome.utils.compat import batched
 from matome.utils.store_schema import metadata, nodes_table
@@ -141,6 +142,18 @@ class DiskChunkStore:
             if not isinstance(data, dict):
                 msg = f"Node {node_id} content is not a JSON object."
                 raise TypeError(msg)
+
+            # Basic schema validation
+            required_keys = {"text"}
+            if node_type == "chunk":
+                required_keys.update({"index", "start_char_idx", "end_char_idx"})
+            elif node_type == "summary":
+                required_keys.update({"id", "level", "children_indices", "metadata"})
+
+            if not required_keys.issubset(data.keys()):
+                msg = f"Node {node_id} missing required keys: {required_keys - data.keys()}"
+                raise ValueError(msg)
+
         except json.JSONDecodeError as e:
             msg = f"Failed to decode JSON for node {node_id}: {e}"
             raise ValueError(msg) from e
@@ -186,6 +199,11 @@ class DiskChunkStore:
 
                 for node in node_batch:
                     content_json = node.model_dump_json(exclude={"embedding"})
+
+                    if len(content_json) > MAX_DB_CONTENT_LENGTH:
+                        msg = f"Node content length ({len(content_json)}) exceeds limit ({MAX_DB_CONTENT_LENGTH})."
+                        raise ValueError(msg)
+
                     embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
                     node_id = str(node.index) if isinstance(node, Chunk) else node.id
 
@@ -226,10 +244,10 @@ class DiskChunkStore:
         # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
         for batch_ids in batched(node_ids, self.read_batch_size):
             # Validate IDs in batch efficiently
-            if any(not VALID_NODE_ID_PATTERN.match(nid) for nid in batch_ids):
-                # Identify specific culprit if validation fails
-                for nid in batch_ids:
-                    self._validate_node_id(nid)
+            invalid_ids = [nid for nid in batch_ids if not VALID_NODE_ID_PATTERN.match(nid)]
+            if invalid_ids:
+                msg = f"Invalid node IDs found in batch: {invalid_ids[:5]}..."
+                raise ValueError(msg)
 
             stmt = select(
                 self.nodes_table.c.id,

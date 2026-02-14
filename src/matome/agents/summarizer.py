@@ -3,9 +3,11 @@ Summarization Agent module.
 This module implements the summarization logic using OpenRouter and Chain of Density prompting.
 """
 
+import base64
 import logging
 import re
 import unicodedata
+import urllib.parse
 import uuid
 from typing import Any
 
@@ -169,17 +171,42 @@ class SummarizationAgent:
 
     def _check_injection_patterns(self, text: str) -> None:
         """Check for prompt and system command injection patterns."""
-        # 4. Prompt Injection Check
-        for pattern in PROMPT_INJECTION_PATTERNS:
-             if re.search(pattern, text, flags=re.IGNORECASE):
-                  msg = f"Potential prompt injection detected: {pattern}"
-                  raise ValueError(msg)
 
-        # 5. SQL/System Injection Check
-        for pattern in SYSTEM_INJECTION_PATTERNS:
-            if re.search(pattern, text, flags=re.IGNORECASE):
-                msg = f"Input text contains suspicious pattern (SQL/Command Injection): {pattern}"
-                raise ValueError(msg)
+        # Helper to check a string against patterns
+        def check(s: str) -> None:
+            # 4. Prompt Injection Check
+            for pattern in PROMPT_INJECTION_PATTERNS:
+                if re.search(pattern, s, flags=re.IGNORECASE | re.MULTILINE):
+                    msg = f"Potential prompt injection detected: {pattern}"
+                    raise ValueError(msg)
+
+            # 5. SQL/System Injection Check
+            for pattern in SYSTEM_INJECTION_PATTERNS:
+                if re.search(pattern, s, flags=re.IGNORECASE | re.MULTILINE):
+                    msg = f"Input text contains suspicious pattern (SQL/Command Injection): {pattern}"
+                    raise ValueError(msg)
+
+        # Check original text
+        check(text)
+
+        # Check URL encoded
+        try:
+            decoded_url = urllib.parse.unquote(text)
+            if decoded_url != text:
+                check(decoded_url)
+        except Exception:
+            pass
+
+        # Check Base64 encoded (heuristic: if it looks like base64, try decoding)
+        # We only check if the whole string is base64 or significant chunks?
+        # For simplicity, if the text is valid base64, check the decoded content.
+        # This is a basic check.
+        if len(text) > 10 and len(text) % 4 == 0 and re.match(r'^[A-Za-z0-9+/]+={0,2}$', text):
+            try:
+                decoded_b64 = base64.b64decode(text, validate=True).decode('utf-8', errors='ignore')
+                check(decoded_b64)
+            except Exception:
+                pass
 
     def _sanitize_prompt_injection(self, text: str) -> str:
         """

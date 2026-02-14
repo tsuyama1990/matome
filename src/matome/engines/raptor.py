@@ -20,6 +20,8 @@ from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
 
+MAX_RECURSION_DEPTH = 10
+
 
 class StopRecursionError(Exception):
     """Internal exception to signal recursion termination with a result."""
@@ -50,6 +52,12 @@ class RaptorEngine:
         self.summarizer = summarizer
         self.config = config
 
+    def _mask_log(self, text: str) -> str:
+        """Mask sensitive data in logs."""
+        if len(text) <= 20:
+            return "*" * len(text)
+        return text[:10] + "*" * (len(text) - 20) + text[-10:]
+
     def _get_strategy_for_level(self, current_level: int, is_final_layer: bool) -> PromptStrategy:
         """
         Determine the PromptStrategy based on the current level and topology.
@@ -64,7 +72,6 @@ class RaptorEngine:
 
         target_dikw = self.config.dikw_topology.get(topology_key, DIKWLevel.KNOWLEDGE)
 
-        # Map DIKW level to strategy name using config mapping
         strategy_name = self.config.strategy_mapping.get(target_dikw, target_dikw.value)
 
         strategy_class = STRATEGY_REGISTRY.get(strategy_name)
@@ -88,18 +95,15 @@ class RaptorEngine:
                 chunk_stream = self.embedder.embed_chunks(initial_chunks)
 
                 for chunk_batch_tuple in batched(chunk_stream, self.config.chunk_buffer_size):
-                    # Keep as tuple, do NOT convert to list to save memory
                     store.add_chunks(chunk_batch_tuple)
 
                     for chunk in chunk_batch_tuple:
                         self._validate_chunk_embedding(chunk)
 
                         if chunk.embedding is None:
-                            # unreachable due to validate above
                             continue
 
                         stats["node_count"] += 1
-                        # Yield ID and embedding vector
                         yield (str(chunk.index), chunk.embedding)
 
                     if stats["node_count"] % 100 == 0:
@@ -147,7 +151,6 @@ class RaptorEngine:
         )
 
         with store_ctx as active_store:
-            # Level 0
             clusters, node_count = self._process_level_zero(
                 initial_chunks_iter, active_store
             )
@@ -156,12 +159,10 @@ class RaptorEngine:
                  msg = "No nodes remaining."
                  raise MatomeError(msg)
 
-            # Recursive Summarization
             final_root_id = self._process_recursion(
                 clusters, node_count, active_store
             )
 
-            # Retrieve L0 IDs for finalizing the tree (deferred to save memory during recursion)
             l0_ids = list(active_store.get_node_ids_by_level(0))
             l0_ids_typed = cast(list[NodeID], l0_ids)
 
@@ -176,12 +177,16 @@ class RaptorEngine:
     ) -> NodeID:
         """
         Execute the recursive summarization loop.
-        Returns the ID of the root node.
         """
         level = start_level
         node_count = prev_node_count
 
         while True:
+            if level > MAX_RECURSION_DEPTH:
+                logger.error(f"Max recursion depth {MAX_RECURSION_DEPTH} exceeded.")
+                # Return the first node of current level as a fallback root
+                return next(iter(store.get_node_ids_by_level(level)))
+
             logger.info(f"Processing Level {level}. Node count: {node_count}")
 
             if node_count == 0:
@@ -189,7 +194,6 @@ class RaptorEngine:
                 raise MatomeError(msg)
 
             if node_count == 1:
-                # Retrieve the single root ID
                 return next(iter(store.get_node_ids_by_level(level)))
 
             try:
@@ -211,7 +215,6 @@ class RaptorEngine:
             level = next_level
             node_count = next_level_count
 
-            # Ternary operator as requested
             clusters = self._embed_and_cluster_next_level(level, store) if node_count > 1 else []
 
     def _reduce_clusters_if_needed(
@@ -225,15 +228,12 @@ class RaptorEngine:
                 f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
             )
             if node_count < 20:
-                return [Cluster(id=0, level=level, node_indices=list(store.get_node_ids_by_level(level)))]
+                # Force single cluster if small enough
+                # We need IDs.
+                node_ids = list(store.get_node_ids_by_level(level))
+                return [Cluster(id=0, level=level, node_indices=node_ids)]
             else:
                 logger.error("Could not reduce nodes. Stopping recursion.")
-                # We return a state that will cause the loop to exit or we raise an exception/return ID?
-                # The caller expects clusters. If we can't reduce, we essentially treat current level as top?
-                # But we need a single root.
-                # Original logic: return next(iter(store.get_node_ids_by_level(level)))
-                # To break the loop cleanly, we need to signal the caller.
-                # Since we are inside a helper, raising a custom exception to signal "Done" is cleanest.
                 raise StopRecursionError(next(iter(store.get_node_ids_by_level(level))))
         return clusters
 
@@ -247,7 +247,6 @@ class RaptorEngine:
     ) -> int:
         """
         Summarize clusters and store the resulting nodes.
-        Returns the count of new nodes created.
         """
         new_nodes_iter = self._summarize_clusters(
             clusters, input_level, store, output_level, strategy
@@ -275,26 +274,22 @@ class RaptorEngine:
     ) -> list[Cluster]:
         """
         Perform embedding and clustering for the next level (summaries).
-        Streams IDs from store to avoid loading all into memory.
         """
 
         def lx_embedding_generator() -> Iterator[tuple[NodeID, list[float]]]:
             def node_text_generator() -> Iterator[tuple[NodeID, str]]:
-                # Stream IDs directly from store
                 for nid in store.get_node_ids_by_level(level):
                     node = store.get_node(nid)
                     if node:
                         yield nid, node.text
                     else:
                         logger.warning(
-                            f"Node {nid} not found in store during next level clustering."
+                            f"Node {self._mask_log(nid)} not found in store during next level clustering."
                         )
 
-            # Ensure batch size is reasonable
             batch_size = min(self.config.embedding_batch_size, 100)
 
             for batch in batched(node_text_generator(), batch_size):
-                # Optimize: Avoid zip(*batch) to reduce intermediate tuple creation
                 batch_list = list(batch)
                 if not batch_list:
                     continue
@@ -329,7 +324,6 @@ class RaptorEngine:
         """
         if not current_level_ids:
             if not l0_ids:
-                 # Empty tree is valid for empty input
                  pass
             msg = "No nodes remaining."
             raise MatomeError(msg)
@@ -338,20 +332,18 @@ class RaptorEngine:
         root_node_obj = store.get_node(root_id)
 
         if not root_node_obj:
-            msg = f"Root node {root_id} not found in store."
+            msg = f"Root node {self._mask_log(str(root_id))} not found in store."
             raise MatomeError(msg)
 
-        # Ensure root embedding
         if root_node_obj.embedding is None:
-            logger.info(f"Generating embedding for root node {root_id}")
-            # Use generator to avoid list creation even for single item
+            logger.info(f"Generating embedding for root node {self._mask_log(str(root_id))}")
             embeddings_iter = self.embedder.embed_strings((root_node_obj.text,))
             try:
                 embedding = next(embeddings_iter)
                 root_node_obj.embedding = embedding
                 store.update_node_embedding(root_id, embedding)
             except StopIteration:
-                logger.warning(f"Failed to generate embedding for root node {root_id}")
+                logger.warning(f"Failed to generate embedding for root node {self._mask_log(str(root_id))}")
 
         if isinstance(root_node_obj, Chunk):
             root_node = self._handle_single_chunk_root(root_node_obj, store)
@@ -373,11 +365,9 @@ class RaptorEngine:
         try:
              summary_text = self.summarizer.summarize(chunk.text, self.config, strategy)
         except Exception:
-             # Fallback to chunk text if summarization fails
              logger.warning("Single chunk summarization failed, falling back to raw text.")
              summary_text = chunk.text
 
-        # Validation
         if not summary_text or not summary_text.strip():
              logger.warning("Summarization produced empty text, falling back to raw chunk.")
              summary_text = chunk.text
@@ -405,93 +395,71 @@ class RaptorEngine:
     ) -> Iterator[SummaryNode]:
         """
         Process clusters to generate summaries (streaming).
-        Builds a map of referenced IDs to avoid loading all IDs.
         """
-        # Batch size for processing clusters
-        batch_size = self.config.cluster_batch_size
-
-        for cluster_batch in batched(clusters, batch_size):
-            yield from self._process_cluster_batch(
-                cluster_batch, store, output_level, strategy
+        for cluster in clusters:
+            yield from self._process_single_cluster(
+                cluster, store, output_level, strategy
             )
 
-    def _process_cluster_batch(
+    def _process_single_cluster(
         self,
-        cluster_batch: tuple[Cluster, ...],
+        cluster: Cluster,
         store: DiskChunkStore,
         output_level: int,
         strategy: PromptStrategy
     ) -> Iterator[SummaryNode]:
-        """Process a single batch of clusters."""
-        batch_node_ids = []
-        cluster_node_map: dict[NodeID, list[NodeID]] = {}
+        """Process a single cluster."""
+        # IDs are available directly in cluster
+        node_ids_in_cluster = cluster.node_indices
 
-        # Collect IDs for this batch
-        for cluster in cluster_batch:
-            # Indices are now IDs (strings) because GMMClusterer returns IDs
-            node_ids_in_cluster = cluster.node_indices
+        # Stream nodes for this cluster only
+        cluster_texts: list[str] = []
+        children_indices: list[NodeID] = []
+        current_length = 0
 
-            cluster_node_map[cluster.id] = node_ids_in_cluster
-            batch_node_ids.extend(node_ids_in_cluster)
-
-        # Fetch nodes for this batch only
-        fetched_nodes_list = list(store.get_nodes([str(nid) for nid in batch_node_ids]))
-        fetched_node_lookup = {
-            str(n.index if isinstance(n, Chunk) else n.id): n
-            for n in fetched_nodes_list if n
-        }
-
-        # Process clusters in this batch
-        for cluster in cluster_batch:
-            children_indices: list[NodeID] = []
-            cluster_texts: list[str] = []
-
-            current_length = 0
-
-            needed_ids = cluster_node_map.get(cluster.id, [])
-
-            for nid_ref in needed_ids:
-                node = fetched_node_lookup.get(str(nid_ref))
-                if not node:
-                    continue
-
-                text_len = len(node.text)
-                if current_length + text_len > self.config.max_input_length:
-                     logger.warning(f"Cluster {cluster.id} exceeding max length. Truncating nodes.")
-                     break
-
-                children_indices.append(nid_ref)
-                cluster_texts.append(node.text)
-                current_length += text_len
-
-            if not cluster_texts:
+        # Retrieve nodes for this cluster streamingly if supported by store
+        # Our get_nodes streams, but we collect to list to join text
+        # For a single cluster, this is O(cluster_size) which is small
+        for node in store.get_nodes([str(nid) for nid in node_ids_in_cluster]):
+            if not node:
                 continue
 
-            combined_text = "\n\n".join(cluster_texts)
+            text_len = len(node.text)
+            if current_length + text_len > self.config.max_input_length:
+                 logger.warning(f"Cluster {cluster.id} exceeding max length. Truncating nodes.")
+                 break
 
-            # Additional safety check for total length after join (headers etc)
-            if len(combined_text) > self.config.max_input_length:
-                 combined_text = combined_text[:self.config.max_input_length]
+            children_indices.append(node.index if isinstance(node, Chunk) else node.id)
+            cluster_texts.append(node.text)
+            current_length += text_len
 
-            try:
-                summary_text = self.summarizer.summarize(combined_text, self.config, strategy)
-            except SummarizationError:
-                logger.exception(f"Summarization failed for cluster {cluster.id}")
-                summary_text = "Summarization failed."
+        if not cluster_texts:
+            return
 
-            node_id_str = str(uuid.uuid4())
+        combined_text = "\n\n".join(cluster_texts)
 
-            metadata = NodeMetadata(
-                dikw_level=strategy.dikw_level,
-                cluster_id=cluster.id
-            )
+        if len(combined_text) > self.config.max_input_length:
+             combined_text = combined_text[:self.config.max_input_length]
 
-            summary_node = SummaryNode(
-                id=node_id_str,
-                text=summary_text,
-                level=output_level,
-                children_indices=children_indices,
-                metadata=metadata,
-            )
+        try:
+            summary_text = self.summarizer.summarize(combined_text, self.config, strategy)
+        except SummarizationError:
+            logger.exception(f"Summarization failed for cluster {cluster.id}")
+            summary_text = "Summarization failed."
 
-            yield summary_node
+        node_id_str = str(uuid.uuid4())
+
+        metadata = NodeMetadata(
+            dikw_level=strategy.dikw_level,
+            cluster_id=cluster.id
+        )
+
+        summary_node = SummaryNode(
+            id=node_id_str,
+            text=summary_text,
+            level=output_level,
+            children_indices=children_indices,
+            metadata=metadata,
+        )
+
+        yield summary_node

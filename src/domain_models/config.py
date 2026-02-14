@@ -8,6 +8,7 @@ from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
     ALLOWED_SUMMARIZATION_MODELS,
     ALLOWED_TOKENIZER_MODELS,
+    DEFAULT_STRATEGY_MAPPING,
     DEFAULT_CANVAS_GAP_X,
     DEFAULT_CANVAS_GAP_Y,
     DEFAULT_CANVAS_NODE_HEIGHT,
@@ -233,9 +234,7 @@ class ProcessingConfig(BaseModel):
     # Strategy Configuration
     strategy_mapping: dict[DIKWLevel, str] = Field(
         default_factory=lambda: {
-            DIKWLevel.WISDOM: "wisdom",
-            DIKWLevel.KNOWLEDGE: "knowledge",
-            DIKWLevel.INFORMATION: "information",
+            DIKWLevel(k): v for k, v in DEFAULT_STRATEGY_MAPPING.items()
         },
         description="Mapping of DIKW levels to strategy names.",
     )
