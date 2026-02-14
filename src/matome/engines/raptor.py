@@ -4,8 +4,14 @@ import uuid
 from collections.abc import Iterable, Iterator
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
-from domain_models.types import NodeID
+from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel, NodeID
+from matome.agents.strategies import (
+    InformationStrategy,
+    KnowledgeStrategy,
+    PromptStrategy,
+    WisdomStrategy,
+)
 from matome.engines.embedder import EmbeddingService
 from matome.interfaces import Chunker, Clusterer, Summarizer
 from matome.utils.compat import batched
@@ -134,6 +140,19 @@ class RaptorEngine:
 
             return self._finalize_tree(current_level_ids, active_store, all_summaries, l0_ids)
 
+    def _get_strategy_for_level(self, level: int, cluster_count: int) -> PromptStrategy | None:
+        """Determine the prompt strategy for the current level."""
+        if self.config.processing_mode != "dikw":
+            return None
+
+        if cluster_count == 1:
+            return WisdomStrategy()
+
+        if level == 1:
+            return InformationStrategy()
+
+        return KnowledgeStrategy()
+
     def _process_recursion(
         self,
         clusters: list[Cluster],
@@ -179,7 +198,11 @@ class RaptorEngine:
 
             # Summarization
             level += 1
-            new_nodes_iter = self._summarize_clusters(clusters, current_level_ids, store, level)
+            strategy = self._get_strategy_for_level(level, len(clusters))
+
+            new_nodes_iter = self._summarize_clusters(
+                clusters, current_level_ids, store, level, strategy
+            )
 
             current_level_ids = []
 
@@ -308,12 +331,24 @@ class RaptorEngine:
                     all_summaries[str(root_id)] = root_node_obj
 
         if isinstance(root_node_obj, Chunk):
+            # If the root is a single chunk, we wrap it in a SummaryNode.
+            # In DIKW mode, this might be strange (Data -> Wisdom directly?)
+            # But we respect the structure.
+            meta = NodeMetadata(type="single_chunk_root")
+            if self.config.processing_mode == "dikw":
+                # A single chunk root is technically Wisdom?
+                # Or just Data?
+                # Spec says "The Root node is always WISDOM".
+                # But it's just a wrapper around chunk.
+                # Let's mark it Wisdom if DIKW mode.
+                meta.dikw_level = DIKWLevel.WISDOM
+
             root_node = SummaryNode(
                 id=str(uuid.uuid4()),
                 text=root_node_obj.text,
                 level=1,
                 children_indices=[root_node_obj.index],
-                metadata={"type": "single_chunk_root"},
+                metadata=meta,
             )
             all_summaries[root_node.id] = root_node
         else:
@@ -332,6 +367,7 @@ class RaptorEngine:
         current_level_ids: list[NodeID],
         store: DiskChunkStore,
         level: int,
+        strategy: PromptStrategy | None = None,
     ) -> Iterator[SummaryNode]:
         """
         Process clusters to generate summaries (streaming).
@@ -365,15 +401,21 @@ class RaptorEngine:
             # Note: For very large clusters, joining texts might still be memory intensive.
             # But the summarizer typically takes a string.
             combined_text = "\n\n".join(cluster_texts)
-            summary_text = self.summarizer.summarize(combined_text, self.config)
+            summary_text = self.summarizer.summarize(
+                combined_text, self.config, strategy=strategy
+            )
 
             node_id_str = str(uuid.uuid4())
+            metadata = NodeMetadata(cluster_id=cluster.id)
+            if strategy:
+                metadata.dikw_level = strategy.dikw_level
+
             summary_node = SummaryNode(
                 id=node_id_str,
                 text=summary_text,
                 level=level,
                 children_indices=children_indices,
-                metadata={"cluster_id": cluster.id},
+                metadata=metadata,
             )
 
             yield summary_node

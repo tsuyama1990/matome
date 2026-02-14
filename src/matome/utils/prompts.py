@@ -50,3 +50,47 @@ Return a valid JSON object with the following structure:
   ]
 }}
 """
+
+# DIKW Prompt Templates
+
+# Level 1: Information (Summarizing Chunks)
+INFORMATION_TEMPLATE = """
+The following are excerpts from a text, grouped by topic:
+{context}
+
+Your task is to synthesize this information into a structured, actionable summary.
+- Focus on specific actions, steps, or rules mentioned in the text.
+- Use a markdown list format (bullet points or checklists).
+- Avoid abstract philosophy; be concrete and detailed.
+- If the text describes a process, outline the steps clearly.
+
+Output ONLY the summary.
+"""
+
+# Level 2+: Knowledge (Summarizing Summaries)
+KNOWLEDGE_TEMPLATE = """
+The following are detailed summaries of a larger text:
+{context}
+
+Your task is to synthesize these points into a coherent "Knowledge" node.
+- Identify the underlying frameworks, mechanisms, or mental models connecting these points.
+- Explain "how" and "why" things work, not just "what" to do.
+- Structure the output as a clear explanation with headings if necessary.
+- Connect the dots between isolated pieces of information.
+
+Output ONLY the summary.
+"""
+
+# Root: Wisdom (Summarizing Knowledge)
+WISDOM_TEMPLATE = """
+The following is a high-level overview of a text:
+{context}
+
+Your task is to distill the absolute essence of this information into a "Wisdom" node.
+- This should be a profound, memorable insight or aphorism (20-50 words max).
+- It should capture the "moral" or the core philosophical truth of the text.
+- It must be abstract enough to be applied broadly, yet specific enough to be meaningful.
+- Do NOT list points. Write a single, powerful statement or paragraph.
+
+Output ONLY the summary.
+"""

@@ -2,7 +2,7 @@ import logging
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from domain_models.types import Metadata, NodeID
+from domain_models.types import DIKWLevel, Metadata, NodeID
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -80,6 +80,28 @@ class Chunk(BaseModel):
         return self
 
 
+class NodeMetadata(BaseModel):
+    """Metadata schema for SummaryNodes enforcing DIKW structure."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dikw_level: DIKWLevel = Field(
+        default=DIKWLevel.DATA, description="The DIKW level of the node."
+    )
+    is_user_edited: bool = Field(
+        default=False, description="Whether the node has been manually edited."
+    )
+    refinement_history: list[str] = Field(
+        default_factory=list, description="History of refinement instructions."
+    )
+    cluster_id: NodeID | None = Field(
+        default=None, description="ID of the source cluster (for traceability)."
+    )
+    type: str | None = Field(
+        default=None, description="Type of the node (e.g., single_chunk_root)."
+    )
+
+
 class SummaryNode(BaseModel):
     """Represents a summary node in the RAPTOR tree."""
 
@@ -94,8 +116,8 @@ class SummaryNode(BaseModel):
     embedding: list[float] | None = Field(
         default=None, description="The vector representation of the summary text."
     )
-    metadata: Metadata = Field(
-        default_factory=dict, description="Optional extra info (e.g., cluster ID)."
+    metadata: NodeMetadata = Field(
+        default_factory=NodeMetadata, description="Strictly typed metadata."
     )
 
 
