@@ -6,126 +6,79 @@
 
 **Matome 2.0** is an interactive "Knowledge Installation" system that transforms long-form text into a structured DIKW (Data, Information, Knowledge, Wisdom) hierarchy. Unlike static summarizers, it allows you to explore information at varying levels of abstraction—from philosophical wisdom down to actionable checklists—and interactively refine the content to match your mental model.
 
-## Key Features
+## Features
 
--   **Semantic Zooming (DIKW Pyramid):** Navigate your documents like a map. Zoom out for "Wisdom" (The Big Idea) and zoom in for "Information" (Actionable Steps).
--   **Interactive Refinement:** Don't like a summary? Tell the AI to "rewrite it for a 5-year-old" or "focus on the financial risks," and watch it update in real-time.
--   **Traceability:** Every piece of wisdom is linked back to the original text chunks ("Data"), ensuring you can always verify the source of an insight.
--   **Local First:** Powered by `SQLite` and `Panel`, your knowledge base runs locally on your machine, ensuring privacy and speed.
-
-## Architecture Overview
-
-Matome 2.0 uses a **Reverse-DIKW** logic built on top of the RAPTOR recursive summarization engine.
-
-```mermaid
-graph TD
-    User[User] -->|Interacts| GUI[Matome Canvas (Panel)]
-
-    subgraph Presentation Layer
-        GUI -->|View State| VM[InteractiveSession]
-        GUI -->|Refine Request| Controller[InteractiveRaptorEngine]
-    end
-
-    subgraph Application Layer
-        Controller -->|Get Nodes| Store[DiskChunkStore]
-        Controller -->|Summarize/Refine| Agent[SummarizationAgent]
-    end
-
-    subgraph Domain Layer
-        Agent -->|Uses| Strategy[PromptStrategy]
-        Strategy <|-- WisdomStrat[Wisdom]
-        Strategy <|-- KnowledgeStrat[Knowledge]
-        Strategy <|-- InfoStrat[Information]
-    end
-
-    subgraph Infrastructure Layer
-        Store -->|Read/Write| DB[(SQLite / chunks.db)]
-        Agent -->|API Call| LLM[OpenAI API]
-    end
-```
+-   **DIKW Generation (Strategy Pattern):**
+    -   **Wisdom (Level 1):** Generates abstract, philosophical insights (Root Node).
+    -   **Knowledge (Level 2):** Synthesizes frameworks and mental models (Intermediate Nodes).
+    -   **Information (Level 3):** Extracts actionable checklists and steps (Leaf Summaries).
+-   **Semantic Zooming:** Navigate documents like a map, zooming from "Big Idea" to "Evidence".
+-   **Traceability:** Every summary links back to source chunks ("Data").
+-   **Scalability:** Uses streaming processing and disk-based storage (`SQLite`) to handle large documents without memory overflows.
+-   **Local First:** Your data stays on your machine (except for LLM calls).
 
 ## Prerequisites
 
 -   **Python 3.11+**
--   **uv** (Recommended package manager)
--   **OpenAI API Key** (Set in `.env` as `OPENAI_API_KEY`)
+-   **uv** (Package manager)
+-   **OpenRouter / OpenAI API Key** (Set as `OPENROUTER_API_KEY` env var)
 
-## Installation & Setup
+## Installation
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-org/matome.git
-    cd matome
-    ```
-
-2.  **Install dependencies:**
-    ```bash
-    uv sync
-    ```
-
-3.  **Configure Environment:**
-    ```bash
-    cp .env.example .env
-    # Edit .env and add your OPENAI_API_KEY
-    ```
+```bash
+git clone https://github.com/your-org/matome.git
+cd matome
+uv sync
+```
 
 ## Usage
 
-### Quick Start: Generate & Explore
+### 1. Generate a DIKW Tree
 
-1.  **Ingest a Document:**
-    Run the CLI to generate the initial DIKW tree from a text file.
-    ```bash
-    uv run matome run path/to/document.txt --mode dikw
-    ```
+Process a raw text file into a structured knowledge base.
 
-2.  **Launch the Canvas:**
-    Start the interactive GUI to explore and refine the knowledge.
-    ```bash
-    uv run matome serve results/chunks.db
-    ```
+```bash
+# Standard DIKW Generation
+uv run matome run input.txt --mode dikw
 
-3.  **Access the UI:**
-    Open your browser at `http://localhost:5006/matome`.
+# Customize output directory
+uv run matome run input.txt --mode dikw --output-dir my_results
+```
 
-## Development Workflow
+**Options:**
+-   `--mode dikw`: Activates the Wisdom/Knowledge/Information strategy.
+-   `--mode default`: Uses standard summarization.
+-   `--no-verify`: Skip the verification step (faster).
 
-We follow a rigorous development process divided into 5 cycles.
+### 2. View Results
+
+Matome exports results in multiple formats:
+-   `summary_all.md`: A readable Markdown file organized by hierarchy.
+-   `summary_kj.canvas`: An [Obsidian Canvas](https://obsidian.md/canvas) file for visual exploration.
+-   `chunks.db`: A SQLite database containing the full tree structure.
+
+## Architecture
+
+```
+matome/
+├── src/
+│   ├── domain_models/  # Pydantic schemas (DIKWLevel, SummaryNode)
+│   ├── matome/
+│   │   ├── agents/     # SummarizationAgent with Strategy Pattern
+│   │   ├── engines/    # Scalable RaptorEngine (Streaming)
+│   │   ├── ui/         # Panel GUI (Future Cycle)
+│   │   └── utils/      # DiskChunkStore (SQLite)
+```
+
+## Development
 
 **Running Tests:**
 ```bash
 uv run pytest
 ```
 
-**Linting & Type Checking:**
-We enforce strict quality standards using `ruff` and `mypy`.
+**Code Quality:**
 ```bash
 uv run ruff check .
 uv run mypy .
 ```
-
-**Running UAT Tutorials:**
-We use `marimo` for interactive verification.
-```bash
-uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
-```
-
-## Project Structure
-
-```
-matome/
-├── src/
-│   ├── domain_models/  # Pydantic schemas (SummaryNode, Chunk)
-│   ├── matome/
-│   │   ├── agents/     # LLM Logic & PromptStrategies
-│   │   ├── engines/    # RAPTOR & Interactive Engines
-│   │   ├── ui/         # Panel GUI (Canvas, ViewModel)
-│   │   └── utils/      # DB Storage & Helpers
-├── tests/              # Pytest suite
-├── dev_documents/      # Architecture specs & Design docs
-└── tutorials/          # Marimo UAT notebooks
-```
-
-## License
-
-MIT License. See [LICENSE](LICENSE) for details.

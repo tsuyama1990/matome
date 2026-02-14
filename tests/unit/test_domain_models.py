@@ -2,7 +2,8 @@ import pytest
 from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, Document, DocumentTree, SummaryNode
+from domain_models.manifest import Chunk, Cluster, Document, DocumentTree, NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
 
 
 def test_document_validation() -> None:
@@ -37,7 +38,11 @@ def test_summary_node_validation() -> None:
     """Test valid and invalid SummaryNode creation."""
     # Valid
     node = SummaryNode(
-        id="node1", text="Summary of text", level=1, children_indices=[0, 1], metadata={}
+        id="node1",
+        text="Summary of text",
+        level=1,
+        children_indices=[0, 1],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
     )
     assert node.level == 1
     assert node.children_indices == [0, 1]
@@ -49,19 +54,20 @@ def test_summary_node_validation() -> None:
             text="Summary",
             level=0,  # Should be >= 1
             children_indices=[0],
+            metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
         )
 
 
 def test_cluster_validation() -> None:
     """Test valid and invalid Cluster creation."""
     # Valid
-    cluster = Cluster(id="c1", level=0, node_indices=[0, 1, 2], centroid=[0.1, 0.2])
+    cluster = Cluster(id=1, level=0, node_indices=[0, 1, 2], centroid=[0.1, 0.2])
     assert cluster.level == 0
     assert cluster.node_indices == [0, 1, 2]
 
     # Invalid case: level < 0
     with pytest.raises(ValidationError):
-        Cluster(id="c1", level=-1, node_indices=[0])
+        Cluster(id=1, level=-1, node_indices=[0])
 
 
 def test_document_tree_validation() -> None:
@@ -69,19 +75,22 @@ def test_document_tree_validation() -> None:
     # Setup components
     chunk1 = Chunk(index=0, text="A", start_char_idx=0, end_char_idx=1)
     chunk2 = Chunk(index=1, text="B", start_char_idx=1, end_char_idx=2)
-    summary = SummaryNode(id="s1", text="AB", level=1, children_indices=[0, 1])
+    summary = SummaryNode(
+        id="s1",
+        text="AB",
+        level=1,
+        children_indices=[0, 1],
+        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+    )
 
     # Valid DocumentTree
     tree = DocumentTree(
         root_node=summary,
-        all_nodes={"s1": summary},
         leaf_chunk_ids=[chunk1.index, chunk2.index],
         metadata={},
     )
     assert tree.root_node.id == "s1"
     assert len(tree.leaf_chunk_ids) == 2
-    assert len(tree.all_nodes) == 1
-    assert tree.all_nodes["s1"] == summary
 
 
 def test_config_validation() -> None:
@@ -93,7 +102,7 @@ def test_config_validation() -> None:
     # Test new fields
     config_default = ProcessingConfig.default()
     assert config_default.clustering_algorithm.value == "gmm"
-    assert config_default.summarization_model == "gpt-4o"
+    assert config_default.summarization_model == "gpt-4o" # Check constant
     # Test semantic chunking defaults
     assert config_default.semantic_chunking_mode is False
     assert config_default.semantic_chunking_threshold == 0.8

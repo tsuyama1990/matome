@@ -17,6 +17,7 @@ from domain_models.constants import (
     DEFAULT_TOKENIZER,
     LARGE_SCALE_THRESHOLD,
 )
+from domain_models.types import DIKWLevel
 
 
 class ClusteringAlgorithm(Enum):
@@ -171,6 +172,16 @@ class ProcessingConfig(BaseModel):
     verification_model: str = Field(
         default_factory=lambda: _safe_getenv("VERIFICATION_MODEL", DEFAULT_SUMMARIZER),
         description="Model to use for verification (defaults to summarization model).",
+    )
+
+    # Strategy Configuration
+    strategy_mapping: dict[DIKWLevel, str] = Field(
+        default={
+            DIKWLevel.WISDOM: "wisdom",
+            DIKWLevel.KNOWLEDGE: "knowledge",
+            DIKWLevel.INFORMATION: "information",
+        },
+        description="Mapping of DIKW levels to strategy names.",
     )
 
     @field_validator("embedding_model", mode="after")

@@ -8,7 +8,7 @@ At the end of this cycle, the system will be able to ingest a raw text file and 
 
 ## 2. System Architecture
 
-This cycle focuses on refactoring the `agents` and `engines` modules to support the new Strategy Pattern.
+This cycle focuses on refactoring the `agents` and `engines` modules to support the new Strategy Pattern and address critical scalability issues.
 
 ### File Structure (ASCII Tree)
 
@@ -16,8 +16,9 @@ This cycle focuses on refactoring the `agents` and `engines` modules to support 
 matome/
 ├── src/
 │   ├── domain_models/
-│   │   ├── manifest.py         # [Modify] Update SummaryNode to support typed metadata
+│   │   ├── manifest.py         # [Modify] Update SummaryNode to support typed metadata; Remove all_nodes from DocumentTree
 │   │   ├── types.py            # [Modify] Add DIKWLevel Enum / Literals
+│   │   ├── config.py           # [Modify] Add strategy_mapping to ProcessingConfig
 │   │   └── constants.py        # [Modify] Add default prompt templates for each level
 │   └── matome/
 │       ├── agents/
@@ -25,7 +26,7 @@ matome/
 │       │   ├── **strategies.py**   # [Create] New PromptStrategy abstract base & implementations
 │       │   └── summarizer.py   # [Modify] Update to accept PromptStrategy
 │       ├── engines/
-│       │   ├── raptor.py       # [Modify] Update tree generation to use correct strategy per level
+│       │   ├── raptor.py       # [Modify] Update tree generation to use correct strategy per level & streaming
 │       │   └── **interactive.py**  # [Create] Skeleton for future use (Cycle 02 prep)
 │       ├── utils/
 │       │   └── prompts.py      # [Modify] Store new DIKW prompt templates
@@ -35,7 +36,7 @@ matome/
 ### Key Components
 
 1.  **PromptStrategy (New Interface):**
-    Located in `src/matome/agents/strategies.py`. This abstract base class defines how a prompt is constructed.
+    Located in `src/matome/interfaces.py` (ABC) and implemented in `src/matome/agents/strategies.py`. This abstract base class defines how a prompt is constructed.
     -   `format_prompt(context, children_text)`: Returns the full prompt string.
     -   `parse_output(response)`: helper to clean up LLM output.
 
@@ -49,12 +50,12 @@ matome/
     -   **Before:** `summarize(text, level)` -> logic inside.
     -   **After:** `summarize(text, strategy: PromptStrategy)` -> logic delegated.
 
-4.  **RaptorEngine (Updated):**
+4.  **RaptorEngine (Updated & Scalable):**
     Located in `src/matome/engines/raptor.py`.
-    -   Needs logic to select the correct strategy based on the current tree depth.
-    -   Level 1 (Summary of Chunks) -> InformationStrategy.
-    -   Level 2+ (Summary of Summaries) -> KnowledgeStrategy.
-    -   Final Root -> WisdomStrategy.
+    -   **Memory Safety (Critical):** Must use generators/iterators for ALL data processing (embedding, clustering, summarization). NEVER load all embeddings or all summary nodes into memory lists.
+    -   **Strategy Selection:** Use `config.strategy_mapping` to determine strategy based on level.
+    -   **Error Handling:** Implement `try/except` blocks with custom `MatomeError` exceptions for clustering and embedding failures.
+    -   **Input Validation:** Validate `combined_text` length before summarization to prevent DoS.
 
 ## 3. Design Architecture
 
@@ -85,7 +86,20 @@ class NodeMetadata(BaseModel):
     refinement_history: list[str] = Field(default_factory=list)
 ```
 
-**3. Prompt Strategy Interface:**
+**3. ProcessingConfig (Update):**
+Add `strategy_mapping` to allow dynamic configuration of strategies.
+
+```python
+class ProcessingConfig(BaseModel):
+    # ... existing fields ...
+    strategy_mapping: dict[DIKWLevel, str] = {
+        DIKWLevel.WISDOM: "wisdom",
+        DIKWLevel.KNOWLEDGE: "knowledge",
+        DIKWLevel.INFORMATION: "information",
+    }
+```
+
+**4. Prompt Strategy Interface:**
 
 ```python
 from abc import ABC, abstractmethod
@@ -104,15 +118,17 @@ class PromptStrategy(ABC):
 ```
 
 ### Constraints & Invariants
--   **Level Assignment:** A node at Level 1 (summarizing chunks) is *always* `INFORMATION` by default. The Root node is *always* `WISDOM`. Intermediate nodes are `KNOWLEDGE`.
+-   **Level Assignment:** A node at Level 1 (summarizing chunks) is *always* `INFORMATION` by default. The Root Node is *always* `WISDOM`. Intermediate nodes are `KNOWLEDGE`.
 -   **Output Length:** Wisdom nodes must be short (< 50 words). Information nodes must be structured (markdown lists).
 -   **Statelessness:** Strategies must not store data. They are pure logic containers.
+-   **Scalability:** The `DocumentTree` object MUST NOT contain `all_nodes` as a dictionary of all nodes if the dataset is large. It should rely on `DiskChunkStore` for retrieval. We will remove `all_nodes` from the `DocumentTree` model to enforce this.
 
 ## 4. Implementation Approach
 
 1.  **Step 1: Define Constants & Types**
     -   Update `src/domain_models/types.py` with `DIKWLevel`.
-    -   Add prompt templates to `src/matome/utils/prompts.py` (or `constants.py`).
+    -   Add prompt templates to `src/matome/utils/prompts.py`.
+    -   Update `src/domain_models/config.py`.
 
 2.  **Step 2: Implement Strategies**
     -   Create `src/matome/agents/strategies.py`.
@@ -124,10 +140,12 @@ class PromptStrategy(ABC):
     -   If no strategy is provided, default to a generic one (backward compatibility).
 
 4.  **Step 4: Update RaptorEngine**
+    -   Refactor `_process_level_zero` and `_embed_and_cluster_next_level` to be strictly streaming.
     -   In `_process_layer`, determine the current level.
-    -   Instantiate the appropriate Strategy (`InformationStrategy` for first layer, etc.).
+    -   Instantiate the appropriate Strategy using `config.strategy_mapping`.
     -   Pass this strategy to the `SummarizationAgent`.
     -   When creating the `SummaryNode`, populate `metadata={'dikw_level': strategy.dikw_level}`.
+    -   Add error handling and input validation.
 
 5.  **Step 5: CLI Integration**
     -   Add `--mode dikw` to `matome.cli`.
@@ -135,14 +153,14 @@ class PromptStrategy(ABC):
 
 ## 5. Test Strategy
 
-### Unit Testing Approach (Min 300 words)
-We will focus on testing the `PromptStrategy` classes in isolation. Since these are pure functions (input text -> output prompt), they are easy to test.
+### Unit Testing Approach
 -   **Test Case 1 (Wisdom):** Verify that `WisdomStrategy.format_prompt` includes keywords like "philosophy," "insight," "abstract."
 -   **Test Case 2 (Information):** Verify that `InformationStrategy` includes instructions for "markdown checklists" and "actionable steps."
 -   **Test Case 3 (Agent Integration):** Mock the LLM backend using `unittest.mock`. Pass a `WisdomStrategy` to `SummarizationAgent`. Assert that the agent sends the correct prompt to the mock LLM.
--   **Test Case 4 (Metadata Validation):** Create a `SummaryNode` with invalid metadata (e.g., `dikw_level="magic"`). Assert that Pydantic raises a validation error (if using strict validation) or that our builder function catches it.
+-   **Test Case 4 (Metadata Validation):** Create a `SummaryNode` with invalid metadata. Assert that Pydantic raises a validation error.
+-   **Test Case 5 (Streaming):** Verify that `RaptorEngine` methods return generators and do not consume full lists.
 
-### Integration Testing Approach (Min 300 words)
+### Integration Testing Approach
 We will verify the flow from `RaptorEngine` down to the `DiskChunkStore`.
 -   **Test Case 1 (End-to-End Generation):** Run the `matome` CLI with a small sample text (e.g., 2000 words). Use the `--mode dikw` flag.
 -   **Verification:** Inspect the generated `chunks.db` (or output JSON).
@@ -150,4 +168,3 @@ We will verify the flow from `RaptorEngine` down to the `DiskChunkStore`.
     -   Check if Level 1 Nodes have `metadata.dikw_level == "information"`.
     -   Read the text of the Root Node. It should be short and abstract.
     -   Read the text of a Level 1 Node. It should be detailed and actionable.
--   **Mocking:** For integration tests, we can use a "Mock LLM" that returns pre-defined strings based on the prompt content to avoid API costs and ensure deterministic results.

@@ -77,8 +77,6 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         assert tree.root_node is not None
         assert len(tree.leaf_chunk_ids) == 10
         assert tree.root_node.level >= 1
-        if tree.root_node.level > 1:
-            assert len(tree.all_nodes) > 1
 
         # Verify embeddings are present in store
         first_chunk = store.get_node(tree.leaf_chunk_ids[0])
@@ -86,13 +84,8 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         assert first_chunk.embedding is not None, "Leaf chunks must retain embeddings."
 
         # Verify root embedding
-        # Root might be in store (SummaryNode) or if level 0, it's chunk.
-        # But get_node works for both.
         root_fetched = store.get_node(tree.root_node.id)
         if root_fetched:
             assert root_fetched.embedding is not None, "Root node must have an embedding in store."
 
         assert tree.root_node.embedding is not None, "Root node object must have an embedding."
-
-        for node in tree.all_nodes.values():
-            assert node.embedding is not None, f"Summary node {node.id} must have an embedding."

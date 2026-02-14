@@ -61,6 +61,13 @@ def run(
         bool, typer.Option("--verify/--no-verify", help="Enable/Disable verification.")
     ] = True,
     max_tokens: Annotated[int, typer.Option(help="Max tokens per chunk.")] = 500,
+    mode: Annotated[
+        str,
+        typer.Option(
+            "--mode",
+            help="Processing mode: 'dikw' for Wisdom/Knowledge/Info, 'default' for standard summary.",
+        ),
+    ] = "dikw",
 ) -> None:
     """
     Run the full summarization pipeline on a text file.
@@ -72,7 +79,6 @@ def run(
 
     # Load config
     # We can map CLI args to config
-    # Note: Using env vars for secrets like API keys
     config = ProcessingConfig(
         summarization_model=model,
         verification_model=verifier_model,
@@ -80,16 +86,24 @@ def run(
         max_tokens=max_tokens,
     )
 
+    # Handle mode
+    if mode.lower() != "dikw":
+        # Clear strategy mapping to disable DIKW logic
+        # Since config is frozen, we must create a new one or rely on object mutation (bad) or dict copying
+        # ProcessingConfig is frozen.
+        # We need to create a new config with empty strategy_mapping.
+        config = config.model_copy(update={"strategy_mapping": {}})
+        typer.echo("Running in DEFAULT mode (Standard Summarization).")
+    else:
+        typer.echo("Running in DIKW mode (Wisdom/Knowledge/Information).")
+
     try:
         text = input_file.read_text(encoding="utf-8")
     except Exception as e:
         typer.echo(f"Error reading file: {e}", err=True)
         raise typer.Exit(code=1) from e
 
-    # Initialize components with progress bars where possible
-    # Note: engines don't take tqdm bar directly, but we can wrap iterators if needed.
-    # For now, just logging progress steps.
-
+    # Initialize components
     typer.echo("Initializing engines...")
     chunker = JapaneseTokenChunker()
     embedder = EmbeddingService(config)
@@ -98,69 +112,81 @@ def run(
     verifier = VerifierAgent(config) if config.verifier_enabled else None
 
     store_path = output_dir / "chunks.db"
+    # Ensure previous DB is cleared or we append?
+    # Usually we want fresh start for a run command on same output dir?
+    # If store_path exists, DiskChunkStore might open existing.
+    # For now, we assume user manages output dir.
     store = DiskChunkStore(db_path=store_path)
 
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
     typer.echo("Running RAPTOR process (Chunk -> Embed -> Cluster -> Summarize)...")
-    # We could add a spinner here
-    with typer.progressbar(length=100, label="Processing") as progress:
-        # RaptorEngine.run is blocking. We can't easily update progress bar unless we modify RaptorEngine to accept a callback.
-        # Given constraints, we'll just run it and rely on logs for detailed progress if verbose.
-        # Or we can just show a spinner.
-        tree = engine.run(text, store=store)
-        progress.update(100)
+
+    # Use a persistent store connection for the whole run
+    # Wait, RaptorEngine.run accepts store.
+    # And DiskChunkStore is a context manager.
+    # But RaptorEngine.run calls _process_recursion which passes store around.
+    # store is not entered here.
+    # RaptorEngine.run does: `with store_ctx as active_store:`
+    # If we pass `store`, it uses `nullcontext(store)`.
+    # So we should open `store` here.
+
+    try:
+        with store as active_store:
+            tree = engine.run(text, store=active_store)
+    except Exception as e:
+        typer.echo(f"Error during RAPTOR execution: {e}", err=True)
+        logger.exception("RAPTOR execution failed.")
+        raise typer.Exit(code=1) from e
 
     typer.echo("Tree construction complete.")
 
     if verifier and config.verifier_enabled:
         typer.echo("Running Verification...")
-        # Verify the root node or all summary nodes?
-        # Typically we verify the summary against source.
-        # For Raptor, maybe we verify the Root Summary against the raw text?
-        # Or verify each summary node against its children.
-        # The prompt says "Source Text".
-        # Let's verify the Root Summary against the raw text (if fits context) or top chunks.
-        # For this cycle, let's verify the root summary against the chunks.
+        try:
+            root_summary = tree.root_node.text
+            # Verify against children text.
+            child_texts = []
+            for idx in tree.root_node.children_indices:
+                node = store.get_node(idx)
+                if node:
+                    child_texts.append(node.text)
 
-        # We need to reconstruct source text for the root summary.
-        # The root summary summarizes its children.
-        # Getting the full text might be too large.
-        # But we'll try verification on the Root Node.
+            source_text_for_verification = "\n\n".join(child_texts)
 
-        root_summary = tree.root_node.text
-        # Naive approach: Verify against original text (might be too long).
-        # Better: Verify against children text.
+            # Limit verification text length to avoid context window issues
+            # Rough char limit (e.g. 50k chars)
+            if len(source_text_for_verification) > 50000:
+                 source_text_for_verification = source_text_for_verification[:50000] + "...(truncated)"
 
-        # Let's verify the root node against its direct children text combined.
-        # Retrieve children
-        child_texts = []
-        for idx in tree.root_node.children_indices:
-            node = store.get_node(idx)
-            if node:
-                child_texts.append(node.text)
+            result = verifier.verify(root_summary, source_text_for_verification)
+            typer.echo(f"Verification Score: {result.score}")
 
-        source_text_for_verification = "\n\n".join(child_texts)
+            # Save verification result
+            with (output_dir / "verification_result.json").open("w") as f:
+                f.write(result.model_dump_json(indent=2))
 
-        # Truncate if too long?
-        # VerificationAgent handles it via LLM limit usually, but we should be careful.
-
-        result = verifier.verify(root_summary, source_text_for_verification)
-        typer.echo(f"Verification Score: {result.score}")
-
-        # Save verification result
-        with (output_dir / "verification_result.json").open("w") as f:
-            f.write(result.model_dump_json(indent=2))
+        except Exception as e:
+            typer.echo(f"Verification failed: {e}", err=True)
+            # Don't fail the whole run
+            logger.exception("Verification failed.")
 
     typer.echo("Exporting results...")
 
-    # Markdown Export
-    md_output = export_to_markdown(tree, store)
-    (output_dir / "summary_all.md").write_text(md_output, encoding="utf-8")
+    try:
+        # Markdown Export
+        # Markdown exporter needs to traverse tree.
+        # It needs the store to fetch nodes.
+        # Tree no longer has all_nodes.
+        md_output = export_to_markdown(tree, store)
+        (output_dir / "summary_all.md").write_text(md_output, encoding="utf-8")
 
-    # Obsidian Canvas Export
-    obs_exporter = ObsidianCanvasExporter(config)
-    obs_exporter.export(tree, output_dir / "summary_kj.canvas", store)
+        # Obsidian Canvas Export
+        obs_exporter = ObsidianCanvasExporter(config)
+        obs_exporter.export(tree, output_dir / "summary_kj.canvas", store)
+    except Exception as e:
+        typer.echo(f"Export failed: {e}", err=True)
+        logger.exception("Export failed.")
 
     typer.echo(f"Done! Results saved in {output_dir}")
 
@@ -187,15 +213,7 @@ def export(
     """
     Export an existing database to a specific format.
     """
-    # This would require loading the tree from DB.
-    # Currently DocumentTree is not persisted as a whole object, but nodes are.
-    # We would need to reconstruct the tree.
-    # RaptorEngine._finalize_tree does this but it needs current_level_ids.
-    # If we persist tree metadata, we can reload.
-    # For now, this might be a placeholder or we just dump what we can.
-
-    typer.echo("Export from DB is not fully implemented in this cycle (requires tree persistence).")
-    # Implementing minimal dump if needed.
+    typer.echo("Export from DB is not fully implemented in this cycle.")
 
 
 if __name__ == "__main__":

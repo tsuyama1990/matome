@@ -149,3 +149,22 @@ def test_summarize_long_input_dos_prevention(
 
 # We removed test_summarize_retry_behavior as mocking tenacity is complex
 # and integration test covers error handling (test_pipeline_errors.py)
+
+
+def test_summarize_with_strategy(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test that the agent uses the provided strategy to format the prompt."""
+    strategy_mock = MagicMock()
+    strategy_mock.format_prompt.return_value = "Formatted Prompt"
+
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="Summary")
+
+    result = agent.summarize("context", config, strategy=strategy_mock)
+
+    assert result == "Summary"
+    strategy_mock.format_prompt.assert_called_once_with("context")
+
+    # Verify LLM was called with formatted prompt
+    args, _ = llm_mock.invoke.call_args
+    messages = args[0]
+    assert messages[0].content == "Formatted Prompt"

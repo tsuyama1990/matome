@@ -4,9 +4,12 @@ from unittest.mock import MagicMock, create_autospec
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
+from domain_models.types import DIKWLevel
+from matome.agents.strategies import InformationStrategy, KnowledgeStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
+from matome.exceptions import ClusteringError, MatomeError
 from matome.interfaces import Chunker, Clusterer, Summarizer
 
 
@@ -53,24 +56,21 @@ def test_raptor_run_short_text(
     chunker.split_text.return_value = iter([chunk1])
 
     # 2. Embedding
-    # We must ensure embed_chunks works even for single chunk
-    chunk1.embedding = [0.1] * 768
-    embedder.embed_chunks.return_value = iter([chunk1])
+    def side_effect_embed(chunks_iter: Iterator[Chunk]) -> Iterator[Chunk]:
+        for c in chunks_iter:
+            c.embedding = [0.1] * 768
+            yield c
+    embedder.embed_chunks.side_effect = side_effect_embed
 
-    # IMPORTANT: Mock clusterer to consume the generator
-    # Even for 1 chunk, cluster_nodes is called to consume stream
-    def side_effect_cluster(
-        embeddings: Iterator[list[float]], config: ProcessingConfig
-    ) -> list[Cluster]:
-        # Consume
-        count = sum(1 for _ in embeddings)
-        if count <= 1:
-            # GMMClusterer returns 1 cluster for 1 item edge case
-            # Indices are 0-based relative to the batch.
-            return [Cluster(id=0, level=0, node_indices=[0])] if count == 1 else []
-        return []
+    # 3. Clustering
+    def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        list(embeddings) # Consume generator to trigger store writes
+        return [Cluster(id=0, level=0, node_indices=[0])]
 
-    clusterer.cluster_nodes.side_effect = side_effect_cluster
+    clusterer.cluster_nodes.side_effect = cluster_side_effect
+
+    # Mock Summarizer
+    summarizer.summarize.return_value = "Wisdom Summary"
 
     # Run
     tree = engine.run("Short text")
@@ -78,106 +78,102 @@ def test_raptor_run_short_text(
     # Verify
     embedder.embed_chunks.assert_called()
     clusterer.cluster_nodes.assert_called()
-    summarizer.summarize.assert_not_called()
+    summarizer.summarize.assert_called_once()
 
     assert isinstance(tree, DocumentTree)
     assert len(tree.leaf_chunk_ids) == 1
     assert tree.root_node.level == 1
-    assert tree.root_node.text == "Short text"
-    assert tree.root_node.children_indices == [0]
-    assert len(tree.all_nodes) == 1
+    assert tree.root_node.text == "Wisdom Summary"
+
+    # Ensure it used Wisdom strategy
+    # Passed as 3rd arg (positional)
+    args, kwargs = summarizer.summarize.call_args
+    # args: (text, config, strategy)
+    assert len(args) >= 3
+    assert isinstance(args[2], WisdomStrategy)
 
 
-def test_raptor_run_recursive(
+def test_raptor_strategy_selection(
     mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
 ) -> None:
-    """Test processing text that requires multiple levels of summarization."""
+    """Test that correct strategies are used for different levels."""
     chunker, embedder, clusterer, summarizer = mock_dependencies
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
-    # Level 0: 3 Chunks
-    chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=i * 10, end_char_idx=(i + 1) * 10)
-        for i in range(3)
-    ]
+    # Setup: 3 Chunks -> 1 Cluster (L1 Info) -> 1 Cluster (L2 Knowledge) -> Root (L3 Wisdom)
+
+    # Mock Chunking
+    chunks = [Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(3)]
     chunker.split_text.return_value = iter(chunks)
 
-    # Mock embedding to always populate embedding field
-    def side_effect_embed_chunks(chunks: Iterator[Chunk]) -> Iterator[Chunk]:
-        for c in chunks:
+    # Mock embedding to return chunks with embeddings
+    def side_effect_embed(chunks_iter: Iterator[Chunk]) -> Iterator[Chunk]:
+        for c in chunks_iter:
             c.embedding = [0.1] * 768
             yield c
+    embedder.embed_chunks.side_effect = side_effect_embed
 
-    embedder.embed_chunks.side_effect = side_effect_embed_chunks
+    # Mock Clustering
+    c1 = Cluster(id=0, level=0, node_indices=[0])
+    c2 = Cluster(id=1, level=0, node_indices=[1, 2])
 
-    # Mock embedding for summary nodes (strings)
-    # Must yield one embedding per input text.
-    def side_effect_embed_strings(texts: list[str]) -> Iterator[list[float]]:
-        for _ in texts:
-            yield [0.2] * 768
+    c3 = Cluster(id=0, level=1, node_indices=[0, 1])
 
-    embedder.embed_strings.side_effect = side_effect_embed_strings
-
-    # Clustering Logic
-    # Call 1 (Level 0 Chunks): Returns 2 clusters (needs reducing)
-    # Cluster 0: [0, 1], Cluster 1: [2]
-    cluster_l0_0 = Cluster(id=0, level=0, node_indices=[0, 1])
-    cluster_l0_1 = Cluster(id=1, level=0, node_indices=[2])
-
-    # Call 2 (Level 1 Summaries): Returns 1 cluster (Root)
-    # Cluster 0: [0, 1] (Indices into the list of summaries from L0 clusters)
-    cluster_l1_0 = Cluster(id=0, level=1, node_indices=[0, 1])  # Summaries of c0 and c1
-
-    clusterer.cluster_nodes.side_effect = [
-        [cluster_l0_0, cluster_l0_1],  # First pass
-        [cluster_l1_0],  # Second pass
+    # Side effect must consume generator
+    cluster_results = [
+        [c1, c2], # First pass (chunks -> L1)
+        [c3],     # Second pass (L1 -> L2)
     ]
 
-    # Summarization
-    summarizer.summarize.side_effect = [
-        "Summary L1-0",  # Summary of Cluster L0-0
-        "Summary L1-1",  # Summary of Cluster L0-1
-        "Root Summary",  # Summary of Cluster L1-0
-    ]
+    # We need a mutable iterator for side effects
+    result_iter = iter(cluster_results)
 
-    # Run
-    # We must simulate the consumption of generator inside cluster_nodes mock side effect
-    # to trigger the side effect that populates leaf_chunks.
+    def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        list(embeddings) # Consume
+        return next(result_iter)
 
-    original_side_effect = [
-        [cluster_l0_0, cluster_l0_1],  # First pass
-        [cluster_l1_0],  # Second pass
-    ]
+    clusterer.cluster_nodes.side_effect = cluster_side_effect
 
-    # Use closure for stateful side effect
-    iter_count = 0
+    embedder.embed_strings.return_value = iter([[0.1]*768, [0.1]*768])
 
-    def consuming_side_effect(
-        embeddings: Iterator[list[float]] | list[list[float]], config: ProcessingConfig
-    ) -> list[Cluster]:
-        nonlocal iter_count
-        # Iterate over embeddings if it's an iterator
-        if isinstance(embeddings, Iterator):
-            list(embeddings)
+    summarizer.summarize.return_value = "Summary"
 
-        result = original_side_effect[iter_count]
-        iter_count += 1
-        return result
+    engine.run("Text")
 
-    clusterer.cluster_nodes.side_effect = consuming_side_effect
+    # Check calls
+    calls = summarizer.summarize.call_args_list
+    assert len(calls) == 3
 
-    tree = engine.run("Long text")
+    # First 2 calls (L0 -> L1): Information
+    args1, _ = calls[0]
+    assert isinstance(args1[2], InformationStrategy)
 
-    # Verify
-    assert isinstance(tree, DocumentTree)
-    assert tree.root_node.text == "Root Summary"
-    assert tree.root_node.level == 2  # L0 -> L1 -> L2 (Root)
+    args2, _ = calls[1]
+    assert isinstance(args2[2], InformationStrategy)
 
-    # Check L1 nodes
-    root_children_ids = tree.root_node.children_indices
-    assert len(root_children_ids) == 2
-    assert all(isinstance(uid, str) for uid in root_children_ids)
+    # 3rd call (L1 -> L2): This creates the Root.
+    # Since len(clusters) was 1 ([c3]), is_final was True.
+    # So it should be WisdomStrategy.
+    args3, _ = calls[2]
+    assert isinstance(args3[2], WisdomStrategy)
 
-    # Verify we have all nodes
-    # Root + 2 L1 nodes = 3 nodes
-    assert len(tree.all_nodes) == 3
+
+def test_raptor_error_handling(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
+    """Test that ClusteringError is raised/handled."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+    chunker.split_text.return_value = iter([Chunk(index=0, text="t", start_char_idx=0, end_char_idx=1)])
+    # Need to return chunk with embedding
+    embedder.embed_chunks.return_value = iter([Chunk(index=0, text="t", start_char_idx=0, end_char_idx=1, embedding=[0.1]*768)])
+
+    def fail_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
+        list(embeddings)
+        raise Exception("Clustering failed")
+
+    clusterer.cluster_nodes.side_effect = fail_side_effect
+
+    with pytest.raises(MatomeError):
+        engine.run("Text")

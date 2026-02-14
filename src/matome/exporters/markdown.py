@@ -1,59 +1,51 @@
 from domain_models.manifest import Chunk, DocumentTree, SummaryNode
+from domain_models.types import NodeID
 from matome.utils.store import DiskChunkStore
 
 
 def _format_chunk(chunk: Chunk, depth: int) -> str:
     """Format a leaf chunk as a bullet point."""
     indent = "  " * depth
+    # Limit chunk text length in export to avoid massive files?
+    # Or keep full text? Usually summaries are short, chunks are long.
+    # User might want full text.
     return f"{indent}- **Chunk {chunk.index}**: {chunk.text.strip()}"
 
 
-def _format_summary(node: SummaryNode, depth: int) -> tuple[str, str]:
+def _format_summary(node: SummaryNode, depth: int) -> str:
     """Format a summary node as a heading."""
     heading_level = min(depth + 1, 6)
     heading = "#" * heading_level
-    return f"{heading} {node.text.strip()}", ""
+    return f"{heading} {node.text.strip()}\n"
 
 
 def _process_node(
-    node_id: str | int,
-    is_chunk: bool,
+    node_id: NodeID,
     depth: int,
-    tree: DocumentTree,
-    chunk_map: dict[int, Chunk],
+    store: DiskChunkStore,
     lines: list[str],
+    visited: set[NodeID],
 ) -> None:
     """Recursively process nodes for Markdown export."""
-    if is_chunk:
-        if isinstance(node_id, int):
-            chunk = chunk_map.get(node_id)
-            if chunk:
-                lines.append(_format_chunk(chunk, depth))
+    if node_id in visited:
+        return
+    visited.add(node_id)
+
+    node = store.get_node(node_id)
+    if not node:
         return
 
-    # It's a SummaryNode
-    if isinstance(node_id, str):
-        node = tree.root_node if node_id == tree.root_node.id else tree.all_nodes.get(node_id)
+    if isinstance(node, Chunk):
+        lines.append(_format_chunk(node, depth))
+        return
 
-        if not node:
-            return
-
-        # Heading
-        heading, empty_line = _format_summary(node, depth)
-        lines.append(heading)
-        lines.append(empty_line)
-
-        # Process Children
+    if isinstance(node, SummaryNode):
+        lines.append(_format_summary(node, depth))
         for child_idx in node.children_indices:
-            if isinstance(child_idx, str):
-                # Child is SummaryNode
-                _process_node(child_idx, False, depth + 1, tree, chunk_map, lines)
-            elif isinstance(child_idx, int):
-                # Child is Chunk
-                _process_node(child_idx, True, depth + 1, tree, chunk_map, lines)
+            _process_node(child_idx, depth + 1, store, lines, visited)
 
 
-def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) -> str:
+def export_to_markdown(tree: DocumentTree, store: DiskChunkStore) -> str:
     """
     Exports the DocumentTree to a Markdown string.
 
@@ -62,21 +54,17 @@ def export_to_markdown(tree: DocumentTree, store: DiskChunkStore | None = None) 
 
     Args:
         tree: The DocumentTree to export.
-        store: Optional DiskChunkStore to retrieve leaf chunk text.
+        store: DiskChunkStore to retrieve nodes (required as tree doesn't store them).
 
     Returns:
         A formatted Markdown string.
     """
     lines: list[str] = []
-    chunk_map: dict[int, Chunk] = {}
-
-    if store and tree.leaf_chunk_ids:
-        for chunk_id in tree.leaf_chunk_ids:
-            node = store.get_node(chunk_id)
-            if isinstance(node, Chunk):
-                chunk_map[node.index] = node
+    visited: set[NodeID] = set()
 
     if tree.root_node:
-        _process_node(tree.root_node.id, False, 0, tree, chunk_map, lines)
+        # Pre-load root node into visited to avoid cycle if root points to itself (shouldn't happen)
+        # Actually root is in store too.
+        _process_node(tree.root_node.id, 0, store, lines, visited)
 
     return "\n".join(lines)
