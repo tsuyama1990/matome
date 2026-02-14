@@ -85,16 +85,16 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     # Verify leaf_chunk_ids are populated
     assert len(tree.leaf_chunk_ids) == 2
 
-    # Verify IDs match
-    assert set(tree.leaf_chunk_ids) == {0, 1}
+    # Verify IDs match (should be strings as they come from store)
+    assert set(tree.leaf_chunk_ids) == {"0", "1"}
 
     # Note: Text is not in the tree anymore, would need to fetch from store.
 
     # Verify structure
     assert tree.root_node.text == "Summary Text"
     # The summary node children indices should correspond to the L0 IDs.
-    # checking that children_indices contains 0 and 1
-    assert set(tree.root_node.children_indices) == {0, 1}
+    # checking that children_indices contains 0 and 1 (as strings)
+    assert set(tree.root_node.children_indices) == {"0", "1"}
 
 
 def test_raptor_empty_iterator_error() -> None:

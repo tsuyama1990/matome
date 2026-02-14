@@ -240,3 +240,56 @@ def test_raptor_cluster_edge_cases(
     assert len(results) == 1
     assert results[0].metadata.cluster_id == 2
     assert results[0].children_indices == [0]
+
+
+def test_raptor_cluster_truncation(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
+    """Test that cluster texts are truncated if they exceed limits."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+
+    # Set a valid limit for testing (must be >= 100)
+    config_small = ProcessingConfig(max_input_length=100)
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config_small)
+
+    store = MagicMock()
+    # 3 chunks, each 60 chars. Total 180 > 100.
+    t1 = "A" * 60
+    t2 = "B" * 60
+    t3 = "C" * 60
+
+    c1 = Chunk(index=1, text=t1, start_char_idx=0, end_char_idx=60)
+    c2 = Chunk(index=2, text=t2, start_char_idx=60, end_char_idx=120)
+    c3 = Chunk(index=3, text=t3, start_char_idx=120, end_char_idx=180)
+
+    def get_node_side_effect(nid: int | str) -> Chunk | None:
+        return {1: c1, 2: c2, 3: c3}.get(nid)  # type: ignore
+
+    store.get_node.side_effect = get_node_side_effect
+
+    current_level_ids: list[NodeID] = [1, 2, 3]
+    cluster = Cluster(id=0, level=0, node_indices=[0, 1, 2]) # Points to ids 1, 2, 3
+    strategy = InformationStrategy()
+
+    summarizer.summarize.return_value = "Summary"
+
+    results = list(engine._summarize_clusters([cluster], current_level_ids, store, 1, strategy))
+
+    assert len(results) == 1
+
+    # summarizer should be called with truncated text
+    args, _ = summarizer.summarize.call_args
+    passed_text = args[0]
+
+    # 60 + 60 = 120. Loop 1 (60) OK. Loop 2 (120) Break.
+    # So passed text should contain only t1 (or t1+t2 depending on exact logic).
+    # Logic: if current_length + text_len > max: break.
+    # 0 + 60 <= 100 OK. current=60.
+    # 60 + 60 > 100 Break.
+    # Only t1 included.
+
+    assert t1 in passed_text
+    assert t2 not in passed_text
+    assert t3 not in passed_text
+
+    assert len(passed_text) <= 100

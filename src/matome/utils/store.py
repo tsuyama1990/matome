@@ -8,11 +8,14 @@ from typing import Any
 
 from sqlalchemy import (
     Column,
+    Integer,
     MetaData,
     String,
     Table,
     Text,
+    cast,
     create_engine,
+    func,
     insert,
     select,
     text,
@@ -207,6 +210,40 @@ class DiskChunkStore:
                 return None
 
         return None
+
+    def get_node_ids_by_level(self, level: int) -> Iterable[str]:
+        """
+        Stream node IDs for a specific hierarchical level.
+        Note: Since 'level' is stored inside the JSON content, this might be slow on large datasets
+        without an index or extracted column. For the current scope (SQLite), it's acceptable.
+        """
+        # Optimized: If level is 0, we can filter by type='chunk' which is faster.
+        if level == 0:
+            # Must order by integer value of ID to match processing stream order
+            stmt = (
+                select(self.nodes_table.c.id)
+                .where(self.nodes_table.c.type == "chunk")
+                .order_by(cast(self.nodes_table.c.id, Integer))
+            )
+        else:
+            # For summary nodes, we must check the JSON content.
+            # SQLite supports json_extract.
+            # Order by ID for deterministic behavior, though strict order matters less here
+            # as long as embedding and clustering usage is consistent.
+            stmt = (
+                select(self.nodes_table.c.id)
+                .where(
+                    self.nodes_table.c.type == "summary",
+                    func.json_extract(self.nodes_table.c.content, "$.level") == level,
+                )
+                .order_by(self.nodes_table.c.id)
+            )
+
+        with self.engine.connect() as conn:
+            # Stream results to avoid loading all IDs into memory at once
+            result = conn.execute(stmt)
+            for row in result:
+                yield row[0]
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""

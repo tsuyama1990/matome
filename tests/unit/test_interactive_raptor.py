@@ -101,7 +101,10 @@ def test_get_children(
     c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=2)
     c2 = Chunk(index=2, text="C2", start_char_idx=3, end_char_idx=5)
 
-    mock_store.get_node.side_effect = lambda nid: {1: c1, 2: c2}.get(nid)
+    def get_node_side_effect(nid: int | str) -> Chunk | None:
+        return {1: c1, 2: c2}.get(nid)  # type: ignore
+
+    mock_store.get_node.side_effect = get_node_side_effect
 
     # Act
     children = interactive_engine.get_children(summary_node)

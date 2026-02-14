@@ -95,9 +95,9 @@ class RefinementStrategy(PromptStrategy):
 
 # Registry for easy lookup from configuration strings
 STRATEGY_REGISTRY: dict[str, type[PromptStrategy]] = {
-    "wisdom": WisdomStrategy,
-    "knowledge": KnowledgeStrategy,
-    "information": InformationStrategy,
+    DIKWLevel.WISDOM.value: WisdomStrategy,
+    DIKWLevel.KNOWLEDGE.value: KnowledgeStrategy,
+    DIKWLevel.INFORMATION.value: InformationStrategy,
     "default": BaseSummaryStrategy,
     "refinement": RefinementStrategy,
 }

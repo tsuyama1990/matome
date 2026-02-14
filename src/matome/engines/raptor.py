@@ -46,15 +46,6 @@ class RaptorEngine:
         """
         Determine the PromptStrategy based on the current level and topology.
         """
-        mapping = self.config.strategy_mapping
-
-        if not mapping:
-            return BaseSummaryStrategy()
-
-        # Default strategy logic based on topology if not explicitly mapped
-        # Or use the mapping directly.
-        # Assuming mapping maps DIKWLevel keys to strategy names (strings).
-
         target_dikw: DIKWLevel
         if is_final_layer:
             target_dikw = DIKWLevel.WISDOM
@@ -63,10 +54,9 @@ class RaptorEngine:
         else:
             target_dikw = DIKWLevel.KNOWLEDGE
 
-        strategy_name = mapping.get(target_dikw)
-        if not strategy_name:
-             # Fallback to default name if mapping missing
-             strategy_name = target_dikw.value
+        # Map DIKW level to strategy name using config mapping
+        # Config mapping defaults to "wisdom" -> "wisdom" etc.
+        strategy_name = self.config.strategy_mapping.get(target_dikw, target_dikw.value)
 
         strategy_class = STRATEGY_REGISTRY.get(strategy_name)
         if strategy_class:
@@ -76,12 +66,12 @@ class RaptorEngine:
 
     def _process_level_zero(
         self, initial_chunks: Iterable[Chunk], store: DiskChunkStore
-    ) -> tuple[list[Cluster], list[NodeID]]:
+    ) -> tuple[list[Cluster], int]:
         """
         Handle Level 0: Embedding, Storage, and Clustering.
         Strictly streaming.
+        Returns clusters and the count of nodes processed.
         """
-        current_level_ids: list[NodeID] = []
         stats = {"node_count": 0}
 
         def l0_embedding_generator() -> Iterator[list[float]]:
@@ -100,7 +90,6 @@ class RaptorEngine:
                             continue
 
                         stats["node_count"] += 1
-                        current_level_ids.append(chunk.index)
                         yield chunk.embedding
 
                     if stats["node_count"] % 100 == 0:
@@ -116,7 +105,7 @@ class RaptorEngine:
              msg = "Clustering failed at Level 0"
              raise ClusteringError(msg) from e
 
-        return clusters, current_level_ids
+        return clusters, stats["node_count"]
 
     def _validate_chunk_embedding(self, chunk: Chunk) -> None:
         """Helper to validate chunk embedding exists."""
@@ -145,35 +134,53 @@ class RaptorEngine:
 
         with store_ctx as active_store:
             # Level 0
-            clusters, current_level_ids = self._process_level_zero(
+            clusters, node_count = self._process_level_zero(
                 initial_chunks_iter, active_store
             )
-            l0_ids = list(current_level_ids)
+
+            if node_count == 0:
+                 msg = "No nodes remaining."
+                 raise ValueError(msg)
+
+            # We need L0 IDs for finalizing the tree.
+            l0_ids = list(active_store.get_node_ids_by_level(0))
 
             # Recursive Summarization
-            current_level_ids = self._process_recursion(
-                clusters, current_level_ids, active_store
+            final_root_id = self._process_recursion(
+                clusters, node_count, active_store
             )
 
-            return self._finalize_tree(current_level_ids, active_store, l0_ids)
+            return self._finalize_tree([final_root_id], active_store, l0_ids)
 
     def _process_recursion(
         self,
         clusters: list[Cluster],
-        current_level_ids: list[NodeID],
+        prev_node_count: int,
         store: DiskChunkStore,
         start_level: int = 0,
-    ) -> list[NodeID]:
+    ) -> NodeID:
         """
         Execute the recursive summarization loop.
+        Returns the ID of the root node.
         """
         level = start_level
+        # Fetch IDs for the current level (initially L0)
+        # We need them to map cluster indices to actual Node IDs.
+        # For efficiency, we load them into a list here because clusters refer to them by index.
+        # If this list is too big, we'd need a different clustering interface that works on IDs directly.
+        # Given current architecture, we assume level-wise ID list fits in memory.
+        current_level_ids = list(store.get_node_ids_by_level(level))
+
         while True:
             node_count = len(current_level_ids)
             logger.info(f"Processing Level {level}. Node count: {node_count}")
 
-            if node_count <= 1:
-                break
+            if node_count == 0:
+                msg = f"No nodes found at level {level}"
+                raise MatomeError(msg)
+
+            if node_count == 1:
+                return current_level_ids[0]
 
             if len(clusters) == node_count and node_count > 1:
                 logger.warning(
@@ -183,7 +190,7 @@ class RaptorEngine:
                     clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
                 else:
                     logger.error("Could not reduce nodes. Stopping recursion.")
-                    break
+                    return current_level_ids[0]
 
             logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
@@ -194,15 +201,12 @@ class RaptorEngine:
             next_level = level + 1
             new_nodes_iter = self._summarize_clusters(clusters, current_level_ids, store, next_level, strategy)
 
-            current_level_ids = []
             summary_buffer: list[SummaryNode] = []
-            BATCH_SIZE = self.config.chunk_buffer_size
 
             for node in new_nodes_iter:
-                current_level_ids.append(node.id)
                 summary_buffer.append(node)
 
-                if len(summary_buffer) >= BATCH_SIZE:
+                if len(summary_buffer) >= self.config.chunk_buffer_size:
                     store.add_summaries(summary_buffer)
                     summary_buffer.clear()
 
@@ -211,12 +215,16 @@ class RaptorEngine:
 
             level = next_level
 
-            if len(current_level_ids) > 1:
+            # Fetch IDs for the NEXT level to prepare for next iteration
+            current_level_ids = list(store.get_node_ids_by_level(level))
+            node_count = len(current_level_ids)
+
+            if node_count > 1:
                 clusters = self._embed_and_cluster_next_level(current_level_ids, store)
             else:
                 clusters = []
 
-        return current_level_ids
+        return current_level_ids[0]
 
     def _embed_and_cluster_next_level(
         self, current_level_ids: list[NodeID], store: DiskChunkStore
@@ -352,6 +360,8 @@ class RaptorEngine:
             children_indices: list[NodeID] = []
             cluster_texts: list[str] = []
 
+            current_length = 0
+
             for idx_raw in cluster.node_indices:
                 idx = int(idx_raw)
                 if idx < 0 or idx >= len(current_level_ids):
@@ -362,18 +372,22 @@ class RaptorEngine:
                 if not node:
                     continue
 
+                text_len = len(node.text)
+                if current_length + text_len > self.config.max_input_length:
+                     logger.warning(f"Cluster {cluster.id} exceeding max length. Truncating nodes.")
+                     break
+
                 children_indices.append(node_id)
                 cluster_texts.append(node.text)
+                current_length += text_len
 
             if not cluster_texts:
                 continue
 
-            # Validation: Length of combined text
-            combined_text_len = sum(len(t) for t in cluster_texts)
             combined_text = "\n\n".join(cluster_texts)
 
-            if combined_text_len > self.config.max_input_length:
-                 logger.warning(f"Cluster {cluster.id} text length ({combined_text_len}) exceeds limit. Truncating.")
+            # Additional safety check for total length after join (headers etc)
+            if len(combined_text) > self.config.max_input_length:
                  combined_text = combined_text[:self.config.max_input_length]
 
             try:

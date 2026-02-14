@@ -132,10 +132,17 @@ class SummarizationAgent:
             msg = f"Input text exceeds maximum allowed length ({max_input_length} characters)."
             raise ValueError(msg)
 
-        # 2. Control Character Check (Unicode)
+        # 2. Control Character Check & Normalization
+        # Security: Normalize unicode to prevent homograph/normalization attacks
+        normalized_text = unicodedata.normalize("NFKC", text)
+        if len(normalized_text) != len(text):
+            # Check length again if normalization changed it drastically
+            if len(normalized_text) > max_input_length:
+                 raise ValueError("Normalized text exceeds maximum length.")
+
         allowed_controls = {"\n", "\t", "\r"}
 
-        for char in text:
+        for char in normalized_text:
             if unicodedata.category(char).startswith("C") and char not in allowed_controls:
                 msg = f"Input text contains invalid control character: {char!r} (U+{ord(char):04X})"
                 raise ValueError(msg)
