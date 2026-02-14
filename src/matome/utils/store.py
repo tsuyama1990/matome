@@ -353,7 +353,8 @@ class DiskChunkStore:
             )
         else:
             # Uses the index on json_extract(content, '$.level')
-            # SQLAlchemy handles binding of `level` safely when used in comparison.
+            # SQLAlchemy handles parameter binding of `level` safely when used in comparison expression.
+            # "$.level" is a constant path string, not user input.
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(

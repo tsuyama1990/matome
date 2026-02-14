@@ -1,10 +1,10 @@
+import contextlib
+from collections.abc import Iterable, Iterator
+from typing import Any
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from domain_models.config import ProcessingConfig
 from matome.engines.raptor import RaptorEngine
-from matome.utils.store import DiskChunkStore
 
 
 def test_memory_safety_streaming() -> None:
@@ -32,14 +32,14 @@ def test_memory_safety_streaming() -> None:
     chunker.split_text.return_value = fake_chunks
 
     # Embedder must pass through the stream
-    def embed_side_effect(chunks):
+    def embed_side_effect(chunks: Iterable[Any]) -> Iterator[Any]:
         for chunk in chunks:
             chunk.embedding = [0.1]
             yield chunk
     embedder.embed_chunks.side_effect = embed_side_effect
 
     # Clusterer consumes stream
-    def cluster_side_effect(embeddings, config):
+    def cluster_side_effect(embeddings: Iterable[Any], config: ProcessingConfig) -> list[Any]:
         for _ in embeddings:
             pass
         return []
@@ -52,12 +52,10 @@ def test_memory_safety_streaming() -> None:
         MockStore.return_value.__enter__.return_value = store_instance
 
         # Run
-        try:
+        # We expect recursion error or similar because we mocked empty clusters but might expect some
+        # But here we just check L0 processing
+        with contextlib.suppress(Exception):
             engine.run("dummy text")
-        except Exception:
-            # We expect recursion error or similar because we mocked empty clusters but might expect some
-            # But here we just check L0 processing
-            pass
 
         # Verify L0 added chunks in batches
         # Total items 1000, buffer 10 -> 100 calls to add_chunks

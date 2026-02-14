@@ -13,6 +13,7 @@ from domain_models.constants import (
     DEFAULT_CANVAS_NODE_HEIGHT,
     DEFAULT_CANVAS_NODE_WIDTH,
     DEFAULT_CHUNK_BUFFER_SIZE,
+    DEFAULT_CLUSTER_BATCH_SIZE,
     DEFAULT_CLUSTERING_PROBABILITY_THRESHOLD,
     DEFAULT_CLUSTERING_WRITE_BATCH_SIZE,
     DEFAULT_EMBEDDING,
@@ -144,6 +145,11 @@ class ProcessingConfig(BaseModel):
         default=LARGE_SCALE_THRESHOLD,
         ge=1,
         description="Threshold for switching to approximate clustering.",
+    )
+    cluster_batch_size: int = Field(
+        default=DEFAULT_CLUSTER_BATCH_SIZE,
+        ge=1,
+        description="Batch size for processing clusters during summarization.",
     )
     chunk_buffer_size: int = Field(
         default=DEFAULT_CHUNK_BUFFER_SIZE,

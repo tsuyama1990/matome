@@ -30,13 +30,13 @@ class GMMClusterer:
     """
 
     def cluster_nodes(
-        self, embeddings: Iterable[list[float]], config: ProcessingConfig
+        self, embeddings: Iterable[tuple[NodeID, list[float]]], config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Clusters the nodes based on their embeddings.
 
         Args:
-            embeddings: An iterable of vectors (list of floats).
+            embeddings: An iterable of (NodeID, vector) tuples.
             config: Processing configuration.
 
         Returns:
@@ -53,15 +53,17 @@ class GMMClusterer:
         path_obj = Path(tf_name)
 
         try:
-            # Stream write embeddings to disk.
+            # Stream write embeddings to disk and capture IDs.
+            # IDs are stored in memory (list[NodeID]) as they are relatively small.
+            # 1 million UUIDs ~ 36MB RAM.
             # This ensures we never hold the full list of embeddings in Python memory.
-            n_samples, dim = self._stream_write_embeddings(embeddings, path_obj, write_batch_size)
+            n_samples, dim, node_ids = self._stream_write_embeddings(embeddings, path_obj, write_batch_size)
 
             if n_samples == 0:
                 return []
 
             # Handle edge cases (small datasets)
-            edge_case_result = self._handle_edge_cases(n_samples)
+            edge_case_result = self._handle_edge_cases(n_samples, node_ids)
             if edge_case_result:
                 return edge_case_result
 
@@ -71,9 +73,9 @@ class GMMClusterer:
 
             try:
                 if n_samples > config.large_scale_threshold:
-                    return self._perform_approximate_clustering(mm_array, n_samples, config)
+                    return self._perform_approximate_clustering(mm_array, n_samples, node_ids, config)
 
-                return self._perform_clustering(mm_array, n_samples, config)
+                return self._perform_clustering(mm_array, n_samples, node_ids, config)
             finally:
                 # Ensure memmap is closed/deleted from python view
                 del mm_array
@@ -84,33 +86,36 @@ class GMMClusterer:
                     path_obj.unlink()
 
     def _stream_write_embeddings(
-        self, embeddings: Iterable[list[float]], path_obj: Path, batch_size: int
-    ) -> tuple[int, int]:
+        self,
+        embeddings: Iterable[tuple[NodeID, list[float]]],
+        path_obj: Path,
+        batch_size: int
+    ) -> tuple[int, int, list[NodeID]]:
         """
-        Stream embeddings to disk in batches.
+        Stream embeddings to disk in batches and collect IDs.
 
         Iterates over the input embeddings and writes them to a binary file
         (to be used with np.memmap). Validates dimensions and values.
         Optimized to write using a configurable buffer to avoid I/O bottlenecks.
 
         Args:
-            embeddings: Iterable of embedding vectors.
+            embeddings: Iterable of (NodeID, embedding vector).
             path_obj: Path object to write the embeddings to.
             batch_size: Number of embeddings to process at once.
 
         Returns:
-            A tuple (n_samples, dim), where n_samples is the total count
-            and dim is the embedding dimension.
+            A tuple (n_samples, dim, node_ids).
         """
         n_samples = 0
         dim = 0
         buffer: list[list[float]] = []
+        node_ids: list[NodeID] = []
 
         # Use configured batch size
         buffer_size = batch_size
 
         with path_obj.open("wb") as f:
-            for i, vec in enumerate(embeddings):
+            for i, (nid, vec) in enumerate(embeddings):
                 if n_samples == 0 and len(buffer) == 0:
                     dim = len(vec)
                     if dim == 0:
@@ -122,6 +127,7 @@ class GMMClusterer:
                     raise ValueError(msg)
 
                 buffer.append(vec)
+                node_ids.append(nid)
 
                 if len(buffer) >= buffer_size:
                     self._flush_buffer(f, buffer)
@@ -134,7 +140,7 @@ class GMMClusterer:
                 n_samples += len(buffer)
                 buffer.clear()
 
-        return n_samples, dim
+        return n_samples, dim, node_ids
 
     def _flush_buffer(self, f: BinaryIO, buffer: list[list[float]]) -> None:
         """Helper to write a buffer of vectors to disk."""
@@ -159,7 +165,7 @@ class GMMClusterer:
             msg = f"Unsupported clustering algorithm: {algo}. Only '{ClusteringAlgorithm.GMM.value}' is supported."
             raise ValueError(msg)
 
-    def _handle_edge_cases(self, n_samples: int) -> list[Cluster] | None:
+    def _handle_edge_cases(self, n_samples: int, node_ids: list[NodeID]) -> list[Cluster] | None:
         """
         Handle cases where the dataset is too small for meaningful clustering.
 
@@ -168,13 +174,14 @@ class GMMClusterer:
 
         Args:
             n_samples: The number of embedding samples.
+            node_ids: List of Node IDs corresponding to samples.
 
         Returns:
             List of Clusters if handled (e.g., single cluster),
             None otherwise (indicating to proceed to normal clustering).
         """
         if n_samples == 1:
-            return [Cluster(id=0, level=0, node_indices=[0])]
+            return [Cluster(id=0, level=0, node_indices=[node_ids[0]])]
 
         # Threshold for "too small to cluster"
         # Standard UMAP/GMM can fail or be unstable with very few samples.
@@ -183,12 +190,12 @@ class GMMClusterer:
             logger.info(
                 f"Dataset too small for clustering ({n_samples} samples). Grouping all into one cluster."
             )
-            return [Cluster(id=0, level=0, node_indices=list(range(n_samples)))]
+            return [Cluster(id=0, level=0, node_indices=node_ids)]
 
         return None
 
     def _perform_clustering(
-        self, data: np.ndarray, n_samples: int, config: ProcessingConfig
+        self, data: np.ndarray, n_samples: int, node_ids: list[NodeID], config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Execute UMAP reduction and GMM clustering on the data.
@@ -197,6 +204,7 @@ class GMMClusterer:
         Args:
             data: The dataset (numpy array or memmap).
             n_samples: Number of samples.
+            node_ids: List of Node IDs corresponding to data indices.
             config: Configuration object.
 
         Returns:
@@ -249,7 +257,7 @@ class GMMClusterer:
             # 3. Soft Clustering (Probabilistic Assignment)
             probs = gmm.predict_proba(reduced_embeddings)
             return self._form_clusters_soft(
-                probs, gmm_n_components, config.clustering_probability_threshold
+                probs, gmm_n_components, config.clustering_probability_threshold, node_ids
             )
 
         except Exception as e:
@@ -257,32 +265,33 @@ class GMMClusterer:
             msg = f"Clustering failed: {e}"
             raise RuntimeError(msg) from e
 
-    def _form_clusters(self, labels: np.ndarray) -> list[Cluster]:
+    def _form_clusters(self, labels: np.ndarray, node_ids: list[NodeID]) -> list[Cluster]:
         """Convert hard clustering labels into Cluster objects (used for approx clustering)."""
         clusters: list[Cluster] = []
         unique_labels = np.unique(labels)
         for label in unique_labels:
             indices = np.where(labels == label)[0]
-            # Convert numpy indices to NodeID (int) list
-            node_indices: list[NodeID] = [int(idx) for idx in indices]
+
+            # Map indices to NodeIDs
+            mapped_ids: list[NodeID] = [node_ids[i] for i in indices]
 
             cluster = Cluster(
                 id=int(label),
                 level=0,  # Default to 0, caller handles level logic
-                node_indices=node_indices,
+                node_indices=mapped_ids,
             )
             clusters.append(cluster)
         return clusters
 
     def _form_clusters_soft(
-        self, probs: np.ndarray, n_clusters: int, threshold: float
+        self, probs: np.ndarray, n_clusters: int, threshold: float, node_ids: list[NodeID]
     ) -> list[Cluster]:
         """
         Convert GMM probabilities into Cluster objects (Soft Clustering).
         A node is assigned to a cluster if P(cluster|node) >= threshold.
         Guarantees every node is assigned to at least one cluster (argmax).
         """
-        # Dictionary to hold list of node indices for each cluster
+        # Dictionary to hold list of node IDs for each cluster
         cluster_map: dict[int, list[NodeID]] = {i: [] for i in range(n_clusters)}
 
         n_samples = probs.shape[0]
@@ -290,6 +299,7 @@ class GMMClusterer:
         for i in range(n_samples):
             # Get probabilities for node i
             node_probs = probs[i]
+            nid = node_ids[i]
 
             # Identify clusters exceeding threshold
             assigned_indices = np.where(node_probs >= threshold)[0]
@@ -297,21 +307,21 @@ class GMMClusterer:
             # If no cluster exceeds threshold, assign to the one with max probability
             if len(assigned_indices) == 0:
                 max_idx = np.argmax(node_probs)
-                cluster_map[int(max_idx)].append(i)
+                cluster_map[int(max_idx)].append(nid)
             else:
                 for cluster_idx in assigned_indices:
-                    cluster_map[int(cluster_idx)].append(i)
+                    cluster_map[int(cluster_idx)].append(nid)
 
         # Create Cluster objects
         clusters: list[Cluster] = []
-        for cluster_id, node_indices in cluster_map.items():
-            if node_indices:
-                clusters.append(Cluster(id=cluster_id, level=0, node_indices=node_indices))
+        for cluster_id, mapped_ids in cluster_map.items():
+            if mapped_ids:
+                clusters.append(Cluster(id=cluster_id, level=0, node_indices=mapped_ids))
 
         return clusters
 
     def _perform_approximate_clustering(
-        self, data: np.ndarray, n_samples: int, config: ProcessingConfig
+        self, data: np.ndarray, n_samples: int, node_ids: list[NodeID], config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Execute streaming clustering using IncrementalPCA and MiniBatchKMeans.
@@ -319,9 +329,6 @@ class GMMClusterer:
         """
         n_components = config.umap_n_components
         # Use config.n_clusters or heuristic.
-        # For large data, we definitely need > 1 cluster.
-        # Heuristic: sqrt(n_samples/2) is common, but capped.
-        # Or simple constant. Let's default to a reasonable number if not set.
         n_clusters = config.n_clusters or min(int(np.sqrt(n_samples)), 50)
 
         logger.info(
@@ -354,8 +361,6 @@ class GMMClusterer:
                 kmeans.partial_fit(reduced_batch)
 
             # 3. Predict Labels (Final Pass)
-            # We can't store all labels in memory if n_samples is huge?
-            # 10M labels (int32) is 40MB. That's fine.
             labels_list = []
             for i in range(0, n_samples, batch_size):
                 batch = data[i : i + batch_size]
@@ -364,7 +369,7 @@ class GMMClusterer:
                 labels_list.append(batch_labels)
 
             labels = np.concatenate(labels_list)
-            return self._form_clusters(labels)
+            return self._form_clusters(labels, node_ids)
 
         except Exception as e:
             logger.exception("Approximate clustering failed.")
@@ -376,8 +381,6 @@ class GMMClusterer:
         Helper to find optimal number of clusters using BIC (Bayesian Information Criterion).
         """
         # Limit max clusters to avoid overfitting or excessive fragmentation.
-        # 20 is a heuristic upper bound often sufficient for typical document sectioning tasks.
-        # If the number of embeddings is small, we cap it at len(embeddings).
         max_clusters = min(20, len(embeddings))
 
         if max_clusters < 2:
@@ -406,7 +409,4 @@ class GMMClusterer:
         except Exception:
             # Catch import errors or other unexpected issues
             logger.exception("Unexpected error during BIC calculation. Defaulting to 1 cluster.")
-            # Critical fix: Re-raise unexpected exceptions to ensure data integrity/awareness
-            # unless we explicitly want fallback.
-            # Given requirement "Catch specific exceptions and propagate errors appropriately", re-raising is safer.
             raise

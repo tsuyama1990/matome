@@ -21,6 +21,13 @@ from matome.utils.store import DiskChunkStore
 logger = logging.getLogger(__name__)
 
 
+class StopRecursionError(Exception):
+    """Internal exception to signal recursion termination with a result."""
+
+    def __init__(self, result_node_id: NodeID) -> None:
+        self.result_node_id = result_node_id
+
+
 class RaptorEngine:
     """
     Recursive Abstractive Processing for Tree-Organized Retrieval (RAPTOR) Engine.
@@ -76,7 +83,7 @@ class RaptorEngine:
         """
         stats = {"node_count": 0}
 
-        def l0_embedding_generator() -> Iterator[list[float]]:
+        def l0_embedding_generator() -> Iterator[tuple[NodeID, list[float]]]:
             try:
                 chunk_stream = self.embedder.embed_chunks(initial_chunks)
 
@@ -92,7 +99,8 @@ class RaptorEngine:
                             continue
 
                         stats["node_count"] += 1
-                        yield chunk.embedding
+                        # Yield ID and embedding vector
+                        yield (str(chunk.index), chunk.embedding)
 
                     if stats["node_count"] % 100 == 0:
                         logger.info(f"Processed {stats['node_count']} chunks (Level 0)...")
@@ -186,7 +194,7 @@ class RaptorEngine:
 
             try:
                 clusters = self._reduce_clusters_if_needed(clusters, node_count, level, store)
-            except StopRecursion as e:
+            except StopRecursionError as e:
                 return e.result_node_id
 
             is_final = len(clusters) == 1
@@ -203,10 +211,8 @@ class RaptorEngine:
             level = next_level
             node_count = next_level_count
 
-            if node_count > 1:
-                clusters = self._embed_and_cluster_next_level(level, store)
-            else:
-                clusters = []
+            # Ternary operator as requested
+            clusters = self._embed_and_cluster_next_level(level, store) if node_count > 1 else []
 
     def _reduce_clusters_if_needed(
         self, clusters: list[Cluster], node_count: int, level: int, store: DiskChunkStore
@@ -219,7 +225,7 @@ class RaptorEngine:
                 f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
             )
             if node_count < 20:
-                return [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+                return [Cluster(id=0, level=level, node_indices=list(store.get_node_ids_by_level(level)))]
             else:
                 logger.error("Could not reduce nodes. Stopping recursion.")
                 # We return a state that will cause the loop to exit or we raise an exception/return ID?
@@ -228,7 +234,7 @@ class RaptorEngine:
                 # Original logic: return next(iter(store.get_node_ids_by_level(level)))
                 # To break the loop cleanly, we need to signal the caller.
                 # Since we are inside a helper, raising a custom exception to signal "Done" is cleanest.
-                raise StopRecursion(next(iter(store.get_node_ids_by_level(level))))
+                raise StopRecursionError(next(iter(store.get_node_ids_by_level(level))))
         return clusters
 
     def _summarize_and_store_level(
@@ -272,7 +278,7 @@ class RaptorEngine:
         Streams IDs from store to avoid loading all into memory.
         """
 
-        def lx_embedding_generator() -> Iterator[list[float]]:
+        def lx_embedding_generator() -> Iterator[tuple[NodeID, list[float]]]:
             def node_text_generator() -> Iterator[tuple[NodeID, str]]:
                 # Stream IDs directly from store
                 for nid in store.get_node_ids_by_level(level):
@@ -300,7 +306,7 @@ class RaptorEngine:
                     embeddings = self.embedder.embed_strings(texts_list)
                     for nid, embedding in zip(ids_list, embeddings, strict=True):
                         store.update_node_embedding(nid, embedding)
-                        yield embedding
+                        yield (nid, embedding)
                 except Exception as e:
                     logger.exception("Failed to embed batch during next level clustering.")
                     msg = "Embedding failed during recursion"
@@ -401,46 +407,17 @@ class RaptorEngine:
         Process clusters to generate summaries (streaming).
         Builds a map of referenced IDs to avoid loading all IDs.
         """
-        # 1. Identify all unique indices needed across all clusters
-        needed_indices = set()
-        for cluster in clusters:
-            for idx_raw in cluster.node_indices:
-                needed_indices.add(int(idx_raw))
-
-        sorted_needed_indices = sorted(needed_indices)
-
-        # 2. Stream IDs and map only the needed ones
-        index_to_id: dict[int, NodeID] = {}
-
-        if sorted_needed_indices:
-            needed_ptr = 0  # Pointer to sorted_needed_indices
-
-            for current_idx, node_id in enumerate(store.get_node_ids_by_level(input_level)):
-                if needed_ptr >= len(sorted_needed_indices):
-                    break
-
-                target_idx = sorted_needed_indices[needed_ptr]
-
-                if current_idx == target_idx:
-                    index_to_id[target_idx] = node_id
-                    needed_ptr += 1
-                    # Handle duplicates if any (shouldn't be in set)
-                    while needed_ptr < len(sorted_needed_indices) and sorted_needed_indices[needed_ptr] == current_idx:
-                         needed_ptr += 1
-
-        # 3. Summarize using the map, processing in batches to avoid OOM
         # Batch size for processing clusters
-        CLUSTER_BATCH_SIZE = 20
+        batch_size = self.config.cluster_batch_size
 
-        for cluster_batch in batched(clusters, CLUSTER_BATCH_SIZE):
+        for cluster_batch in batched(clusters, batch_size):
             yield from self._process_cluster_batch(
-                cluster_batch, index_to_id, store, output_level, strategy
+                cluster_batch, store, output_level, strategy
             )
 
     def _process_cluster_batch(
         self,
         cluster_batch: tuple[Cluster, ...],
-        index_to_id: dict[int, NodeID],
         store: DiskChunkStore,
         output_level: int,
         strategy: PromptStrategy
@@ -451,18 +428,13 @@ class RaptorEngine:
 
         # Collect IDs for this batch
         for cluster in cluster_batch:
-            ids_for_cluster = []
-            for idx_raw in cluster.node_indices:
-                idx = int(idx_raw)
-                nid = index_to_id.get(idx)
-                if nid is not None:
-                    ids_for_cluster.append(nid)
+            # Indices are now IDs (strings) because GMMClusterer returns IDs
+            node_ids_in_cluster = cluster.node_indices
 
-            cluster_node_map[cluster.id] = ids_for_cluster
-            batch_node_ids.extend(ids_for_cluster)
+            cluster_node_map[cluster.id] = node_ids_in_cluster
+            batch_node_ids.extend(node_ids_in_cluster)
 
         # Fetch nodes for this batch only
-        # We assume strict IDs are provided
         fetched_nodes_list = list(store.get_nodes([str(nid) for nid in batch_node_ids]))
         fetched_node_lookup = {
             str(n.index if isinstance(n, Chunk) else n.id): n
@@ -523,8 +495,3 @@ class RaptorEngine:
             )
 
             yield summary_node
-
-class StopRecursion(Exception):
-    """Internal exception to signal recursion termination with a result."""
-    def __init__(self, result_node_id: NodeID):
-        self.result_node_id = result_node_id
