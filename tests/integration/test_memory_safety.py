@@ -1,12 +1,11 @@
-from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from matome.engines.raptor import RaptorEngine
-from matome.exceptions import MatomeError
 from domain_models.config import ProcessingConfig
+from matome.engines.raptor import RaptorEngine
 from matome.utils.store import DiskChunkStore
+
 
 class TestMemorySafety:
     """
@@ -75,4 +74,3 @@ class TestMemorySafety:
 
     def test_file_size_limit(self) -> None:
         """Covered by tests/unit/test_cli_safety.py, placeholder for suite completeness."""
-        pass

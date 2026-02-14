@@ -1,5 +1,4 @@
 import logging
-import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated
@@ -47,6 +46,12 @@ def _handle_file_too_large(size: int, limit: int) -> None:
     raise typer.Exit(code=1)
 
 
+def _handle_invalid_output_dir(message: str) -> None:
+    """Handle invalid output directory error."""
+    typer.echo(f"Invalid output directory: {message}", err=True)
+    raise typer.Exit(code=1)
+
+
 def _validate_output_dir(output_dir: Path) -> None:
     """
     Validate output directory to prevent path traversal or unsafe locations.
@@ -55,20 +60,21 @@ def _validate_output_dir(output_dir: Path) -> None:
     try:
         resolved = output_dir.resolve()
         cwd = Path.cwd().resolve()
-        # Simple check: Ensure we are not writing to system roots or suspicious places if relative
-        # Ideally, we restrict to CWD subfolders for safety in this context
-        # But user might provide an absolute path intentionally.
-        # We check if the path is writable at least.
+
+        # Security check: Ensure path is relative to CWD to prevent writing to arbitrary system locations
+        # unless explicitly authorized (for this CLI tool, limiting to CWD is a safe default)
+        if not resolved.is_relative_to(cwd):
+             # Exception: We might allow /tmp for testing or specific user provided paths if verified.
+             # But for strict security:
+             _handle_invalid_output_dir(f"Path must be within current working directory ({cwd})")
 
         # Prevent traversal outside intended parent if strict mode (optional)
         # For now, we ensure we can create it and it's not a file.
         if resolved.exists() and not resolved.is_dir():
-             typer.echo(f"Output path {output_dir} exists and is not a directory.", err=True)
-             raise typer.Exit(code=1)
+             _handle_invalid_output_dir(f"Path {output_dir} exists and is not a directory.")
 
     except Exception as e:
-        typer.echo(f"Invalid output directory: {e}", err=True)
-        raise typer.Exit(code=1) from e
+        _handle_invalid_output_dir(str(e))
 
 
 def _stream_file_content(path: Path) -> Iterator[str]:
@@ -77,8 +83,7 @@ def _stream_file_content(path: Path) -> Iterator[str]:
     """
     try:
         with path.open("r", encoding="utf-8") as f:
-            for line in f:
-                yield line
+            yield from f
     except UnicodeDecodeError as e:
         typer.echo(f"File encoding error: {e}. Please ensure the file is valid UTF-8.", err=True)
         raise typer.Exit(code=1) from e
@@ -339,18 +344,6 @@ def serve(
     pn.extension(sizing_mode="stretch_width")
 
     typer.echo(f"Starting Matome GUI on port {port}...")
-
-    # Using context manager is tricky with pn.serve blocking,
-    # but pn.serve(..., show=False) returns a server object.
-    # However, we often run serve indefinitely.
-    # Proper pattern: Open store, run serve, ensure close on exit.
-
-    # Ideally:
-    # with DiskChunkStore(db_path=store_path) as store:
-    #     ... setup ...
-    #     pn.serve(...)
-
-    # But pn.serve blocks by default.
 
     store = DiskChunkStore(db_path=store_path)
     try:
