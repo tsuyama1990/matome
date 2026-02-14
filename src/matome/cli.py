@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Annotated
 
@@ -60,8 +61,14 @@ def _initialize_components(config: ProcessingConfig) -> tuple[
     return chunker, embedder, clusterer, summarizer, verifier
 
 
+def _stream_text_from_file(input_file: Path) -> Iterator[str]:
+    """Stream text from file line by line."""
+    with input_file.open(encoding="utf-8") as f:
+        yield from f
+
+
 def _run_pipeline(
-    text: str,
+    input_source: str | Iterator[str],
     store: DiskChunkStore,
     config: ProcessingConfig,
     components: tuple[
@@ -78,10 +85,7 @@ def _run_pipeline(
 
     typer.echo("Running RAPTOR process (Chunk -> Embed -> Cluster -> Summarize)...")
     try:
-        # RaptorEngine.run handles store lifecycle internally if passed, but we want to keep it open
-        # The caller (cli.run) has opened the store.
-        # RaptorEngine.run uses store_ctx which respects open store.
-        return engine.run(text, store=store)
+        return engine.run(input_source, store=store)
     except Exception as e:
         typer.echo(f"Error during RAPTOR execution: {e}", err=True)
         logger.exception("RAPTOR execution failed.")
@@ -222,12 +226,12 @@ def run(
         if file_stats.st_size > config.max_file_size_bytes:
             _handle_file_too_large(file_stats.st_size, config.max_file_size_bytes)
 
-        text = input_file.read_text(encoding="utf-8")
-    except UnicodeDecodeError as e:
-        typer.echo(f"File encoding error: {e}. Please ensure the file is valid UTF-8.", err=True)
-        raise typer.Exit(code=1) from e
+        # Use streaming for reading text to avoid OOM
+        # Passing an iterator to the engine which supports it via updated Chunker/RaptorEngine
+        text_stream = _stream_text_from_file(input_file)
+
     except Exception as e:
-        typer.echo(f"Error reading file: {e}", err=True)
+        typer.echo(f"Error accessing file: {e}", err=True)
         raise typer.Exit(code=1) from e
 
     components = _initialize_components(config)
@@ -237,7 +241,7 @@ def run(
     store = DiskChunkStore(db_path=store_path)
 
     with store as active_store:
-        tree = _run_pipeline(text, active_store, config, components)
+        tree = _run_pipeline(text_stream, active_store, config, components)
         typer.echo("Tree construction complete.")
 
         if verifier and config.verifier_enabled:
@@ -286,6 +290,21 @@ def serve(
         ),
     ],
     port: Annotated[int, typer.Option("--port", "-p", help="Port to serve on.")] = DEFAULT_CONFIG.server_port,
+    model: Annotated[
+        str,
+        typer.Option(
+            "--model",
+            "-m",
+            help="Summarization model to use for refinement.",
+        ),
+    ] = DEFAULT_CONFIG.summarization_model,
+    enable_refinement: Annotated[
+        bool,
+        typer.Option(
+            "--enable-refinement/--disable-refinement",
+            help="Enable/Disable interactive refinement capabilities.",
+        ),
+    ] = True,
 ) -> None:
     """
     Launch the interactive GUI.
@@ -298,9 +317,17 @@ def serve(
     store = DiskChunkStore(db_path=store_path)
 
     try:
-        config = ProcessingConfig()  # Default config for now
-        # Read-only mode: summarizer=None
-        engine = InteractiveRaptorEngine(store=store, summarizer=None, config=config)
+        config = ProcessingConfig(summarization_model=model)
+
+        summarizer = None
+        if enable_refinement:
+            try:
+                summarizer = SummarizationAgent(config)
+            except Exception as e:
+                typer.echo(f"Warning: Failed to initialize summarizer ({e}). Interactive refinement will be disabled.")
+                summarizer = None
+
+        engine = InteractiveRaptorEngine(store=store, summarizer=summarizer, config=config)
         session = InteractiveSession(engine=engine)
 
         # Load initial tree

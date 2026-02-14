@@ -213,8 +213,9 @@ class SummarizationAgent:
 
         response = None
         # Use Tenacity for retries based on config
+        # max_retries implies additional attempts, so total attempts = 1 + max_retries
         for attempt in Retrying(
-            stop=stop_after_attempt(config.max_retries),
+            stop=stop_after_attempt(config.max_retries + 1),
             wait=wait_exponential(multiplier=1, min=2, max=10),
             reraise=True,
         ):

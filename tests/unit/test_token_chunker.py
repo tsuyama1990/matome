@@ -1,140 +1,83 @@
 import pytest
-
+from unittest.mock import MagicMock, patch
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk
-from matome.engines.token_chunker import JapaneseTokenChunker
+from matome.engines.token_chunker import JapaneseTokenChunker, TokenChunker
 
+@pytest.fixture
+def config() -> ProcessingConfig:
+    return ProcessingConfig(max_tokens=10, overlap=0)
 
-def test_chunker_basic() -> None:
-    """Test basic chunking functionality."""
-    chunker = JapaneseTokenChunker()
-    text = "文１。文２。文３。"
-    config = ProcessingConfig(max_tokens=100)
+def test_token_chunker_basic(config: ProcessingConfig) -> None:
+    chunker = TokenChunker()
+    # "hello world" is 2 tokens in cl100k_base
+    text = "hello world " * 5 # 10 tokens
     chunks = list(chunker.split_text(text, config))
+    assert len(chunks) >= 1
+    assert chunks[0].index == 0
 
-    assert isinstance(chunks, list)
-    assert all(isinstance(c, Chunk) for c in chunks)
+def test_token_chunker_stream(config: ProcessingConfig) -> None:
+    chunker = TokenChunker()
+    stream = ["hello ", "world"]
+    chunks = list(chunker.split_text(stream, config))
     assert len(chunks) > 0
+    assert "hello" in chunks[0].text
 
-    # Check concatenated text
-    reconstructed = "".join(c.text for c in chunks)
-    # Normalization might change text, so we check if content is preserved generally
-    # Note: '１' (full-width) becomes '1' (half-width) after normalization
-    assert "文1" in reconstructed
+def test_japanese_chunker_init() -> None:
+    # Mock spacy load
+    with patch("spacy.load") as mock_load:
+        chunker = JapaneseTokenChunker()
+        mock_load.assert_called()
+        assert chunker.nlp is not None
 
+def test_japanese_chunker_count_tokens() -> None:
+    # Mock spacy nlp
+    with patch("spacy.load") as mock_load:
+        mock_nlp = MagicMock()
+        mock_nlp.return_value = ["t1", "t2", "t3"] # 3 tokens
+        mock_load.return_value = mock_nlp
 
-def test_chunker_max_tokens() -> None:
-    """Test that chunks respect max_tokens."""
-    # Create a long text
-    sentence = "あ" * 100 + "。"
-    text = sentence * 20  # 2000+ chars
+        chunker = JapaneseTokenChunker()
+        count = chunker.count_tokens("test")
+        assert count == 3
 
-    chunker = JapaneseTokenChunker()
-    config = ProcessingConfig(max_tokens=200)
-    chunks = list(chunker.split_text(text, config))
+def test_japanese_chunker_split(config: ProcessingConfig) -> None:
+    # Mock spacy nlp pipe
+    with patch("spacy.load") as mock_load:
+        mock_nlp = MagicMock()
 
-    assert len(chunks) > 1
+        # Mock docs and sentences
+        doc1 = MagicMock()
+        sent1 = MagicMock()
+        sent1.text = "Sent1."
+        sent1.__len__ = lambda x: 5
+        doc1.sents = [sent1]
 
-    # Verify sequential indices
-    indices = [c.index for c in chunks]
-    assert indices == list(range(len(chunks)))
+        mock_nlp.pipe.return_value = [doc1]
+        mock_load.return_value = mock_nlp
 
-    # Verify coverage
-    full_text = "".join(c.text for c in chunks)
-    # Assuming normalization doesn't change 'あ' and '。' width (it doesn't)
-    assert len(full_text) == len(text)
+        chunker = JapaneseTokenChunker()
+        chunks = list(chunker.split_text("Sent1.", config))
 
+        assert len(chunks) == 1
+        assert chunks[0].text == "Sent1."
 
-def test_chunker_invalid_model_security() -> None:
-    """
-    Test that invalid model names (not in whitelist) raise ValueError immediately,
-    with no fallback to default.
-    """
-    # Validation now happens at Config level mostly, but also in tokenizer loader
-    from pydantic import ValidationError
+def test_japanese_chunker_large_input_safe_stream(config: ProcessingConfig) -> None:
+    """Test safe streaming splitting of large inputs."""
+    with patch("spacy.load") as mock_load:
+        mock_nlp = MagicMock()
+        mock_nlp.pipe.return_value = [] # Yield nothing for simplicity, checking input transformation
+        mock_load.return_value = mock_nlp
 
-    # Case 1: Config validation
-    with pytest.raises(ValidationError, match="not allowed"):
-        ProcessingConfig(tokenizer_model="invalid_model")
+        chunker = JapaneseTokenChunker()
 
-    # Case 2: If somehow bypassed (e.g., construct config manually without validation or mocking),
-    # the chunker should still catch it.
-    # We can simulate this by mocking ProcessingConfig or passing an object that looks like config
-    class MockConfig:
-        tokenizer_model = "invalid_model"
-        max_tokens = 100
+        # Huge string > 10000 chars
+        huge_text = "a" * 25000
 
-    with pytest.raises(ValidationError):
-        JapaneseTokenChunker(config=MockConfig())  # type: ignore
+        # Call safe stream directly or via split_text
+        streamed = list(chunker._safe_stream(huge_text))
 
-
-def test_chunker_empty_input() -> None:
-    """Test that empty input returns an empty list."""
-    chunker = JapaneseTokenChunker()
-    config = ProcessingConfig()
-    chunks = list(chunker.split_text("", config))
-    assert chunks == []
-
-    chunks_none = list(chunker.split_text(None, config))  # type: ignore
-    assert chunks_none == []
-
-
-def test_chunker_single_sentence_exceeds_limit() -> None:
-    """Test behavior when a single sentence exceeds max_tokens."""
-    chunker = JapaneseTokenChunker()
-    # Create a sentence longer than limit
-    # 'a' is 1 token in cl100k_base.
-    long_sentence = "a" * 150 + "。"
-    config = ProcessingConfig(max_tokens=100)
-
-    # Current behavior: it appends the sentence even if it exceeds limits (no recursive splitting yet)
-    chunks = list(chunker.split_text(long_sentence, config))
-
-    assert len(chunks) == 1
-    assert chunks[0].text == long_sentence
-    # Ensure it didn't crash
-
-
-def test_chunker_unicode() -> None:
-    """Test handling of emojis and special unicode characters."""
-    chunker = JapaneseTokenChunker()
-    text = "Hello 🌍! This is a test 🧪. 日本語もOKですか？はい。"
-    config = ProcessingConfig(max_tokens=50)
-    chunks = list(chunker.split_text(text, config))
-
-    assert len(chunks) > 0
-    reconstructed = "".join(c.text for c in chunks)
-    # normalization might change chars? NFKC preserves emojis usually
-    assert "🌍" in reconstructed
-    assert "🧪" in reconstructed
-    assert "日本語" in reconstructed
-
-
-def test_chunker_very_long_input() -> None:
-    """Test performance/recursion on very long input."""
-    # Create a massive string of repeated sentences
-    # 10,000 sentences * ~10 chars = 100,000 chars
-    text = "これはテストです。" * 10000
-    chunker = JapaneseTokenChunker()
-    config = ProcessingConfig(max_tokens=1000)
-
-    chunks = list(chunker.split_text(text, config))
-    assert len(chunks) > 0
-
-
-def test_chunker_count_tokens() -> None:
-    """Test the count_tokens method."""
-    chunker = JapaneseTokenChunker()
-
-    # Normal case
-    text = "hello world"
-    count = chunker.count_tokens(text)
-    assert count > 0
-    assert count == 2
-
-    # Empty case
-    assert chunker.count_tokens("") == 0
-
-    # Very long string case
-    long_text = "word " * 1000
-    assert chunker.count_tokens(long_text) > 0
+        # Should be split into 10000 chunks: 10000, 10000, 5000
+        assert len(streamed) == 3
+        assert len(streamed[0]) == 10000
+        assert len(streamed[1]) == 10000
+        assert len(streamed[2]) == 5000

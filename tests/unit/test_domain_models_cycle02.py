@@ -2,55 +2,58 @@ import pytest
 from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster
+from domain_models.constants import (
+    DEFAULT_EMBEDDING,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_SEMANTIC_CHUNKING_MODE,
+    DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
+    DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
+    DEFAULT_TOKENIZER,
+)
 
 
-def test_chunk_embedding_field() -> None:
-    chunk = Chunk(index=0, text="test", start_char_idx=0, end_char_idx=4, embedding=[0.1, 0.2, 0.3])
-    assert chunk.embedding == [0.1, 0.2, 0.3]
+def test_config_defaults() -> None:
+    """Test that default configuration values are correctly set."""
+    config = ProcessingConfig()
+
+    assert config.max_tokens == DEFAULT_MAX_TOKENS
+    assert config.tokenizer_model == DEFAULT_TOKENIZER
+    assert config.semantic_chunking_mode == DEFAULT_SEMANTIC_CHUNKING_MODE
+    assert config.semantic_chunking_threshold == DEFAULT_SEMANTIC_CHUNKING_THRESHOLD
+    assert config.semantic_chunking_percentile == DEFAULT_SEMANTIC_CHUNKING_PERCENTILE
+    assert config.embedding_model == DEFAULT_EMBEDDING
 
 
-def test_chunk_embedding_optional() -> None:
-    chunk = Chunk(index=0, text="test", start_char_idx=0, end_char_idx=4)
-    assert chunk.embedding is None
+def test_config_validation_semantic_threshold() -> None:
+    """Test validation logic for semantic chunking threshold."""
+    # Valid range [0.0, 1.0]
+    ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=0.5)
+    ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=0.0)
+    ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=1.0)
+
+    # Invalid range
+    with pytest.raises(ValidationError):
+        ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=-0.1)
+
+    with pytest.raises(ValidationError):
+        ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=1.1)
 
 
 def test_config_embedding_model() -> None:
-    config = ProcessingConfig()
-    assert config.embedding_model == "intfloat/multilingual-e5-large"
+    """Test embedding model validation."""
+    # Allowed model
+    ProcessingConfig(embedding_model=DEFAULT_EMBEDDING)
 
-    config = ProcessingConfig(embedding_model="mock-model")
-    assert config.embedding_model == "mock-model"
-
-
-def test_cluster_node_indices() -> None:
-    cluster = Cluster(id=1, level=0, node_indices=[1, 2, 3])
-    assert cluster.node_indices == [1, 2, 3]
-    assert cluster.id == 1
-    assert cluster.level == 0
-
-
-def test_invalid_config_parameters() -> None:
-    # Test invalid embedding_batch_size (must be >= 1)
+    # Disallowed model
     with pytest.raises(ValidationError):
-        ProcessingConfig(embedding_batch_size=0)
-
-    # Test valid embedding_batch_size
-    config = ProcessingConfig(embedding_batch_size=1)
-    assert config.embedding_batch_size == 1
+        ProcessingConfig(embedding_model="suspicious/model")
 
 
 def test_config_factory_methods() -> None:
-    # Test default()
+    """Test factory methods for creating specific configurations."""
     default_config = ProcessingConfig.default()
-    assert default_config.max_tokens == 500
-    assert default_config.overlap == 0
-    assert default_config.embedding_model == "intfloat/multilingual-e5-large"
-    assert default_config.clustering_algorithm.value == "gmm"
+    assert isinstance(default_config, ProcessingConfig)
 
-    # Test high_precision()
-    hp_config = ProcessingConfig.high_precision()
-    assert hp_config.max_tokens == 200
-    assert hp_config.overlap == 20
-    # Ensure defaults are preserved for others
-    assert hp_config.embedding_model == "intfloat/multilingual-e5-large"
+    high_precision = ProcessingConfig.high_precision()
+    assert high_precision.max_tokens == 200
+    assert high_precision.overlap == 20

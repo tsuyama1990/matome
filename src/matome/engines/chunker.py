@@ -1,4 +1,4 @@
-from matome.engines.semantic_chunker import JapaneseSemanticChunker
-from matome.engines.token_chunker import JapaneseTokenChunker
+from matome.engines.semantic_chunker import SemanticChunker
+from matome.engines.token_chunker import JapaneseTokenChunker, TokenChunker
 
-__all__ = ["JapaneseSemanticChunker", "JapaneseTokenChunker"]
+__all__ = ["JapaneseTokenChunker", "SemanticChunker", "TokenChunker"]

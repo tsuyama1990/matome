@@ -125,6 +125,9 @@ class Cluster(BaseModel):
     centroid: list[float] | None = Field(
         default=None, description="Vector centroid of the cluster (optional)."
     )
+    metadata: Metadata = Field(
+        default_factory=dict, description="Optional metadata about the cluster."
+    )
 
 
 class DocumentTree(BaseModel):

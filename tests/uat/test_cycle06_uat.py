@@ -80,8 +80,6 @@ def test_scenario_17_cli_usability() -> None:
     with runner.isolated_filesystem():
         result = runner.invoke(app, ["run", "missing.txt"])
         assert result.exit_code != 0
-        # Wait, typer might catch exceptions and print to stderr.
-        # But we assert exit code is not 0 (failure).
 
 
 @patch("matome.cli.SummarizationAgent")
@@ -110,7 +108,9 @@ def test_scenario_18_full_e2e_pipeline(
             yield c
 
     mock_embedder_instance.embed_chunks.side_effect = mock_embed_chunks
-    mock_embedder_instance.embed_strings.return_value = [[0.1] * 10]
+
+    # embed_strings must return iterator and be callable multiple times
+    mock_embedder_instance.embed_strings.side_effect = lambda texts: iter([[0.1] * 10])
 
     mock_summarizer_instance = mock_summarizer_cls.return_value
     mock_summarizer_instance.summarize.return_value = "Summary of cluster."
