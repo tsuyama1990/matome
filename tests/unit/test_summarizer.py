@@ -141,7 +141,7 @@ def test_summarize_long_input_dos_prevention(
 ) -> None:
     """Test behavior with input containing potential DoS vectors (extremely long words)."""
     # config.max_word_length default is 1000
-    long_word = "a" * 1001
+    long_word = "a" * (config.max_word_length + 1)
 
     with pytest.raises(ValueError, match="potential DoS vector"):
         agent.summarize(long_word, config)

@@ -1,0 +1,29 @@
+{
+  "nodes": [
+    {
+      "id": "a22e4fc2-261a-4418-903f-d3dc20b4bbc0",
+      "x": -200,
+      "y": 0,
+      "width": 400,
+      "height": 200,
+      "type": "text",
+      "text": "This is a test file for the CLI."
+    },
+    {
+      "id": "chunk_0",
+      "x": -200,
+      "y": 500,
+      "width": 400,
+      "height": 200,
+      "type": "text",
+      "text": "Chunk 0\n\nThis is a test file for the CLI."
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_a22e4fc2-261a-4418-903f-d3dc20b4bbc0_chunk_0",
+      "fromNode": "a22e4fc2-261a-4418-903f-d3dc20b4bbc0",
+      "toNode": "chunk_0"
+    }
+  ]
+}

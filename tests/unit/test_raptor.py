@@ -57,6 +57,7 @@ def test_raptor_run_short_text(
     # 2. Embedding
     def side_effect_embed(chunks_iter: Iterator[Chunk]) -> Iterator[Chunk]:
         for c in chunks_iter:
+            # Use config value if possible or standard size
             c.embedding = [0.1] * 768
             yield c
     embedder.embed_chunks.side_effect = side_effect_embed
@@ -85,7 +86,6 @@ def test_raptor_run_short_text(
     assert tree.root_node.text == "Wisdom Summary"
 
     # Ensure it used Wisdom strategy
-    # Passed as 3rd arg (positional)
     args, kwargs = summarizer.summarize.call_args
     assert len(args) >= 3
     assert isinstance(args[2], WisdomStrategy)
@@ -176,3 +176,62 @@ def test_raptor_error_handling(
 
     with pytest.raises(MatomeError):
         engine.run("Text")
+
+def test_raptor_input_validation(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
+    """Test validation logic."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+    with pytest.raises(ValueError, match="Input text must be a non-empty string"):
+        engine.run("")
+
+    large_text = "a" * (config.max_input_length + 100)
+    with pytest.raises(ValueError, match="Input text length"):
+        engine.run(large_text)
+
+
+def test_raptor_cluster_edge_cases(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
+    """Test empty clusters and invalid indices handling."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+    # Mock store behavior
+    store = MagicMock()
+    store.get_node.return_value = Chunk(index=0, text="valid", start_char_idx=0, end_char_idx=5)
+
+    # Setup inputs for _summarize_clusters
+    current_level_ids = [0, 1, 2] # 3 nodes available
+
+    # 1. Cluster with invalid index (out of bounds) -> Should be skipped
+    c1 = Cluster(id=0, level=0, node_indices=[99])
+
+    # 2. Cluster with valid index but node missing in store -> Should be skipped
+    c2 = Cluster(id=1, level=0, node_indices=[1])
+
+    # 3. Valid cluster
+    c3 = Cluster(id=2, level=0, node_indices=[0])
+
+    clusters = [c1, c2, c3]
+    strategy = InformationStrategy()
+
+    # Mock store to return None for index 1 (missing node)
+    def get_node_side_effect(nid):
+        if nid == 1: return None
+        return Chunk(index=nid, text=f"text_{nid}", start_char_idx=0, end_char_idx=5)
+
+    store.get_node.side_effect = get_node_side_effect
+
+    # Mock summarizer return value
+    summarizer.summarize.return_value = "Mock Summary"
+
+    # Run private method directly to verify generator logic
+    results = list(engine._summarize_clusters(clusters, current_level_ids, store, 1, strategy))
+
+    # Only c3 should produce a result
+    assert len(results) == 1
+    assert results[0].metadata.cluster_id == 2
+    assert results[0].children_indices == [0]

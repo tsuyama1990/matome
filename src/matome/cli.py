@@ -50,7 +50,13 @@ def _run_pipeline(
     text: str,
     store: DiskChunkStore,
     config: ProcessingConfig,
-    components: tuple,
+    components: tuple[
+        JapaneseTokenChunker,
+        EmbeddingService,
+        GMMClusterer,
+        SummarizationAgent,
+        VerifierAgent | None,
+    ],
 ) -> DocumentTree:
     """Run the RAPTOR pipeline."""
     chunker, embedder, clusterer, summarizer, _ = components

@@ -19,7 +19,7 @@
 
 ## Prerequisites
 
--   **Python 3.11+**
+-   **Python 3.12+**
 -   **uv** (Package manager)
 -   **OpenRouter / OpenAI API Key** (Set as `OPENROUTER_API_KEY` env var)
 

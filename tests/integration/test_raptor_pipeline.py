@@ -19,11 +19,11 @@ class DummyEmbedder(EmbeddingService):
         self.config = create_autospec(ProcessingConfig)
 
     def embed_chunks(self, chunks: Iterable[Chunk]) -> Iterator[Chunk]:
-        # Consume iterator
-        chunk_list = list(chunks)
-        for i, c in enumerate(chunk_list):
+        # Process as iterator
+        for i, c in enumerate(chunks):
             vec = [0.0] * self.dim
-            if i < len(chunk_list) // 2:
+            # Simple logic to create 2 clusters
+            if i % 2 == 0:
                 vec[0] = 1.0 + (i * 0.01)
             else:
                 vec[1] = 1.0 + (i * 0.01)
@@ -48,30 +48,26 @@ def config() -> ProcessingConfig:
 def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
     """
     Test the RAPTOR pipeline with real Clusterer and mocked other components.
-    Uses proper mock specifications via create_autospec.
-    Verifies DIKW level assignment.
+    Verifies DIKW level assignment and memory-safe processing.
     """
-    # Mock Chunker (Protocol)
     chunker = create_autospec(Chunker, instance=True)
-    chunks = [
-        Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10) for i in range(10)
-    ]
-    chunker.split_text.return_value = iter(chunks)
 
-    # Real Clusterer (Implementation)
+    # Generator for chunks to simulate streaming
+    def chunk_generator():
+        for i in range(10):
+            yield Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
+
+    chunker.split_text.return_value = chunk_generator()
+
     clusterer = GMMClusterer()
 
-    # Mock Summarizer (Protocol)
     summarizer = create_autospec(Summarizer, instance=True)
     summarizer.summarize.return_value = "Summary Text"
 
-    # Dummy Embedder (Subclass)
     embedder = DummyEmbedder()
 
-    # Instantiate Engine with strictly typed mocks/objects
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
 
-    # Use a store to verify persistence
     with DiskChunkStore() as store:
         tree = engine.run("Dummy text", store=store)
 
@@ -80,16 +76,12 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         assert len(tree.leaf_chunk_ids) == 10
         assert tree.root_node.level >= 1
 
-        # Verify DIKW Levels
-        # Root should be WISDOM
         assert tree.root_node.metadata.dikw_level == DIKWLevel.WISDOM
 
-        # Verify embeddings are present in store
         first_chunk = store.get_node(tree.leaf_chunk_ids[0])
         assert first_chunk is not None
         assert first_chunk.embedding is not None, "Leaf chunks must retain embeddings."
 
-        # Verify root embedding
         root_fetched = store.get_node(tree.root_node.id)
         if root_fetched:
             assert root_fetched.embedding is not None, "Root node must have an embedding in store."
