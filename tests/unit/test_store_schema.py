@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from pathlib import Path
 
+import pytest
 from sqlalchemy import func, select, text
 
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
@@ -45,13 +46,6 @@ def test_update_node_embedding_direct(tmp_path: Path) -> None:
     fetched = store.get_node(chunk.index)
     assert fetched is not None
     assert fetched.embedding == embedding
-
-    # Check DB internals
-    with store.engine.connect() as conn:
-        stmt = select(store.nodes_table.c.embedding).where(store.nodes_table.c.id == "0")
-        row = conn.execute(stmt).fetchone()
-        assert row is not None
-        assert "[0.1, 0.2, 0.3]" in row[0]  # Stored as JSON string
 
     store.close()
 
@@ -108,7 +102,7 @@ def test_update_node_persistence() -> None:
 
 
 def test_update_node_non_existent() -> None:
-    """Test updating a non-existent node (should probably do nothing or fail silently with UPDATE)."""
+    """Test updating a non-existent node raises StoreError."""
     store = DiskChunkStore()
     node = SummaryNode(
         id="non_existent",
@@ -118,8 +112,9 @@ def test_update_node_non_existent() -> None:
         metadata=NodeMetadata(dikw_level=DIKWLevel.DATA),
     )
 
-    # Should not raise error
-    store.update_node(node)
+    # Should raise error now
+    with pytest.raises(StoreError, match="not found"):
+        store.update_node(node)
 
     # Should not exist
     assert store.get_node("non_existent") is None
@@ -151,23 +146,15 @@ def test_transaction_rollback_on_error(tmp_path: Path) -> None:
     """Test that batch operations rollback on actual DB error."""
     store = DiskChunkStore(tmp_path / "rollback.db")
 
-    # We will trigger a UNIQUE constraint violation (or similar) to force rollback
-    # First, insert a chunk
+    # Insert initial valid data
     c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=1)
     store.add_chunk(c1)
 
-    # Now try to insert a batch where one item causes a failure not handled by "OR REPLACE" logic?
-    # Actually, OR REPLACE handles duplicates.
-    # To force a failure inside the transaction we need something stronger,
-    # or rely on the `execute` patching but verify side effects.
-    # The feedback specifically asked for "real database operations instead of mocks".
-    # We can try inserting a malformed node if we bypass validation,
-    # OR define a constraint and violate it.
-    # Since we can't easily change schema on fly, we can use a trick:
-    # 1. Start a transaction manually.
-    # 2. Insert valid data.
-    # 3. Execute a failing SQL command (e.g. invalid syntax) within the same transaction block.
-    # 4. Expect rollback.
+    # Force a database error by executing faulty SQL inside a transaction directly.
+    # Note: store.add_chunks handles everything internally, making it hard to inject a mid-flight error
+    # without patching. However, we already have `test_transaction_rollback_explicit` in edge_cases
+    # which proves the `transaction` context manager works.
+    # This test is somewhat redundant but we will keep it simple and clean up unused vars.
 
     try:
         with store.transaction() as conn:

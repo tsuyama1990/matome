@@ -312,7 +312,10 @@ class DiskChunkStore:
 
         try:
             with self.engine.begin() as conn:
-                conn.execute(stmt)
+                result = conn.execute(stmt)
+                if result.rowcount == 0:
+                    msg = f"Node {node_id} not found."
+                    raise StoreError(msg)
         except SQLAlchemyError as e:
             msg = f"Failed to update embedding for node {node_id}: {e}"
             raise StoreError(msg) from e
@@ -334,7 +337,10 @@ class DiskChunkStore:
 
         try:
             with self.engine.begin() as conn:
-                conn.execute(stmt)
+                result = conn.execute(stmt)
+                if result.rowcount == 0:
+                    msg = f"Node {node.id} not found."
+                    raise StoreError(msg)
         except SQLAlchemyError as e:
             msg = f"Failed to update node {node.id}: {e}"
             raise StoreError(msg) from e

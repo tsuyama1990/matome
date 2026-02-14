@@ -11,7 +11,7 @@ from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.utils.store import DiskChunkStore, StoreError
 from tests.conftest import generate_chunks
-from tests.test_config import CHUNKS_PER_THREAD, NUM_THREADS, READ_LOOPS, TOTAL_CHUNKS, WRITE_LOOPS
+from tests.test_config import TEST_CONFIG
 
 
 def test_concurrent_writes(tmp_path: Path) -> None:
@@ -23,17 +23,21 @@ def test_concurrent_writes(tmp_path: Path) -> None:
         # Use shared utility generator to stream chunks directly
         store.add_chunks(generate_chunks(count, start_index=start_idx))
 
-    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
+    with ThreadPoolExecutor(max_workers=TEST_CONFIG.NUM_THREADS) as executor:
         futures = []
-        for i in range(NUM_THREADS):
-            futures.append(executor.submit(write_chunks, i * CHUNKS_PER_THREAD, CHUNKS_PER_THREAD))
+        for i in range(TEST_CONFIG.NUM_THREADS):
+            futures.append(executor.submit(
+                write_chunks,
+                i * TEST_CONFIG.CHUNKS_PER_THREAD,
+                TEST_CONFIG.CHUNKS_PER_THREAD
+            ))
 
         for f in futures:
             f.result()  # Propagate exceptions
 
     # Verify total using count query (O(1) instead of loop)
     count = store.get_node_count(0)  # Level 0 is chunks
-    assert count == TOTAL_CHUNKS
+    assert count == TEST_CONFIG.total_chunks
 
     store.close()
 
@@ -52,14 +56,14 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
         # Batching writes instead of single item loop
         chunks_to_write = [
             Chunk(index=i, text=f"W{i}", start_char_idx=0, end_char_idx=1, embedding=[1.0])
-            for i in range(WRITE_LOOPS)
+            for i in range(TEST_CONFIG.WRITE_LOOPS)
         ]
         store.add_chunks(chunks_to_write)
 
     def reader() -> None:
         # Batch retrieval via iterator consumption
         ids = ["999"] + [str(i) for i in range(5)]
-        for _ in range(READ_LOOPS):
+        for _ in range(TEST_CONFIG.READ_LOOPS):
             # Consume generator and verify "Base" exists
             found_base = False
             for node in store.get_nodes(ids):

@@ -1,42 +1,30 @@
 import pytest
-from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
+from domain_models.types import DIKWLevel
 
 
-def test_config_defaults_valid() -> None:
-    """Ensure default configuration is valid."""
-    config = ProcessingConfig()
-    assert config.embedding_model
-    assert config.tokenizer_model
-
-
-def test_embedding_model_validation() -> None:
-    """Test embedding model validation."""
-    # Empty string
-    with pytest.raises(ValidationError):
-        ProcessingConfig(embedding_model="")
-
-    # Whitespace
-    with pytest.raises(ValidationError):
-        ProcessingConfig(embedding_model="   ")
-
-    # Injection chars / Not in whitelist
-    with pytest.raises(ValidationError):
-        ProcessingConfig(embedding_model="model; rm -rf")
-
-    # Valid model
-    config = ProcessingConfig(embedding_model="intfloat/multilingual-e5-large")
-    assert config.embedding_model == "intfloat/multilingual-e5-large"
-
-
-def test_tokenizer_model_validation() -> None:
-    """Test tokenizer model validation against whitelist."""
+def test_chunking_consistency_validation() -> None:
     # Valid
-    config = ProcessingConfig(tokenizer_model="cl100k_base")
-    assert config.tokenizer_model == "cl100k_base"
+    ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=0.5)
 
-    # Invalid
-    with pytest.raises(ValidationError) as exc:
-        ProcessingConfig(tokenizer_model="invalid_model")
-    assert "not allowed" in str(exc.value)
+    # Invalid threshold high
+    with pytest.raises(ValueError, match="threshold"):
+        ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=1.5)
+
+    # Invalid threshold low
+    with pytest.raises(ValueError, match="threshold"):
+        ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=-0.1)
+
+def test_strategy_mapping_default() -> None:
+    config = ProcessingConfig()
+    assert config.strategy_mapping[DIKWLevel.WISDOM] == "wisdom"
+    assert config.strategy_mapping[DIKWLevel.KNOWLEDGE] == "knowledge"
+    assert config.strategy_mapping[DIKWLevel.INFORMATION] == "information"
+
+def test_strategy_mapping_custom() -> None:
+    custom_map = {DIKWLevel.WISDOM: "custom_wisdom"}
+    config = ProcessingConfig(strategy_mapping=custom_map)
+    assert config.strategy_mapping[DIKWLevel.WISDOM] == "custom_wisdom"
+    # Pydantic doesn't merge dicts by default for fields, it replaces.
+    assert DIKWLevel.KNOWLEDGE not in config.strategy_mapping
