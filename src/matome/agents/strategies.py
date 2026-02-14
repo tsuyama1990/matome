@@ -18,9 +18,14 @@ class WisdomStrategy(PromptStrategy):
 
     @property
     def dikw_level(self) -> DIKWLevel:
+        """Returns DIKW Level: WISDOM."""
         return DIKWLevel.WISDOM
 
     def format_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+        """
+        Formats the prompt using the WISDOM template.
+        Ignores context unless specifically extended.
+        """
         # We might inject context/instructions if needed
         # But for now, we just use the template.
         return WISDOM_TEMPLATE.format(context=text)
@@ -34,9 +39,11 @@ class KnowledgeStrategy(PromptStrategy):
 
     @property
     def dikw_level(self) -> DIKWLevel:
+        """Returns DIKW Level: KNOWLEDGE."""
         return DIKWLevel.KNOWLEDGE
 
     def format_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+        """Formats the prompt using the KNOWLEDGE template."""
         return KNOWLEDGE_TEMPLATE.format(context=text)
 
 
@@ -48,9 +55,11 @@ class InformationStrategy(PromptStrategy):
 
     @property
     def dikw_level(self) -> DIKWLevel:
+        """Returns DIKW Level: INFORMATION."""
         return DIKWLevel.INFORMATION
 
     def format_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+        """Formats the prompt using the INFORMATION template."""
         return INFORMATION_TEMPLATE.format(context=text)
 
 
@@ -62,10 +71,12 @@ class BaseSummaryStrategy(PromptStrategy):
 
     @property
     def dikw_level(self) -> DIKWLevel:
+        """Returns default DIKW Level: DATA."""
         # Default level if not specified
         return DIKWLevel.DATA
 
     def format_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+        """Formats the prompt using the Chain of Density (COD) template."""
         from matome.utils.prompts import COD_TEMPLATE
 
         return COD_TEMPLATE.format(context=text)
@@ -82,9 +93,14 @@ class RefinementStrategy(PromptStrategy):
 
     @property
     def dikw_level(self) -> DIKWLevel:
+        """Delegates DIKW level to the base strategy."""
         return self.base_strategy.dikw_level
 
     def format_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+        """
+        Wraps the base strategy's prompt with refinement instructions.
+        Expects 'instruction' key in context.
+        """
         instruction = context.get("instruction", "") if context else ""
         if not instruction:
             # Fallback to base strategy if no instruction

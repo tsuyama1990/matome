@@ -152,6 +152,54 @@ class DiskChunkStore:
             with self.engine.begin() as conn:
                 conn.execute(stmt, buffer)
 
+    def get_nodes(self, node_ids: list[str]) -> list[Chunk | SummaryNode | None]:
+        """
+        Retrieve multiple nodes by ID in a single batch.
+        More efficient than calling get_node() in a loop.
+        """
+        if not node_ids:
+            return []
+
+        # SQLite limit for variables is usually 999 or 32766. Use safe batch size.
+        BATCH_SIZE = 500
+        results: list[Chunk | SummaryNode | None] = []
+        id_to_node: dict[str, Chunk | SummaryNode] = {}
+
+        # Query in batches
+        for i in range(0, len(node_ids), BATCH_SIZE):
+            batch_ids = node_ids[i : i + BATCH_SIZE]
+            stmt = select(
+                self.nodes_table.c.id,
+                self.nodes_table.c.type,
+                self.nodes_table.c.content,
+                self.nodes_table.c.embedding,
+            ).where(self.nodes_table.c.id.in_(batch_ids))
+
+            with self.engine.connect() as conn:
+                db_rows = conn.execute(stmt)
+                for row in db_rows:
+                    nid, node_type, content_json, embedding_json = row
+                    try:
+                        embedding = json.loads(embedding_json) if embedding_json else None
+                        if node_type == "chunk":
+                            data = json.loads(content_json)
+                            if embedding is not None:
+                                data["embedding"] = embedding
+                            id_to_node[nid] = Chunk.model_validate(data)
+                        elif node_type == "summary":
+                            data = json.loads(content_json)
+                            if embedding is not None:
+                                data["embedding"] = embedding
+                            id_to_node[nid] = SummaryNode.model_validate(data)
+                    except Exception:
+                        logger.exception(f"Failed to deserialize node {nid}")
+
+        # Preserve order
+        for nid in node_ids:
+            results.append(id_to_node.get(nid))
+
+        return results
+
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
         """
         Update the embedding of an existing node efficiently.
@@ -244,6 +292,23 @@ class DiskChunkStore:
             result = conn.execute(stmt)
             for row in result:
                 yield row[0]
+
+    def get_node_count(self, level: int) -> int:
+        """
+        Get the number of nodes at a specific level.
+        Efficient count query.
+        """
+        if level == 0:
+            stmt = select(func.count()).where(self.nodes_table.c.type == "chunk")
+        else:
+            stmt = select(func.count()).where(
+                self.nodes_table.c.type == "summary",
+                func.json_extract(self.nodes_table.c.content, "$.level") == level,
+            )
+
+        with self.engine.connect() as conn:
+            result = conn.execute(stmt)
+            return result.scalar() or 0
 
     def commit(self) -> None:
         """Explicit commit (placeholder as we use auto-commit blocks)."""

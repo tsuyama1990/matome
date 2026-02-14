@@ -26,11 +26,17 @@ class InteractiveRaptorEngine:
         self.config = config
 
     def get_node(self, node_id: str | int) -> SummaryNode | Chunk | None:
-        """Retrieve a node by ID."""
+        """
+        Retrieve a node (Summary or Chunk) by its unique ID.
+        Delegates to the underlying DiskChunkStore.
+        """
         return self.store.get_node(node_id)
 
     def get_children(self, node: SummaryNode) -> list[SummaryNode | Chunk]:
-        """Retrieve the immediate children of a summary node."""
+        """
+        Retrieve the immediate children of a given summary node.
+        Returns a mixed list of SummaryNodes and Chunks.
+        """
         children = []
         for child_idx in node.children_indices:
             child = self.store.get_node(child_idx)
@@ -41,7 +47,19 @@ class InteractiveRaptorEngine:
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
         Refine a specific node based on user instruction.
-        Updates the node in the store.
+        Re-summarizes the node's children using the instruction as context.
+        Updates the node in the store with new text and history.
+
+        Args:
+            node_id: ID of the node to refine.
+            instruction: User provided refinement instruction.
+
+        Returns:
+            The updated SummaryNode.
+
+        Raises:
+            ValueError: If node is missing, instruction is empty, or node has no children.
+            TypeError: If the node is not a SummaryNode.
         """
         node = self.store.get_node(node_id)
         if not node:
@@ -58,6 +76,10 @@ class InteractiveRaptorEngine:
 
         # Gather source text from children
         children = self.get_children(node)
+        if not children:
+            msg = f"Node {node_id} has no accessible children. Cannot refine."
+            raise ValueError(msg)
+
         child_texts = [child.text for child in children]
         source_text = "\n\n".join(child_texts)
 

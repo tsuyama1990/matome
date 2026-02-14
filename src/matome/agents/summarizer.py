@@ -164,9 +164,23 @@ class SummarizationAgent:
                   # Log the attempt for security auditing
                   logger.warning(f"Potential prompt injection detected: {pattern}")
 
+        # 5. SQL Injection & System Command Check (Sanitization Phase)
+        # Basic heuristic to detect potential injection attempts in input text
+        # Although less critical for LLM summarization, this adds a defense-in-depth layer.
+        suspicious_patterns = [
+            r"\b(DROP|DELETE|UPDATE|INSERT)\s+(TABLE|FROM|INTO)\b",
+            r"\b(rm|sudo|chmod|chown)\s+-[a-zA-Z]+\b",
+        ]
+        for pattern in suspicious_patterns:
+            if re.search(pattern, text, flags=re.IGNORECASE):
+                logger.warning(f"Input text contains suspicious pattern: {pattern}")
+                # We don't raise error here to avoid false positives on technical docs,
+                # but logging allows monitoring.
+
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
         Basic mitigation for Prompt Injection.
+        Replaces known injection patterns with '[Filtered]'.
         """
         sanitized = text
         for pattern in PROMPT_INJECTION_PATTERNS:
@@ -181,6 +195,7 @@ class SummarizationAgent:
     ) -> BaseMessage:
         """
         Invoke the LLM with exponential backoff retry logic.
+        Handles API errors and retries according to config.
         """
         if not self.llm:
             msg = "LLM not initialized"

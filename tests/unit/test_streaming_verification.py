@@ -119,3 +119,29 @@ def test_raptor_empty_iterator_error() -> None:
 
     with pytest.raises(ValueError, match="No nodes remaining"):
         engine.run("empty")
+
+
+def test_streaming_store_integration() -> None:
+    """
+    Verify that the store returns a generator for IDs, ensuring streaming.
+    """
+    from types import GeneratorType
+
+    from matome.utils.store import DiskChunkStore
+
+    with DiskChunkStore() as store:
+        # Add some chunks
+        chunks = [Chunk(index=i, text=f"t{i}", start_char_idx=i, end_char_idx=i+1, embedding=[0.1]) for i in range(10)]
+        store.add_chunks(chunks)
+
+        # Verify get_node_ids_by_level returns a generator
+        ids_iter = store.get_node_ids_by_level(0)
+        # It might be a generator or an iterator, but definitely not a list
+        assert isinstance(ids_iter, (Iterator, GeneratorType))
+        assert not isinstance(ids_iter, list)
+
+        # Verify we can consume it
+        ids = list(ids_iter)
+        assert len(ids) == 10
+        assert ids[0] == "0"
+        assert ids[9] == "9"

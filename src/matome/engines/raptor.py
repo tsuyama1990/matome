@@ -166,15 +166,10 @@ class RaptorEngine:
         Returns the ID of the root node.
         """
         level = start_level
-        # Fetch IDs for the current level (initially L0)
-        # We need them to map cluster indices to actual Node IDs.
-        # For efficiency, we load them into a list here because clusters refer to them by index.
-        # If this list is too big, we'd need a different clustering interface that works on IDs directly.
-        # Given current architecture, we assume level-wise ID list fits in memory.
-        current_level_ids = list(store.get_node_ids_by_level(level))
 
         while True:
-            node_count = len(current_level_ids)
+            # Use count query instead of loading all IDs
+            node_count = store.get_node_count(level)
             logger.info(f"Processing Level {level}. Node count: {node_count}")
 
             if node_count == 0:
@@ -182,7 +177,8 @@ class RaptorEngine:
                 raise MatomeError(msg)
 
             if node_count == 1:
-                return current_level_ids[0]
+                # Retrieve the single root ID
+                return next(iter(store.get_node_ids_by_level(level)))
 
             if len(clusters) == node_count and node_count > 1:
                 logger.warning(
@@ -192,7 +188,7 @@ class RaptorEngine:
                     clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
                 else:
                     logger.error("Could not reduce nodes. Stopping recursion.")
-                    return current_level_ids[0]
+                    return next(iter(store.get_node_ids_by_level(level)))
 
             logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
 
@@ -201,9 +197,9 @@ class RaptorEngine:
             logger.info(f"Using strategy {type(strategy).__name__} for Level {level} (Final={is_final})")
 
             next_level = level + 1
-            current_level_ids_typed = cast(list[NodeID], current_level_ids)
+            # Pass level instead of ID list to support streaming/mapping
             new_nodes_iter = self._summarize_clusters(
-                clusters, current_level_ids_typed, store, next_level, strategy
+                clusters, level, store, next_level, strategy
             )
 
             summary_buffer: list[SummaryNode] = []
@@ -220,28 +216,30 @@ class RaptorEngine:
 
             level = next_level
 
-            # Fetch IDs for the NEXT level to prepare for next iteration
-            current_level_ids = list(store.get_node_ids_by_level(level))
-            node_count = len(current_level_ids)
+            # Check next level count
+            node_count = store.get_node_count(level)
 
-            if node_count > 1:
-                next_level_ids_typed = cast(list[NodeID], current_level_ids)
-                clusters = self._embed_and_cluster_next_level(next_level_ids_typed, store)
-            else:
-                clusters = []
+            clusters = self._embed_and_cluster_next_level(level, store) if node_count > 1 else []
 
-        return current_level_ids[0]
+        # Should be unreachable if logic is correct, but safe fallback
+        ids = list(store.get_node_ids_by_level(level))
+        if not ids:
+             msg = "Recursion ended with no root."
+             raise MatomeError(msg)
+        return ids[0]
 
     def _embed_and_cluster_next_level(
-        self, current_level_ids: list[NodeID], store: DiskChunkStore
+        self, level: int, store: DiskChunkStore
     ) -> list[Cluster]:
         """
         Perform embedding and clustering for the next level (summaries).
+        Streams IDs from store to avoid loading all into memory.
         """
 
         def lx_embedding_generator() -> Iterator[list[float]]:
             def node_text_generator() -> Iterator[tuple[NodeID, str]]:
-                for nid in current_level_ids:
+                # Stream IDs directly from store
+                for nid in store.get_node_ids_by_level(level):
                     node = store.get_node(nid)
                     if node:
                         yield nid, node.text
@@ -250,7 +248,10 @@ class RaptorEngine:
                             f"Node {nid} not found in store during next level clustering."
                         )
 
-            for batch in batched(node_text_generator(), self.config.embedding_batch_size):
+            # Ensure batch size is reasonable
+            batch_size = min(self.config.embedding_batch_size, 100)
+
+            for batch in batched(node_text_generator(), batch_size):
                 # Optimize: Don't convert to list if possible, or unzip efficiently.
                 # zip(*batch) creates two tuples.
                 ids_tuple, texts_tuple = zip(*batch, strict=True)
@@ -354,27 +355,80 @@ class RaptorEngine:
     def _summarize_clusters(
         self,
         clusters: list[Cluster],
-        current_level_ids: list[NodeID],
+        input_level: int,
         store: DiskChunkStore,
-        level: int,
+        output_level: int,
         strategy: PromptStrategy,
     ) -> Iterator[SummaryNode]:
         """
         Process clusters to generate summaries (streaming).
+        Builds a map of referenced IDs to avoid loading all IDs.
         """
+        # 1. Identify all unique indices needed across all clusters
+        needed_indices = set()
+        for cluster in clusters:
+            for idx_raw in cluster.node_indices:
+                needed_indices.add(int(idx_raw))
+
+        sorted_needed_indices = sorted(needed_indices)
+
+        # 2. Stream IDs and map only the needed ones
+        # Since get_node_ids_by_level is ordered by integer ID (for chunks) or ID (for summaries),
+        # and GMM indices correspond to that order (because we fed embeddings in that order),
+        # we can match them.
+
+        index_to_id: dict[int, NodeID] = {}
+
+        if sorted_needed_indices:
+            needed_ptr = 0  # Pointer to sorted_needed_indices
+
+            for current_idx, node_id in enumerate(store.get_node_ids_by_level(input_level)):
+                if needed_ptr >= len(sorted_needed_indices):
+                    break
+
+                target_idx = sorted_needed_indices[needed_ptr]
+
+                if current_idx == target_idx:
+                    index_to_id[target_idx] = node_id
+                    needed_ptr += 1
+                    # Handle duplicates if any (shouldn't be in set)
+                    while needed_ptr < len(sorted_needed_indices) and sorted_needed_indices[needed_ptr] == current_idx:
+                         needed_ptr += 1
+
+        # 3. Summarize using the map
+        # Optimization: Fetch all needed nodes in batch using get_nodes
+        all_node_ids = []
+        cluster_node_map: dict[NodeID, list[NodeID]] = {}
+
+        for cluster in clusters:
+            ids_for_cluster = []
+            for idx_raw in cluster.node_indices:
+                idx = int(idx_raw)
+                nid = index_to_id.get(idx)
+                if nid is not None:
+                    ids_for_cluster.append(nid)
+
+            cluster_node_map[cluster.id] = ids_for_cluster
+            all_node_ids.extend(ids_for_cluster)
+
+        # Retrieve nodes in batch
+        # Convert IDs to strings for get_nodes
+        fetched_nodes_list = store.get_nodes([str(nid) for nid in all_node_ids])
+        fetched_node_lookup = {
+            str(n.index if isinstance(n, Chunk) else n.id): n
+            for n in fetched_nodes_list if n
+        }
+
         for cluster in clusters:
             children_indices: list[NodeID] = []
             cluster_texts: list[str] = []
 
             current_length = 0
 
-            for idx_raw in cluster.node_indices:
-                idx = int(idx_raw)
-                if idx < 0 or idx >= len(current_level_ids):
-                    continue
+            needed_ids = cluster_node_map.get(cluster.id, [])
 
-                node_id = current_level_ids[idx]
-                node = store.get_node(node_id)
+            for node_id in needed_ids:
+                node = fetched_node_lookup.get(str(node_id))
                 if not node:
                     continue
 
@@ -412,7 +466,7 @@ class RaptorEngine:
             summary_node = SummaryNode(
                 id=node_id_str,
                 text=summary_text,
-                level=level,
+                level=output_level,
                 children_indices=children_indices,
                 metadata=metadata,
             )

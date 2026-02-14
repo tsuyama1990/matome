@@ -224,17 +224,27 @@ def test_raptor_cluster_edge_cases(
 
     # Mock store to return None for index 1 (missing node)
     def get_node_side_effect(nid: int | str) -> Chunk | None:
-        if nid == 1:
+        if str(nid) == "1":
             return None
         return Chunk(index=int(nid), text=f"text_{nid}", start_char_idx=0, end_char_idx=5)
 
     store.get_node.side_effect = get_node_side_effect
+    # Mock get_node_ids_by_level to return the current level IDs for mapping
+    store.get_node_ids_by_level.return_value = iter(current_level_ids)
+
+    # Mock get_nodes for batch retrieval
+    def get_nodes_side_effect(node_ids: list[str]) -> list[Chunk | None]:
+        return [get_node_side_effect(nid) for nid in node_ids]
+
+    store.get_nodes.side_effect = get_nodes_side_effect
 
     # Mock summarizer return value
     summarizer.summarize.return_value = "Mock Summary"
 
     # Run private method directly to verify generator logic
-    results = list(engine._summarize_clusters(clusters, current_level_ids, store, 1, strategy))
+    # Note: _summarize_clusters signature changed to take (clusters, input_level, store, output_level, strategy)
+    # input_level is 0 (chunks), output_level is 1
+    results = list(engine._summarize_clusters(clusters, 0, store, 1, strategy))
 
     # Only c3 should produce a result
     assert len(results) == 1
@@ -263,17 +273,27 @@ def test_raptor_cluster_truncation(
     c3 = Chunk(index=3, text=t3, start_char_idx=120, end_char_idx=180)
 
     def get_node_side_effect(nid: int | str) -> Chunk | None:
-        return {1: c1, 2: c2, 3: c3}.get(nid)  # type: ignore
+        return {1: c1, 2: c2, 3: c3}.get(int(nid))  # type: ignore
 
     store.get_node.side_effect = get_node_side_effect
 
     current_level_ids: list[NodeID] = [1, 2, 3]
+    # Mock get_node_ids_by_level
+    store.get_node_ids_by_level.return_value = iter(current_level_ids)
+
+    # Mock get_nodes
+    def get_nodes_side_effect(node_ids: list[str]) -> list[Chunk | None]:
+        return [get_node_side_effect(nid) for nid in node_ids]
+
+    store.get_nodes.side_effect = get_nodes_side_effect
+
     cluster = Cluster(id=0, level=0, node_indices=[0, 1, 2]) # Points to ids 1, 2, 3
     strategy = InformationStrategy()
 
     summarizer.summarize.return_value = "Summary"
 
-    results = list(engine._summarize_clusters([cluster], current_level_ids, store, 1, strategy))
+    # input_level=0, output_level=1
+    results = list(engine._summarize_clusters([cluster], 0, store, 1, strategy))
 
     assert len(results) == 1
 
