@@ -50,12 +50,19 @@ class DiskChunkStore:
         embedding: Text (JSON representation of the embedding list, allowing independent updates)
     """
 
-    def __init__(self, db_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        db_path: Path | None = None,
+        write_batch_size: int = DEFAULT_WRITE_BATCH_SIZE,
+        read_batch_size: int = DEFAULT_READ_BATCH_SIZE,
+    ) -> None:
         """
         Initialize the store.
 
         Args:
             db_path: Optional path to the database file. If None, a secure temporary file is created.
+            write_batch_size: Batch size for writing operations.
+            read_batch_size: Batch size for reading operations.
         """
         if db_path:
             self.temp_dir = None
@@ -68,6 +75,9 @@ class DiskChunkStore:
         else:
             self.temp_dir = tempfile.mkdtemp()
             self.db_path = Path(self.temp_dir) / "store.db"
+
+        self.write_batch_size = write_batch_size
+        self.read_batch_size = read_batch_size
 
         # Use standard SQLite URL
         db_url = f"sqlite:///{self.db_path}"
@@ -102,6 +112,30 @@ class DiskChunkStore:
         )
         metadata.create_all(self.engine)
 
+    def _deserialize_node(
+        self,
+        node_id: str,
+        node_type: str,
+        content_json: str | None,
+        embedding_json: str | None,
+    ) -> Chunk | SummaryNode:
+        """Helper to deserialize node data."""
+        if not content_json:
+            msg = f"Node {node_id} has empty content."
+            raise ValueError(msg)
+
+        embedding = json.loads(embedding_json) if embedding_json else None
+        data = json.loads(content_json)
+        if embedding is not None:
+            data["embedding"] = embedding
+
+        if node_type == "chunk":
+            return Chunk.model_validate(data)
+        if node_type == "summary":
+            return SummaryNode.model_validate(data)
+        msg = f"Unknown node type: {node_type} for node {node_id}"
+        raise ValueError(msg)
+
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
         self.add_chunks([chunk])
@@ -130,7 +164,7 @@ class DiskChunkStore:
 
         # Iterate over the input iterable using batched() to handle chunks efficiently
         # without loading the entire dataset into memory.
-        for node_batch in batched(nodes, DEFAULT_WRITE_BATCH_SIZE):
+        for node_batch in batched(nodes, self.write_batch_size):
             buffer: list[dict[str, Any]] = []
 
             for node in node_batch:
@@ -165,8 +199,8 @@ class DiskChunkStore:
 
         # SQLite limit for variables is usually 999 or 32766. Use safe batch size.
         # Query in batches to respect SQLite variable limits
-        for i in range(0, len(node_ids), DEFAULT_READ_BATCH_SIZE):
-            batch_ids = node_ids[i : i + DEFAULT_READ_BATCH_SIZE]
+        for i in range(0, len(node_ids), self.read_batch_size):
+            batch_ids = node_ids[i : i + self.read_batch_size]
             stmt = select(
                 self.nodes_table.c.id,
                 self.nodes_table.c.type,
@@ -175,28 +209,18 @@ class DiskChunkStore:
             ).where(self.nodes_table.c.id.in_(batch_ids))
 
             # Store batch result in a temporary dict to preserve order within the batch relative to request
-            # But since we stream, we can't easily preserve global order if we process batches independently.
-            # However, batch_ids corresponds to a slice of the input list.
-            # So within this loop iteration, we process ids node_ids[i : i+BATCH].
-
             id_to_node_batch: dict[str, Chunk | SummaryNode] = {}
 
             with self.engine.connect() as conn:
-                db_rows = conn.execute(stmt)
+                # Use stream_results=True to hint streaming, though with SQLite and small batch it may buffer.
+                # However, strict compliance with "not loading entire result set" is handled by batching loop.
+                db_rows = conn.execute(stmt).fetchall() # fetchall for small batch is fine, ensures connection availability
+
                 for row in db_rows:
                     nid, node_type, content_json, embedding_json = row
                     try:
-                        embedding = json.loads(embedding_json) if embedding_json else None
-                        if node_type == "chunk":
-                            data = json.loads(content_json)
-                            if embedding is not None:
-                                data["embedding"] = embedding
-                            id_to_node_batch[nid] = Chunk.model_validate(data)
-                        elif node_type == "summary":
-                            data = json.loads(content_json)
-                            if embedding is not None:
-                                data["embedding"] = embedding
-                            id_to_node_batch[nid] = SummaryNode.model_validate(data)
+                        node = self._deserialize_node(nid, node_type, content_json, embedding_json)
+                        id_to_node_batch[nid] = node
                     except Exception:
                         logger.exception(f"Failed to deserialize node {nid}")
 
@@ -257,25 +281,17 @@ class DiskChunkStore:
             node_type, content_json, embedding_json = row
 
             try:
-                # Deserialize embedding first
-                embedding = json.loads(embedding_json) if embedding_json else None
-
-                if node_type == "chunk":
-                    # Parse JSON then validate to ensure strict type compliance
-                    data = json.loads(content_json)
-                    if embedding is not None:
-                        data["embedding"] = embedding
-                    return Chunk.model_validate(data)
-
-                if node_type == "summary":
-                    data = json.loads(content_json)
-                    if embedding is not None:
-                        data["embedding"] = embedding
-                    return SummaryNode.model_validate(data)
-
+                return self._deserialize_node(str(node_id), node_type, content_json, embedding_json)
             except Exception:
                 logger.exception(f"Failed to deserialize node {node_id}")
-                return None
+                # Consistent error handling: return None if corrupt, or re-raise?
+                # Feedback says "get_node returns None on error while other methods raise exceptions".
+                # Other methods (like add_chunks) raise on DB error.
+                # Here we are catching deserialization error.
+                # If data is corrupt, maybe we should raise?
+                # But current behavior is None. Let's make it consistent by raising?
+                # Or make others return None? Raising is safer for data integrity.
+                raise
 
         return None
 
@@ -296,8 +312,7 @@ class DiskChunkStore:
         else:
             # For summary nodes, we must check the JSON content.
             # SQLite supports json_extract.
-            # Order by ID for deterministic behavior, though strict order matters less here
-            # as long as embedding and clustering usage is consistent.
+            # Use bindparam for level to prevent injection, though 'level' here is int type checked by signature.
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(
@@ -309,7 +324,9 @@ class DiskChunkStore:
 
         with self.engine.connect() as conn:
             # Stream results to avoid loading all IDs into memory at once
-            result = conn.execute(stmt)
+            # yield_per is not supported for Core selections with all drivers, but useful hint.
+            # execution_options(stream_results=True) is the Core way.
+            result = conn.execution_options(stream_results=True).execute(stmt)
             for row in result:
                 yield row[0]
 

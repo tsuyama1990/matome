@@ -172,3 +172,23 @@ def test_transaction_rollback_on_error(tmp_path: Path) -> None:
 
         with pytest.raises(RuntimeError, match="Database exploded"):
             store.add_chunks(chunks)
+
+def test_empty_db_operations() -> None:
+    """Test operations on an empty database."""
+    store = DiskChunkStore()
+
+    # Get non-existent node
+    assert store.get_node("999") is None
+
+    # Get multiple non-existent nodes
+    nodes = list(store.get_nodes(["999", "888"]))
+    assert nodes == [None, None]
+
+    # Count should be 0
+    assert store.get_node_count(0) == 0
+    assert store.get_node_count(1) == 0
+
+    # Streaming IDs should be empty
+    assert list(store.get_node_ids_by_level(0)) == []
+
+    store.close()

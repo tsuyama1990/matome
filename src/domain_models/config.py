@@ -144,6 +144,14 @@ class ProcessingConfig(BaseModel):
         description="Vertical gap between nodes in Obsidian Canvas export.",
     )
 
+    # Store Configuration
+    store_write_batch_size: int = Field(
+        default=1000, ge=1, description="Batch size for database write operations."
+    )
+    store_read_batch_size: int = Field(
+        default=500, ge=1, description="Batch size for database read operations."
+    )
+
     # Summarization Configuration
     summarization_model: str = Field(
         default_factory=lambda: _safe_getenv("SUMMARIZATION_MODEL", DEFAULT_SUMMARIZER),
