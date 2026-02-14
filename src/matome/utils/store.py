@@ -215,18 +215,17 @@ class DiskChunkStore:
             msg = f"Unexpected error adding nodes: {e}"
             raise StoreError(msg) from e
 
-    def get_nodes(self, node_ids: Iterable[str]) -> Iterator[Chunk | SummaryNode | None]:
+    def get_nodes(self, node_ids: Iterable[str]) -> Iterator[Chunk | SummaryNode]:
         """
         Retrieve multiple nodes by ID.
-        Iterates over input IDs in batches, queries DB, and yields results.
+        Iterates over input IDs in batches, queries DB, and yields results via streaming.
 
-        Note: This prioritizes memory safety over preserving exact input order if IDs are duplicates or missing.
-        However, to be useful for reconstruction, it attempts to yield in order of requested batches.
+        Note: Does NOT guarantee output order matches input order.
+        Yields only found nodes. Missing nodes are skipped.
         """
         # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
         for batch_ids in batched(node_ids, self.read_batch_size):
             # Validate IDs in batch efficiently
-            # Assuming batch_ids is tuple/list of strings from batched()
             if any(not VALID_NODE_ID_PATTERN.match(nid) for nid in batch_ids):
                 # Identify specific culprit if validation fails
                 for nid in batch_ids:
@@ -244,22 +243,14 @@ class DiskChunkStore:
                     # stream_results=True minimizes memory usage for the result set
                     result = conn.execution_options(stream_results=True).execute(stmt)
 
-                    # Create a lookup for this batch to ensure we yield in the requested order (or None)
-                    # We accept loading the *batch* results into memory (e.g. 500 items) for this mapping.
-                    rows_map = {row.id: row for row in result}
-
-                    for nid in batch_ids:
-                        row = rows_map.get(nid)
-                        if row:
-                            try:
-                                yield self._deserialize_node(
-                                    row.id, row.type, row.content, row.embedding
-                                )
-                            except Exception:
-                                logger.exception(f"Error deserializing node {nid}")
-                                yield None
-                        else:
-                            yield None
+                    for row in result:
+                        try:
+                            yield self._deserialize_node(
+                                row.id, row.type, row.content, row.embedding
+                            )
+                        except Exception:
+                            logger.exception(f"Error deserializing node {row.id}")
+                            continue
             except SQLAlchemyError as e:
                 msg = f"Failed to retrieve nodes batch: {e}"
                 raise StoreError(msg) from e

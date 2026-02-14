@@ -184,54 +184,85 @@ class RaptorEngine:
                 # Retrieve the single root ID
                 return next(iter(store.get_node_ids_by_level(level)))
 
-            if len(clusters) == node_count and node_count > 1:
-                logger.warning(
-                    f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
-                )
-                if node_count < 20:
-                    clusters = [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
-                else:
-                    logger.error("Could not reduce nodes. Stopping recursion.")
-                    return next(iter(store.get_node_ids_by_level(level)))
-
-            logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
+            try:
+                clusters = self._reduce_clusters_if_needed(clusters, node_count, level, store)
+            except StopRecursion as e:
+                return e.result_node_id
 
             is_final = len(clusters) == 1
+            logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
+
             strategy = self._get_strategy_for_level(level, is_final)
             logger.info(f"Using strategy {type(strategy).__name__} for Level {level} (Final={is_final})")
 
             next_level = level + 1
-            # Pass level instead of ID list to support streaming/mapping
-            new_nodes_iter = self._summarize_clusters(
-                clusters, level, store, next_level, strategy
+            next_level_count = self._summarize_and_store_level(
+                clusters, level, next_level, store, strategy
             )
-
-            summary_buffer: list[SummaryNode] = []
-            next_level_count = 0
-
-            for node in new_nodes_iter:
-                next_level_count += 1
-                summary_buffer.append(node)
-
-                if len(summary_buffer) >= self.config.chunk_buffer_size:
-                    store.add_summaries(summary_buffer)
-                    summary_buffer.clear()
-
-            if summary_buffer:
-                store.add_summaries(summary_buffer)
 
             level = next_level
             node_count = next_level_count
 
-            clusters = self._embed_and_cluster_next_level(level, store) if node_count > 1 else []
+            if node_count > 1:
+                clusters = self._embed_and_cluster_next_level(level, store)
+            else:
+                clusters = []
 
-        # Should be unreachable if logic is correct, but safe fallback
-        ids_iter = store.get_node_ids_by_level(level)
-        try:
-            return next(iter(ids_iter))
-        except StopIteration as e:
-             msg = "Recursion ended with no root."
-             raise MatomeError(msg) from e
+    def _reduce_clusters_if_needed(
+        self, clusters: list[Cluster], node_count: int, level: int, store: DiskChunkStore
+    ) -> list[Cluster]:
+        """
+        Check if reduction is happening. If not, force reduction or stop.
+        """
+        if len(clusters) == node_count and node_count > 1:
+            logger.warning(
+                f"Clustering failed to reduce nodes (Count: {node_count}). Forcing reduction."
+            )
+            if node_count < 20:
+                return [Cluster(id=0, level=level, node_indices=list(range(node_count)))]
+            else:
+                logger.error("Could not reduce nodes. Stopping recursion.")
+                # We return a state that will cause the loop to exit or we raise an exception/return ID?
+                # The caller expects clusters. If we can't reduce, we essentially treat current level as top?
+                # But we need a single root.
+                # Original logic: return next(iter(store.get_node_ids_by_level(level)))
+                # To break the loop cleanly, we need to signal the caller.
+                # Since we are inside a helper, raising a custom exception to signal "Done" is cleanest.
+                raise StopRecursion(next(iter(store.get_node_ids_by_level(level))))
+        return clusters
+
+    def _summarize_and_store_level(
+        self,
+        clusters: list[Cluster],
+        input_level: int,
+        output_level: int,
+        store: DiskChunkStore,
+        strategy: PromptStrategy,
+    ) -> int:
+        """
+        Summarize clusters and store the resulting nodes.
+        Returns the count of new nodes created.
+        """
+        new_nodes_iter = self._summarize_clusters(
+            clusters, input_level, store, output_level, strategy
+        )
+
+        summary_buffer: list[SummaryNode] = []
+        count = 0
+
+        for node in new_nodes_iter:
+            count += 1
+            summary_buffer.append(node)
+
+            if len(summary_buffer) >= self.config.chunk_buffer_size:
+                store.add_summaries(summary_buffer)
+                summary_buffer.clear()
+
+        if summary_buffer:
+            store.add_summaries(summary_buffer)
+            summary_buffer.clear()
+
+        return count
 
     def _embed_and_cluster_next_level(
         self, level: int, store: DiskChunkStore
@@ -379,10 +410,6 @@ class RaptorEngine:
         sorted_needed_indices = sorted(needed_indices)
 
         # 2. Stream IDs and map only the needed ones
-        # Since get_node_ids_by_level is ordered by integer ID (for chunks) or ID (for summaries),
-        # and GMM indices correspond to that order (because we fed embeddings in that order),
-        # we can match them.
-
         index_to_id: dict[int, NodeID] = {}
 
         if sorted_needed_indices:
@@ -406,79 +433,98 @@ class RaptorEngine:
         CLUSTER_BATCH_SIZE = 20
 
         for cluster_batch in batched(clusters, CLUSTER_BATCH_SIZE):
-            batch_node_ids = []
-            cluster_node_map: dict[NodeID, list[NodeID]] = {}
+            yield from self._process_cluster_batch(
+                cluster_batch, index_to_id, store, output_level, strategy
+            )
 
-            # Collect IDs for this batch
-            for cluster in cluster_batch:
-                ids_for_cluster = []
-                for idx_raw in cluster.node_indices:
-                    idx = int(idx_raw)
-                    nid = index_to_id.get(idx)
-                    if nid is not None:
-                        ids_for_cluster.append(nid)
+    def _process_cluster_batch(
+        self,
+        cluster_batch: tuple[Cluster, ...],
+        index_to_id: dict[int, NodeID],
+        store: DiskChunkStore,
+        output_level: int,
+        strategy: PromptStrategy
+    ) -> Iterator[SummaryNode]:
+        """Process a single batch of clusters."""
+        batch_node_ids = []
+        cluster_node_map: dict[NodeID, list[NodeID]] = {}
 
-                cluster_node_map[cluster.id] = ids_for_cluster
-                batch_node_ids.extend(ids_for_cluster)
+        # Collect IDs for this batch
+        for cluster in cluster_batch:
+            ids_for_cluster = []
+            for idx_raw in cluster.node_indices:
+                idx = int(idx_raw)
+                nid = index_to_id.get(idx)
+                if nid is not None:
+                    ids_for_cluster.append(nid)
 
-            # Fetch nodes for this batch only
-            fetched_nodes_list = store.get_nodes([str(nid) for nid in batch_node_ids])
-            fetched_node_lookup = {
-                str(n.index if isinstance(n, Chunk) else n.id): n
-                for n in fetched_nodes_list if n
-            }
+            cluster_node_map[cluster.id] = ids_for_cluster
+            batch_node_ids.extend(ids_for_cluster)
 
-            # Process clusters in this batch
-            for cluster in cluster_batch:
-                children_indices: list[NodeID] = []
-                cluster_texts: list[str] = []
+        # Fetch nodes for this batch only
+        # We assume strict IDs are provided
+        fetched_nodes_list = list(store.get_nodes([str(nid) for nid in batch_node_ids]))
+        fetched_node_lookup = {
+            str(n.index if isinstance(n, Chunk) else n.id): n
+            for n in fetched_nodes_list if n
+        }
 
-                current_length = 0
+        # Process clusters in this batch
+        for cluster in cluster_batch:
+            children_indices: list[NodeID] = []
+            cluster_texts: list[str] = []
 
-                needed_ids = cluster_node_map.get(cluster.id, [])
+            current_length = 0
 
-                for nid_ref in needed_ids:
-                    node = fetched_node_lookup.get(str(nid_ref))
-                    if not node:
-                        continue
+            needed_ids = cluster_node_map.get(cluster.id, [])
 
-                    text_len = len(node.text)
-                    if current_length + text_len > self.config.max_input_length:
-                         logger.warning(f"Cluster {cluster.id} exceeding max length. Truncating nodes.")
-                         break
-
-                    children_indices.append(nid_ref)
-                    cluster_texts.append(node.text)
-                    current_length += text_len
-
-                if not cluster_texts:
+            for nid_ref in needed_ids:
+                node = fetched_node_lookup.get(str(nid_ref))
+                if not node:
                     continue
 
-                combined_text = "\n\n".join(cluster_texts)
+                text_len = len(node.text)
+                if current_length + text_len > self.config.max_input_length:
+                     logger.warning(f"Cluster {cluster.id} exceeding max length. Truncating nodes.")
+                     break
 
-                # Additional safety check for total length after join (headers etc)
-                if len(combined_text) > self.config.max_input_length:
-                     combined_text = combined_text[:self.config.max_input_length]
+                children_indices.append(nid_ref)
+                cluster_texts.append(node.text)
+                current_length += text_len
 
-                try:
-                    summary_text = self.summarizer.summarize(combined_text, self.config, strategy)
-                except SummarizationError:
-                    logger.exception(f"Summarization failed for cluster {cluster.id}")
-                    summary_text = "Summarization failed."
+            if not cluster_texts:
+                continue
 
-                node_id_str = str(uuid.uuid4())
+            combined_text = "\n\n".join(cluster_texts)
 
-                metadata = NodeMetadata(
-                    dikw_level=strategy.dikw_level,
-                    cluster_id=cluster.id
-                )
+            # Additional safety check for total length after join (headers etc)
+            if len(combined_text) > self.config.max_input_length:
+                 combined_text = combined_text[:self.config.max_input_length]
 
-                summary_node = SummaryNode(
-                    id=node_id_str,
-                    text=summary_text,
-                    level=output_level,
-                    children_indices=children_indices,
-                    metadata=metadata,
-                )
+            try:
+                summary_text = self.summarizer.summarize(combined_text, self.config, strategy)
+            except SummarizationError:
+                logger.exception(f"Summarization failed for cluster {cluster.id}")
+                summary_text = "Summarization failed."
 
-                yield summary_node
+            node_id_str = str(uuid.uuid4())
+
+            metadata = NodeMetadata(
+                dikw_level=strategy.dikw_level,
+                cluster_id=cluster.id
+            )
+
+            summary_node = SummaryNode(
+                id=node_id_str,
+                text=summary_text,
+                level=output_level,
+                children_indices=children_indices,
+                metadata=metadata,
+            )
+
+            yield summary_node
+
+class StopRecursion(Exception):
+    """Internal exception to signal recursion termination with a result."""
+    def __init__(self, result_node_id: NodeID):
+        self.result_node_id = result_node_id

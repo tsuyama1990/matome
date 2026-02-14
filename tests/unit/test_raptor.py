@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from unittest.mock import MagicMock, create_autospec
+from unittest.mock import MagicMock, create_autospec, patch
 
 import pytest
 
@@ -11,6 +11,7 @@ from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.exceptions import ClusteringError, MatomeError
 from matome.interfaces import Chunker, Clusterer, Summarizer
+from matome.utils.store import StoreError
 
 
 @pytest.fixture
@@ -234,7 +235,9 @@ def test_raptor_cluster_edge_cases(
 
     # Mock get_nodes for batch retrieval
     def get_nodes_side_effect(node_ids: list[str]) -> list[Chunk | None]:
-        return [get_node_side_effect(nid) for nid in node_ids]
+        # get_nodes returns Iterator[Chunk | SummaryNode] (filtered)
+        # Using list comprehension to filter out None here to match new store behavior
+        return [get_node_side_effect(nid) for nid in node_ids if get_node_side_effect(nid) is not None]
 
     store.get_nodes.side_effect = get_nodes_side_effect
 
@@ -310,3 +313,30 @@ def test_raptor_cluster_truncation(
     assert t3 not in passed_text
 
     assert len(passed_text) <= 100
+
+def test_raptor_store_error(
+    mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig
+) -> None:
+    """Test handling of database store errors."""
+    chunker, embedder, clusterer, summarizer = mock_dependencies
+    engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config)
+
+    chunker.split_text.return_value = iter([Chunk(index=0, text="t", start_char_idx=0, end_char_idx=1)])
+    embedder.embed_chunks.return_value = iter([Chunk(index=0, text="t", start_char_idx=0, end_char_idx=1, embedding=[0.1]*768)])
+
+    # Mock store failure
+    with patch("matome.engines.raptor.DiskChunkStore") as MockStore:
+        mock_store_instance = MagicMock()
+        MockStore.return_value = mock_store_instance
+        # Simulate failure during context entry or usage
+        mock_store_instance.__enter__.return_value.add_chunks.side_effect = StoreError("DB Fail")
+
+        # We need to make sure clusterer consumes the generator to trigger the DB call inside it
+        def consume_generator(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
+            for _ in embeddings:
+                pass
+            return []
+        clusterer.cluster_nodes.side_effect = consume_generator
+
+        with pytest.raises(MatomeError, match="Clustering failed at Level 0"):
+            engine.run("Text")

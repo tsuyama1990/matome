@@ -85,6 +85,10 @@ class SummarizationAgent:
         effective_strategy = strategy or ChainOfDensityStrategy()
         request_id = str(uuid.uuid4())
 
+        if effective_strategy and not isinstance(effective_strategy, PromptStrategy):
+            msg = f"Invalid strategy type: {type(effective_strategy)}. Must be an instance of PromptStrategy."
+            raise ValueError(msg)
+
         if not text:
             logger.debug(f"[{request_id}] Skipping empty text summarization.")
             return ""

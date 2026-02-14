@@ -37,27 +37,13 @@ class JapaneseSemanticChunker:
     def split_text(self, text: str | Iterable[str], config: ProcessingConfig) -> Iterator[Chunk]:
         """
         Split text into semantic chunks using sliding window strategy.
-
-        Args:
-            text: Raw input text or stream of text chunks.
-            config: Configuration including semantic_chunking_threshold and max_tokens.
-
-        Yields:
-            Chunk objects.
-
-        Raises:
-            ValueError: If input text is invalid.
         """
         self._validate_input(text)
 
         if not text:
             return
 
-        # Prepare sentence iterator
-        if isinstance(text, str):
-            sentences_iter = iter_normalized_sentences(text)
-        else:
-            sentences_iter = iter_normalized_sentences_from_stream(text)
+        sentences_iter = self._get_sentence_iterator(text)
 
         # Tee the iterator: one for embedding consumption, one for text access
         # This allows us to stream embeddings while keeping the corresponding text available
@@ -69,88 +55,103 @@ class JapaneseSemanticChunker:
             logger.exception("Failed to initiate embedding stream.")
             raise
 
-        # Similarity threshold (interpret config.semantic_chunking_threshold as similarity)
-        # Split if similarity < threshold <=> distance > (1 - threshold)
-        # Default 0.8 similarity -> 0.2 distance
-        sim_threshold = config.semantic_chunking_threshold
-        dist_threshold = 1.0 - sim_threshold
+        dist_threshold = 1.0 - config.semantic_chunking_threshold
 
-        current_chunk_sentences: list[str] = []
-        current_chunk_len = 0
-        current_start_idx = 0
-        current_chunk_index = 0
+        current_sentences: list[str] = []
+        current_len = 0
+        start_idx = 0
+        chunk_index = 0
         prev_embedding: np.ndarray | None = None
 
-        # Process lockstep
-        for sentence, embedding_list in zip(sentences_for_process, embeddings_iter):
+        # Process lockstep with strict=True for safety
+        for sentence, embedding_list in zip(sentences_for_process, embeddings_iter, strict=True):
             current_embedding = np.array(embedding_list)
-            next_len = len(sentence)
 
-            should_split = False
+            should_split = self._should_split(
+                prev_embedding,
+                current_embedding,
+                dist_threshold,
+                current_len,
+                len(sentence),
+                config.max_tokens
+            )
 
-            # Check Semantic Distance
-            if prev_embedding is not None:
-                self._validate_dimensions(prev_embedding, current_embedding)
+            if should_split and current_sentences:
+                chunk, length = self._create_chunk(current_sentences, chunk_index, start_idx)
+                yield chunk
 
-                norm_a = np.linalg.norm(prev_embedding)
-                norm_b = np.linalg.norm(current_embedding)
-
-                if norm_a == 0 or norm_b == 0:
-                    sim = 0.0
-                else:
-                    sim = float(np.dot(prev_embedding, current_embedding) / (norm_a * norm_b))
-
-                # Clamp sim
-                sim = max(-1.0, min(1.0, sim))
-                dist = 1.0 - sim
-
-                if dist > dist_threshold:
-                    should_split = True
-
-            # Check Hard Token Limit (Character length approximation or strict check if needed)
-            # config.max_tokens is roughly chars for Japanese or we trust chunker?
-            # Semantic chunker usually uses character length as proxy or needs tokenizer.
-            # Here we assume max_tokens acts as character limit if tokenizer not provided,
-            # or strictly we should use tokenizer.
-            # For simplicity and speed in semantic chunking, we often use char length * factor or just char length.
-            # Given JapaneseTokenChunker uses tokenizer, SemanticChunker should ideally too.
-            # But adding Tokenizer dependency here might be circular or heavy.
-            # We will use simple length check (assuming 1 char ~ 1 token or similar).
-            # If strictly required, we should inject tokenizer. For now, strict length check.
-            if (current_chunk_len + next_len) > config.max_tokens:
-                should_split = True
-
-            if should_split and current_chunk_sentences:
-                # Yield current chunk
-                chunk_text = "".join(current_chunk_sentences)
-                yield Chunk(
-                    index=current_chunk_index,
-                    text=chunk_text,
-                    start_char_idx=current_start_idx,
-                    end_char_idx=current_start_idx + len(chunk_text),
-                    embedding=None, # Leaf chunks usually don't need stored embedding immediately unless requested
-                )
-
-                current_chunk_index += 1
-                current_start_idx += len(chunk_text)
-                current_chunk_sentences = [sentence]
-                current_chunk_len = next_len
+                chunk_index += 1
+                start_idx += length
+                current_sentences = [sentence]
+                current_len = len(sentence)
             else:
-                current_chunk_sentences.append(sentence)
-                current_chunk_len += next_len
+                current_sentences.append(sentence)
+                current_len += len(sentence)
 
             prev_embedding = current_embedding
 
         # Final flush
-        if current_chunk_sentences:
-            chunk_text = "".join(current_chunk_sentences)
-            yield Chunk(
-                index=current_chunk_index,
-                text=chunk_text,
-                start_char_idx=current_start_idx,
-                end_char_idx=current_start_idx + len(chunk_text),
-                embedding=None,
-            )
+        if current_sentences:
+            chunk, _ = self._create_chunk(current_sentences, chunk_index, start_idx)
+            yield chunk
+
+    def _get_sentence_iterator(self, text: str | Iterable[str]) -> Iterator[str]:
+        if isinstance(text, str):
+            return iter_normalized_sentences(text)
+        return iter_normalized_sentences_from_stream(text)
+
+    def _should_split(
+        self,
+        prev_embedding: np.ndarray | None,
+        current_embedding: np.ndarray,
+        dist_threshold: float,
+        current_len: int,
+        next_len: int,
+        max_tokens: int
+    ) -> bool:
+        """Determine if a split should occur based on semantic distance or token limit."""
+        # 1. Check Hard Token Limit
+        if (current_len + next_len) > max_tokens:
+            return True
+
+        # 2. Check Semantic Distance
+        if prev_embedding is not None:
+            self._validate_dimensions(prev_embedding, current_embedding)
+
+            norm_a = np.linalg.norm(prev_embedding)
+            norm_b = np.linalg.norm(current_embedding)
+
+            if norm_a == 0 or norm_b == 0:
+                sim = 0.0
+            else:
+                sim = float(np.dot(prev_embedding, current_embedding) / (norm_a * norm_b))
+
+            # Clamp sim and calc distance
+            sim = max(-1.0, min(1.0, sim))
+            dist = 1.0 - sim
+
+            if dist > dist_threshold:
+                return True
+
+        return False
+
+    def _create_chunk(
+        self,
+        sentences: list[str],
+        index: int,
+        start_idx: int
+    ) -> tuple[Chunk, int]:
+        """Create a Chunk object from a list of sentences."""
+        chunk_text = "".join(sentences)
+        length = len(chunk_text)
+        chunk = Chunk(
+            index=index,
+            text=chunk_text,
+            start_char_idx=start_idx,
+            end_char_idx=start_idx + length,
+            embedding=None,
+        )
+        return chunk, length
 
     def _validate_input(self, text: str | Iterable[str]) -> None:
         if not isinstance(text, (str, Iterable)):

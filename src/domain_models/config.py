@@ -26,6 +26,7 @@ from domain_models.constants import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MAX_WORD_LENGTH,
     DEFAULT_OVERLAP,
+    DEFAULT_RANDOM_STATE,
     DEFAULT_SEMANTIC_CHUNKING_MODE,
     DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
     DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
@@ -116,7 +117,7 @@ class ProcessingConfig(BaseModel):
     n_clusters: int | None = Field(
         default=None, description="Fixed number of clusters (if applicable)."
     )
-    random_state: int = Field(default=42, description="Random seed for reproducibility.")
+    random_state: int = Field(default=DEFAULT_RANDOM_STATE, description="Random seed for reproducibility.")
     umap_n_neighbors: int = Field(
         default=DEFAULT_UMAP_N_NEIGHBORS,
         ge=2,
