@@ -45,9 +45,9 @@ class RaptorEngine:
 
         # Strategy lookup map to avoid complex conditionals
         self._strategy_map: dict[str, type[PromptStrategy]] = {
-            "wisdom": WisdomStrategy,
-            "knowledge": KnowledgeStrategy,
-            "information": InformationStrategy,
+            DIKWLevel.WISDOM.value: WisdomStrategy,
+            DIKWLevel.KNOWLEDGE.value: KnowledgeStrategy,
+            DIKWLevel.INFORMATION.value: InformationStrategy,
         }
 
     def _get_strategy_for_level(self, current_level: int, is_final_layer: bool) -> PromptStrategy:
@@ -59,14 +59,22 @@ class RaptorEngine:
         if not mapping:
             return BaseSummaryStrategy()
 
-        strategy_name = ""
+        # Default strategy logic based on topology if not explicitly mapped
+        # Or use the mapping directly.
+        # Assuming mapping maps DIKWLevel keys to strategy names (strings).
 
+        target_dikw: DIKWLevel
         if is_final_layer:
-             strategy_name = mapping.get(DIKWLevel.WISDOM, "wisdom")
+            target_dikw = DIKWLevel.WISDOM
         elif current_level == 0:
-             strategy_name = mapping.get(DIKWLevel.INFORMATION, "information")
+            target_dikw = DIKWLevel.INFORMATION
         else:
-             strategy_name = mapping.get(DIKWLevel.KNOWLEDGE, "knowledge")
+            target_dikw = DIKWLevel.KNOWLEDGE
+
+        strategy_name = mapping.get(target_dikw)
+        if not strategy_name:
+             # Fallback to default name if mapping missing
+             strategy_name = target_dikw.value
 
         strategy_class = self._strategy_map.get(strategy_name)
         if strategy_class:
@@ -93,9 +101,7 @@ class RaptorEngine:
                     store.add_chunks(chunk_batch_tuple)
 
                     for chunk in chunk_batch_tuple:
-                        if chunk.embedding is None:
-                            msg = f"Chunk {chunk.index} missing embedding."
-                            raise ValueError(msg)
+                        self._validate_chunk_embedding(chunk)
 
                         stats["node_count"] += 1
                         current_level_ids.append(chunk.index)
@@ -115,6 +121,12 @@ class RaptorEngine:
              raise ClusteringError(msg) from e
 
         return clusters, current_level_ids
+
+    def _validate_chunk_embedding(self, chunk: Chunk) -> None:
+        """Helper to validate chunk embedding exists."""
+        if chunk.embedding is None:
+            msg = f"Chunk {chunk.index} missing embedding."
+            raise ValueError(msg)
 
     def run(self, text: str, store: DiskChunkStore | None = None) -> DocumentTree:
         """
@@ -278,10 +290,14 @@ class RaptorEngine:
         # Ensure root embedding
         if root_node_obj.embedding is None:
             logger.info(f"Generating embedding for root node {root_id}")
-            embeddings = list(self.embedder.embed_strings([root_node_obj.text]))
-            if embeddings:
-                root_node_obj.embedding = embeddings[0]
-                store.update_node_embedding(root_id, embeddings[0])
+            # Use generator to avoid list creation even for single item
+            embeddings_iter = self.embedder.embed_strings((root_node_obj.text,))
+            try:
+                embedding = next(embeddings_iter)
+                root_node_obj.embedding = embedding
+                store.update_node_embedding(root_id, embedding)
+            except StopIteration:
+                logger.warning(f"Failed to generate embedding for root node {root_id}")
 
         if isinstance(root_node_obj, Chunk):
             root_node = self._handle_single_chunk_root(root_node_obj, store)

@@ -10,9 +10,10 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
+from matome.agents.strategies import InformationStrategy
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import SummarizationError
-from matome.utils.prompts import COD_TEMPLATE
+from matome.utils.prompts import COD_TEMPLATE, INFORMATION_TEMPLATE
 
 
 @pytest.fixture
@@ -147,10 +148,6 @@ def test_summarize_long_input_dos_prevention(
         agent.summarize(long_word, config)
 
 
-# We removed test_summarize_retry_behavior as mocking tenacity is complex
-# and integration test covers error handling (test_pipeline_errors.py)
-
-
 def test_summarize_with_strategy(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """Test that the agent uses the provided strategy to format the prompt."""
     strategy_mock = MagicMock()
@@ -168,3 +165,21 @@ def test_summarize_with_strategy(agent: SummarizationAgent, config: ProcessingCo
     args, _ = llm_mock.invoke.call_args
     messages = args[0]
     assert messages[0].content == "Formatted Prompt"
+
+
+def test_summarize_strategy_template_integration(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test that specific strategy templates are used correctly."""
+    strategy = InformationStrategy()
+    context = "My Context"
+
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="Summary")
+
+    agent.summarize(context, config, strategy=strategy)
+
+    # Verify prompt contains Information template keywords
+    args, _ = llm_mock.invoke.call_args
+    prompt_content = args[0][0].content
+
+    expected_prompt = INFORMATION_TEMPLATE.format(context=context)
+    assert prompt_content == expected_prompt

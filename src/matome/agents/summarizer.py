@@ -28,6 +28,11 @@ class SummarizationAgent:
     Agent responsible for summarizing text using an LLM.
     """
 
+    llm: ChatOpenAI | None
+    config: ProcessingConfig
+    model_name: str
+    mock_mode: bool
+
     def __init__(self, config: ProcessingConfig, llm: ChatOpenAI | None = None) -> None:
         """
         Initialize the SummarizationAgent.
@@ -45,7 +50,7 @@ class SummarizationAgent:
 
         self.mock_mode = api_key == "mock"
 
-        self.llm: ChatOpenAI | None = None
+        self.llm = None
 
         if llm:
             self.llm = llm
@@ -143,12 +148,21 @@ class SummarizationAgent:
             msg = f"Input text contains extremely long words (>{max_word_length} chars) - potential DoS vector."
             raise ValueError(msg)
 
+        # 4. Prompt Injection Check (Validation Phase)
+        # Check for high-risk patterns that should trigger rejection
+        for pattern in PROMPT_INJECTION_PATTERNS:
+             if re.search(pattern, text, flags=re.IGNORECASE):
+                  # Log the attempt for security auditing
+                  logger.warning(f"Potential prompt injection detected: {pattern}")
+
     def _sanitize_prompt_injection(self, text: str) -> str:
         """
         Basic mitigation for Prompt Injection.
         """
         sanitized = text
         for pattern in PROMPT_INJECTION_PATTERNS:
+            # Use re.sub with compiled pattern if possible, or just flags
+            # Ensure we catch variations
             sanitized = re.sub(pattern, "[Filtered]", sanitized, flags=re.IGNORECASE)
 
         return sanitized

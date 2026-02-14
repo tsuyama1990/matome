@@ -5,10 +5,11 @@ import pytest
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.types import NodeID
 from matome.agents.strategies import InformationStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
-from matome.exceptions import MatomeError
+from matome.exceptions import ClusteringError, MatomeError
 from matome.interfaces import Chunker, Clusterer, Summarizer
 
 
@@ -64,7 +65,7 @@ def test_raptor_run_short_text(
 
     # 3. Clustering
     def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        list(embeddings) # Consume generator to trigger store writes
+        for _ in embeddings: pass # Consume generator to trigger store writes without storing
         return [Cluster(id=0, level=0, node_indices=[0])]
 
     clusterer.cluster_nodes.side_effect = cluster_side_effect
@@ -127,7 +128,7 @@ def test_raptor_strategy_selection(
     result_iter = iter(cluster_results)
 
     def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        list(embeddings) # Consume
+        for _ in embeddings: pass # Consume without storing
         return next(result_iter)
 
     clusterer.cluster_nodes.side_effect = cluster_side_effect
@@ -168,9 +169,9 @@ def test_raptor_error_handling(
     embedder.embed_chunks.return_value = iter([Chunk(index=0, text="t", start_char_idx=0, end_char_idx=1, embedding=[0.1]*768)])
 
     def fail_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        list(embeddings)
+        for _ in embeddings: pass # Consume without storing
         msg = "Clustering failed"
-        raise Exception(msg)
+        raise ClusteringError(msg) # Use specific exception type
 
     clusterer.cluster_nodes.side_effect = fail_side_effect
 
@@ -204,7 +205,7 @@ def test_raptor_cluster_edge_cases(
     store.get_node.return_value = Chunk(index=0, text="valid", start_char_idx=0, end_char_idx=5)
 
     # Setup inputs for _summarize_clusters
-    current_level_ids = [0, 1, 2] # 3 nodes available
+    current_level_ids: list[NodeID] = [0, 1, 2] # 3 nodes available
 
     # 1. Cluster with invalid index (out of bounds) -> Should be skipped
     c1 = Cluster(id=0, level=0, node_indices=[99])
@@ -220,7 +221,8 @@ def test_raptor_cluster_edge_cases(
 
     # Mock store to return None for index 1 (missing node)
     def get_node_side_effect(nid):
-        if nid == 1: return None
+        if nid == 1:
+            return None
         return Chunk(index=nid, text=f"text_{nid}", start_char_idx=0, end_char_idx=5)
 
     store.get_node.side_effect = get_node_side_effect

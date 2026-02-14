@@ -4,7 +4,7 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0, langsmith-0.6.9, anyio-4.12.1
-collected 122 items
+collected 123 items
 
 tests/integration/test_chunking_pipeline.py .                            [  0%]
 tests/integration/test_embedding_clustering_pipeline.py ..               [  2%]
@@ -16,32 +16,92 @@ tests/integration/test_store_concurrency.py ..                           [ 12%]
 tests/uat/test_cycle01_uat.py ...                                        [ 14%]
 tests/uat/test_cycle02_uat.py ...                                        [ 17%]
 tests/uat/test_cycle03_uat.py ...                                        [ 19%]
-tests/uat/test_cycle04_uat.py ...                                        [ 22%]
+tests/uat/test_cycle04_uat.py ...                                        [ 21%]
 tests/uat/test_cycle05_uat.py ..                                         [ 23%]
 tests/uat/test_cycle06_uat.py ...                                        [ 26%]
-tests/unit/test_cli.py ....                                              [ 29%]
+tests/unit/test_cli.py ..F.                                              [ 29%]
 tests/unit/test_cluster.py .....                                         [ 33%]
-tests/unit/test_cluster_edge_cases.py ...                                [ 36%]
+tests/unit/test_cluster_edge_cases.py ...                                [ 35%]
 tests/unit/test_cluster_large.py .                                       [ 36%]
 tests/unit/test_config_validation.py ...                                 [ 39%]
-tests/unit/test_domain_models.py ......                                  [ 44%]
-tests/unit/test_domain_models_cycle02.py ......                          [ 49%]
+tests/unit/test_domain_models.py ......                                  [ 43%]
+tests/unit/test_domain_models_cycle02.py ......                          [ 48%]
 tests/unit/test_embedder.py ...                                          [ 51%]
 tests/unit/test_exporter_markdown.py .                                   [ 52%]
 tests/unit/test_exporter_obsidian.py ...                                 [ 54%]
 tests/unit/test_interface_compliance.py .                                [ 55%]
-tests/unit/test_io.py ...                                                [ 58%]
-tests/unit/test_raptor.py ......                                         [ 63%]
-tests/unit/test_semantic_chunker.py .....                                [ 67%]
+tests/unit/test_io.py ...                                                [ 57%]
+tests/unit/test_raptor.py ......                                         [ 62%]
+tests/unit/test_semantic_chunker.py .....                                [ 66%]
 tests/unit/test_store_schema.py ...                                      [ 69%]
-tests/unit/test_strategies.py ......                                     [ 74%]
-tests/unit/test_streaming_verification.py ..                             [ 76%]
-tests/unit/test_summarizer.py ..........                                 [ 84%]
+tests/unit/test_strategies.py ......                                     [ 73%]
+tests/unit/test_streaming_verification.py ..                             [ 75%]
+tests/unit/test_summarizer.py ...........                                [ 84%]
 tests/unit/test_summarizer_dos.py ..                                     [ 86%]
 tests/unit/test_text_utils.py .....                                      [ 90%]
 tests/unit/test_token_chunker.py ........                                [ 96%]
 tests/unit/test_verifier.py ....                                         [100%]
 
+=================================== FAILURES ===================================
+__________________ test_cli_run_success_with_exporters_mocked __________________
+
+mock_obs_cls = <MagicMock name='ObsidianCanvasExporter' id='140001689090672'>
+mock_md_func = <MagicMock name='export_to_markdown' id='140001691399424'>
+
+    @patch("matome.cli.export_to_markdown", return_value="MD Content")
+    @patch("matome.cli.ObsidianCanvasExporter")
+    def test_cli_run_success_with_exporters_mocked(
+        mock_obs_cls: MagicMock,
+        mock_md_func: MagicMock,
+    ) -> None:
+        # This is a cleaner version of the above test, patching everything
+        with (
+            patch("matome.cli.RaptorEngine") as mock_raptor_cls,
+            patch("matome.cli.DiskChunkStore"),
+            patch("matome.cli.JapaneseTokenChunker"),
+            patch("matome.cli.EmbeddingService"),
+            patch("matome.cli.GMMClusterer"),
+            patch("matome.cli.SummarizationAgent"),
+            patch("matome.cli.VerifierAgent") as mock_verifier_cls,
+        ):
+            mock_raptor_instance = mock_raptor_cls.return_value
+            mock_tree = MagicMock()
+            mock_tree.root_node.id = "root_id"
+            mock_tree.root_node.text = "Summary"
+            mock_tree.root_node.children_indices = []
+            mock_raptor_instance.run.return_value = mock_tree
+
+            mock_verifier_instance = mock_verifier_cls.return_value
+            mock_verifier_instance.verify.return_value.score = 1.0
+            mock_verifier_instance.verify.return_value.model_dump_json.return_value = "{}"
+
+            with runner.isolated_filesystem():
+                Path("dummy.txt").write_text("Dummy text content")
+
+                result = runner.invoke(app, ["run", "dummy.txt", "--output-dir", "results"])
+
+                assert result.exit_code == 0
+                assert "Starting Matome Pipeline" in result.stdout
+
+>               mock_md_func.assert_called_once()
+
+tests/unit/test_cli.py:111:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <MagicMock name='export_to_markdown' id='140001691399424'>
+
+    def assert_called_once(self):
+        """assert that the mock was called only once.
+        """
+        if not self.call_count == 1:
+            msg = ("Expected '%s' to have been called once. Called %s times.%s"
+                   % (self._mock_name or 'mock',
+                      self.call_count,
+                      self._calls_repr()))
+>           raise AssertionError(msg)
+E           AssertionError: Expected 'export_to_markdown' to have been called once. Called 0 times.
+
+/home/jules/.pyenv/versions/3.12.12/lib/python3.12/unittest/mock.py:928: AssertionError
 =============================== warnings summary ===============================
 tests/integration/test_embedding_clustering_pipeline.py::test_embedding_clustering_pipeline
 tests/integration/test_embedding_clustering_pipeline.py::test_real_pipeline_small
@@ -79,21 +139,21 @@ src/domain_models/verification.py           20      1    95%   55
 src/matome/__init__.py                       4      0   100%
 src/matome/agents/__init__.py                0      0   100%
 src/matome/agents/strategies.py             29      1    97%   65
-src/matome/agents/summarizer.py            101      9    91%   104, 133-134, 139, 163-164, 182, 185-186
+src/matome/agents/summarizer.py            109     11    90%   109, 138-139, 144, 156-160, 181-182, 200, 203-204
 src/matome/agents/verifier.py               91     28    69%   57, 73-74, 79-80, 85-87, 102-110, 117-118, 128, 136, 139-140, 148, 153, 155, 168-171
-src/matome/cli.py                           95     12    87%   71-74, 95, 182-183, 189-191, 233, 237
+src/matome/cli.py                           96     12    88%   71-74, 95, 184-185, 191-193, 235, 239
 src/matome/config.py                        10      0   100%
 src/matome/engines/__init__.py               0      0   100%
 src/matome/engines/chunker.py                3      3     0%   1-4
 src/matome/engines/cluster.py              184     21    89%   74, 117-118, 121-122, 144-146, 255-258, 369-372, 384, 396, 406-412
 src/matome/engines/embedder.py              51      4    92%   57, 65, 88-89
-src/matome/engines/raptor.py               205     35    83%   60, 69, 75, 97-98, 105-109, 177-178, 198-199, 227, 237, 244-247, 251-253, 275-276, 305-308, 312-313, 364-365, 369-371
+src/matome/engines/raptor.py               212     36    83%   60, 72, 77, 83, 111-115, 128-129, 189-190, 210-211, 239, 249, 256-259, 263-265, 287-288, 321-324, 328-329, 380-381, 385-387
 src/matome/engines/semantic_chunker.py      86     13    85%   62, 105, 115-117, 133-134, 153-155, 200-202
 src/matome/engines/token_chunker.py         68     10    85%   32-37, 44-47, 121-126
 src/matome/exceptions/__init__.py            4      0   100%
 src/matome/exporters/__init__.py             3      0   100%
-src/matome/exporters/markdown.py            30      2    93%   31, 36
-src/matome/exporters/obsidian.py           114      4    96%   75, 136, 169, 209
+src/matome/exporters/markdown.py            39      4    90%   37, 42, 57, 62
+src/matome/exporters/obsidian.py           117      4    97%   75, 136, 169, 214
 src/matome/interfaces.py                    21      0   100%
 src/matome/utils/__init__.py                 0      0   100%
 src/matome/utils/compat.py                  17      8    53%   30-31, 39-44
@@ -102,7 +162,9 @@ src/matome/utils/prompts.py                  4      0   100%
 src/matome/utils/store.py                   96      8    92%   58-60, 108, 158, 205-209
 src/matome/utils/text.py                    30      1    97%   20
 ----------------------------------------------------------------------
-TOTAL                                     1446    172    88%
-================= 122 passed, 11 warnings in 64.61s (0:01:04) ==================
+TOTAL                                     1474    177    88%
+=========================== short test summary info ============================
+FAILED tests/unit/test_cli.py::test_cli_run_success_with_exporters_mocked - A...
+============ 1 failed, 122 passed, 11 warnings in 69.17s (0:01:09) =============
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:562: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.3/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

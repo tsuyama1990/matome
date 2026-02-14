@@ -73,7 +73,7 @@ def test_cli_run_success(
         mock_verifier_cls.assert_called_once()
 
 
-@patch("matome.cli.export_to_markdown", return_value="MD Content")
+@patch("matome.cli.stream_markdown", return_value=iter(["MD Content"]))
 @patch("matome.cli.ObsidianCanvasExporter")
 def test_cli_run_success_with_exporters_mocked(
     mock_obs_cls: MagicMock,

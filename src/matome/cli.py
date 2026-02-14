@@ -12,7 +12,7 @@ from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.engines.token_chunker import JapaneseTokenChunker
-from matome.exporters.markdown import export_to_markdown
+from matome.exporters.markdown import stream_markdown
 from matome.exporters.obsidian import ObsidianCanvasExporter
 from matome.utils.store import DiskChunkStore
 
@@ -114,8 +114,10 @@ def _export_results(
     """Export results to various formats."""
     typer.echo("Exporting results...")
     try:
-        md_output = export_to_markdown(tree, store)
-        (output_dir / "summary_all.md").write_text(md_output, encoding="utf-8")
+        # Stream markdown export to file
+        with (output_dir / "summary_all.md").open("w", encoding="utf-8") as f:
+            for line in stream_markdown(tree, store):
+                f.write(line)
 
         obs_exporter = ObsidianCanvasExporter(config)
         obs_exporter.export(tree, output_dir / "summary_kj.canvas", store)

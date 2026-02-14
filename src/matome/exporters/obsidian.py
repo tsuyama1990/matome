@@ -174,60 +174,77 @@ class ObsidianCanvasExporter:
             self._subtree_widths[node_id_str] = width
 
     def _assign_positions(
-        self, node_id: int | str, center_x: int, y: int, store: DiskChunkStore
+        self, root_id: int | str, start_center_x: int, start_y: int, store: DiskChunkStore
     ) -> None:
-        """Recursively assigns (x, y) positions to nodes and creates edges."""
-        # Note: Recursion here is fine for reasonable depth. Stack approach for position requires more state.
+        """
+        Iteratively assigns (x, y) positions to nodes and creates edges using a stack.
+        """
+        # Stack stores (node_id, center_x, y)
+        stack: list[tuple[int | str, int, int]] = [(root_id, start_center_x, start_y)]
 
-        node_id_str = self._get_node_id_str(node_id)
-        node = store.get_node(node_id)
+        while stack:
+            node_id, center_x, y = stack.pop()
+            node_id_str = self._get_node_id_str(node_id)
+            node = store.get_node(node_id)
 
-        text = "Missing Node"
-        if isinstance(node, Chunk):
-            text = f"Chunk {node.index}\n\n{node.text}"
-        elif isinstance(node, SummaryNode):
-            text = node.text
+            text = "Missing Node"
+            if isinstance(node, Chunk):
+                text = f"Chunk {node.index}\n\n{node.text}"
+            elif isinstance(node, SummaryNode):
+                text = node.text
 
-        x = center_x - (self.NODE_WIDTH // 2)
+            x = center_x - (self.NODE_WIDTH // 2)
 
-        canvas_node = CanvasNode(
-            id=node_id_str,
-            x=int(x),
-            y=y,
-            width=self.NODE_WIDTH,
-            height=self.NODE_HEIGHT,
-            type="text",
-            text=text,
-        )
-        self.nodes.append(canvas_node)
-
-        if not isinstance(node, SummaryNode):
-            return
-
-        children = node.children_indices
-        if not children:
-            return
-
-        children_widths = [self._subtree_widths.get(self._get_node_id_str(c), self.NODE_WIDTH) for c in children]
-        children_block_width = sum(children_widths) + self.GAP_X * (len(children_widths) - 1)
-
-        start_x = center_x - (children_block_width / 2)
-        current_x = start_x
-
-        next_y = y + self.NODE_HEIGHT + self.GAP_Y
-
-        for child_idx in children:
-            child_id_str = self._get_node_id_str(child_idx)
-            # Default width if missing in map (shouldn't happen if traversal correct)
-            child_width = self._subtree_widths.get(child_id_str, self.NODE_WIDTH)
-
-            child_center_x = current_x + (child_width / 2)
-
-            self._assign_positions(child_idx, int(child_center_x), next_y, store)
-
-            edge = CanvasEdge(
-                id=f"edge_{node_id_str}_{child_id_str}", from_node=node_id_str, to_node=child_id_str
+            canvas_node = CanvasNode(
+                id=node_id_str,
+                x=int(x),
+                y=y,
+                width=self.NODE_WIDTH,
+                height=self.NODE_HEIGHT,
+                type="text",
+                text=text,
             )
-            self.edges.append(edge)
+            self.nodes.append(canvas_node)
 
-            current_x += child_width + self.GAP_X
+            if not isinstance(node, SummaryNode):
+                continue
+
+            children = node.children_indices
+            if not children:
+                continue
+
+            children_widths = [self._subtree_widths.get(self._get_node_id_str(c), self.NODE_WIDTH) for c in children]
+            children_block_width = sum(children_widths) + self.GAP_X * (len(children_widths) - 1)
+
+            start_x = center_x - (children_block_width / 2)
+            current_x = start_x
+
+            next_y = y + self.NODE_HEIGHT + self.GAP_Y
+
+            # Prepare children to push to stack
+            # Since stack is LIFO, we want to process left child first?
+            # Actually, standard DFS order usually processes left first.
+            # But here we are just adding to lists.
+            # BUT we need to calculate `current_x` sequentially for each child.
+            # We can calculate all children positions NOW, and push them.
+
+            # We must iterate children in order to calculate positions correctly
+            for child_idx in children:
+                child_id_str = self._get_node_id_str(child_idx)
+                child_width = self._subtree_widths.get(child_id_str, self.NODE_WIDTH)
+
+                child_center_x = current_x + (child_width / 2)
+
+                # Create edge here
+                edge = CanvasEdge(
+                    id=f"edge_{node_id_str}_{child_id_str}", from_node=node_id_str, to_node=child_id_str
+                )
+                self.edges.append(edge)
+
+                # Push to stack
+                # Note: If we push sequentially, last child is popped first.
+                # Does it matter? Position (x,y) is already calculated.
+                # So popping order only affects the order in JSON list.
+                stack.append((child_idx, int(child_center_x), next_y))
+
+                current_x += child_width + self.GAP_X

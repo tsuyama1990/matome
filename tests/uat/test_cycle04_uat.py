@@ -47,7 +47,7 @@ def test_uat_scenario_11_single_level(uat_config: ProcessingConfig) -> None:
     """
     chunker = create_autospec(Chunker, instance=True)
 
-    def chunk_gen():
+    def chunk_gen() -> Iterator[Chunk]:
         for i in range(3):
             yield Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
 
@@ -73,7 +73,7 @@ def test_uat_scenario_12_multi_level(uat_config: ProcessingConfig) -> None:
     """
     chunker = create_autospec(Chunker, instance=True)
 
-    def chunk_gen_large():
+    def chunk_gen_large() -> Iterator[Chunk]:
         for i in range(50):
             yield Chunk(index=i, text=f"Chunk {i}", start_char_idx=0, end_char_idx=10)
 
@@ -101,7 +101,7 @@ def test_uat_scenario_13_summary_coherence() -> None:
     config = ProcessingConfig(umap_n_neighbors=2, umap_min_dist=0.0)
 
     chunker = create_autospec(Chunker, instance=True)
-    def chunk_gen_coherent():
+    def chunk_gen_coherent() -> Iterator[Chunk]:
         yield Chunk(index=0, text="Climate change is real.", start_char_idx=0, end_char_idx=20)
         yield Chunk(index=1, text="Sea levels are rising.", start_char_idx=20, end_char_idx=40)
 

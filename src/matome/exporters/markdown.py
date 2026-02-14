@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+
 from domain_models.manifest import Chunk, DocumentTree, SummaryNode
 from domain_models.types import NodeID
 from matome.utils.store import DiskChunkStore
@@ -6,10 +8,8 @@ from matome.utils.store import DiskChunkStore
 def _format_chunk(chunk: Chunk, depth: int) -> str:
     """Format a leaf chunk as a bullet point."""
     indent = "  " * depth
-    # Limit chunk text length in export to avoid massive files?
-    # Or keep full text? Usually summaries are short, chunks are long.
-    # User might want full text.
-    return f"{indent}- **Chunk {chunk.index}**: {chunk.text.strip()}"
+    # Add newline for consistency
+    return f"{indent}- **Chunk {chunk.index}**: {chunk.text.strip()}\n"
 
 
 def _format_summary(node: SummaryNode, depth: int) -> str:
@@ -19,30 +19,52 @@ def _format_summary(node: SummaryNode, depth: int) -> str:
     return f"{heading} {node.text.strip()}\n"
 
 
-def _process_node(
-    node_id: NodeID,
-    depth: int,
+def _stream_nodes(
+    root_id: NodeID,
     store: DiskChunkStore,
-    lines: list[str],
-    visited: set[NodeID],
-) -> None:
-    """Recursively process nodes for Markdown export."""
-    if node_id in visited:
-        return
-    visited.add(node_id)
+) -> Iterator[tuple[NodeID, int]]:
+    """
+    Iteratively yield nodes in DFS order with depth.
+    """
+    # Stack stores (node_id, depth)
+    stack: list[tuple[NodeID, int]] = [(root_id, 0)]
+    visited: set[NodeID] = set()
 
-    node = store.get_node(node_id)
-    if not node:
+    while stack:
+        curr_id, depth = stack.pop()
+
+        if curr_id in visited:
+            continue
+        visited.add(curr_id)
+
+        node = store.get_node(curr_id)
+        if not node:
+            continue
+
+        yield curr_id, depth
+
+        if isinstance(node, SummaryNode):
+            # Push children in reverse order to preserve left-to-right traversal
+            for child_idx in reversed(node.children_indices):
+                stack.append((child_idx, depth + 1))
+
+
+def stream_markdown(tree: DocumentTree, store: DiskChunkStore) -> Iterator[str]:
+    """
+    Generates Markdown lines iteratively.
+    """
+    if not tree.root_node:
         return
 
-    if isinstance(node, Chunk):
-        lines.append(_format_chunk(node, depth))
-        return
+    for node_id, depth in _stream_nodes(tree.root_node.id, store):
+        node = store.get_node(node_id)
+        if not node:
+            continue
 
-    if isinstance(node, SummaryNode):
-        lines.append(_format_summary(node, depth))
-        for child_idx in node.children_indices:
-            _process_node(child_idx, depth + 1, store, lines, visited)
+        if isinstance(node, Chunk):
+            yield _format_chunk(node, depth)
+        elif isinstance(node, SummaryNode):
+            yield _format_summary(node, depth)
 
 
 def export_to_markdown(tree: DocumentTree, store: DiskChunkStore) -> str:
@@ -59,12 +81,4 @@ def export_to_markdown(tree: DocumentTree, store: DiskChunkStore) -> str:
     Returns:
         A formatted Markdown string.
     """
-    lines: list[str] = []
-    visited: set[NodeID] = set()
-
-    if tree.root_node:
-        # Pre-load root node into visited to avoid cycle if root points to itself (shouldn't happen)
-        # Actually root is in store too.
-        _process_node(tree.root_node.id, 0, store, lines, visited)
-
-    return "\n".join(lines)
+    return "".join(stream_markdown(tree, store))
