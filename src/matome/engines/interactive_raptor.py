@@ -73,7 +73,7 @@ class InteractiveRaptorEngine:
             msg = "Only SummaryNodes can be refined."
             raise TypeError(msg)
 
-        if not instruction:
+        if not instruction or not instruction.strip():
             msg = "Instruction cannot be empty."
             raise ValueError(msg)
 

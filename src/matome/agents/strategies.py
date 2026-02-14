@@ -5,7 +5,6 @@ from matome.interfaces import PromptStrategy
 from matome.utils.prompts import (
     INFORMATION_TEMPLATE,
     KNOWLEDGE_TEMPLATE,
-    REFINEMENT_INSTRUCTION_TEMPLATE,
     WISDOM_TEMPLATE,
 )
 

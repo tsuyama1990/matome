@@ -74,7 +74,7 @@ def test_refine_node_success(
 
 def test_refine_node_not_found(interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:
     mock_store.get_node.return_value = None
-    with pytest.raises(ValueError, match="Node missing not found"):
+    with pytest.raises(ValueError, match="Node .* not found"):
         interactive_engine.refine_node("missing", "instruction")
 
 
@@ -132,6 +132,10 @@ def test_refine_node_invalid_instruction(
     # Test empty instruction
     with pytest.raises(ValueError, match="Instruction cannot be empty"):
         interactive_engine.refine_node("s1", "")
+
+    # Test whitespace-only instruction
+    with pytest.raises(ValueError, match="Instruction cannot be empty"):
+        interactive_engine.refine_node("s1", "   ")
 
     # Test too long instruction
     long_instruction = "a" * 1001

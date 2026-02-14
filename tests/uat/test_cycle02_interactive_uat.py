@@ -2,7 +2,7 @@ import threading
 import time
 from unittest.mock import MagicMock
 
-import pytest
+from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
@@ -36,13 +36,15 @@ def test_uat_c02_01_single_node_refinement() -> None:
     mock_agent.summarize.return_value = "Refined wisdom text."
 
     # Initialize Engine
-    engine = InteractiveRaptorEngine(store=store, summarizer=mock_agent, config=MagicMock())
+    config: ProcessingConfig = MagicMock()
+    engine = InteractiveRaptorEngine(store=store, summarizer=mock_agent, config=config)
 
     # Execute Refinement
     updated_node = engine.refine_node(node_id="node_1", instruction="Make it more concise")
 
     # Verification of returned object
     assert updated_node.text == "Refined wisdom text."
+    assert isinstance(updated_node.metadata, NodeMetadata)
     assert updated_node.metadata.is_user_edited is True
     assert "Make it more concise" in updated_node.metadata.refinement_history
 
@@ -50,6 +52,8 @@ def test_uat_c02_01_single_node_refinement() -> None:
     persisted_node = store.get_node("node_1")
     assert persisted_node is not None
     assert persisted_node.text == "Refined wisdom text."
+    assert isinstance(persisted_node, SummaryNode)
+    assert isinstance(persisted_node.metadata, NodeMetadata)
     assert persisted_node.metadata.is_user_edited is True
     assert "Make it more concise" in persisted_node.metadata.refinement_history
 
@@ -72,7 +76,7 @@ def test_uat_c02_02_concurrency() -> None:
     stop_event = threading.Event()
     errors = []
 
-    def reader_task():
+    def reader_task() -> None:
         while not stop_event.is_set():
             try:
                 n = store.get_node("concurrent_node")
@@ -82,7 +86,7 @@ def test_uat_c02_02_concurrency() -> None:
                 errors.append(f"Reader error: {e}")
             time.sleep(0.005)
 
-    def writer_task():
+    def writer_task() -> None:
         counter = 0
         while not stop_event.is_set():
             try:
@@ -117,9 +121,7 @@ def test_uat_c02_02_concurrency() -> None:
 
     # Final verification: Node should be updated
     final_node = store.get_node("concurrent_node")
+    assert final_node is not None
     assert final_node.text.startswith("Updated text") or final_node.text == "Initial text"
-    # Note: If update_node is stub (pass), text will be "Initial text".
-    # If implemented, it starts with "Updated text".
-    # This assertion is loose to allow test to run, but strict one would require change.
-    # To prove failure, I should assert strict change.
-    assert final_node.text != "Initial text", "Node was not updated (update_node is likely a stub)"
+
+    assert final_node.text != "Initial text", "Node was not updated"

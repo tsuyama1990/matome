@@ -1,9 +1,11 @@
+from unittest.mock import MagicMock
 
 from domain_models.types import DIKWLevel
 from matome.agents.strategies import (
     ChainOfDensityStrategy,
     InformationStrategy,
     KnowledgeStrategy,
+    RefinementStrategy,
     WisdomStrategy,
 )
 
@@ -60,8 +62,6 @@ def test_chain_of_density_strategy_prompt() -> None:
     assert "chain of density" in prompt.lower() or "high-density" in prompt.lower()
     assert text in prompt
 
-from unittest.mock import MagicMock
-from matome.agents.strategies import RefinementStrategy
 
 def test_refinement_strategy_appending() -> None:
     """Test that RefinementStrategy appends instruction to base prompt."""
@@ -81,6 +81,7 @@ def test_refinement_strategy_appending() -> None:
     assert "Base Prompt." in prompt
     assert "USER INSTRUCTION: Make it better." in prompt
     assert prompt.endswith("USER INSTRUCTION: Make it better.") or "USER INSTRUCTION: Make it better." in prompt
+
 
 def test_refinement_strategy_no_instruction() -> None:
     """Test RefinementStrategy without instruction (should fall back to base)."""

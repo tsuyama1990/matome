@@ -1,10 +1,13 @@
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import MagicMock
 
-from sqlalchemy import text
+import pytest
+from sqlalchemy import func, select
 
-from domain_models.manifest import Chunk
-from matome.utils.store import TABLE_NODES, DiskChunkStore
+from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
+from matome.utils.store import DiskChunkStore
 
 
 def test_add_chunks_streaming(tmp_path: Path) -> None:
@@ -18,12 +21,10 @@ def test_add_chunks_streaming(tmp_path: Path) -> None:
 
     store.add_chunks(chunk_generator())
 
-    # Verify storage
+    # Verify storage using safe query
     with store.engine.connect() as conn:
-        result = conn.execute(
-            text(f"SELECT COUNT(*) FROM {TABLE_NODES} WHERE type=:type"),  # noqa: S608
-            {"type": "chunk"},
-        )
+        stmt = select(func.count()).select_from(store.nodes_table).where(store.nodes_table.c.type == "chunk")
+        result = conn.execute(stmt)
         assert result.scalar() == 5
 
     store.close()
@@ -47,15 +48,10 @@ def test_update_node_embedding_direct(tmp_path: Path) -> None:
     assert fetched is not None
     assert fetched.embedding == embedding
 
-    # Verify content JSON didn't change (still lacks embedding if we stripped it, or has old one)
-    # But get_node re-assembles it.
-
     # Check DB internals
     with store.engine.connect() as conn:
-        row = conn.execute(
-            text(f"SELECT embedding FROM {TABLE_NODES} WHERE id=:id"),  # noqa: S608
-            {"id": "0"},
-        ).fetchone()
+        stmt = select(store.nodes_table.c.embedding).where(store.nodes_table.c.id == "0")
+        row = conn.execute(stmt).fetchone()
         assert row is not None
         assert "[0.1, 0.2, 0.3]" in row[0]  # Stored as JSON string
 
@@ -76,10 +72,8 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
 
     # Verify separation in DB
     with store.engine.connect() as conn:
-        row = conn.execute(
-            text(f"SELECT content, embedding FROM {TABLE_NODES} WHERE id=:id"),  # noqa: S608
-            {"id": "1"},
-        ).fetchone()
+        stmt = select(store.nodes_table.c.content, store.nodes_table.c.embedding).where(store.nodes_table.c.id == "1")
+        row = conn.execute(stmt).fetchone()
         assert row is not None
         content_json, embedding_json = row
         assert "embedding" not in content_json  # We excluded it
@@ -87,10 +81,6 @@ def test_chunk_with_embedding_roundtrip(tmp_path: Path) -> None:
 
     store.close()
 
-from unittest.mock import MagicMock
-
-from domain_models.manifest import NodeMetadata, SummaryNode
-from domain_models.types import DIKWLevel
 
 def test_update_node_persistence() -> None:
     """Test that update_node actually updates the record."""
@@ -106,6 +96,7 @@ def test_update_node_persistence() -> None:
 
     # Verify original
     fetched = store.get_node("u1")
+    assert fetched is not None
     assert fetched.text == "Original"
 
     # Update
@@ -114,7 +105,9 @@ def test_update_node_persistence() -> None:
 
     # Verify update
     fetched_updated = store.get_node("u1")
+    assert fetched_updated is not None
     assert fetched_updated.text == "Updated"
+
 
 def test_update_node_non_existent() -> None:
     """Test updating a non-existent node (should probably do nothing or fail silently with UPDATE)."""
@@ -132,6 +125,7 @@ def test_update_node_non_existent() -> None:
 
     # Should not exist
     assert store.get_node("non_existent") is None
+
 
 def test_update_node_with_embedding() -> None:
     """Test updating a node that has an embedding."""
@@ -151,4 +145,30 @@ def test_update_node_with_embedding() -> None:
     store.update_node(node)
 
     fetched = store.get_node("u_emb")
+    assert fetched is not None
     assert fetched.embedding == [0.3, 0.4]
+
+
+def test_transaction_rollback_on_error(tmp_path: Path) -> None:
+    """Test that batch operations rollback on error."""
+    store = DiskChunkStore(tmp_path / "rollback.db")
+    chunks = [Chunk(index=i, text="C", start_char_idx=0, end_char_idx=1) for i in range(10)]
+
+    class BrokenConnection:
+        def __enter__(self) -> "BrokenConnection":
+            return self
+
+        def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+            pass
+
+        def execute(self, stmt: object, params: object = None) -> None:
+            msg = "Database exploded"
+            raise RuntimeError(msg)
+
+    # Patch the begin method of the engine instance on the store
+    # Since store.engine is an instance attribute, we can patch it directly or use patch.object
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(store.engine, "begin", MagicMock(return_value=BrokenConnection()))
+
+        with pytest.raises(RuntimeError, match="Database exploded"):
+            store.add_chunks(chunks)

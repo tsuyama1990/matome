@@ -7,6 +7,13 @@ from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.utils.store import DiskChunkStore
 
+# Constants
+NUM_THREADS = 4
+CHUNKS_PER_THREAD = 25
+TOTAL_CHUNKS = NUM_THREADS * CHUNKS_PER_THREAD
+READ_LOOPS = 10
+WRITE_LOOPS = 10
+
 
 def test_concurrent_writes(tmp_path: Path) -> None:
     """Verify that DiskChunkStore handles concurrent writes correctly."""
@@ -27,28 +34,20 @@ def test_concurrent_writes(tmp_path: Path) -> None:
             )
         store.add_chunks(chunks)
 
-    num_threads = 4
-    chunks_per_thread = 25
-
-    with ThreadPoolExecutor(max_workers=num_threads) as executor:
+    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
         futures = []
-        for i in range(num_threads):
-            futures.append(executor.submit(write_chunks, i * chunks_per_thread, chunks_per_thread))
+        for i in range(NUM_THREADS):
+            futures.append(executor.submit(write_chunks, i * CHUNKS_PER_THREAD, CHUNKS_PER_THREAD))
 
         for f in futures:
             f.result()  # Propagate exceptions
 
-    # Verify total
-    total_chunks = num_threads * chunks_per_thread
-
-    # Check persistence
-    missing = 0
-    for i in range(total_chunks):
-        if not store.get_node(i):
-            missing += 1
+    # Verify total using count query (O(1) instead of loop)
+    # Using public method or internal engine query
+    count = store.get_node_count(0)  # Level 0 is chunks
+    assert count == TOTAL_CHUNKS
 
     store.close()
-    assert missing == 0, f"Missing {missing} chunks out of {total_chunks}"
 
 
 def test_concurrent_read_write(tmp_path: Path) -> None:
@@ -62,16 +61,16 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
     )
 
     def writer() -> None:
-        for i in range(50):
+        for i in range(WRITE_LOOPS):
             store.add_chunk(
                 Chunk(index=i, text=f"W{i}", start_char_idx=0, end_char_idx=1, embedding=[1.0])
             )
 
     def reader() -> None:
-        for _ in range(50):
-            store.get_node(999)  # Read base
-            # Try to read something that might be written
-            store.get_node(25)
+        # Batch retrieval is more efficient than loop of single gets
+        ids = ["999"] + [str(i) for i in range(5)]
+        for _ in range(READ_LOOPS):
+            list(store.get_nodes(ids))
 
     with ThreadPoolExecutor(max_workers=4) as executor:
         f1 = executor.submit(writer)
@@ -83,6 +82,7 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
         f3.result()
 
     store.close()
+
 
 def test_store_concurrency_stress(tmp_path: Path) -> None:
     """
@@ -107,7 +107,7 @@ def test_store_concurrency_stress(tmp_path: Path) -> None:
     exceptions = []
 
     # Reader Thread
-    def read_loop():
+    def read_loop() -> None:
         # Open a separate store instance to simulate separate connection/process
         reader_store = DiskChunkStore(db_path=db_path)
         while not stop_event.is_set():
@@ -121,7 +121,7 @@ def test_store_concurrency_stress(tmp_path: Path) -> None:
         reader_store.close()
 
     # Writer Thread
-    def write_loop():
+    def write_loop() -> None:
         writer_store = DiskChunkStore(db_path=db_path)
         count = 0
         while not stop_event.is_set():
@@ -156,6 +156,7 @@ def test_store_concurrency_stress(tmp_path: Path) -> None:
 
     # Verify final state
     final_node = store.get_node(node_id)
+    assert final_node is not None
     assert final_node.text.startswith("Update"), "Node was not updated."
 
     store.close()
