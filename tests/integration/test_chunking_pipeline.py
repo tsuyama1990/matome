@@ -73,3 +73,35 @@ def test_chunking_pipeline_integration(tmp_path: Path) -> None:
         assert "Lost-in-the-Middle" in reconstructed
         assert "RAPTOR" in reconstructed
         assert "日本語" in reconstructed
+
+
+def test_chunking_edge_cases() -> None:
+    """Test chunking with edge cases like empty input and large text."""
+    # Empty input
+    # Need to mock tokenizer even for empty init if it loads model
+    with patch("matome.engines.token_chunker.get_cached_tokenizer") as mock_get_tokenizer:
+        mock_tokenizer = MagicMock()
+        mock_get_tokenizer.return_value = mock_tokenizer
+
+        chunker = JapaneseTokenChunker()
+        config = ProcessingConfig()
+        chunks = list(chunker.split_text("", config))
+        assert len(chunks) == 0
+
+    # Large text with punctuations to ensure sentence splitting works
+    # 20 sentences of 500 chars each (499 + 1 punctuation)
+    large_text = ("あ" * 499 + "。") * 20
+
+    with patch("matome.engines.token_chunker.get_cached_tokenizer") as mock_get_tokenizer:
+        mock_tokenizer = MagicMock()
+        # Mock encoding: 1 char = 1 token
+        mock_tokenizer.encode.side_effect = lambda text: [1] * len(text)
+        mock_tokenizer.name = "mock_model"
+        mock_get_tokenizer.return_value = mock_tokenizer
+
+        chunker = JapaneseTokenChunker()
+        config = ProcessingConfig(max_tokens=500, overlap=0)
+
+        chunks = list(chunker.split_text(large_text, config))
+        # 20 sentences * 500 tokens / 500 max = 20 chunks
+        assert len(chunks) == 20

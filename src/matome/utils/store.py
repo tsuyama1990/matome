@@ -10,13 +10,7 @@ from pathlib import Path
 from typing import Any, Final
 
 from sqlalchemy import (
-    Column,
-    Index,
     Integer,
-    MetaData,
-    String,
-    Table,
-    Text,
     cast,
     create_engine,
     func,
@@ -28,17 +22,12 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from domain_models.constants import MAX_DB_CONTENT_LENGTH
 from domain_models.manifest import Chunk, SummaryNode
 from matome.utils.compat import batched
+from matome.utils.store_schema import metadata, nodes_table
 
 logger = logging.getLogger(__name__)
-
-# Constants for DB Schema
-TABLE_NODES: Final[str] = "nodes"
-COL_ID: Final[str] = "id"
-COL_TYPE: Final[str] = "type"
-COL_CONTENT: Final[str] = "content"  # Stores JSON of the node (excluding embedding)
-COL_EMBEDDING: Final[str] = "embedding"  # Stores JSON of the embedding list
 
 # Configuration Constants
 DEFAULT_WRITE_BATCH_SIZE: Final[int] = 1000
@@ -119,27 +108,7 @@ class DiskChunkStore:
             msg = f"Failed to configure database PRAGMAs: {e}"
             raise StoreError(msg) from e
 
-        # Define schema using SQLAlchemy Core
-        metadata = MetaData()
-        self.nodes_table = Table(
-            TABLE_NODES,
-            metadata,
-            Column(COL_ID, String, primary_key=True),
-            Column(COL_TYPE, String),
-            Column(COL_CONTENT, Text),  # Main node data
-            Column(COL_EMBEDDING, Text),  # Embedding separated for efficient updates
-            # Index on extracted JSON level field for performance
-            Index(
-                "idx_nodes_level",
-                func.json_extract(text(COL_CONTENT), "$.level"),
-            ),
-            # Composite index for optimization of get_node_ids_by_level
-            Index(
-                "idx_nodes_type_level",
-                COL_TYPE,
-                func.json_extract(text(COL_CONTENT), "$.level"),
-            ),
-        )
+        self.nodes_table = nodes_table
         try:
             metadata.create_all(self.engine)
         except SQLAlchemyError as e:
@@ -173,6 +142,18 @@ class DiskChunkStore:
             if not isinstance(data, dict):
                 msg = f"Node {node_id} content is not a JSON object."
                 raise TypeError(msg)
+
+            # Basic schema validation
+            required_keys = {"text"}
+            if node_type == "chunk":
+                required_keys.update({"index", "start_char_idx", "end_char_idx"})
+            elif node_type == "summary":
+                required_keys.update({"id", "level", "children_indices", "metadata"})
+
+            if not required_keys.issubset(data.keys()):
+                msg = f"Node {node_id} missing required keys: {required_keys - data.keys()}"
+                raise ValueError(msg)
+
         except json.JSONDecodeError as e:
             msg = f"Failed to decode JSON for node {node_id}: {e}"
             raise ValueError(msg) from e
@@ -203,6 +184,12 @@ class DiskChunkStore:
         """Store multiple summary nodes in a batch."""
         self._add_nodes(nodes, "summary")
 
+    def _validate_content_length(self, content: str) -> None:
+        """Validate content length."""
+        if len(content) > MAX_DB_CONTENT_LENGTH:
+            msg = f"Node content length ({len(content)}) exceeds limit ({MAX_DB_CONTENT_LENGTH})."
+            raise ValueError(msg)
+
     def _add_nodes(self, nodes: Iterable[Chunk | SummaryNode], node_type: str) -> None:
         """
         Helper to batch insert nodes.
@@ -218,6 +205,8 @@ class DiskChunkStore:
 
                 for node in node_batch:
                     content_json = node.model_dump_json(exclude={"embedding"})
+                    self._validate_content_length(content_json)
+
                     embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
                     node_id = str(node.index) if isinstance(node, Chunk) else node.id
 
@@ -247,22 +236,21 @@ class DiskChunkStore:
             msg = f"Unexpected error adding nodes: {e}"
             raise StoreError(msg) from e
 
-    def get_nodes(self, node_ids: Iterable[str]) -> Iterator[Chunk | SummaryNode | None]:
+    def get_nodes(self, node_ids: Iterable[str]) -> Iterator[Chunk | SummaryNode]:
         """
         Retrieve multiple nodes by ID.
-        Iterates over input IDs in batches, queries DB, and yields results.
+        Iterates over input IDs in batches, queries DB, and yields results via streaming.
 
-        Note: This prioritizes memory safety over preserving exact input order if IDs are duplicates or missing.
-        However, to be useful for reconstruction, it attempts to yield in order of requested batches.
+        Note: Does NOT guarantee output order matches input order.
+        Yields only found nodes. Missing nodes are skipped.
         """
         # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
         for batch_ids in batched(node_ids, self.read_batch_size):
             # Validate IDs in batch efficiently
-            # Assuming batch_ids is tuple/list of strings from batched()
-            if any(not VALID_NODE_ID_PATTERN.match(nid) for nid in batch_ids):
-                # Identify specific culprit if validation fails
-                for nid in batch_ids:
-                    self._validate_node_id(nid)
+            invalid_ids = [nid for nid in batch_ids if not VALID_NODE_ID_PATTERN.match(nid)]
+            if invalid_ids:
+                msg = f"Invalid node IDs found in batch: {invalid_ids[:5]}..."
+                raise ValueError(msg)
 
             stmt = select(
                 self.nodes_table.c.id,
@@ -276,22 +264,14 @@ class DiskChunkStore:
                     # stream_results=True minimizes memory usage for the result set
                     result = conn.execution_options(stream_results=True).execute(stmt)
 
-                    # Create a lookup for this batch to ensure we yield in the requested order (or None)
-                    # We accept loading the *batch* results into memory (e.g. 500 items) for this mapping.
-                    rows_map = {row.id: row for row in result}
-
-                    for nid in batch_ids:
-                        row = rows_map.get(nid)
-                        if row:
-                            try:
-                                yield self._deserialize_node(
-                                    row.id, row.type, row.content, row.embedding
-                                )
-                            except Exception:
-                                logger.exception(f"Error deserializing node {nid}")
-                                yield None
-                        else:
-                            yield None
+                    for row in result:
+                        try:
+                            yield self._deserialize_node(
+                                row.id, row.type, row.content, row.embedding
+                            )
+                        except Exception:
+                            logger.exception(f"Error deserializing node {row.id}")
+                            continue
             except SQLAlchemyError as e:
                 msg = f"Failed to retrieve nodes batch: {e}"
                 raise StoreError(msg) from e
@@ -394,7 +374,8 @@ class DiskChunkStore:
             )
         else:
             # Uses the index on json_extract(content, '$.level')
-            # SQLAlchemy handles binding of `level` safely when used in comparison.
+            # SQLAlchemy handles parameter binding of `level` safely when used in comparison expression.
+            # "$.level" is a constant path string, not user input.
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(

@@ -9,6 +9,20 @@ PROMPT_INJECTION_PATTERNS = [
     r"(?i)ignore\s+all\s+instructions",
     r"(?i)system\s+prompt",
     r"(?i)simulated\s+response",
+    r"(?i)base64",
+    r"(?i)encoded\s+text",
+    r"(?i)developer\s+mode",
+    r"(?i)jailbreak",
+    r"(?i)DAN\s+mode",
+    r"(?i)unrestricted\s+mode",
+]
+
+SYSTEM_INJECTION_PATTERNS = [
+    r"(?i)\b(DROP|DELETE|UPDATE|INSERT|ALTER)\s+(TABLE|FROM|INTO|DATABASE)\b",
+    r"(?i)\b(rm|sudo|chmod|chown|wget|curl|nc|netcat)\s+",
+    r"(?i)\b(cat|ls|pwd|whoami)\s+",
+    r"(?i)/bin/sh",
+    r"(?i)/bin/bash",
 ]
 
 # Defaults
@@ -22,6 +36,8 @@ LARGE_SCALE_THRESHOLD = 20000
 # Chunking Defaults
 DEFAULT_MAX_TOKENS = 500
 DEFAULT_OVERLAP = 0
+HIGH_PRECISION_MAX_TOKENS = 200
+HIGH_PRECISION_OVERLAP = 20
 DEFAULT_SEMANTIC_CHUNKING_MODE = False
 DEFAULT_SEMANTIC_CHUNKING_THRESHOLD = 0.8
 DEFAULT_SEMANTIC_CHUNKING_PERCENTILE = 90
@@ -30,12 +46,22 @@ DEFAULT_SEMANTIC_CHUNKING_PERCENTILE = 90
 DEFAULT_EMBEDDING_BATCH_SIZE = 32
 
 # Clustering Defaults
+DEFAULT_RANDOM_STATE = 42
 DEFAULT_UMAP_N_NEIGHBORS = 15
 DEFAULT_UMAP_MIN_DIST = 0.1
 DEFAULT_UMAP_N_COMPONENTS = 2
 DEFAULT_CLUSTERING_WRITE_BATCH_SIZE = 1000
 DEFAULT_CLUSTERING_PROBABILITY_THRESHOLD = 0.1
+DEFAULT_CLUSTER_BATCH_SIZE = 20
 DEFAULT_CHUNK_BUFFER_SIZE = 50
+MIN_CLUSTERING_SAMPLES = 5
+MAX_RECURSION_DEPTH = 10
+
+DEFAULT_STRATEGY_MAPPING = {
+    "wisdom": "wisdom",
+    "knowledge": "knowledge",
+    "information": "information",
+}
 
 # Canvas Defaults
 DEFAULT_CANVAS_NODE_WIDTH = 400
@@ -46,6 +72,7 @@ DEFAULT_CANVAS_GAP_Y = 300
 # Store Defaults
 DEFAULT_STORE_WRITE_BATCH_SIZE = 1000
 DEFAULT_STORE_READ_BATCH_SIZE = 500
+MAX_DB_CONTENT_LENGTH = 1_000_000  # 1MB limit for single node content
 
 # Interactive Defaults
 DEFAULT_MAX_INSTRUCTION_LENGTH = 1000

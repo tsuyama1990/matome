@@ -73,12 +73,12 @@ def test_embedding_clustering_pipeline(
         # 2. Clustering
         clusterer = GMMClusterer()
         # Extract embeddings and ensure they are not None
-        valid_embeddings: list[list[float]] = []
+        valid_embeddings_with_ids = []
         for c in embedded_chunks:
             assert c.embedding is not None, "Embedding should not be None"
-            valid_embeddings.append(c.embedding)
+            valid_embeddings_with_ids.append((str(c.index), c.embedding))
 
-        clusters = clusterer.cluster_nodes(valid_embeddings, config)
+        clusters = clusterer.cluster_nodes(valid_embeddings_with_ids, config)
 
         assert len(clusters) > 0
         # Check that we have valid clusters
@@ -117,8 +117,11 @@ def test_real_pipeline_small() -> None:
 
         assert len(embeddings) == 10
 
+        # Create IDs for testing
+        embeddings_with_ids = [(str(i), emb) for i, emb in enumerate(embeddings)]
+
         clusterer = GMMClusterer()
-        clusters = clusterer.cluster_nodes(embeddings, config)
+        clusters = clusterer.cluster_nodes(embeddings_with_ids, config)
 
         assert len(clusters) > 0
         assert isinstance(clusters, list)

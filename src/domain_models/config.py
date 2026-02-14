@@ -8,11 +8,13 @@ from domain_models.constants import (
     ALLOWED_EMBEDDING_MODELS,
     ALLOWED_SUMMARIZATION_MODELS,
     ALLOWED_TOKENIZER_MODELS,
+    DEFAULT_STRATEGY_MAPPING,
     DEFAULT_CANVAS_GAP_X,
     DEFAULT_CANVAS_GAP_Y,
     DEFAULT_CANVAS_NODE_HEIGHT,
     DEFAULT_CANVAS_NODE_WIDTH,
     DEFAULT_CHUNK_BUFFER_SIZE,
+    DEFAULT_CLUSTER_BATCH_SIZE,
     DEFAULT_CLUSTERING_PROBABILITY_THRESHOLD,
     DEFAULT_CLUSTERING_WRITE_BATCH_SIZE,
     DEFAULT_EMBEDDING,
@@ -26,6 +28,9 @@ from domain_models.constants import (
     DEFAULT_MAX_TOKENS,
     DEFAULT_MAX_WORD_LENGTH,
     DEFAULT_OVERLAP,
+    DEFAULT_RANDOM_STATE,
+    HIGH_PRECISION_MAX_TOKENS,
+    HIGH_PRECISION_OVERLAP,
     DEFAULT_SEMANTIC_CHUNKING_MODE,
     DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
     DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
@@ -116,7 +121,7 @@ class ProcessingConfig(BaseModel):
     n_clusters: int | None = Field(
         default=None, description="Fixed number of clusters (if applicable)."
     )
-    random_state: int = Field(default=42, description="Random seed for reproducibility.")
+    random_state: int = Field(default=DEFAULT_RANDOM_STATE, description="Random seed for reproducibility.")
     umap_n_neighbors: int = Field(
         default=DEFAULT_UMAP_N_NEIGHBORS,
         ge=2,
@@ -143,6 +148,11 @@ class ProcessingConfig(BaseModel):
         default=LARGE_SCALE_THRESHOLD,
         ge=1,
         description="Threshold for switching to approximate clustering.",
+    )
+    cluster_batch_size: int = Field(
+        default=DEFAULT_CLUSTER_BATCH_SIZE,
+        ge=1,
+        description="Batch size for processing clusters during summarization.",
     )
     chunk_buffer_size: int = Field(
         default=DEFAULT_CHUNK_BUFFER_SIZE,
@@ -226,11 +236,17 @@ class ProcessingConfig(BaseModel):
     # Strategy Configuration
     strategy_mapping: dict[DIKWLevel, str] = Field(
         default_factory=lambda: {
-            DIKWLevel.WISDOM: "wisdom",
-            DIKWLevel.KNOWLEDGE: "knowledge",
-            DIKWLevel.INFORMATION: "information",
+            DIKWLevel(k): v for k, v in DEFAULT_STRATEGY_MAPPING.items()
         },
         description="Mapping of DIKW levels to strategy names.",
+    )
+    dikw_topology: dict[str, DIKWLevel] = Field(
+        default_factory=lambda: {
+            "root": DIKWLevel.WISDOM,
+            "intermediate": DIKWLevel.KNOWLEDGE,
+            "leaf": DIKWLevel.INFORMATION,
+        },
+        description="Mapping of tree topology positions ('root', 'intermediate', 'leaf') to DIKW levels.",
     )
 
     @field_validator("embedding_model", mode="after")
@@ -276,4 +292,4 @@ class ProcessingConfig(BaseModel):
         """
         Returns a configuration optimized for higher precision (smaller chunks).
         """
-        return cls(max_tokens=200, overlap=20)
+        return cls(max_tokens=HIGH_PRECISION_MAX_TOKENS, overlap=HIGH_PRECISION_OVERLAP)

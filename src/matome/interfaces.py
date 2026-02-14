@@ -4,7 +4,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster
-from domain_models.types import DIKWLevel
+from domain_models.types import DIKWLevel, NodeID
 
 
 class PromptStrategy(ABC):
@@ -40,7 +40,7 @@ class Chunker(Protocol):
     Protocol for text chunking engines.
     """
 
-    def split_text(self, text: str, config: ProcessingConfig) -> Iterable[Chunk]:
+    def split_text(self, text: str | Iterable[str], config: ProcessingConfig) -> Iterable[Chunk]:
         """
         Split text into chunks.
         """
@@ -54,7 +54,7 @@ class Clusterer(Protocol):
     """
 
     def cluster_nodes(
-        self, embeddings: Iterable[list[float]], config: ProcessingConfig
+        self, embeddings: Iterable[tuple[NodeID, list[float]]], config: ProcessingConfig
     ) -> list[Cluster]:
         """
         Cluster nodes based on embeddings.

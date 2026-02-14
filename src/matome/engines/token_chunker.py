@@ -1,5 +1,5 @@
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from functools import lru_cache
 
 import tiktoken
@@ -7,7 +7,7 @@ import tiktoken
 from domain_models.config import ProcessingConfig
 from domain_models.constants import ALLOWED_TOKENIZER_MODELS
 from domain_models.manifest import Chunk
-from matome.utils.text import iter_normalized_sentences
+from matome.utils.text import iter_normalized_sentences, iter_normalized_sentences_from_stream
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ def get_cached_tokenizer(model_name: str) -> tiktoken.Encoding:
         raise ValueError(msg) from e
 
 
-def _perform_chunking(text: str, max_tokens: int, model_name: str) -> Iterator[Chunk]:
+def _perform_chunking(text: str | Iterable[str], max_tokens: int, model_name: str) -> Iterator[Chunk]:
     """
     Core chunking logic using streaming.
     """
@@ -69,7 +69,12 @@ def _perform_chunking(text: str, max_tokens: int, model_name: str) -> Iterator[C
         )
 
     # Use iterator for normalized sentences to allow streaming
-    for sentence in iter_normalized_sentences(text):
+    if isinstance(text, str):
+        sentences_iter = iter_normalized_sentences(text)
+    else:
+        sentences_iter = iter_normalized_sentences_from_stream(text)
+
+    for sentence in sentences_iter:
         sentence_tokens = len(tokenizer.encode(sentence))
 
         if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:
@@ -133,12 +138,12 @@ class JapaneseTokenChunker:
             return 0
         return len(self.tokenizer.encode(text))
 
-    def split_text(self, text: str, config: ProcessingConfig) -> Iterator[Chunk]:
+    def split_text(self, text: str | Iterable[str], config: ProcessingConfig) -> Iterator[Chunk]:
         """
         Split text into chunks (streaming).
 
         Args:
-            text: Raw input text.
+            text: Raw input text or stream of text chunks.
             config: Configuration including max_tokens and tokenizer_model.
 
         Yields:
@@ -148,7 +153,11 @@ class JapaneseTokenChunker:
             logger.warning("Empty input text provided to split_text. Yielding nothing.")
             return
 
-        logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
+        # Handle logging for length if text is string, otherwise generic log
+        if isinstance(text, str):
+            logger.debug(f"Splitting text of length {len(text)} with max_tokens={config.max_tokens}")
+        else:
+            logger.debug(f"Splitting text stream with max_tokens={config.max_tokens}")
 
         chunking_model_name = self.tokenizer.name  # e.g. "cl100k_base"
 
