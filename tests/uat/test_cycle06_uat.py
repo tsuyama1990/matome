@@ -2,7 +2,7 @@ import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from langchain_core.messages import AIMessage
@@ -28,7 +28,8 @@ def sample_text_file(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def uat_config() -> ProcessingConfig:
-    return ProcessingConfig(max_tokens=20, chunk_buffer_size=5)
+    # Ensure consistency: max_summary_tokens <= max_tokens
+    return ProcessingConfig(max_tokens=20, max_summary_tokens=20, chunk_buffer_size=5)
 
 
 def test_scenario_16_hallucination_detection(uat_config: ProcessingConfig) -> None:
@@ -152,6 +153,10 @@ def test_scenario_18_full_e2e_pipeline(
     mock_verifier_instance.verify.return_value = mock_result
 
     # Act
+    # We use a larger max-tokens value (e.g. 500) to exceed default max_summary_tokens (200)
+    # OR we need to pass a config that lowers max_summary_tokens.
+    # But max_tokens argument sets config.max_tokens.
+    # We should set max_tokens > 200 (default max_summary_tokens).
     result = runner.invoke(
         app,
         [
@@ -160,7 +165,7 @@ def test_scenario_18_full_e2e_pipeline(
             "--output-dir",
             str(output_dir),
             "--max-tokens",
-            "10",
+            "300",  # Set > 200
         ],
     )
 
@@ -169,12 +174,36 @@ def test_scenario_18_full_e2e_pipeline(
     assert "Tree construction complete" in result.stdout
     assert "Verification Score" in result.stdout
 
-    # Verify data flow assertions
+    # Verify data flow assertions - Call Order and Parameters
+
+    # 1. Chunker called
     mock_chunker_instance.split_text.assert_called_once()
+
+    # 2. Embedder called (via iterator)
     mock_embedder_instance.embed_chunks.assert_called_once()
+    # Check embed_strings called (for root node finalization)
+    mock_embedder_instance.embed_strings.assert_called()
+
+    # 3. Clusterer called
     mock_clusterer_instance.cluster_nodes.assert_called()
+    # Verify config passed to clusterer
+    _, kwargs = mock_clusterer_instance.cluster_nodes.call_args
+    # Or args[1]
+    args = mock_clusterer_instance.cluster_nodes.call_args[0]
+    assert isinstance(args[1], ProcessingConfig)
+    assert args[1].max_tokens == 300 # Check overridden config value
+
+    # 4. Summarizer called
     mock_summarizer_instance.summarize.assert_called()
+    # Check arguments
+    summary_args = mock_summarizer_instance.summarize.call_args[0]
+    assert "Chunk content" in summary_args[0] # The text to summarize
+
+    # 5. Verifier called
     mock_verifier_instance.verify.assert_called()
+    verify_args = mock_verifier_instance.verify.call_args[0]
+    assert verify_args[0] == "Summary of cluster." # Root summary
+    assert "Chunk content" in verify_args[1] # Source text
 
     # Verify files created
     assert (output_dir / "summary_all.md").exists()

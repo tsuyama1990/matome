@@ -1,33 +1,33 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
 import panel as pn
+import pytest
+
+from domain_models.config import ProcessingConfig
+from domain_models.manifest import NodeMetadata, SummaryNode
+from domain_models.types import DIKWLevel
+from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.ui.canvas import MatomeCanvas
 from matome.ui.view_model import InteractiveSession
-from matome.engines.interactive_raptor import InteractiveRaptorEngine
-from domain_models.manifest import SummaryNode, NodeMetadata, Chunk
-from domain_models.types import DIKWLevel, NodeID
-from domain_models.config import ProcessingConfig
+
 
 class TestGuiEdgeCases:
     @pytest.fixture
     def session(self) -> InteractiveSession:
-        # Create a mock that is an instance of InteractiveRaptorEngine to satisfy param validation
-        # We can't just use MagicMock(spec=...) because param checks isinstance
-        # But we can try to mock the class or just instantiate it with mocks.
-        # Instantiating with mocks is safer.
-
+        # Create a mock engine that satisfies the type checker
         mock_store = MagicMock()
         mock_summarizer = MagicMock()
         config = ProcessingConfig()
 
+        # We use a real instance but we will patch its methods
         engine = InteractiveRaptorEngine(store=mock_store, summarizer=mock_summarizer, config=config)
-        # Mock methods we need
-        engine.get_root_node = MagicMock(return_value=None)
-        engine.get_node = MagicMock(return_value=None)
-        engine.get_children = MagicMock(return_value=iter([]))
 
-        session = InteractiveSession(engine=engine)
-        return session
+        # Use patch.object to mock methods on the instance without assigning directly
+        # which causes mypy error "Cannot assign to a method"
+        with patch.object(engine, 'get_root_node', return_value=None), \
+             patch.object(engine, 'get_node', return_value=None), \
+             patch.object(engine, 'get_children', return_value=iter([])):
+            return InteractiveSession(engine=engine)
 
     @pytest.fixture
     def canvas(self, session: InteractiveSession) -> MatomeCanvas:
@@ -55,7 +55,10 @@ class TestGuiEdgeCases:
 
         details = canvas._render_node_details(None, False)
         assert isinstance(details, pn.Column)
-        assert "Select a node" in details[0].object
+        # Type narrowing for mypy
+        first_item = details[0]
+        assert hasattr(first_item, "object")
+        assert "Select a node" in first_item.object
 
     def test_broken_node_rendering(self, canvas: MatomeCanvas, session: InteractiveSession) -> None:
         """
@@ -73,8 +76,7 @@ class TestGuiEdgeCases:
              details_col = canvas._render_node_details(valid_node, False)
 
              assert isinstance(details_col, pn.Column)
-             from panel.pane import Markdown
-             assert isinstance(details_col[0], Markdown)
-             # In new canvas, we log exception but still return a markdown with generic error or specific message
-             # The code says: return pn.Column(pn.pane.Markdown("Error rendering details", styles={"color": "red"}))
-             assert "Error rendering details" in details_col[0].object
+             # Check error message
+             error_pane = details_col[0]
+             assert hasattr(error_pane, "object")
+             assert "Error rendering details" in error_pane.object

@@ -14,7 +14,7 @@ from matome.agents.strategies import (
     WisdomStrategy,
 )
 from matome.engines.embedder import EmbeddingService
-from matome.exceptions import MatomeError, SummarizationError
+from matome.exceptions import MatomeError
 from matome.interfaces import Chunker, Clusterer, PromptStrategy, Summarizer
 from matome.utils.compat import batched
 from matome.utils.store import DiskChunkStore
@@ -161,6 +161,26 @@ class RaptorEngine:
 
             return self._finalize_tree([final_root_id], active_store, l0_ids_typed)
 
+    def _handle_max_recursion_depth(self, level: int, current_ids: list[NodeID], store: DiskChunkStore) -> NodeID:
+        logger.error(f"Max recursion depth {MAX_RECURSION_DEPTH} exceeded.")
+        # Return the first node of current level as a fallback root
+        if current_ids:
+            return current_ids[0]
+        try:
+            return next(iter(store.get_node_ids_by_level(level)))
+        except StopIteration:
+            msg = f"No nodes available at max recursion depth level {level}"
+            raise MatomeError(msg) from None
+
+    def _handle_single_node_level(self, level: int, current_ids: list[NodeID], store: DiskChunkStore) -> NodeID:
+        if current_ids:
+            return current_ids[0]
+        try:
+            return next(iter(store.get_node_ids_by_level(level)))
+        except StopIteration:
+            msg = f"Expected single node at level {level} but found none."
+            raise MatomeError(msg) from None
+
     def _process_recursion(
         self,
         clusters: list[Cluster],
@@ -170,22 +190,15 @@ class RaptorEngine:
     ) -> NodeID:
         """
         Execute the recursive summarization loop.
+        Refactored to loop with extracted logic.
         """
         level = start_level
         node_count = prev_node_count
-
-        # In the first iteration (Level 0 -> 1), we don't have new IDs yet.
-        # But `_process_level_zero` returns clusters based on chunks which are already stored.
-
         current_level_node_ids: list[NodeID] = []
 
         while True:
             if level > MAX_RECURSION_DEPTH:
-                logger.error(f"Max recursion depth {MAX_RECURSION_DEPTH} exceeded.")
-                # Return the first node of current level as a fallback root
-                if current_level_node_ids:
-                    return current_level_node_ids[0]
-                return next(iter(store.get_node_ids_by_level(level)))
+                return self._handle_max_recursion_depth(level, current_level_node_ids, store)
 
             logger.info(f"Processing Level {level}. Node count: {node_count}")
 
@@ -194,38 +207,31 @@ class RaptorEngine:
                 raise MatomeError(msg)
 
             if node_count == 1:
-                # If we have only 1 node, it's the root.
-                if current_level_node_ids:
-                    return current_level_node_ids[0]
-                return next(iter(store.get_node_ids_by_level(level)))
+                return self._handle_single_node_level(level, current_level_node_ids, store)
 
             try:
-                # If reduction failed, stop recursion with the first available node
                 clusters = self._reduce_clusters_if_needed(clusters, node_count, level, store, current_level_node_ids)
             except StopRecursionError as e:
                 return e.result_node_id
 
+            # Prepare next level
             is_final = len(clusters) == 1
-            logger.info(f"Level {level}: Generated {len(clusters)} clusters.")
-
             strategy = self._get_strategy_for_level(level, is_final)
-            logger.info(f"Using strategy {type(strategy).__name__} for Level {level} (Final={is_final})")
+            logger.info(f"Level {level}: Generated {len(clusters)} clusters. Strategy: {type(strategy).__name__}")
 
             next_level = level + 1
+            new_node_ids = self._summarize_and_store_level(clusters, store, next_level, strategy)
 
-            # Summarize and get the new node IDs directly
-            new_node_ids = self._summarize_and_store_level(
-                clusters, store, next_level, strategy
-            )
-
-            next_level_count = len(new_node_ids)
+            # Update state for next iteration
             current_level_node_ids = new_node_ids
-
             level = next_level
-            node_count = next_level_count
+            node_count = len(new_node_ids)
 
-            # Pass the new IDs to avoid DB query
-            clusters = self._embed_and_cluster_next_level(level, store, current_level_node_ids) if node_count > 1 else []
+            # Re-cluster only if we have more than 1 node, else next loop will terminate
+            if node_count > 1:
+                clusters = self._embed_and_cluster_next_level(level, store, current_level_node_ids)
+            else:
+                clusters = []
 
     def _reduce_clusters_if_needed(
         self,
@@ -365,20 +371,23 @@ class RaptorEngine:
             msg = f"Root node {root_id!s} not found in store."
             raise MatomeError(msg)
 
-        if root_node_obj.embedding is None:
-            logger.info(f"Generating embedding for root node {root_id!s}")
-            embeddings_iter = self.embedder.embed_strings((root_node_obj.text,))
-            try:
-                embedding = next(embeddings_iter)
-                root_node_obj.embedding = embedding
-                store.update_node_embedding(root_id, embedding)
-            except StopIteration:
-                logger.warning(f"Failed to generate embedding for root node {root_id!s}")
-
         if isinstance(root_node_obj, Chunk):
             root_node = self._handle_single_chunk_root(root_node_obj, store)
         else:
             root_node = root_node_obj
+
+        # Ensure final root node has an embedding
+        if root_node.embedding is None:
+            logger.info(f"Generating embedding for root node {root_node.id!s}")
+            embeddings_iter = self.embedder.embed_strings((root_node.text,))
+            try:
+                embedding = next(iter(embeddings_iter))
+                root_node.embedding = embedding
+                # Update store
+                node_id = root_node.id if isinstance(root_node, SummaryNode) else str(root_node.index)
+                store.update_node_embedding(node_id, embedding)
+            except StopIteration:
+                logger.warning(f"Failed to generate embedding for root node {root_node.id!s}")
 
         return DocumentTree(
             root_node=root_node,

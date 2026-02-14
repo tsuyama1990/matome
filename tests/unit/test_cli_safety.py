@@ -1,8 +1,11 @@
-from unittest.mock import MagicMock, patch
 from pathlib import Path
-from typer.testing import CliRunner
-from matome.cli import app
+from unittest.mock import MagicMock, patch
+
 import pytest
+from typer.testing import CliRunner
+
+from matome.cli import app
+
 
 class TestCLIMemorySafety:
     @pytest.fixture
@@ -22,7 +25,7 @@ class TestCLIMemorySafety:
 
         # Mock dependencies inside the test to ensure they are used
         with patch("matome.cli.RaptorEngine") as MockRaptor, \
-             patch("matome.cli.DiskChunkStore") as MockStore, \
+             patch("matome.cli.DiskChunkStore"), \
              patch("matome.cli._stream_file_content") as mock_stream:
 
             # Setup mocks

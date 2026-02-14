@@ -68,13 +68,28 @@ def _validate_output_dir(output_dir: Path) -> None:
         if not resolved.is_relative_to(cwd):
              _fail_with_error(f"Path must be within current working directory ({cwd})")
 
-        # Check for symbolic link attacks if the path exists (or its parents)
-        # Note: resolve() already follows symlinks, so is_relative_to checks the *target* location.
-        # However, checking explicitly if the input path component itself is a symlink can be useful policy.
-        if output_dir.is_symlink():
-             _fail_with_error(f"Output directory cannot be a symbolic link: {output_dir}")
+        # Check for symbolic link attacks
+        # We check if the directory itself or any of its parents (up to CWD) are symlinks.
+        current = output_dir
+        # We traverse up until we hit the root or CWD or the path doesn't exist.
+        # Since we resolved it above, we can use the unresolved path to check for symlinks
+        # (resolve() eats symlinks, so we check original path components)
 
-        # Prevent traversal outside intended parent if strict mode (optional)
+        # However, checking non-existent paths for is_symlink returns False.
+        # We only care about existing components.
+
+        check_path = output_dir
+        while check_path != Path(check_path.anchor): # Stop at root
+             if check_path.exists():
+                 if check_path.is_symlink():
+                     _fail_with_error(f"Path component '{check_path.name}' is a symbolic link. Symlinks are not allowed for security.")
+
+             if check_path == cwd:
+                 break
+
+             check_path = check_path.parent
+
+        # Also double check resolved path is a directory if it exists
         if resolved.exists() and not resolved.is_dir():
              _fail_with_error(f"Path {output_dir} exists and is not a directory.")
 
@@ -82,7 +97,7 @@ def _validate_output_dir(output_dir: Path) -> None:
         _fail_with_error(f"Invalid output directory: {e!s}")
 
 
-def _stream_file_content(path: Path, chunk_size: int = 4096) -> Iterator[str]:
+def _stream_file_content(path: Path, chunk_size: int = DEFAULT_CONFIG.io_buffer_size) -> Iterator[str]:
     """
     Stream file content chunk by chunk to avoid loading into memory.
     Yields decoded text chunks.
@@ -185,7 +200,7 @@ def _export_results(
     try:
         # Stream markdown export to file with buffering
         markdown_path = output_dir / "summary_all.md"
-        with markdown_path.open("w", encoding="utf-8", buffering=8192) as f:
+        with markdown_path.open("w", encoding="utf-8", buffering=config.io_buffer_size) as f:
             for line in stream_markdown(tree, store):
                 f.write(line)
 
@@ -284,8 +299,8 @@ def run(
     except OSError as e:
         _fail_with_error(f"Error accessing file: {e}")
 
-    # Create stream generator
-    text_stream = _stream_file_content(input_file)
+    # Create stream generator using config buffer size
+    text_stream = _stream_file_content(input_file, chunk_size=config.io_buffer_size)
 
     components = _initialize_components(config)
     chunker, embedder, clusterer, summarizer, verifier = components
@@ -351,6 +366,7 @@ def serve(
     pn.extension(sizing_mode="stretch_width")
 
     typer.echo(f"Starting Matome GUI on port {port}...")
+    typer.echo("WARNING: The GUI server is not authenticated. It is bound to localhost (127.0.0.1) for security.")
 
     # Use context manager to ensure store is closed properly upon exit (e.g. Ctrl+C)
     try:
@@ -370,10 +386,8 @@ def serve(
             canvas = MatomeCanvas(session)
 
             # Serve (blocks until stopped)
-            # We explicitly pass canvas.view (method) which pn.serve calls or we can call it.
-            # pn.serve accepts functions returning Viewable or Viewable objects.
-            # Passing canvas.view is fine as it returns Template which is Viewable-like.
-            pn.serve(canvas.view, port=port, show=False, title="Matome")  # type: ignore[no-untyped-call]
+            # Bind to 127.0.0.1 to prevent external access
+            pn.serve(canvas.view, port=port, address="127.0.0.1", show=False, title="Matome")  # type: ignore[no-untyped-call]
 
     except Exception as e:
         logger.exception("Error serving GUI")

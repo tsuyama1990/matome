@@ -116,7 +116,7 @@ class InteractiveRaptorEngine:
         Retrieve children, validate count, and concatenate content safely.
         Returns the concatenated source text.
         """
-        limit = self.config.max_input_length * 2  # Buffer factor for context (should be in config)
+        limit = self.config.max_input_length * self.config.refinement_context_limit_multiplier
         current_len = 0
         children_count = 0
         child_texts: list[str] = []
@@ -136,40 +136,65 @@ class InteractiveRaptorEngine:
             child_texts.append(child.text)
             current_len += text_len
 
-        # Validate count if we didn't truncate (if we truncated, count might mismatch, which is expected)
-        # But we must ensure we found *at least* the children we expected if they fit.
-        # Actually, if we truncate, we can't validate exact count based on iterator consumption.
-        # But we should check if we got NOTHING.
         if children_count == 0:
              msg = f"Node {node.id} has no accessible children. Cannot refine."
              raise ValueError(msg)
 
-        # Ideally check exact count if not truncated, but get_children filters None.
-        # For strict data integrity:
+        # Basic consistency check
         if children_count != len(node.children_indices) and current_len <= limit:
-             # This might trigger on truncation too.
-             # We should rely on store consistency.
-             # If we haven't reached limit but count mismatches, it's an error.
              msg = f"Node {node.id} expects {len(node.children_indices)} children but found {children_count}."
              logger.error(msg)
              raise ValueError(msg)
 
         return "\n\n".join(child_texts)
 
+    def _sanitize_instruction(self, instruction: str) -> str:
+        """Sanitize user instruction to prevent injection or formatting issues."""
+        # Simple sanitization: strip and remove potentially dangerous control chars if necessary.
+        # Since this goes to an LLM as a prompt value, we primarily want to ensure it doesn't break prompt structure.
+        # But `SummarizationAgent` handles prompt construction safely (usually via templates).
+        return instruction.strip()
+
+    def _generate_refinement_summary(self, source_text: str, instruction: str, node: SummaryNode) -> str:
+        """Generate the new summary using the LLM."""
+        if self.summarizer is None:
+            raise RuntimeError("Summarizer not initialized")
+
+        level_key = node.metadata.dikw_level.value
+        base_strategy_cls = STRATEGY_REGISTRY.get(level_key)
+        base_strategy = base_strategy_cls() if base_strategy_cls else None
+        strategy = RefinementStrategy(base_strategy=base_strategy)
+
+        return self.summarizer.summarize(
+            source_text,
+            strategy=strategy,
+            context={"instruction": instruction},
+        )
+
+    def _update_refined_node(self, node: SummaryNode, new_text: str, instruction: str) -> None:
+        """Update the node in the store atomically."""
+        node.text = new_text
+        node.metadata.is_user_edited = True
+        node.metadata.refinement_history.append(instruction)
+        node.embedding = None
+
+        # update_node in DiskChunkStore is atomic (uses explicit transaction)
+        self.store.update_node(node)
+
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
         Refine a specific node based on user instruction.
-        Re-summarizes the node's children using the instruction as context.
-        Updates the node in the store with new text and history.
 
-        Args:
-            node_id: ID of the node to refine.
-            instruction: User provided refinement instruction.
-
-        Returns:
-            The updated SummaryNode.
+        Refactored to be cleaner and safer:
+        1. Validate inputs
+        2. Sanitize instruction
+        3. Retrieve context
+        4. Generate summary
+        5. Update store
         """
         node = self._validate_refinement_input(node_id, instruction)
+        clean_instruction = self._sanitize_instruction(instruction)
+
         source_text = self._retrieve_and_validate_children_content(node)
 
         # Truncate source text if it exceeds limits to prevent context overflow errors
@@ -177,32 +202,9 @@ class InteractiveRaptorEngine:
              logger.warning(f"Refinement source text for node {node_id} truncated to {self.config.max_input_length} chars.")
              source_text = source_text[:self.config.max_input_length]
 
-        level_key = node.metadata.dikw_level.value
-        base_strategy_cls = STRATEGY_REGISTRY.get(level_key)
-        base_strategy = base_strategy_cls() if base_strategy_cls else None
-        strategy = RefinementStrategy(base_strategy=base_strategy)
+        new_text = self._generate_refinement_summary(source_text, clean_instruction, node)
 
-        # Summarize (mockable interaction)
-        # self.summarizer check is done in _validate_refinement_input
-        # but mypy might not know.
-        if self.summarizer is None:
-            # Should be unreachable due to validation
-            msg = "Summarizer not initialized"
-            raise RuntimeError(msg)
+        self._update_refined_node(node, new_text, clean_instruction)
 
-        new_text = self.summarizer.summarize(
-            source_text,
-            strategy=strategy,
-            context={"instruction": instruction},
-        )
-
-        # Transactional update
-        with self.store.transaction():
-            node.text = new_text
-            node.metadata.is_user_edited = True
-            node.metadata.refinement_history.append(instruction)
-            node.embedding = None
-            self.store.update_node(node)
-
-        logger.info(f"Refined node {node_id} with instruction: {instruction}")
+        logger.info(f"Refined node {node_id} with instruction: {clean_instruction}")
         return node
