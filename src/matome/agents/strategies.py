@@ -5,6 +5,7 @@ from matome.interfaces import PromptStrategy
 from matome.utils.prompts import (
     INFORMATION_TEMPLATE,
     KNOWLEDGE_TEMPLATE,
+    REFINEMENT_INSTRUCTION_TEMPLATE,
     WISDOM_TEMPLATE,
 )
 
@@ -68,3 +69,35 @@ class BaseSummaryStrategy(PromptStrategy):
         from matome.utils.prompts import COD_TEMPLATE
 
         return COD_TEMPLATE.format(context=text)
+
+
+class RefinementStrategy(PromptStrategy):
+    """
+    Strategy for interactive refinement of a node.
+    Wraps another strategy or acts standalone, injecting user instructions.
+    """
+
+    def __init__(self, base_strategy: PromptStrategy | None = None) -> None:
+        self.base_strategy = base_strategy or BaseSummaryStrategy()
+
+    @property
+    def dikw_level(self) -> DIKWLevel:
+        return self.base_strategy.dikw_level
+
+    def format_prompt(self, text: str, context: dict[str, Any] | None = None) -> str:
+        instruction = context.get("instruction", "") if context else ""
+        if not instruction:
+            # Fallback to base strategy if no instruction
+            return self.base_strategy.format_prompt(text, context)
+
+        return REFINEMENT_INSTRUCTION_TEMPLATE.format(context=text, instruction=instruction)
+
+
+# Registry for easy lookup from configuration strings
+STRATEGY_REGISTRY: dict[str, type[PromptStrategy]] = {
+    "wisdom": WisdomStrategy,
+    "knowledge": KnowledgeStrategy,
+    "information": InformationStrategy,
+    "default": BaseSummaryStrategy,
+    "refinement": RefinementStrategy,
+}

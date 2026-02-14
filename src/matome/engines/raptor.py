@@ -7,9 +7,8 @@ from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel, NodeID
 from matome.agents.strategies import (
+    STRATEGY_REGISTRY,
     BaseSummaryStrategy,
-    InformationStrategy,
-    KnowledgeStrategy,
     WisdomStrategy,
 )
 from matome.engines.embedder import EmbeddingService
@@ -43,13 +42,6 @@ class RaptorEngine:
         self.summarizer = summarizer
         self.config = config
 
-        # Strategy lookup map to avoid complex conditionals
-        self._strategy_map: dict[str, type[PromptStrategy]] = {
-            DIKWLevel.WISDOM.value: WisdomStrategy,
-            DIKWLevel.KNOWLEDGE.value: KnowledgeStrategy,
-            DIKWLevel.INFORMATION.value: InformationStrategy,
-        }
-
     def _get_strategy_for_level(self, current_level: int, is_final_layer: bool) -> PromptStrategy:
         """
         Determine the PromptStrategy based on the current level and topology.
@@ -76,7 +68,7 @@ class RaptorEngine:
              # Fallback to default name if mapping missing
              strategy_name = target_dikw.value
 
-        strategy_class = self._strategy_map.get(strategy_name)
+        strategy_class = STRATEGY_REGISTRY.get(strategy_name)
         if strategy_class:
             return strategy_class()
 
@@ -102,6 +94,10 @@ class RaptorEngine:
 
                     for chunk in chunk_batch_tuple:
                         self._validate_chunk_embedding(chunk)
+
+                        if chunk.embedding is None:
+                            # unreachable due to validate above
+                            continue
 
                         stats["node_count"] += 1
                         current_level_ids.append(chunk.index)

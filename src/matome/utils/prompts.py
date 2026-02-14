@@ -94,3 +94,21 @@ Your task is to organize this into "Information" - actionable, specific, and org
 
 Output the actionable information.
 """
+
+REFINEMENT_INSTRUCTION_TEMPLATE = """
+You are an expert editor refining a summary based on user feedback.
+
+Original Text/Context:
+{context}
+
+User Instruction:
+{instruction}
+
+Task:
+Rewrite the summary to fully incorporate the user's instruction while maintaining accuracy to the original context.
+- If the instruction asks to change the tone (e.g., "like a 5-year-old"), adjust the style accordingly.
+- If the instruction asks to add/remove details, do so based on the provided context.
+- Ensure the result is coherent and standalone.
+
+Output ONLY the refined summary.
+"""

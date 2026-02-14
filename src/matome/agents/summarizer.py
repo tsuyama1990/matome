@@ -70,6 +70,7 @@ class SummarizationAgent:
         text: str,
         config: ProcessingConfig | None = None,
         strategy: PromptStrategy | None = None,
+        context: dict[str, Any] | None = None,
     ) -> str:
         """
         Summarize the provided text using the specified strategy (or default Chain of Density).
@@ -78,6 +79,7 @@ class SummarizationAgent:
             text: The text to summarize.
             config: Optional config override. Uses self.config if None.
             strategy: Optional PromptStrategy. Defaults to BaseSummaryStrategy (Chain of Density).
+            context: Optional context dictionary to pass to the strategy (e.g. user instructions).
         """
         effective_config = config or self.config
         effective_strategy = strategy or BaseSummaryStrategy()
@@ -110,7 +112,7 @@ class SummarizationAgent:
 
         try:
             # Construct prompt using strategy
-            prompt_content = effective_strategy.format_prompt(safe_text)
+            prompt_content = effective_strategy.format_prompt(safe_text, context)
             messages = [HumanMessage(content=prompt_content)]
 
             response = self._invoke_llm(messages, effective_config, request_id)

@@ -159,7 +159,7 @@ def test_summarize_with_strategy(agent: SummarizationAgent, config: ProcessingCo
     result = agent.summarize("context", config, strategy=strategy_mock)
 
     assert result == "Summary"
-    strategy_mock.format_prompt.assert_called_once_with("context")
+    strategy_mock.format_prompt.assert_called_once_with("context", None)
 
     # Verify LLM was called with formatted prompt
     args, _ = llm_mock.invoke.call_args
@@ -183,3 +183,17 @@ def test_summarize_strategy_template_integration(agent: SummarizationAgent, conf
 
     expected_prompt = INFORMATION_TEMPLATE.format(context=context)
     assert prompt_content == expected_prompt
+
+
+def test_summarize_with_context(agent: SummarizationAgent, config: ProcessingConfig) -> None:
+    """Test that context is passed to the strategy."""
+    strategy_mock = MagicMock()
+    strategy_mock.format_prompt.return_value = "Prompt with Context"
+
+    llm_mock = cast(MagicMock, agent.llm)
+    llm_mock.invoke.return_value = AIMessage(content="Summary")
+
+    context_data = {"instruction": "Make it better"}
+    agent.summarize("text", config, strategy=strategy_mock, context=context_data)
+
+    strategy_mock.format_prompt.assert_called_once_with("text", context_data)

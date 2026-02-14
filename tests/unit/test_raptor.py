@@ -65,7 +65,8 @@ def test_raptor_run_short_text(
 
     # 3. Clustering
     def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        for _ in embeddings: pass # Consume generator to trigger store writes without storing
+        for _ in embeddings:
+            pass  # Consume generator to trigger store writes without storing
         return [Cluster(id=0, level=0, node_indices=[0])]
 
     clusterer.cluster_nodes.side_effect = cluster_side_effect
@@ -128,7 +129,8 @@ def test_raptor_strategy_selection(
     result_iter = iter(cluster_results)
 
     def cluster_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        for _ in embeddings: pass # Consume without storing
+        for _ in embeddings:
+            pass  # Consume without storing
         return next(result_iter)
 
     clusterer.cluster_nodes.side_effect = cluster_side_effect
@@ -169,9 +171,10 @@ def test_raptor_error_handling(
     embedder.embed_chunks.return_value = iter([Chunk(index=0, text="t", start_char_idx=0, end_char_idx=1, embedding=[0.1]*768)])
 
     def fail_side_effect(embeddings: Iterator[list[float]], config: ProcessingConfig) -> list[Cluster]:
-        for _ in embeddings: pass # Consume without storing
+        for _ in embeddings:
+            pass  # Consume without storing
         msg = "Clustering failed"
-        raise ClusteringError(msg) # Use specific exception type
+        raise ClusteringError(msg)  # Use specific exception type
 
     clusterer.cluster_nodes.side_effect = fail_side_effect
 
@@ -220,10 +223,10 @@ def test_raptor_cluster_edge_cases(
     strategy = InformationStrategy()
 
     # Mock store to return None for index 1 (missing node)
-    def get_node_side_effect(nid):
+    def get_node_side_effect(nid: int | str) -> Chunk | None:
         if nid == 1:
             return None
-        return Chunk(index=nid, text=f"text_{nid}", start_char_idx=0, end_char_idx=5)
+        return Chunk(index=int(nid), text=f"text_{nid}", start_char_idx=0, end_char_idx=5)
 
     store.get_node.side_effect = get_node_side_effect
 
