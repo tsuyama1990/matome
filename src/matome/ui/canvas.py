@@ -47,11 +47,7 @@ class MatomeCanvas:
 
                     # Use default argument to capture loop variable
                     def click_handler(e: Any, nid: str | int = node_id) -> None:
-                        try:
-                            self.session.select_node(nid)
-                        except Exception as ex:
-                            if pn.state.notifications:
-                                pn.state.notifications.error(f"Navigation failed: {ex}")  # type: ignore[no-untyped-call]
+                        self._handle_selection(nid)
 
                     btn.on_click(click_handler)
                     items.append(btn)
@@ -91,11 +87,7 @@ class MatomeCanvas:
                     btn = pn.widgets.Button(name="Zoom In", button_type="primary")  # type: ignore[no-untyped-call]
 
                     def click_handler(e: Any, nid: str | int = node_id) -> None:
-                        try:
-                            self.session.select_node(nid)
-                        except Exception as ex:
-                            if pn.state.notifications:
-                                pn.state.notifications.error(f"Selection failed: {ex}")  # type: ignore[no-untyped-call]
+                        self._handle_selection(nid)
 
                     btn.on_click(click_handler)
 
@@ -114,6 +106,14 @@ class MatomeCanvas:
                 return pn.pane.Markdown(f"Error rendering nodes: {e}", style={"color": "red"})  # type: ignore[no-untyped-call]
 
         return pn.bind(_view_nodes, self.session.param.current_view_nodes)  # type: ignore[no-any-return]
+
+    def _handle_selection(self, nid: str | int) -> None:
+        """Handle node selection with error handling."""
+        try:
+            self.session.select_node(nid)
+        except Exception as ex:
+            if pn.state.notifications:
+                pn.state.notifications.error(f"Selection failed: {ex}")  # type: ignore[no-untyped-call]
 
     def _render_details(self) -> pn.viewable.Viewable:
         def _details(node: SummaryNode | Chunk | None) -> pn.Column:

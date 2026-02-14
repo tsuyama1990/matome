@@ -43,6 +43,7 @@ COL_EMBEDDING: Final[str] = "embedding"  # Stores JSON of the embedding list
 # Configuration Constants
 DEFAULT_WRITE_BATCH_SIZE: Final[int] = 1000
 DEFAULT_READ_BATCH_SIZE: Final[int] = 500
+# Allow alphanumeric, underscore, hyphen only to prevent injection
 VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 

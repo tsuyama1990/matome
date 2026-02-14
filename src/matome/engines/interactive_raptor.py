@@ -101,15 +101,7 @@ class InteractiveRaptorEngine:
             msg = "Summarizer agent is not initialized. Cannot refine node."
             raise RuntimeError(msg)
 
-        node = self.store.get_node(node_id)
-        if not node:
-            msg = f"Node {node_id} not found."
-            raise ValueError(msg)
-
-        if not isinstance(node, SummaryNode):
-            msg = "Only SummaryNodes can be refined."
-            raise TypeError(msg)
-
+        # Validate inputs first to fail fast
         if not instruction or not instruction.strip():
             msg = "Instruction cannot be empty."
             raise ValueError(msg)
@@ -119,10 +111,24 @@ class InteractiveRaptorEngine:
             msg = f"Instruction exceeds maximum length of {max_len} characters."
             raise ValueError(msg)
 
+        node = self.store.get_node(node_id)
+        if not node:
+            msg = f"Node {node_id} not found."
+            raise ValueError(msg)
+
+        if not isinstance(node, SummaryNode):
+            msg = "Only SummaryNodes can be refined."
+            raise TypeError(msg)
+
         # Gather source text from children
-        # Materialize list here because we need to validate length and concat text
-        # This is acceptable for a single refinement operation (local scope)
+        # We process children via iterator to optimize for memory, but currently
+        # we need to materialize them to validate count (integrity) and concatenate text.
+        # Given that a single summary node typically has < 50 children, this is
+        # acceptable for memory usage within an interactive session.
+        # Future optimization: stream text directly to LLM if API supports it,
+        # or validate count via DB before fetching content.
         children = list(self.get_children(node))
+
         if not children:
             msg = f"Node {node_id} has no accessible children. Cannot refine."
             raise ValueError(msg)

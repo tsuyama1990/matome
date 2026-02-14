@@ -37,9 +37,9 @@ app = typer.Typer(
 DEFAULT_CONFIG = ProcessingConfig.default()
 
 
-def _handle_file_too_large(size: int) -> None:
+def _handle_file_too_large(size: int, limit: int) -> None:
     """Handle error when file is too large."""
-    typer.echo(f"File too large: {size} bytes. Limit is 500MB.", err=True)
+    typer.echo(f"File too large: {size} bytes. Limit is {limit / (1024*1024):.2f}MB.", err=True)
     raise typer.Exit(code=1)
 
 
@@ -219,11 +219,13 @@ def run(
     try:
         # Check file size before reading to prevent loading massive files into memory
         file_stats = input_file.stat()
-        # 500MB Limit (just a safety net, though 100k-10M structures implies smaller text)
-        if file_stats.st_size > 500 * 1024 * 1024:
-            _handle_file_too_large(file_stats.st_size)
+        if file_stats.st_size > config.max_file_size_bytes:
+            _handle_file_too_large(file_stats.st_size, config.max_file_size_bytes)
 
         text = input_file.read_text(encoding="utf-8")
+    except UnicodeDecodeError as e:
+        typer.echo(f"File encoding error: {e}. Please ensure the file is valid UTF-8.", err=True)
+        raise typer.Exit(code=1) from e
     except Exception as e:
         typer.echo(f"Error reading file: {e}", err=True)
         raise typer.Exit(code=1) from e

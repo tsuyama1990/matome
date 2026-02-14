@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -29,21 +29,23 @@ class TestGuiMocked:
     def test_rendering_resilience(self, mock_session: MagicMock) -> None:
         """Test that rendering methods don't crash even with malformed data."""
         canvas = MatomeCanvas(mock_session)
+        assert canvas._render_breadcrumbs() is not None
 
-        # We need to manually invoke the bound function to test exception handling
-        # Since _render_breadcrumbs returns a pn.bind object, we can't easily inspect its args/func without private access
-        # Instead, we will call the inner function by patching or by testing the Viewable generation if possible.
-        # But wait, the methods return pn.bind which is lazy.
+    def test_selection_error_handling(self, mock_session: MagicMock) -> None:
+        """Test that selection errors are handled gracefully via notifications."""
+        # Mock panel module in the canvas module
+        with patch("matome.ui.canvas.pn") as mock_pn:
+            # Setup the mock state and notifications
+            mock_notif = MagicMock()
+            mock_pn.state.notifications = mock_notif
 
-        # To strictly test the try/except block, we can call the bound methods directly if we refactor or
-        # simulate the error state.
+            canvas = MatomeCanvas(mock_session)
 
-        # For now, we will verify that calling the render method returns a bind object (not crashing immediately)
-        # and checking attributes.
-        view_obj = canvas._render_breadcrumbs()
-        assert view_obj is not None
+            # Make select_node raise exception
+            mock_session.select_node.side_effect = RuntimeError("Selection boom")
 
-        # To simulate the crash inside the bind, we'd need to execute the bound function.
-        # This is tricky with pn.bind.
-        # However, the requirement is to remove 'pass' and unused variable.
-        # We did utilize 'canvas' above.
+            # Call handler directly
+            canvas._handle_selection("bad_id")
+
+            # Verify notification was called
+            mock_notif.error.assert_called_with("Selection failed: Selection boom")
