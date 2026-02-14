@@ -188,4 +188,10 @@ def test_db_corruption_handling(tmp_path: Path) -> None:
         with pytest.raises(StoreError, match="disk I/O error"):
             store.get_node(1)
 
-    store.close()
+    # Ensure cleanup is called/safe even after error
+    # We can't assert 'close' was called internally unless we spy on it,
+    # but we can call it and ensure no exception.
+    try:
+        store.close()
+    except Exception as e:
+        pytest.fail(f"store.close() raised exception: {e}")
