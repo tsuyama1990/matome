@@ -10,15 +10,8 @@ from sqlalchemy.exc import OperationalError
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.utils.store import DiskChunkStore, StoreError
-from tests.utils import generate_chunks
-
-# Test Configuration
-# Moved from hardcoded constants to module-level vars (which could be loaded from config)
-NUM_THREADS = 4
-CHUNKS_PER_THREAD = 25
-TOTAL_CHUNKS = NUM_THREADS * CHUNKS_PER_THREAD
-READ_LOOPS = 10
-WRITE_LOOPS = 10
+from tests.conftest import generate_chunks
+from tests.test_config import CHUNKS_PER_THREAD, NUM_THREADS, READ_LOOPS, TOTAL_CHUNKS, WRITE_LOOPS
 
 
 def test_concurrent_writes(tmp_path: Path) -> None:
@@ -27,7 +20,7 @@ def test_concurrent_writes(tmp_path: Path) -> None:
     store = DiskChunkStore(db_path=db_path)
 
     def write_chunks(start_idx: int, count: int) -> None:
-        # Use shared utility generator to stream chunks
+        # Use shared utility generator to stream chunks directly
         store.add_chunks(generate_chunks(count, start_index=start_idx))
 
     with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
@@ -56,10 +49,12 @@ def test_concurrent_read_write(tmp_path: Path) -> None:
     )
 
     def writer() -> None:
-        for i in range(WRITE_LOOPS):
-            store.add_chunk(
-                Chunk(index=i, text=f"W{i}", start_char_idx=0, end_char_idx=1, embedding=[1.0])
-            )
+        # Batching writes instead of single item loop
+        chunks_to_write = [
+            Chunk(index=i, text=f"W{i}", start_char_idx=0, end_char_idx=1, embedding=[1.0])
+            for i in range(WRITE_LOOPS)
+        ]
+        store.add_chunks(chunks_to_write)
 
     def reader() -> None:
         # Batch retrieval via iterator consumption

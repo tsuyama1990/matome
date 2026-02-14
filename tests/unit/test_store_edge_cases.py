@@ -65,7 +65,7 @@ def test_corruption_prevention(tmp_path: Path) -> None:
     store = DiskChunkStore(tmp_path / "corrupt.db")
 
     # Attempt to manually insert corrupted data should fail due to JSON index
-    # Exception type is usually OperationalError wrapped or raw
+    # We use parameterized query to ensure the test itself is safe from injection
     with (
         pytest.raises(Exception, match="malformed JSON"),
         store.engine.begin() as conn,

@@ -26,6 +26,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.engine import Connection, Engine, Result
+from sqlalchemy.exc import SQLAlchemyError
 
 from domain_models.manifest import Chunk, SummaryNode
 
@@ -94,9 +95,14 @@ class DiskChunkStore:
 
         # Configure connection pooling for performance
         # SQLite handles concurrency poorly with multiple writers, but we use WAL mode.
-        self.engine: Engine = create_engine(
-            db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800
-        )
+        try:
+            self.engine: Engine = create_engine(
+                db_url, pool_size=5, max_overflow=10, pool_timeout=30, pool_recycle=1800
+            )
+        except Exception as e:
+            msg = f"Failed to create database engine: {e}"
+            raise StoreError(msg) from e
+
         self._setup_db()
 
     def _setup_db(self) -> None:
@@ -107,7 +113,7 @@ class DiskChunkStore:
                 conn.execute(text("PRAGMA journal_mode=WAL;"))
                 # Synchronous NORMAL is faster and safe enough for WAL
                 conn.execute(text("PRAGMA synchronous=NORMAL;"))
-        except Exception as e:
+        except SQLAlchemyError as e:
             msg = f"Failed to configure database PRAGMAs: {e}"
             raise StoreError(msg) from e
 
@@ -128,7 +134,7 @@ class DiskChunkStore:
         )
         try:
             metadata.create_all(self.engine)
-        except Exception as e:
+        except SQLAlchemyError as e:
             msg = f"Failed to create database schema: {e}"
             raise StoreError(msg) from e
 
@@ -221,8 +227,15 @@ class DiskChunkStore:
                 # Flush batch with transaction
                 with self.engine.begin() as conn:
                     conn.execute(stmt, buffer)
-        except Exception as e:
+        except SQLAlchemyError as e:
             msg = f"Failed to add nodes to store: {e}"
+            raise StoreError(msg) from e
+        except ValueError:
+            # Validation errors pass through
+            raise
+        except Exception as e:
+            # Catch-all for unexpected errors (e.g., batched failure)
+            msg = f"Unexpected error adding nodes: {e}"
             raise StoreError(msg) from e
 
     def get_nodes(self, node_ids: list[str]) -> Iterator[Chunk | SummaryNode | None]:
@@ -272,8 +285,11 @@ class DiskChunkStore:
                                 yield None
                         else:
                             yield None
-            except Exception as e:
+            except SQLAlchemyError as e:
                 msg = f"Failed to retrieve nodes batch: {e}"
+                raise StoreError(msg) from e
+            except Exception as e:
+                msg = f"Unexpected error retrieving nodes: {e}"
                 raise StoreError(msg) from e
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
@@ -297,7 +313,7 @@ class DiskChunkStore:
         try:
             with self.engine.begin() as conn:
                 conn.execute(stmt)
-        except Exception as e:
+        except SQLAlchemyError as e:
             msg = f"Failed to update embedding for node {node_id}: {e}"
             raise StoreError(msg) from e
 
@@ -319,7 +335,7 @@ class DiskChunkStore:
         try:
             with self.engine.begin() as conn:
                 conn.execute(stmt)
-        except Exception as e:
+        except SQLAlchemyError as e:
             msg = f"Failed to update node {node.id}: {e}"
             raise StoreError(msg) from e
 
@@ -342,10 +358,13 @@ class DiskChunkStore:
 
                 node_type, content_json, embedding_json = row
                 return self._deserialize_node(node_id_str, node_type, content_json, embedding_json)
-        except Exception as e:
-            if isinstance(e, ValueError): # From deserialize
-                raise
+        except SQLAlchemyError as e:
             msg = f"Failed to retrieve node {node_id}: {e}"
+            raise StoreError(msg) from e
+        except ValueError:
+            raise
+        except Exception as e:
+            msg = f"Unexpected error retrieving node {node_id}: {e}"
             raise StoreError(msg) from e
 
     def get_node_ids_by_level(self, level: int) -> Iterator[str]:
@@ -377,7 +396,7 @@ class DiskChunkStore:
                 result = conn.execution_options(stream_results=True).execute(stmt)
                 for row in result:
                     yield row[0]
-        except Exception as e:
+        except SQLAlchemyError as e:
             msg = f"Failed to stream node IDs for level {level}: {e}"
             raise StoreError(msg) from e
 
@@ -398,7 +417,7 @@ class DiskChunkStore:
             with self.engine.connect() as conn:
                 result = conn.execute(stmt)
                 return result.scalar() or 0
-        except Exception as e:
+        except SQLAlchemyError as e:
             msg = f"Failed to count nodes at level {level}: {e}"
             raise StoreError(msg) from e
 
@@ -411,7 +430,7 @@ class DiskChunkStore:
         try:
             with self.engine.begin() as conn:
                 yield conn
-        except Exception as e:
+        except SQLAlchemyError as e:
             msg = f"Transaction failed: {e}"
             raise StoreError(msg) from e
 

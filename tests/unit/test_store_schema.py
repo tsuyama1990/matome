@@ -1,9 +1,7 @@
 from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import MagicMock
 
-import pytest
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
@@ -150,28 +148,45 @@ def test_update_node_with_embedding() -> None:
 
 
 def test_transaction_rollback_on_error(tmp_path: Path) -> None:
-    """Test that batch operations rollback on error."""
+    """Test that batch operations rollback on actual DB error."""
     store = DiskChunkStore(tmp_path / "rollback.db")
-    chunks = [Chunk(index=i, text="C", start_char_idx=0, end_char_idx=1) for i in range(10)]
 
-    class BrokenConnection:
-        def __enter__(self) -> "BrokenConnection":
-            return self
+    # We will trigger a UNIQUE constraint violation (or similar) to force rollback
+    # First, insert a chunk
+    c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=1)
+    store.add_chunk(c1)
 
-        def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
-            pass
+    # Now try to insert a batch where one item causes a failure not handled by "OR REPLACE" logic?
+    # Actually, OR REPLACE handles duplicates.
+    # To force a failure inside the transaction we need something stronger,
+    # or rely on the `execute` patching but verify side effects.
+    # The feedback specifically asked for "real database operations instead of mocks".
+    # We can try inserting a malformed node if we bypass validation,
+    # OR define a constraint and violate it.
+    # Since we can't easily change schema on fly, we can use a trick:
+    # 1. Start a transaction manually.
+    # 2. Insert valid data.
+    # 3. Execute a failing SQL command (e.g. invalid syntax) within the same transaction block.
+    # 4. Expect rollback.
 
-        def execute(self, stmt: object, params: object = None) -> None:
-            msg = "Database exploded"
-            raise RuntimeError(msg)
+    try:
+        with store.transaction() as conn:
+            # Valid insert
+            conn.execute(
+                text("INSERT INTO nodes (id, type, content) VALUES (:id, :type, :content)"),
+                {"id": "999", "type": "chunk", "content": "{}"}
+            )
+            # Failing insert (syntax error)
+            conn.execute(text("SELECT * FROM non_existent_table"))
+    except StoreError:
+        pass
 
-    # Patch the begin method of the engine instance on the store
-    # Since store.engine is an instance attribute, we can patch it directly or use patch.object
-    with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(store.engine, "begin", MagicMock(return_value=BrokenConnection()))
+    # Verify 999 is NOT in the DB
+    assert store.get_node("999") is None
+    # Verify C1 IS still there (was committed before)
+    assert store.get_node("1") is not None
 
-        with pytest.raises(StoreError, match="Database exploded"):
-            store.add_chunks(chunks)
+    store.close()
 
 
 def test_empty_db_operations() -> None:
