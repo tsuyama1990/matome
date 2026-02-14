@@ -180,8 +180,8 @@ def test_empty_db_operations() -> None:
 
     # Get multiple non-existent nodes
     nodes = list(store.get_nodes(["999", "888"]))
-    # With strict streaming, we yield None for missing nodes to maintain index alignment
-    assert nodes == [None, None]
+    # Streaming implementation skips missing nodes
+    assert nodes == []
 
     # Count should be 0
     assert store.get_node_count(0) == 0

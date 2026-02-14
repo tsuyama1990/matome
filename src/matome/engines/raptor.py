@@ -114,17 +114,22 @@ class RaptorEngine:
             msg = f"Chunk {chunk.index} missing embedding."
             raise MatomeError(msg)
 
-    def run(self, text: str, store: DiskChunkStore | None = None) -> DocumentTree:
+    def run(self, text: str | Iterable[str], store: DiskChunkStore | None = None) -> DocumentTree:
         """
         Execute the RAPTOR pipeline.
-        """
-        if not text or not isinstance(text, str):
-            msg = "Input text must be a non-empty string."
-            raise MatomeError(msg)
 
-        if len(text) > self.config.max_input_length:
-            msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
-            raise MatomeError(msg)
+        Args:
+            text: Input text string or iterable of text chunks/lines (streaming).
+            store: Optional existing DiskChunkStore to use.
+        """
+        # Basic validation for string input
+        if isinstance(text, str):
+            if not text:
+                msg = "Input text must be a non-empty string."
+                raise MatomeError(msg)
+            if len(text) > self.config.max_input_length:
+                msg = f"Input text length ({len(text)}) exceeds maximum allowed ({self.config.max_input_length})."
+                raise MatomeError(msg)
 
         logger.info("Starting RAPTOR process: Chunking text.")
         initial_chunks_iter = self.chunker.split_text(text, self.config)
@@ -144,6 +149,9 @@ class RaptorEngine:
                  raise MatomeError(msg)
 
             # We need L0 IDs for finalizing the tree.
+            # Using list() here materializes all IDs. For extremely large datasets, this could be an issue.
+            # However, DocumentTree requires a list of leaf IDs.
+            # We assume IDs themselves are small enough to fit in memory even for millions of chunks.
             l0_ids = list(active_store.get_node_ids_by_level(0))
             l0_ids_typed = cast(list[NodeID], l0_ids)
 
@@ -197,22 +205,14 @@ class RaptorEngine:
             logger.info(f"Using strategy {type(strategy).__name__} for Level {level} (Final={is_final})")
 
             next_level = level + 1
-            # Pass level instead of ID list to support streaming/mapping
+
+            # Streaming summarization
             new_nodes_iter = self._summarize_clusters(
                 clusters, level, store, next_level, strategy
             )
 
-            summary_buffer: list[SummaryNode] = []
-
-            for node in new_nodes_iter:
-                summary_buffer.append(node)
-
-                if len(summary_buffer) >= self.config.chunk_buffer_size:
-                    store.add_summaries(summary_buffer)
-                    summary_buffer.clear()
-
-            if summary_buffer:
-                store.add_summaries(summary_buffer)
+            # Buffer writes to store
+            self._buffer_and_write_summaries(new_nodes_iter, store)
 
             level = next_level
 
@@ -228,6 +228,24 @@ class RaptorEngine:
         except StopIteration as e:
              msg = "Recursion ended with no root."
              raise MatomeError(msg) from e
+
+    def _buffer_and_write_summaries(
+        self,
+        nodes: Iterator[SummaryNode],
+        store: DiskChunkStore
+    ) -> None:
+        """Buffer summary nodes and write to store in batches."""
+        summary_buffer: list[SummaryNode] = []
+
+        for node in nodes:
+            summary_buffer.append(node)
+
+            if len(summary_buffer) >= self.config.chunk_buffer_size:
+                store.add_summaries(summary_buffer)
+                summary_buffer.clear()
+
+        if summary_buffer:
+            store.add_summaries(summary_buffer)
 
     def _embed_and_cluster_next_level(
         self, level: int, store: DiskChunkStore

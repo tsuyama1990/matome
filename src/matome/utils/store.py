@@ -28,6 +28,11 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.exc import SQLAlchemyError
 
+from domain_models.constants import (
+    DEFAULT_STORE_READ_BATCH_SIZE,
+    DEFAULT_STORE_WRITE_BATCH_SIZE,
+    VALID_NODE_ID_PATTERN_STR,
+)
 from domain_models.manifest import Chunk, SummaryNode
 from matome.utils.compat import batched
 
@@ -40,11 +45,8 @@ COL_TYPE: Final[str] = "type"
 COL_CONTENT: Final[str] = "content"  # Stores JSON of the node (excluding embedding)
 COL_EMBEDDING: Final[str] = "embedding"  # Stores JSON of the embedding list
 
-# Configuration Constants
-DEFAULT_WRITE_BATCH_SIZE: Final[int] = 1000
-DEFAULT_READ_BATCH_SIZE: Final[int] = 500
-# Allow alphanumeric, underscore, hyphen only to prevent injection
-VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
+# Validate Pattern
+VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(VALID_NODE_ID_PATTERN_STR)
 
 
 class StoreError(Exception):
@@ -66,8 +68,8 @@ class DiskChunkStore:
     def __init__(
         self,
         db_path: Path | None = None,
-        write_batch_size: int = DEFAULT_WRITE_BATCH_SIZE,
-        read_batch_size: int = DEFAULT_READ_BATCH_SIZE,
+        write_batch_size: int = DEFAULT_STORE_WRITE_BATCH_SIZE,
+        read_batch_size: int = DEFAULT_STORE_READ_BATCH_SIZE,
     ) -> None:
         """
         Initialize the store.
@@ -109,25 +111,36 @@ class DiskChunkStore:
 
     def _define_schema(self, metadata: MetaData) -> Table:
         """Define the database schema."""
-        return Table(
+        # Using literal_column or just column reference inside func is cleaner,
+        # but JSON extract syntax in SQLite often requires plain strings for paths.
+        # SQLAlchemy handles binding automatically for values passed to 'where'.
+        # For index definitions involving expressions, we ensure we use Column objects where possible.
+
+        nodes = Table(
             TABLE_NODES,
             metadata,
             Column(COL_ID, String, primary_key=True),
             Column(COL_TYPE, String),
             Column(COL_CONTENT, Text),  # Main node data
             Column(COL_EMBEDDING, Text),  # Embedding separated for efficient updates
-            # Index on extracted JSON level field for performance
-            Index(
-                "idx_nodes_level",
-                func.json_extract(text(COL_CONTENT), "$.level"),
-            ),
-            # Composite index for optimization of get_node_ids_by_level
-            Index(
-                "idx_nodes_type_level",
-                COL_TYPE,
-                func.json_extract(text(COL_CONTENT), "$.level"),
-            ),
         )
+
+        # Add indexes separately to ensure columns are available
+        # Index on extracted JSON level field for performance
+        # Note: We use text() here because SQLAlchemy Core doesn't fully support JSON path expressions
+        # in a DB-agnostic way without dialects, but this is SQLite specific logic anyway.
+        # However, to be safe against 'COL_CONTENT' variable injection (if it were dynamic),
+        # we treat it as static schema definition.
+        Index(
+            "idx_nodes_level",
+            func.json_extract(nodes.c.content, "$.level"),
+        )
+        Index(
+            "idx_nodes_type_level",
+            nodes.c.type,
+            func.json_extract(nodes.c.content, "$.level"),
+        )
+        return nodes
 
     def _setup_db(self) -> None:
         """Initialize the database schema."""
@@ -152,8 +165,6 @@ class DiskChunkStore:
 
     def _validate_node_id(self, node_id: str) -> str:
         """Validate node ID format to prevent injection/corruption."""
-        # Convert integer indices to string if necessary, but caller usually handles this.
-        # Here we strictly validate string format.
         if not VALID_NODE_ID_PATTERN.match(node_id):
             msg = f"Invalid node ID format: {node_id}"
             raise ValueError(msg)
@@ -257,17 +268,16 @@ class DiskChunkStore:
         Retrieve multiple nodes by ID.
         Iterates over input IDs in batches, queries DB, and yields results.
 
-        Note: This prioritizes memory safety over preserving exact input order if IDs are duplicates or missing.
-        However, to be useful for reconstruction, it attempts to yield in order of requested batches.
+        Crucially, this method does NOT guarantee order preservation to avoid
+        loading batches into memory for mapping. It simply yields nodes as found.
+        Consumers must handle mapping if strict order is required.
         """
         # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
         for batch_ids in batched(node_ids, self.read_batch_size):
             # Validate IDs in batch efficiently
-            # Assuming batch_ids is tuple/list of strings from batched()
-            if any(not VALID_NODE_ID_PATTERN.match(nid) for nid in batch_ids):
-                # Identify specific culprit if validation fails
-                for nid in batch_ids:
-                    self._validate_node_id(nid)
+            for nid in batch_ids:
+                if not VALID_NODE_ID_PATTERN.match(nid):
+                     self._validate_node_id(nid) # Raise error
 
             stmt = select(
                 self.nodes_table.c.id,
@@ -279,23 +289,16 @@ class DiskChunkStore:
             try:
                 with self.engine.connect() as conn:
                     # stream_results=True minimizes memory usage for the result set
+                    # Iterate directly over the cursor
                     result = conn.execution_options(stream_results=True).execute(stmt)
 
-                    # Create a lookup for this batch to ensure we yield in the requested order (or None)
-                    # We accept loading the *batch* results into memory (e.g. 500 items) for this mapping.
-                    rows_map = {row.id: row for row in result}
-
-                    for nid in batch_ids:
-                        row = rows_map.get(nid)
-                        if row:
-                            try:
-                                yield self._deserialize_node(
-                                    row.id, row.type, row.content, row.embedding
-                                )
-                            except Exception:
-                                logger.exception(f"Error deserializing node {nid}")
-                                yield None
-                        else:
+                    for row in result:
+                        try:
+                            yield self._deserialize_node(
+                                row.id, row.type, row.content, row.embedding
+                            )
+                        except Exception:
+                            logger.exception(f"Error deserializing node {row.id}")
                             yield None
             except SQLAlchemyError as e:
                 msg = f"Failed to retrieve nodes batch: {e}"
@@ -400,6 +403,7 @@ class DiskChunkStore:
         else:
             # Uses the index on json_extract(content, '$.level')
             # SQLAlchemy handles binding of `level` safely when used in comparison.
+            # We use column reference here to avoid raw string issues
             stmt = (
                 select(self.nodes_table.c.id)
                 .where(

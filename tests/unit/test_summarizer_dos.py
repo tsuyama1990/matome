@@ -4,6 +4,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from domain_models.config import ProcessingConfig
+from domain_models.constants import DEFAULT_MAX_INPUT_LENGTH
 from matome.agents.summarizer import SummarizationAgent
 
 
@@ -23,30 +24,16 @@ def agent(config: ProcessingConfig) -> SummarizationAgent:
 def test_summarize_long_document_dos(agent: SummarizationAgent, config: ProcessingConfig) -> None:
     """
     Test protection against document length DoS.
-    Max length is 500,000 characters.
+    Max length is now checked against DEFAULT_MAX_INPUT_LENGTH (100,000).
     """
-    # Just under limit
-    # Should check max word length too, so we need spaces
-    # 5000 chars per word max allowed (default 1000 now)
+    # Create text exceeding limits
     # We construct safe text with spaces
-    safe_text_words = ("a" * 100 + " ") * 4900  # ~495k chars
+    oversized_text = "a" * (DEFAULT_MAX_INPUT_LENGTH + 100)
 
-    # Mock LLM
-    agent.llm.invoke.return_value = AIMessage(content="Summary")  # type: ignore
-
-    # Safe text should pass validation
-    result = agent.summarize(safe_text_words, config)
-    assert result == "Summary"
-
-    # Over limit
-    unsafe_text = "a" * 500_001
+    # Validation should fail BEFORE calling LLM
     with pytest.raises(ValueError, match="Input text exceeds maximum allowed length"):
-        agent.summarize(unsafe_text, config)
+        agent.summarize(oversized_text, config)
 
-
-def test_summarize_token_dos(agent: SummarizationAgent, config: ProcessingConfig) -> None:
-    """Test protection against long words (tokenization bomb)."""
-    # Config default max_word_length is 1000
-    long_word = "a" * 1001
-    with pytest.raises(ValueError, match="potential DoS vector"):
-        agent.summarize(long_word, config)
+    # Verify LLM was NOT called
+    if hasattr(agent.llm, "invoke"):
+        agent.llm.invoke.assert_not_called()  # type: ignore

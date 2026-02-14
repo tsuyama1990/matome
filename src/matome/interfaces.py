@@ -40,9 +40,12 @@ class Chunker(Protocol):
     Protocol for text chunking engines.
     """
 
-    def split_text(self, text: str, config: ProcessingConfig) -> Iterable[Chunk]:
+    def split_text(
+        self, text: str | Iterable[str], config: ProcessingConfig
+    ) -> Iterable[Chunk]:
         """
         Split text into chunks.
+        Accepts either a full string or an iterable of strings (streaming).
         """
         ...
 
