@@ -29,6 +29,8 @@ from matome.utils.serialization import deserialize_node
 from matome.utils.store_schema import metadata, nodes_table
 from matome.utils.validation import validate_node_id
 
+__all__ = ["DiskChunkStore", "StoreError"]
+
 logger = logging.getLogger(__name__)
 
 # Configuration Constants

@@ -9,7 +9,7 @@ from matome.agents.summarizer import SummarizationAgent
 
 @pytest.fixture
 def config() -> ProcessingConfig:
-    return ProcessingConfig()
+    return ProcessingConfig(max_input_length=500000)
 
 
 @pytest.fixture

@@ -12,3 +12,9 @@ class StoreError(MatomeError):
 
 class RefinementError(MatomeError):
     """Raised when interactive refinement fails."""
+
+class ClusteringError(MatomeError):
+    """Raised when clustering fails."""
+
+class VerificationError(MatomeError):
+    """Raised when verification fails."""

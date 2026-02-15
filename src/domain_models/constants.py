@@ -84,3 +84,9 @@ SYSTEM_INJECTION_PATTERNS: Final[list[str]] = [
     r"drop table",
 ]
 MAX_RECURSION_DEPTH = 10
+
+# Obsidian Canvas Constants
+CANVAS_NODE_TYPE_TEXT = "text"
+CANVAS_NODE_TYPE_FILE = "file"
+CANVAS_NODE_TYPE_GROUP = "group"
+MIN_CLUSTERING_SAMPLES = 5
