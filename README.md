@@ -80,6 +80,11 @@ It demonstrates the full pipeline: Chunking -> Clustering -> Summarization -> Re
 uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 ```
 
+**To run the tutorial as a web app (Read-Only):**
+```bash
+uv run marimo run tutorials/UAT_AND_TUTORIAL.py
+```
+
 **Alternatively, use the Jupyter Notebook version:**
 ```bash
 # Ensure jupyter is installed (e.g. `uv sync --extra dev`) or run with:
