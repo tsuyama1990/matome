@@ -69,10 +69,10 @@ Matome exports results in multiple formats:
 
 ### 4. Run Tutorials
 
-Verify the installation and explore features using the included tutorial script.
+Verify the installation and explore features using the included interactive tutorial.
 
 ```bash
-uv run python tutorials/UAT_AND_TUTORIAL.py
+uv run marimo run tutorials/UAT_AND_TUTORIAL.py
 ```
 
 ## Architecture
