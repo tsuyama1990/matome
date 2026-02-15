@@ -82,7 +82,7 @@ uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 
 **Alternatively, use the Jupyter Notebook version:**
 ```bash
-jupyter notebook tutorials/UAT_AND_TUTORIAL.ipynb
+uv run jupyter notebook tutorials/UAT_AND_TUTORIAL.ipynb
 ```
 
 **To run it as an automated test script (Headless):**
