@@ -54,10 +54,10 @@ def run_uat() -> None:
 
         logger.info("UAT PASSED: Traceability confirmed.")
     except AttributeError:
-        logger.error("UAT FAILED: get_source_chunks not implemented yet.")
+        logger.exception("UAT FAILED: get_source_chunks not implemented yet.")
         sys.exit(1)
     except Exception as e:
-        logger.error(f"UAT FAILED: {e}")
+        logger.exception(f"UAT FAILED: {e}")
         raise
 
 def _verify_sources(sources: list[Chunk], expected: list[Chunk]) -> None:

@@ -1,5 +1,6 @@
 import logging
 import re
+from collections import deque
 from collections.abc import Iterator
 
 from domain_models.config import ProcessingConfig
@@ -72,8 +73,8 @@ class InteractiveRaptorEngine:
 
     def _traverse_source_chunks(self, root: SummaryNode, limit: int | None) -> Iterator[Chunk]:
         """Helper to traverse source chunks using BFS."""
-        # BFS Traversal
-        queue: list[SummaryNode] = [root]
+        # BFS Traversal using deque for O(1) pops
+        queue: deque[SummaryNode] = deque([root])
         visited: set[str] = {str(root.id)}
         yielded_count = 0
 
@@ -82,7 +83,7 @@ class InteractiveRaptorEngine:
                 break
 
             try:
-                current = queue.pop(0)
+                current = queue.popleft()
                 child_ids = current.children_indices
 
                 # Fetch children in batch
