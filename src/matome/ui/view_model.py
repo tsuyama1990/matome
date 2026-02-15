@@ -21,6 +21,10 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
     breadcrumbs = param.List(default=[], item_type=(SummaryNode, Chunk))
     current_view_nodes = param.List(default=[], item_type=(SummaryNode, Chunk))
 
+    # Traceability
+    source_chunks = param.List(default=[], item_type=Chunk)
+    show_source_chunks = param.Boolean(default=False)
+
     is_processing = param.Boolean(default=False)
 
     def __init__(self, engine: InteractiveRaptorEngine, **params: Any) -> None:
@@ -106,5 +110,22 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
                     new_breadcrumbs.append(crumb)
             self.breadcrumbs = new_breadcrumbs
 
+        finally:
+            self.is_processing = False
+
+    def load_source_chunks(self, node_id: NodeID) -> None:
+        """
+        Load the source chunks for the given node and display them.
+        """
+        self.is_processing = True
+        try:
+            chunks = self.engine.get_source_chunks(node_id)
+            self.source_chunks = chunks
+            self.show_source_chunks = True
+        except Exception:
+            # In a real app we might want to show a notification
+            self.source_chunks = []
+            self.show_source_chunks = False
+            raise
         finally:
             self.is_processing = False

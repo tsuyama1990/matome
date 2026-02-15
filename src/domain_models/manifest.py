@@ -101,7 +101,7 @@ class Cluster(BaseModel):
         for idx in v:
             if not isinstance(idx, (int, str)):
                 msg = f"Invalid node index type: {type(idx)}. Must be int or str."
-                raise ValueError(msg)
+                raise TypeError(msg)
         return v
 
 

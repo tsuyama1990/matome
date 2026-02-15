@@ -39,6 +39,42 @@ class InteractiveRaptorEngine:
         """
         return self.store.get_node(node_id)
 
+    def get_source_chunks(self, node_id: NodeID) -> list[Chunk]:
+        """
+        Retrieves all original text chunks that contributed to this summary node.
+        Performs a traversal down to Level 0.
+        """
+        node = self.store.get_node(node_id)
+        if not node:
+            return []
+
+        if isinstance(node, Chunk):
+            return [node]
+
+        # BFS/DFS Traversal
+        leaves: list[Chunk] = []
+        queue: list[SummaryNode] = [node]
+        visited: set[str] = {str(node.id)}
+
+        while queue:
+            current = queue.pop(0)
+            child_ids = current.children_indices
+
+            # Fetch children in batch
+            for child in self.store.get_nodes(child_ids):
+                if child is None:
+                    continue
+
+                if isinstance(child, Chunk):
+                    leaves.append(child)
+                elif isinstance(child, SummaryNode) and str(child.id) not in visited:
+                    visited.add(str(child.id))
+                    queue.append(child)
+
+        # Sort by index to maintain original document order
+        leaves.sort(key=lambda c: c.index)
+        return leaves
+
     def get_children(self, node: SummaryNode) -> Iterator[SummaryNode | Chunk]:
         """
         Retrieve the immediate children of a given summary node.

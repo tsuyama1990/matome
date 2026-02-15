@@ -130,3 +130,17 @@ class TestInteractiveSession:
         assert session.selected_node == root
         assert session.breadcrumbs == [root] # Should truncate path
         assert session.current_view_nodes == [child]
+
+    def test_load_source_chunks(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
+        """Test loading source chunks."""
+        c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=2)
+        c2 = Chunk(index=2, text="C2", start_char_idx=3, end_char_idx=5)
+
+        # Mock the method explicitly as mock_engine is a real instance
+        mock_engine.get_source_chunks = MagicMock(return_value=[c1, c2])
+
+        session.load_source_chunks("node_1")
+
+        mock_engine.get_source_chunks.assert_called_once_with("node_1")
+        assert session.source_chunks == [c1, c2]
+        assert session.show_source_chunks is True

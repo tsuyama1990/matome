@@ -30,7 +30,40 @@ class MatomeCanvas:
                 sidebar=[self._render_details()],
                 main=[self._render_main_area()],
             )
+            self._template.modal.append(self._render_source_viewer())
         return self._template
+
+    def _render_source_viewer(self) -> Viewable:
+        """Render the source chunks viewer modal content."""
+        def _content(show: bool, chunks: list[Chunk]) -> Viewable:
+            if not show:
+                return pn.Column()
+
+            close_btn = pn.widgets.Button(name="Close", button_type="light")  # type: ignore[no-untyped-call]
+
+            def close(e: Any) -> None:
+                self.session.show_source_chunks = False
+
+            close_btn.on_click(close)
+
+            chunk_views: list[Viewable] = []
+            for chunk in chunks:
+                chunk_views.append(
+                    pn.Card(  # type: ignore[no-untyped-call]
+                        pn.pane.Markdown(chunk.text),  # type: ignore[no-untyped-call]
+                        title=f"Chunk {chunk.index}",
+                        collapsed=False,
+                        sizing_mode="stretch_width"
+                    )
+                )
+
+            return pn.Column(
+                pn.Row(pn.pane.Markdown("## Source Verification"), pn.Spacer(), close_btn),  # type: ignore[no-untyped-call]
+                pn.Column(*chunk_views, scroll=True, height=600, sizing_mode="stretch_width"),
+                sizing_mode="stretch_width"
+            )
+
+        return pn.bind(_content, self.session.param.show_source_chunks, self.session.param.source_chunks)  # type: ignore[no-any-return]
 
     def _render_main_area(self) -> pn.Column:
         """Render the main content area with breadcrumbs and pyramid view."""
@@ -165,6 +198,17 @@ class MatomeCanvas:
 
                 refine_btn.on_click(on_refine)
 
+                source_btn = pn.widgets.Button(
+                    name="Show Source",
+                    button_type="default",
+                    disabled=is_processing,
+                )  # type: ignore[no-untyped-call]
+
+                def on_show_source(event: Any) -> None:
+                    self.session.load_source_chunks(node.id)
+
+                source_btn.on_click(on_show_source)
+
                 spinner = pn.indicators.LoadingSpinner(
                     value=is_processing,
                     width=25,
@@ -176,9 +220,9 @@ class MatomeCanvas:
                 spinner.visible = is_processing
 
                 refine_panel = pn.Column(
-                    pn.pane.Markdown("### Refinement"),  # type: ignore[no-untyped-call]
+                    pn.pane.Markdown("### Actions"),  # type: ignore[no-untyped-call]
                     instruction_input,
-                    pn.Row(refine_btn, spinner),
+                    pn.Row(refine_btn, source_btn, spinner),
                     sizing_mode="stretch_width",
                 )
 
