@@ -115,6 +115,12 @@ def __(mock_mode):
 
 
 @app.cell
+def __(mo):
+    mo.md("## Part 1: The 'Grok' Moment (Cycle 01)")
+    return
+
+
+@app.cell
 def __(DiskChunkStore, Path, config, mock_mode, raptor):
     # Sample Text (Investment Philosophy)
     # We need enough text to generate at least 2 levels (Chunks -> Summaries -> Root)
@@ -176,6 +182,12 @@ def __(DIKWLevel, mo, tree):
 
 
 @app.cell
+def __(mo):
+    mo.md("## Part 2: Semantic Zooming (Cycle 03)")
+    return
+
+
+@app.cell
 def __(Chunk, DIKWLevel, InteractiveRaptorEngine, config, mo, store, summarizer):
     # Initialize Interactive Engine for traversal
     interactive_engine = InteractiveRaptorEngine(
@@ -184,7 +196,7 @@ def __(Chunk, DIKWLevel, InteractiveRaptorEngine, config, mo, store, summarizer)
         config=config
     )
 
-    # Verification: UAT-02 (Information Gen)
+    # Verification: UAT-02 (Information Gen) & Semantic Zooming
     # We want to check Level 1 nodes (summaries of chunks).
     # These should be 'information' or 'knowledge' depending on depth, but definitely Summaries.
 
@@ -210,7 +222,7 @@ def __(Chunk, DIKWLevel, InteractiveRaptorEngine, config, mo, store, summarizer)
     assert sample_l1_node.metadata.dikw_level in [DIKWLevel.INFORMATION, DIKWLevel.KNOWLEDGE, "information", "knowledge"], \
         f"Unexpected L1 level: {sample_l1_node.metadata.dikw_level}"
 
-    mo.md(f"### 🎯 **UAT-02 Passed**: Level 1 nodes are valid Summaries of Chunks.")
+    mo.md(f"### 🎯 **UAT-02 Passed**: Level 1 nodes are valid Summaries of Chunks (Semantic Zoom Verified).")
     return (
         child_ids,
         first_child,

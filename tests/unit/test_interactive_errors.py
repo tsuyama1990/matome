@@ -5,6 +5,7 @@ import pytest
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import NodeMetadata, SummaryNode
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
+from matome.exceptions import RefinementError
 
 
 def test_refine_node_missing_children() -> None:
@@ -29,5 +30,5 @@ def test_refine_node_missing_children() -> None:
     store.get_nodes.return_value = iter([])
 
     # This should raise "Node s1 has no accessible children. Cannot refine."
-    with pytest.raises(ValueError, match="has no accessible children"):
+    with pytest.raises(RefinementError, match="Refinement failed: Node s1 has no accessible children"):
         engine.refine_node("s1", "instruction")
