@@ -30,6 +30,7 @@ potentials/
 dev_documents/project_state.json
 *.txt
 *.pdf
+tutorials/*.db
 
 # AC-CDD Configuration
 .ac_cdd/.env
