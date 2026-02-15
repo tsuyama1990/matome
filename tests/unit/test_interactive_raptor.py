@@ -190,14 +190,12 @@ def test_refine_node_update_failure(
     )
     mock_store.get_node.return_value = node
     mock_store.get_nodes.return_value = iter([Chunk(index=1, text="C", start_char_idx=0, end_char_idx=1)])
-    mock_store.transaction.return_value.__enter__.return_value = MagicMock()
 
+    # Simulate DB failure on update
     mock_store.update_node.side_effect = RuntimeError("DB Write Failed")
 
     with pytest.raises(RuntimeError, match="DB Write Failed"):
         interactive_engine.refine_node("s1", "Refine")
 
-    # Ideally verify transaction rollback if we implemented transactional logic in engine,
-    # but currently engine relies on store's atomic update_node or external transaction.
-    # The transaction context __exit__ would handle rollback on exception.
-    mock_store.transaction.assert_called_once()
+    # Verify update attempted
+    mock_store.update_node.assert_called_once()

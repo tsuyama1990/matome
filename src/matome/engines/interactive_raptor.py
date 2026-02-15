@@ -1,13 +1,16 @@
 import logging
+import re
 from collections.abc import Iterator
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, SummaryNode
+from domain_models.types import NodeID
 from matome.agents.strategies import (
     STRATEGY_REGISTRY,
     RefinementStrategy,
 )
 from matome.agents.summarizer import SummarizationAgent
+from matome.exceptions import MatomeError
 from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
@@ -29,7 +32,7 @@ class InteractiveRaptorEngine:
         self.summarizer = summarizer
         self.config = config
 
-    def get_node(self, node_id: str | int) -> SummaryNode | Chunk | None:
+    def get_node(self, node_id: NodeID) -> SummaryNode | Chunk | None:
         """
         Retrieve a node (Summary or Chunk) by its unique ID.
         Delegates to the underlying DiskChunkStore.
@@ -46,10 +49,11 @@ class InteractiveRaptorEngine:
         """
         # Batch retrieve children for efficiency (avoid N+1)
         # children_indices is a list of node IDs.
-        # Ensure IDs are strings as expected by get_nodes
-        child_ids = [str(idx) for idx in node.children_indices]
+        # store.get_nodes accepts int|str, so we don't need to convert if using new store method
+        child_ids = node.children_indices
 
         # get_nodes returns a generator and fetches in batches
+        # Assuming store has been updated to accept node IDs directly
         for child in self.store.get_nodes(child_ids):
             if child is not None:
                 yield child
@@ -58,9 +62,13 @@ class InteractiveRaptorEngine:
         """
         Retrieve the root node of the tree.
         Assumes the root is the (single) node at the highest level.
+
+        Raises:
+            MatomeError: If the tree structure is invalid (e.g. max level exists but no root).
         """
         max_level = self.store.get_max_level()
         if max_level == 0:
+            # Empty store or only chunks is acceptable
             return None
 
         # Get nodes at max level
@@ -68,32 +76,19 @@ class InteractiveRaptorEngine:
         try:
             root_id = next(ids_iter)
         except StopIteration:
-            return None
+            msg = f"Max level is {max_level} but no nodes found at this level."
+            logger.exception(msg)
+            raise MatomeError(msg) from None
 
         node = self.store.get_node(root_id)
         if isinstance(node, SummaryNode):
             return node
 
-        return None
+        msg = f"Root node {root_id} is not a SummaryNode."
+        raise MatomeError(msg)
 
-    def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
-        """
-        Refine a specific node based on user instruction.
-        Re-summarizes the node's children using the instruction as context.
-        Updates the node in the store with new text and history.
-
-        Args:
-            node_id: ID of the node to refine.
-            instruction: User provided refinement instruction.
-
-        Returns:
-            The updated SummaryNode.
-
-        Raises:
-            ValueError: If node is missing, instruction is empty, or node has no children.
-            TypeError: If the node is not a SummaryNode.
-            RuntimeError: If summarizer agent is not initialized.
-        """
+    def _validate_refinement_input(self, node_id: str, instruction: str) -> SummaryNode:
+        """Validate input parameters for node refinement."""
         if self.summarizer is None:
             msg = "Summarizer agent is not initialized. Cannot refine node."
             raise RuntimeError(msg)
@@ -116,48 +111,118 @@ class InteractiveRaptorEngine:
             msg = "Only SummaryNodes can be refined."
             raise TypeError(msg)
 
-        # Batch retrieval is handled by get_children calling store.get_nodes
-        # We consume the generator into a list here because we need all text for context context
-        # In extremely large scale scenarios, we might need to truncate or sample,
-        # but children count per node is usually limited by clustering branching factor (e.g. 10-20).
-        children = list(self.get_children(node))
+        return node
 
-        if not children:
-            msg = f"Node {node_id} has no accessible children. Cannot refine."
-            raise ValueError(msg)
+    def _retrieve_and_validate_children_content(self, node: SummaryNode) -> str:
+        """
+        Retrieve children, validate count, and concatenate content safely.
+        Returns the concatenated source text.
+        """
+        limit = self.config.max_input_length * self.config.refinement_context_limit_multiplier
+        current_len = 0
+        children_count = 0
+        child_texts: list[str] = []
 
-        if len(children) != len(node.children_indices):
-            msg = f"Node {node_id} expects {len(node.children_indices)} children but found {len(children)}. Cannot refine with incomplete data."
-            logger.error(msg)
-            raise ValueError(msg)
+        # Stream children to avoid memory issues with huge trees
+        for child in self.get_children(node):
+            children_count += 1
+            text_len = len(child.text)
 
-        child_texts = [child.text for child in children]
-        source_text = "\n\n".join(child_texts)
+            # Check length limit before appending
+            if current_len + text_len > limit:
+                logger.warning(
+                    f"Refinement source text for node {node.id} exceeds safety limit ({limit}). Truncating."
+                )
+                break
+
+            child_texts.append(child.text)
+            current_len += text_len
+
+        if children_count == 0:
+             msg = f"Node {node.id} has no accessible children. Cannot refine."
+             raise ValueError(msg)
+
+        # Basic consistency check
+        if children_count != len(node.children_indices) and current_len <= limit:
+             msg = f"Node {node.id} expects {len(node.children_indices)} children but found {children_count}."
+             logger.error(msg)
+             raise ValueError(msg)
+
+        return "\n\n".join(child_texts)
+
+    def _sanitize_instruction(self, instruction: str) -> str:
+        """
+        Sanitize user instruction to prevent injection or formatting issues.
+        Removes dangerous characters that might break prompts or internal logs.
+        """
+        # Strip leading/trailing whitespace
+        clean = instruction.strip()
+
+        # Remove control characters (except newline/tab) which can mess up logging or some parsers
+        # Using a regex to keep only printable characters + newline + tab
+        # This is a basic sanitization for prompt safety.
+        # \x20-\x7E is printable ASCII. We also allow unicode via \w if needed,
+        # but let's be strict for safety unless Japanese input is expected (it is).
+        # So we remove ASCII control chars < 32 except 9 (tab), 10 (LF), 13 (CR)
+        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', clean)
+
+    def _generate_refinement_summary(self, source_text: str, instruction: str, node: SummaryNode) -> str:
+        """Generate the new summary using the LLM."""
+        if self.summarizer is None:
+            msg = "Summarizer not initialized"
+            raise RuntimeError(msg)
+
+        level_key = node.metadata.dikw_level.value
+        base_strategy_cls = STRATEGY_REGISTRY.get(level_key)
+        base_strategy = base_strategy_cls() if base_strategy_cls else None
+        strategy = RefinementStrategy(base_strategy=base_strategy)
+
+        return self.summarizer.summarize(
+            source_text,
+            strategy=strategy,
+            context={"instruction": instruction},
+        )
+
+    def _update_refined_node(self, node: SummaryNode, new_text: str, instruction: str) -> None:
+        """Update the node in the store atomically."""
+        node.text = new_text
+        node.metadata.is_user_edited = True
+        node.metadata.refinement_history.append(instruction)
+        node.embedding = None
+
+        # update_node in DiskChunkStore is atomic (uses explicit transaction)
+        self.store.update_node(node)
+
+    def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
+        """
+        Refine a specific node based on user instruction.
+
+        Refactored to be cleaner and safer:
+        1. Validate inputs
+        2. Sanitize instruction
+        3. Retrieve context
+        4. Generate summary
+        5. Update store
+        """
+        node = self._validate_refinement_input(node_id, instruction)
+        clean_instruction = self._sanitize_instruction(instruction)
+
+        # Enforce history limit
+        MAX_HISTORY_LEN = 50
+        if len(node.metadata.refinement_history) >= MAX_HISTORY_LEN:
+             # FIFO eviction
+             node.metadata.refinement_history.pop(0)
+
+        source_text = self._retrieve_and_validate_children_content(node)
 
         # Truncate source text if it exceeds limits to prevent context overflow errors
         if len(source_text) > self.config.max_input_length:
              logger.warning(f"Refinement source text for node {node_id} truncated to {self.config.max_input_length} chars.")
              source_text = source_text[:self.config.max_input_length]
 
-        level_key = node.metadata.dikw_level.value
-        base_strategy_cls = STRATEGY_REGISTRY.get(level_key)
+        new_text = self._generate_refinement_summary(source_text, clean_instruction, node)
 
-        base_strategy = base_strategy_cls() if base_strategy_cls else None
+        self._update_refined_node(node, new_text, clean_instruction)
 
-        strategy = RefinementStrategy(base_strategy=base_strategy)
-
-        new_text = self.summarizer.summarize(
-            source_text,
-            strategy=strategy,
-            context={"instruction": instruction},
-        )
-
-        with self.store.transaction():
-            node.text = new_text
-            node.metadata.is_user_edited = True
-            node.metadata.refinement_history.append(instruction)
-            node.embedding = None
-            self.store.update_node(node)
-
-        logger.info(f"Refined node {node_id} with instruction: {instruction}")
+        logger.info(f"Refined node {node_id} with instruction: {clean_instruction}")
         return node

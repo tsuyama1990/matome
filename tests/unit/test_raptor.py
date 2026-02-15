@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from domain_models.types import NodeID
 from matome.agents.strategies import InformationStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
@@ -85,8 +85,12 @@ def test_raptor_run_short_text(
 
     assert isinstance(tree, DocumentTree)
     assert len(tree.leaf_chunk_ids) == 1
-    assert tree.root_node.level == 1
-    assert tree.root_node.text == "Wisdom Summary"
+
+    # Assert type narrowing for tree.root_node before accessing SummaryNode fields
+    root_node = tree.root_node
+    assert isinstance(root_node, SummaryNode)
+    assert root_node.level == 1
+    assert root_node.text == "Wisdom Summary"
 
     # Ensure it used Wisdom strategy
     args, kwargs = summarizer.summarize.call_args
@@ -245,7 +249,7 @@ def test_raptor_cluster_edge_cases(
     summarizer.summarize.return_value = "Mock Summary"
 
     # Run private method directly to verify generator logic
-    results = list(engine._summarize_clusters(clusters, 0, store, 1, strategy))
+    results = list(engine._summarize_clusters(clusters, store, 1, strategy))
 
     # Only c3 should produce a result
     assert len(results) == 1
@@ -260,18 +264,20 @@ def test_raptor_cluster_truncation(
     chunker, embedder, clusterer, summarizer = mock_dependencies
 
     # Set a valid limit for testing (must be >= 100)
-    config_small = ProcessingConfig(max_input_length=100)
+    limit = 100
+    chunk_len = 60
+    config_small = ProcessingConfig(max_input_length=limit)
     engine = RaptorEngine(chunker, embedder, clusterer, summarizer, config_small)
 
     store = MagicMock()
     # 3 chunks, each 60 chars. Total 180 > 100.
-    t1 = "A" * 60
-    t2 = "B" * 60
-    t3 = "C" * 60
+    t1 = "A" * chunk_len
+    t2 = "B" * chunk_len
+    t3 = "C" * chunk_len
 
-    c1 = Chunk(index=1, text=t1, start_char_idx=0, end_char_idx=60)
-    c2 = Chunk(index=2, text=t2, start_char_idx=60, end_char_idx=120)
-    c3 = Chunk(index=3, text=t3, start_char_idx=120, end_char_idx=180)
+    c1 = Chunk(index=1, text=t1, start_char_idx=0, end_char_idx=chunk_len)
+    c2 = Chunk(index=2, text=t2, start_char_idx=chunk_len, end_char_idx=chunk_len*2)
+    c3 = Chunk(index=3, text=t3, start_char_idx=chunk_len*2, end_char_idx=chunk_len*3)
 
     def get_node_side_effect(nid: int | str) -> Chunk | None:
         return {1: c1, 2: c2, 3: c3}.get(int(nid))
@@ -293,7 +299,7 @@ def test_raptor_cluster_truncation(
 
     summarizer.summarize.return_value = "Summary"
 
-    results = list(engine._summarize_clusters([cluster], 0, store, 1, strategy))
+    results = list(engine._summarize_clusters([cluster], store, 1, strategy))
 
     assert len(results) == 1
 
@@ -312,7 +318,7 @@ def test_raptor_cluster_truncation(
     assert t2 not in passed_text
     assert t3 not in passed_text
 
-    assert len(passed_text) <= 100
+    assert len(passed_text) <= limit
 
 def test_raptor_store_error(
     mock_dependencies: tuple[MagicMock, ...], config: ProcessingConfig

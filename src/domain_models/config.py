@@ -1,4 +1,5 @@
 import os
+import re
 from enum import Enum
 from typing import Self
 
@@ -18,6 +19,7 @@ from domain_models.constants import (
     DEFAULT_CLUSTERING_WRITE_BATCH_SIZE,
     DEFAULT_EMBEDDING,
     DEFAULT_EMBEDDING_BATCH_SIZE,
+    DEFAULT_IO_BUFFER_SIZE,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_FILE_SIZE_BYTES,
     DEFAULT_MAX_INPUT_LENGTH,
@@ -28,6 +30,7 @@ from domain_models.constants import (
     DEFAULT_MAX_WORD_LENGTH,
     DEFAULT_OVERLAP,
     DEFAULT_RANDOM_STATE,
+    DEFAULT_REFINEMENT_LIMIT_MULTIPLIER,
     DEFAULT_SEMANTIC_CHUNKING_MODE,
     DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
     DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
@@ -59,11 +62,20 @@ def _safe_getenv(key: str, default: str) -> str:
         return default
     return val
 
+
 def _validate_model_name(value: str, allowed: set[str], name: str) -> str:
-    """Helper to validate model names against whitelist."""
+    """Helper to validate model names against whitelist and safe characters."""
     if value not in allowed:
         msg = f"{name} '{value}' is not allowed. Allowed: {sorted(allowed)}"
         raise ValueError(msg)
+
+    # Security check: Prevent shell injection or path traversal chars in model names
+    # Allow alphanumeric, underscore, hyphen, dot, colon (for HF models like org/repo)
+    # Forward slash is allowed for HF paths.
+    if not re.match(r"^[a-zA-Z0-9_\-\.:\/]+$", value):
+        msg = f"{name} '{value}' contains invalid characters."
+        raise ValueError(msg)
+
     return value
 
 
@@ -192,6 +204,11 @@ class ProcessingConfig(BaseModel):
         default=DEFAULT_STORE_READ_BATCH_SIZE, ge=1, description="Batch size for database read operations."
     )
 
+    # I/O Configuration
+    io_buffer_size: int = Field(
+        default=DEFAULT_IO_BUFFER_SIZE, ge=1024, description="Buffer size for file I/O operations."
+    )
+
     # Interactive Configuration
     max_instruction_length: int = Field(
         default=DEFAULT_MAX_INSTRUCTION_LENGTH, ge=1, description="Maximum length of refinement instructions."
@@ -201,6 +218,14 @@ class ProcessingConfig(BaseModel):
     )
     max_file_size_bytes: int = Field(
         default=DEFAULT_MAX_FILE_SIZE_BYTES, ge=1024, description="Maximum allowed file size for input text."
+    )
+    level_format: str = Field(
+        default="L{level}: {dikw}", description="Format string for displaying levels in the UI."
+    )
+    refinement_context_limit_multiplier: int = Field(
+        default=DEFAULT_REFINEMENT_LIMIT_MULTIPLIER,
+        ge=1,
+        description="Multiplier for context limit during refinement (relative to max_input_length)."
     )
 
     # Summarization Configuration
@@ -283,6 +308,15 @@ class ProcessingConfig(BaseModel):
         ):
             msg = "Semantic chunking threshold must be between 0.0 and 1.0"
             raise ValueError(msg)
+
+        # Audit requirement: Validate consistency between max_tokens and max_summary_tokens
+        if self.max_summary_tokens > self.max_tokens:
+            msg = (
+                f"max_summary_tokens ({self.max_summary_tokens}) cannot be greater than "
+                f"max_tokens ({self.max_tokens}). This ensures summaries don't grow larger than chunks."
+            )
+            raise ValueError(msg)
+
         return self
 
     @classmethod

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from matome.engines.raptor import RaptorEngine
 
 
@@ -91,10 +91,12 @@ def test_raptor_reconstructs_leaf_chunks(tmp_path: Path) -> None:
     # Note: Text is not in the tree anymore, would need to fetch from store.
 
     # Verify structure
-    assert tree.root_node.text == "Summary Text"
+    root_node = tree.root_node
+    assert isinstance(root_node, SummaryNode) # Type narrowing
+    assert root_node.text == "Summary Text"
     # The summary node children indices should correspond to the L0 IDs.
-    # checking that children_indices contains 0 and 1 (as strings)
-    assert set(tree.root_node.children_indices) == {"0", "1"}
+    # checking that children_indices contains 0 and 1 (as integers for Chunks)
+    assert set(root_node.children_indices) == {0, 1}
 
 
 def test_raptor_empty_iterator_error() -> None:

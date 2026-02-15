@@ -3,6 +3,7 @@ from typing import Any
 import param
 
 from domain_models.manifest import Chunk, SummaryNode
+from domain_models.types import NodeID
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 
 
@@ -16,8 +17,9 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
     root_node = param.ClassSelector(class_=SummaryNode, allow_None=True)
     selected_node = param.ClassSelector(class_=(SummaryNode, Chunk), allow_None=True)
 
-    breadcrumbs = param.List(default=[])
-    current_view_nodes = param.List(default=[])
+    # Use item_type to hint the contents of the list, although param validation might be strict
+    breadcrumbs = param.List(default=[], item_type=(SummaryNode, Chunk))
+    current_view_nodes = param.List(default=[], item_type=(SummaryNode, Chunk))
 
     is_processing = param.Boolean(default=False)
 
@@ -38,7 +40,7 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
             self.breadcrumbs = []
             self.current_view_nodes = []
 
-    def select_node(self, node_id: str | int) -> None:
+    def select_node(self, node_id: NodeID) -> None:
         """Select a node and update view state."""
         node = self.engine.get_node(node_id)
         if not node:
@@ -62,17 +64,19 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
 
         if found:
             self.breadcrumbs = new_breadcrumbs
-        # Check if the node is a child of the current last breadcrumb (validation)
-        # For this cycle, we trust the navigation flow and append
-        # But if breadcrumbs is empty, we just start a new path
         elif not self.breadcrumbs:
             self.breadcrumbs = [node]
         else:
+            # In a strict tree navigation, we might check if 'node' is a child of the last breadcrumb.
+            # However, for flexible navigation (jumping), we append.
+            # Ideally, we should check lineage, but that requires traversing up which is expensive or storing parent pointers.
             self.breadcrumbs.append(node)
 
         # Update current view nodes (children of selected node)
         if isinstance(node, SummaryNode):
-            self.current_view_nodes = self.engine.get_children(node)
+            # get_children returns an Iterator, but param.List expects a list.
+            # Materialize it.
+            self.current_view_nodes = list(self.engine.get_children(node))
         else:
             self.current_view_nodes = []
 

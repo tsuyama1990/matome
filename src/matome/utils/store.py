@@ -117,8 +117,6 @@ class DiskChunkStore:
 
     def _validate_node_id(self, node_id: str) -> str:
         """Validate node ID format to prevent injection/corruption."""
-        # Convert integer indices to string if necessary, but caller usually handles this.
-        # Here we strictly validate string format.
         if not VALID_NODE_ID_PATTERN.match(node_id):
             msg = f"Invalid node ID format: {node_id}"
             raise ValueError(msg)
@@ -236,21 +234,29 @@ class DiskChunkStore:
             msg = f"Unexpected error adding nodes: {e}"
             raise StoreError(msg) from e
 
-    def get_nodes(self, node_ids: Iterable[str]) -> Iterator[Chunk | SummaryNode]:
+    def get_nodes(self, node_ids: Iterable[str | int]) -> Iterator[Chunk | SummaryNode]:
         """
         Retrieve multiple nodes by ID.
         Iterates over input IDs in batches, queries DB, and yields results via streaming.
+        Accepts str or int IDs and normalizes them.
 
         Note: Does NOT guarantee output order matches input order.
         Yields only found nodes. Missing nodes are skipped.
         """
         # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
-        for batch_ids in batched(node_ids, self.read_batch_size):
-            # Validate IDs in batch efficiently
-            invalid_ids = [nid for nid in batch_ids if not VALID_NODE_ID_PATTERN.match(nid)]
-            if invalid_ids:
-                msg = f"Invalid node IDs found in batch: {invalid_ids[:5]}..."
-                raise ValueError(msg)
+        for batch_raw_ids in batched(node_ids, self.read_batch_size):
+            # Normalize and validate IDs in batch efficiently
+            batch_ids: list[str] = []
+            for raw_id in batch_raw_ids:
+                normalized_id = str(raw_id)
+                if not VALID_NODE_ID_PATTERN.match(normalized_id):
+                    # We might log this but skipping is safer to avoid injection
+                    logger.warning(f"Skipping invalid node ID: {normalized_id}")
+                    continue
+                batch_ids.append(normalized_id)
+
+            if not batch_ids:
+                continue
 
             stmt = select(
                 self.nodes_table.c.id,

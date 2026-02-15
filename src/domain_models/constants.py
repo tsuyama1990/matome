@@ -2,6 +2,7 @@
 Centralized constants for the Matome project.
 Includes security patterns, defaults, and configuration whitelists.
 """
+from typing import Final
 
 # Security / Validation
 PROMPT_INJECTION_PATTERNS = [
@@ -77,9 +78,11 @@ MAX_DB_CONTENT_LENGTH = 1_000_000  # 1MB limit for single node content
 # Interactive Defaults
 DEFAULT_MAX_INSTRUCTION_LENGTH = 1000
 DEFAULT_SERVER_PORT = 5006
+DEFAULT_REFINEMENT_LIMIT_MULTIPLIER: Final[int] = 2
 
 # File Processing Defaults
 DEFAULT_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024  # 500 MB
+DEFAULT_IO_BUFFER_SIZE: Final[int] = 8192
 
 # Summarization Defaults
 DEFAULT_MAX_SUMMARY_TOKENS = 200

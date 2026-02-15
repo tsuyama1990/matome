@@ -1,13 +1,13 @@
 import logging
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NoReturn
 
 import panel as pn
 import typer
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import DocumentTree
+from domain_models.manifest import Chunk, DocumentTree, SummaryNode
 from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
@@ -38,58 +38,74 @@ app = typer.Typer(
 DEFAULT_CONFIG = ProcessingConfig.default()
 
 
+def _fail_with_error(message: str) -> NoReturn:
+    """Centralized error handling: Log error and exit with code 1."""
+    typer.echo(message, err=True)
+    logger.error(message)
+    raise typer.Exit(code=1)
+
+
 def _handle_file_too_large(size: int, limit: int) -> None:
     """Handle error when file is too large."""
-    typer.echo(
-        f"File too large: {size} bytes. Limit is {limit / (1024*1024):.2f}MB.", err=True
+    _fail_with_error(
+        f"File too large: {size} bytes. Limit is {limit / (1024*1024):.2f}MB."
     )
-    raise typer.Exit(code=1)
-
-
-def _handle_invalid_output_dir(message: str) -> None:
-    """Handle invalid output directory error."""
-    typer.echo(f"Invalid output directory: {message}", err=True)
-    raise typer.Exit(code=1)
 
 
 def _validate_output_dir(output_dir: Path) -> None:
     """
     Validate output directory to prevent path traversal or unsafe locations.
-    Assuming we only want to write to subdirectories of CWD or safe absolute paths.
+    Enforces that the path must be relative to the current working directory
+    and resolves symbolic links to ensure safety.
     """
     try:
+        # Resolve path to handle '..' and absolute paths
+        # strict=False because the directory might not exist yet
         resolved = output_dir.resolve()
         cwd = Path.cwd().resolve()
 
         # Security check: Ensure path is relative to CWD to prevent writing to arbitrary system locations
-        # unless explicitly authorized (for this CLI tool, limiting to CWD is a safe default)
         if not resolved.is_relative_to(cwd):
-             # Exception: We might allow /tmp for testing or specific user provided paths if verified.
-             # But for strict security:
-             _handle_invalid_output_dir(f"Path must be within current working directory ({cwd})")
+             _fail_with_error(f"Path must be within current working directory ({cwd})")
 
-        # Prevent traversal outside intended parent if strict mode (optional)
-        # For now, we ensure we can create it and it's not a file.
+        # Check for symbolic link attacks
+        # We check if the directory itself or any of its parents (up to CWD) are symlinks.
+        # We traverse up until we hit the root or CWD or the path doesn't exist.
+
+        check_path = output_dir
+        while check_path != Path(check_path.anchor): # Stop at root
+             if check_path.exists() and check_path.is_symlink():
+                 _fail_with_error(f"Path component '{check_path.name}' is a symbolic link. Symlinks are not allowed for security.")
+
+             if check_path == cwd:
+                 break
+
+             check_path = check_path.parent
+
+        # Also double check resolved path is a directory if it exists
         if resolved.exists() and not resolved.is_dir():
-             _handle_invalid_output_dir(f"Path {output_dir} exists and is not a directory.")
+             _fail_with_error(f"Path {output_dir} exists and is not a directory.")
 
     except Exception as e:
-        _handle_invalid_output_dir(str(e))
+        _fail_with_error(f"Invalid output directory: {e!s}")
 
 
-def _stream_file_content(path: Path) -> Iterator[str]:
+def _stream_file_content(path: Path, chunk_size: int = DEFAULT_CONFIG.io_buffer_size) -> Iterator[str]:
     """
-    Stream file content line by line (or chunk by chunk) to avoid loading into memory.
+    Stream file content chunk by chunk to avoid loading into memory.
+    Yields decoded text chunks.
     """
     try:
-        with path.open("r", encoding="utf-8") as f:
-            yield from f
+        with path.open("r", encoding="utf-8", buffering=chunk_size) as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                yield chunk
     except UnicodeDecodeError as e:
-        typer.echo(f"File encoding error: {e}. Please ensure the file is valid UTF-8.", err=True)
-        raise typer.Exit(code=1) from e
+        _fail_with_error(f"File encoding error: {e}. Please ensure the file is valid UTF-8.")
     except Exception as e:
-        typer.echo(f"Error reading file stream: {e}", err=True)
-        raise typer.Exit(code=1) from e
+        _fail_with_error(f"Error reading file stream: {e}")
 
 
 def _initialize_components(config: ProcessingConfig) -> tuple[
@@ -130,9 +146,8 @@ def _run_pipeline(
         # Pass the stream generator directly
         return engine.run(text_stream, store=store)
     except Exception as e:
-        typer.echo(f"Error during RAPTOR execution: {e}", err=True)
         logger.exception("RAPTOR execution failed.")
-        raise typer.Exit(code=1) from e
+        _fail_with_error(f"Error during RAPTOR execution: {e}")
 
 
 def _verify_results(
@@ -145,26 +160,39 @@ def _verify_results(
     """Run verification on the generated tree."""
     typer.echo("Running Verification...")
     try:
-        root_summary = tree.root_node.text
-        child_texts = []
-        for idx in tree.root_node.children_indices:
-            node = store.get_node(idx)
-            if node:
-                child_texts.append(node.text)
+        # Narrow type for mypy
+        if isinstance(tree.root_node, (SummaryNode, Chunk)):
+             root_summary = tree.root_node.text
 
-        source_text = "\n\n".join(child_texts)
-        if len(source_text) > config.verification_context_length:
-            source_text = source_text[:config.verification_context_length] + "...(truncated)"
+             child_texts = []
+             # root_node could be Chunk which has no children_indices or SummaryNode which does
+             # The loop only makes sense if it's a SummaryNode
+             if isinstance(tree.root_node, SummaryNode):
+                 for idx in tree.root_node.children_indices:
+                     node = store.get_node(idx)
+                     if node:
+                         child_texts.append(node.text)
+             elif isinstance(tree.root_node, Chunk):
+                 # If root is a chunk, verification source is the chunk itself?
+                 # Or we verify summary against source. But root IS source if it's a chunk.
+                 # Let's just use the chunk text itself as source.
+                 child_texts.append(tree.root_node.text)
 
-        result = verifier.verify(root_summary, source_text)
-        typer.echo(f"Verification Score: {result.score}")
+             source_text = "\n\n".join(child_texts)
+             if len(source_text) > config.verification_context_length:
+                 source_text = source_text[:config.verification_context_length] + "...(truncated)"
 
-        with (output_dir / "verification_result.json").open("w") as f:
-            f.write(result.model_dump_json(indent=2))
+             result = verifier.verify(root_summary, source_text)
+             typer.echo(f"Verification Score: {result.score}")
+
+             with (output_dir / "verification_result.json").open("w") as f:
+                 f.write(result.model_dump_json(indent=2))
+        else:
+             typer.echo("Root node is empty, skipping verification.")
 
     except Exception as e:
-        typer.echo(f"Verification failed: {e}", err=True)
         logger.exception("Verification failed.")
+        typer.echo(f"Verification failed: {e}", err=True)
 
 
 def _export_results(
@@ -176,16 +204,17 @@ def _export_results(
     """Export results to various formats."""
     typer.echo("Exporting results...")
     try:
-        # Stream markdown export to file
-        with (output_dir / "summary_all.md").open("w", encoding="utf-8") as f:
+        # Stream markdown export to file with buffering
+        markdown_path = output_dir / "summary_all.md"
+        with markdown_path.open("w", encoding="utf-8", buffering=config.io_buffer_size) as f:
             for line in stream_markdown(tree, store):
                 f.write(line)
 
         obs_exporter = ObsidianCanvasExporter(config)
         obs_exporter.export(tree, output_dir / "summary_kj.canvas", store)
     except Exception as e:
-        typer.echo(f"Export failed: {e}", err=True)
         logger.exception("Export failed.")
+        typer.echo(f"Export failed: {e}", err=True)
 
 
 @app.command()
@@ -274,11 +303,10 @@ def run(
         if file_stats.st_size > config.max_file_size_bytes:
             _handle_file_too_large(file_stats.st_size, config.max_file_size_bytes)
     except OSError as e:
-        typer.echo(f"Error accessing file: {e}", err=True)
-        raise typer.Exit(code=1) from e
+        _fail_with_error(f"Error accessing file: {e}")
 
-    # Create stream generator
-    text_stream = _stream_file_content(input_file)
+    # Create stream generator using config buffer size
+    text_stream = _stream_file_content(input_file, chunk_size=config.io_buffer_size)
 
     components = _initialize_components(config)
     chunker, embedder, clusterer, summarizer, verifier = components
@@ -286,7 +314,12 @@ def run(
     store_path = output_dir / "chunks.db"
 
     # Use context manager for store to ensure cleanup
-    with DiskChunkStore(db_path=store_path) as active_store:
+    # Configure store with batch sizes from config
+    with DiskChunkStore(
+        db_path=store_path,
+        write_batch_size=config.store_write_batch_size,
+        read_batch_size=config.store_read_batch_size
+    ) as active_store:
         tree = _run_pipeline(text_stream, active_store, config, components)
         typer.echo("Tree construction complete.")
 
@@ -344,30 +377,32 @@ def serve(
     pn.extension(sizing_mode="stretch_width")
 
     typer.echo(f"Starting Matome GUI on port {port}...")
+    typer.echo("WARNING: The GUI server is not authenticated. It is bound to localhost (127.0.0.1) for security.")
 
-    store = DiskChunkStore(db_path=store_path)
+    # Use context manager to ensure store is closed properly upon exit (e.g. Ctrl+C)
     try:
-        config = ProcessingConfig()  # Default config for now
+        with DiskChunkStore(db_path=store_path) as store:
+            config = ProcessingConfig()  # Default config for now
 
-        # Initialize SummarizationAgent for interactive refinement
-        # Note: Requires OPENROUTER_API_KEY environment variable
-        summarizer = SummarizationAgent(config)
+            # Initialize SummarizationAgent for interactive refinement
+            # Note: Requires OPENROUTER_API_KEY environment variable
+            summarizer = SummarizationAgent(config)
 
-        engine = InteractiveRaptorEngine(store=store, summarizer=summarizer, config=config)
-        session = InteractiveSession(engine=engine)
+            engine = InteractiveRaptorEngine(store=store, summarizer=summarizer, config=config)
+            session = InteractiveSession(engine=engine)
 
-        # Load initial tree
-        session.load_tree()
+            # Load initial tree
+            session.load_tree()
 
-        canvas = MatomeCanvas(session)
+            canvas = MatomeCanvas(session)
 
-        # Serve
-        pn.serve(canvas.view, port=port, show=False, title="Matome")  # type: ignore[no-untyped-call]
+            # Serve (blocks until stopped)
+            # Bind to 127.0.0.1 to prevent external access
+            pn.serve(canvas.view, port=port, address="127.0.0.1", show=False, title="Matome")  # type: ignore[no-untyped-call]
+
     except Exception as e:
-        typer.echo(f"Error serving GUI: {e}", err=True)
-        raise typer.Exit(code=1) from e
-    finally:
-        store.close()
+        logger.exception("Error serving GUI")
+        _fail_with_error(f"Error serving GUI: {e}")
 
 
 if __name__ == "__main__":

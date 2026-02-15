@@ -1,3 +1,5 @@
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -8,8 +10,7 @@ from matome.engines.cluster import GMMClusterer
 
 def test_approximate_clustering_path() -> None:
     """
-    Test that the approximate clustering path is taken when n_samples exceeds threshold.
-    And verify it runs IncrementalPCA + MiniBatchKMeans.
+    Test that the clustering path runs IncrementalPCA + MiniBatchKMeans.
     """
     config = ProcessingConfig(
         n_clusters=2, random_state=42, write_batch_size=10, umap_n_components=2
@@ -17,45 +18,39 @@ def test_approximate_clustering_path() -> None:
 
     clusterer = GMMClusterer()
 
-    # We patch the threshold check inside the method logic?
-    # No, hardcoded constant LARGE_SCALE_THRESHOLD = 20000.
-    # We need to mock _perform_approximate_clustering OR mock the threshold.
-    # Since it's inside the method, we can't easily patch the local variable.
-    # But we can patch the method `_perform_approximate_clustering` to ensure it's called.
-    # And we can use a huge number of samples? No, generating 20001 samples is slow.
-    # Best way: Subclass or mock GMMClusterer to change the threshold logic? No.
-    # I'll rely on patching `_perform_clustering` and `_perform_approximate_clustering`.
-
-    # Wait, I can't patch the local variable.
-    # I can mock `_stream_write_embeddings` to return a large n_samples count,
-    # but the actual file will be small. That might crash `mm_array`.
-
-    # Alternative: Use `sed` to lower the threshold in source for testing? No.
-
-    # Actually, I can just test `_perform_approximate_clustering` directly.
-    # It's a private method, but accessible in Python.
-
     data = np.random.rand(30, 10).astype("float32")
 
-    with (
-        patch("matome.engines.cluster.IncrementalPCA") as MockIPCA,
-        patch("matome.engines.cluster.MiniBatchKMeans") as MockKMeans,
-    ):
-        mock_ipca = MockIPCA.return_value
-        mock_kmeans = MockKMeans.return_value
+    # Create temporary file for IDs
+    with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+        # Write 30 IDs
+        f.write("\n".join([str(i) for i in range(30)]) + "\n")
+        path_ids = Path(f.name)
 
-        # Setup mocks
-        mock_ipca.transform.return_value = np.random.rand(10, 2)  # reduced
-        mock_kmeans.predict.return_value = np.array([0, 1] * 5)
+    try:
+        with (
+            patch("matome.engines.cluster.IncrementalPCA") as MockIPCA,
+            patch("matome.engines.cluster.MiniBatchKMeans") as MockKMeans,
+        ):
+            mock_ipca = MockIPCA.return_value
+            mock_kmeans = MockKMeans.return_value
 
-        clusters = clusterer._perform_approximate_clustering(data, 30, config)
+            # Setup mocks
+            # transform returns array of shape (batch_size, n_components)
+            mock_ipca.transform.side_effect = lambda x: np.random.rand(len(x), 2)
 
-        assert MockIPCA.called
-        assert MockKMeans.called
-        assert len(clusters) > 0
+            # predict returns labels for batch
+            mock_kmeans.predict.side_effect = lambda x: np.array([0, 1] * (len(x) // 2))
 
-        # Verify partial_fit calls
-        # batch_size=10, n_samples=30 -> 3 batches
-        assert mock_ipca.partial_fit.call_count == 3
-        assert mock_kmeans.partial_fit.call_count == 3
-        assert mock_kmeans.predict.call_count == 3
+            clusters = clusterer._perform_clustering(data, 30, path_ids, config)
+
+            assert MockIPCA.called
+            assert MockKMeans.called
+            assert len(clusters) > 0
+
+            # Verify partial_fit calls
+            # batch_size=10, n_samples=30 -> 3 batches
+            assert mock_ipca.partial_fit.call_count == 3
+            assert mock_kmeans.partial_fit.call_count == 3
+            assert mock_kmeans.predict.call_count == 3
+    finally:
+        path_ids.unlink()

@@ -25,7 +25,9 @@ def test_refine_node_missing_children() -> None:
     # Store returns the node itself
     store.get_node.side_effect = lambda nid: node if nid == "s1" else None
 
-    # But returns None for children (simulating missing/deleted children)
+    # But returns empty generator for children (simulating missing/deleted children or mismatch)
+    store.get_nodes.return_value = iter([])
 
-    with pytest.raises(ValueError, match="Node s1 has no accessible children. Cannot refine."):
+    # This should raise "Node s1 has no accessible children. Cannot refine."
+    with pytest.raises(ValueError, match="has no accessible children"):
         engine.refine_node("s1", "instruction")

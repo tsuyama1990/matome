@@ -75,20 +75,46 @@ def _perform_chunking(text: str | Iterable[str], max_tokens: int, model_name: st
         sentences_iter = iter_normalized_sentences_from_stream(text)
 
     for sentence in sentences_iter:
-        sentence_tokens = len(tokenizer.encode(sentence))
+        sentence_tokens_count = len(tokenizer.encode(sentence))
 
-        if current_tokens + sentence_tokens > max_tokens and current_chunk_sentences:
-            chunk_text = "".join(current_chunk_sentences)
-            yield create_chunk(chunk_index, chunk_text, start_char_idx)
+        # Check if adding this sentence exceeds limits
+        if current_tokens + sentence_tokens_count > max_tokens:
+            # If we have accumulated sentences, yield them first
+            if current_chunk_sentences:
+                chunk_text = "".join(current_chunk_sentences)
+                yield create_chunk(chunk_index, chunk_text, start_char_idx)
 
-            chunk_index += 1
-            start_char_idx += len(chunk_text)
+                chunk_index += 1
+                start_char_idx += len(chunk_text)
 
-            current_chunk_sentences = []
-            current_tokens = 0
+                current_chunk_sentences = []
+                current_tokens = 0
+
+            # Now check if the *current single sentence* is still too big on its own
+            if sentence_tokens_count > max_tokens:
+                # Force split the large sentence
+                # We split by characters roughly, or we could use token decoding.
+                # For simplicity and robustness, we can just treat it as a single chunk if strict token limit isn't hard requirement
+                # BUT this defeats scalability if it's huge.
+                # Let's recursive split it by tokens.
+
+                # Encode full sentence
+                tokens = tokenizer.encode(sentence)
+
+                # Split tokens into chunks
+                for i in range(0, len(tokens), max_tokens):
+                    sub_tokens = tokens[i : i + max_tokens]
+                    sub_text = tokenizer.decode(sub_tokens)
+
+                    yield create_chunk(chunk_index, sub_text, start_char_idx)
+
+                    chunk_index += 1
+                    start_char_idx += len(sub_text)
+
+                continue  # Done with this sentence
 
         current_chunk_sentences.append(sentence)
-        current_tokens += sentence_tokens
+        current_tokens += sentence_tokens_count
 
     # Final chunk
     if current_chunk_sentences:
