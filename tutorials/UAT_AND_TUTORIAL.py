@@ -26,6 +26,9 @@ def __():
     # Setup logging
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logger = logging.getLogger("matome.uat")
+
+    # Ensure deterministic behavior for Mock Mode
+    np.random.seed(42)
     return (
         Iterable,
         Iterator,
@@ -448,6 +451,7 @@ def __(mo, store_path):
         ```
         """
     )
+    print("🎉 All Systems Go: Matome 2.0 is ready for Knowledge Installation.")
     return
 
 
