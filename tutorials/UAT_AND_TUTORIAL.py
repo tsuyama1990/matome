@@ -14,6 +14,7 @@ def _():
     from pathlib import Path
     from typing import Any, Iterator, cast
 
+    import matplotlib.pyplot as plt
     import numpy as np
     from domain_models.config import ProcessingConfig
     from domain_models.types import DIKWLevel
@@ -26,6 +27,8 @@ def _():
     from matome.engines.token_chunker import JapaneseTokenChunker
     from matome.interfaces import PromptStrategy
     from matome.utils.store import DiskChunkStore
+    from matome.exporters.markdown import export_to_markdown
+    from matome.exporters.obsidian import ObsidianCanvasExporter
 
     # Setup logging
     logging.basicConfig(stream=sys.stdout, level=logging.INFO, force=True)
@@ -40,6 +43,7 @@ def _():
         InteractiveRaptorEngine,
         Iterator,
         JapaneseTokenChunker,
+        ObsidianCanvasExporter,
         Path,
         ProcessingConfig,
         PromptStrategy,
@@ -47,10 +51,12 @@ def _():
         SummarizationAgent,
         SummaryNode,
         cast,
+        export_to_markdown,
         logger,
         logging,
         np,
         os,
+        plt,
         sys,
         tempfile,
         uuid,
@@ -71,7 +77,7 @@ def _(Any, EmbeddingService, Iterator, ProcessingConfig, PromptStrategy, Summari
         def embed_strings(self, texts: Any) -> Iterator[list[float]]:
             # Return random vectors
             for _ in texts:
-                # Use seed for deterministic results if needed, or just random
+                # Use seed for deterministic results
                 yield np.random.rand(self.dim).tolist()
 
         def embed_chunks(self, chunks: Iterator[Chunk]) -> Iterator[Chunk]:
@@ -130,6 +136,9 @@ def _(
     # Initialize Config
     config = ProcessingConfig()
 
+    # Ensure tutorials directory exists
+    os.makedirs("tutorials", exist_ok=True)
+
     # Initialize Components
     chunker = JapaneseTokenChunker(config)
     clusterer = GMMClusterer()
@@ -156,131 +165,189 @@ def _(
 
 
 @app.cell
-def _(DiskChunkStore, Path, engine, logger):
-    # --- PART 1: The "Grok" Moment (Cycle 01) ---
+def _(chunker, config, logger):
+    # --- SCENARIO 1: Quickstart (The Basics) ---
+    logger.info("Starting SCENARIO 1: Quickstart")
 
-    # Load sample text
-    # We use a simple string for the tutorial to ensure it runs without external files if needed,
-    # or we can check if file exists.
-    sample_text = """
-    Investment Philosophy:
-    Value investing is an investment paradigm that involves buying securities that appear underpriced by some form of fundamental analysis.
-    The concept was first popularized by Benjamin Graham and David Dodd.
-    Warren Buffett is one of the most famous proponents of this strategy.
+    # Sample text (simulating a financial document)
+    SAMPLE_TEXT = """
+    【投資哲学】
+    バリュー投資は、何らかのファンダメンタル分析により過小評価されていると思われる証券を購入する投資手法である。
+    この概念はベンジャミン・グレアムとデビッド・ドッドによって最初に広められた。
+    ウォーレン・バフェットはこの戦略の最も有名な支持者の一人である。
 
-    Deep Learning:
-    Deep learning is part of a broader family of machine learning methods based on artificial neural networks with representation learning.
-    Learning can be supervised, semi-supervised or unsupervised.
-    Deep learning architectures such as deep neural networks, deep belief networks, deep reinforcement learning, recurrent neural networks and convolutional neural networks have been applied to fields including computer vision, speech recognition, natural language processing, machine translation, bioinformatics, drug design, medical image analysis, material inspection and board game programs, where they have produced results comparable to and in some cases surpassing human expert performance.
-    """ * 5  # Duplicate to ensure enough content for clustering
+    【ディープラーニング】
+    ディープラーニングは、表現学習を伴う人工ニューラルネットワークに基づく機械学習手法の広範なファミリーの一部である。
+    学習は、教師あり、半教師あり、または教師なしで行うことができる。
+    ディープニューラルネットワーク、ディープビリーフネットワーク、深層強化学習、リカレントニューラルネットワーク、畳み込みニューラルネットワークなどのディープラーニングアーキテクチャは、コンピュータビジョン、音声認識、自然言語処理、機械翻訳、バイオインフォマティクス、創薬、医療画像分析、材料検査、ボードゲームプログラムなどの分野に適用され、人間の専門家のパフォーマンスに匹敵し、場合によってはそれを超える結果を生み出している。
+
+    【四季報の読み方】
+    会社四季報は、日本の全上場企業のデータブックである。
+    業績予想、財務状況、株主構成などが記載されている。
+    特に重要なのは「業績欄」であり、売上高や営業利益の推移を確認することで、企業の成長性を判断できる。
+    また、「材料欄」には、新製品の開発状況や提携話など、将来の株価に影響を与える可能性のある情報が記載されていることが多い。
+    PER（株価収益率）やPBR（株価純資産倍率）などの指標も重要であるが、これらはあくまで過去の実績に基づくものであり、将来の成長性を加味して判断する必要がある。
+    """ * 3  # Duplicate to ensure enough content for chunking
+
+    # 1. Chunking
+    chunks = list(chunker.split_text(SAMPLE_TEXT, config))
+    logger.info(f"Generated {len(chunks)} chunks.")
+
+    # 2. Visualize Chunks
+    print("--- First 5 Chunks ---")
+    for i, chunk in enumerate(chunks[:5]):
+        print(f"Chunk {i}: {chunk.text.strip()[:50]}...")
+
+    assert len(chunks) > 0, "Should generate chunks"
+
+    print("✅ SCENARIO 1 Passed: Text ingested and chunked.")
+    return SAMPLE_TEXT, chunks, i
+
+
+@app.cell
+def _(chunks, clusterer, embedder, logger, plt):
+    # --- SCENARIO 2: Clustering Deep Dive (The Engine) ---
+    logger.info("Starting SCENARIO 2: Clustering Deep Dive")
+
+    # 1. Generate Embeddings
+    # Note: embedder.embed_chunks yields chunks with embeddings populated
+    embedded_chunks = list(embedder.embed_chunks(iter(chunks)))
+    logger.info("Embeddings generated.")
+
+    # 2. Run Clustering
+    # We manually trigger clustering to visualize it
+    # GMMClusterer expects chunks with embeddings
+    # Note: GMMClusterer.cluster returns (clusters, global_embeddings)
+    # But wait, RaptorEngine handles this. Let's inspect GMMClusterer.
+    # We can just inspect the embeddings for visualization since clustering logic is internal
+
+    # Extract embeddings for visualization
+    embeddings = [c.embedding for c in embedded_chunks if c.embedding]
+
+    if len(embeddings) >= 2:
+        # Visualize 2D projection
+        # We use PCA for simplicity here (mocking UMAP)
+        from sklearn.decomposition import PCA
+
+        pca = PCA(n_components=2)
+        coords = pca.fit_transform(embeddings)
+
+        plt.figure(figsize=(8, 6))
+        plt.scatter(coords[:, 0], coords[:, 1], alpha=0.5)
+        plt.title("Chunk Embeddings Projection (PCA)")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.grid(True)
+        # In a real notebook, this would show the plot. In headless, we save it.
+        plt.savefig("tutorials/clustering_visualization.png")
+        logger.info("Clustering visualization saved to tutorials/clustering_visualization.png")
+    else:
+        logger.warning("Not enough embeddings to visualize.")
+
+    print("✅ SCENARIO 2 Passed: Embeddings generated and visualized.")
+    return embedded_chunks, embeddings
+
+
+@app.cell
+def _(DiskChunkStore, Path, SAMPLE_TEXT, engine, export_to_markdown, logger):
+    # --- SCENARIO 3: Full Raptor Pipeline (The "Aha!" Moment) ---
+    logger.info("Starting SCENARIO 3: Full Raptor Pipeline")
 
     # Setup temporary DB
-    # We use a specific path so we can inspect it later if needed, but for UAT clear it first.
     db_path = Path("tutorials/chunks.db")
     if db_path.exists():
         db_path.unlink()
 
     store = DiskChunkStore(db_path)
 
-    logger.info("Running Raptor Engine...")
+    # Run Engine
     try:
-        root_tree = engine.run(sample_text, store)
+        root_tree = engine.run(SAMPLE_TEXT, store)
         logger.info("Raptor Engine finished successfully.")
     except Exception as e:
         logger.error(f"Raptor Engine failed: {e}")
         raise
 
-    # VALIDATION: Check Root Node
+    # Validation
     root_node = root_tree.root_node
-    logger.info(f"Root Node ID: {root_node.id}")
-    logger.info(f"Root Node Text: {root_node.text}")
-    logger.info(f"Root Level: {root_node.level}")
+    logger.info(f"Root Node Level: {root_node.level}")
 
-    # Assert
-    # Note: In mock mode with random embeddings, we might get unexpected clustering levels,
-    # but we should get a root node.
-    assert root_node is not None, "Root node should not be None"
-    # assert root_node.level > 0, "Root node should be at least level 1 (summary)"
-    # (If text is small, it might be level 1 single_chunk_root)
+    # Export to Markdown
+    md_output = export_to_markdown(root_tree, store)
+    with open("summary_all.md", "w", encoding="utf-8") as f:
+        f.write(md_output)
 
-    print(f"✅ Part 1 Passed: Generated Tree with Root Level {root_node.level}")
-    return db_path, root_node, root_tree, sample_text, store
+    logger.info("Exported summary to summary_all.md")
 
+    assert Path("summary_all.md").exists(), "Markdown file should exist"
+    assert len(md_output) > 0, "Markdown content should not be empty"
 
-@app.cell
-def _(DiskChunkStore, root_node, store):
-    # --- PART 2: Semantic Zooming (Cycle 03) ---
-
-    children_indices = root_node.children_indices
-    print(f"Root has {len(children_indices)} children.")
-
-    children = list(store.get_nodes(children_indices))
-    assert len(children) == len(children_indices), "Should retrieve all children"
-
-    for child_node in children:
-        print(f" - Child ({type(child_node).__name__}): {child_node.text[:30]}...")
-
-    print("✅ Part 2 Passed: Semantic Zooming traversal verified.")
-    return child_node, children, children_indices
+    print("✅ SCENARIO 3 Passed: Pipeline executed and Markdown exported.")
+    return db_path, md_output, root_node, root_tree, store
 
 
 @app.cell
-def _(InteractiveRaptorEngine, config, root_node, store, summarizer):
-    # --- PART 3: Interactive Refinement (Cycle 02 & 04) ---
+def _(ObsidianCanvasExporter, Path, config, logger, root_tree, store):
+    # --- SCENARIO 4: KJ Method Visualization (The Output) ---
+    logger.info("Starting SCENARIO 4: KJ Method Visualization")
 
+    exporter = ObsidianCanvasExporter(config)
+    output_path = Path("summary_kj.canvas")
+
+    exporter.export(root_tree, output_path, store)
+
+    logger.info(f"Exported Canvas to {output_path}")
+
+    assert output_path.exists(), "Canvas file should exist"
+
+    print("✅ SCENARIO 4 Passed: Obsidian Canvas exported.")
+    return exporter, output_path
+
+
+@app.cell
+def _(
+    Chunk,
+    InteractiveRaptorEngine,
+    config,
+    root_node,
+    store,
+    summarizer,
+):
+    # --- BONUS: Interactive Refinement & Traceability ---
+
+    # Interactive Refinement
     interactive = InteractiveRaptorEngine(store, summarizer, config)
-
-    # Select a node to refine (The Root)
     target_node_id = root_node.id
     instruction = "Explain like I'm 5"
 
-    print(f"Refining Node {target_node_id} with: '{instruction}'")
-
     refined_node = interactive.refine_node(str(target_node_id), instruction)
 
-    print(f"Refined Text: {refined_node.text}")
+    assert refined_node.metadata.is_user_edited is True
+    assert instruction in refined_node.metadata.refinement_history
 
-    # Validation
-    assert refined_node.metadata.is_user_edited is True, "Node should be marked as user edited"
-    assert instruction in refined_node.metadata.refinement_history, "Instruction should be in history"
-    if "Refined:" in refined_node.text: # Only checks this if using MockSummarizationAgent
-         pass
+    print(f"Refined Node: {refined_node.text[:50]}...")
+    print("✅ Interactive Refinement Verified.")
 
-    print("✅ Part 3 Passed: Interactive Refinement verified.")
-    return instruction, interactive, refined_node, target_node_id
-
-
-@app.cell
-def _(Chunk, interactive, target_node_id):
-    # --- PART 4: Traceability (Cycle 05) ---
-
-    print(f"Tracing sources for Node {target_node_id}...")
-
+    # Traceability
     source_chunks = list(interactive.get_source_chunks(str(target_node_id)))
+    assert len(source_chunks) > 0
+    assert isinstance(source_chunks[0], Chunk)
 
-    print(f"Found {len(source_chunks)} source chunks.")
-
-    assert len(source_chunks) > 0, "Should find at least one source chunk"
-    assert isinstance(source_chunks[0], Chunk), "Items should be Chunk objects"
-
-    print(f"Sample Source: {source_chunks[0].text[:50]}...")
-
-    print("✅ Part 4 Passed: Traceability verified.")
-    return source_chunks
+    print(f"Traced {len(source_chunks)} source chunks.")
+    print("✅ Traceability Verified.")
+    return (
+        instruction,
+        interactive,
+        refined_node,
+        source_chunks,
+        target_node_id,
+    )
 
 
 @app.cell
 def _(db_path):
-    # --- PART 5: Launching the GUI ---
-
-    print("To explore the tree visually, run the following command in your terminal:")
-    print(f"uv run matome serve {db_path}")
-    return
-
-
-@app.cell
-def _():
-    print("🎉 All Systems Go: Matome 2.0 is ready for Knowledge Installation.")
+    print("🎉 All Scenarios Passed!")
+    print(f"To explore the tree visually, run: uv run matome serve {db_path}")
     return
 
 
