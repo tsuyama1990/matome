@@ -1,3 +1,4 @@
+import itertools
 from typing import Any
 
 import param
@@ -78,9 +79,10 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
 
         # Update current view nodes (children of selected node)
         if isinstance(node, SummaryNode):
-            # get_children returns an Iterator, but param.List expects a list.
-            # Materialize it.
-            self.current_view_nodes = list(self.engine.get_children(node))
+            # get_children returns an Iterator.
+            # Limit the number of children displayed to avoid UI overload.
+            limit = self.engine.config.ui_max_children
+            self.current_view_nodes = list(itertools.islice(self.engine.get_children(node), limit))
         else:
             self.current_view_nodes = []
 
@@ -119,8 +121,10 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
         """
         self.is_processing = True
         try:
-            chunks = self.engine.get_source_chunks(node_id)
-            self.source_chunks = chunks
+            limit = self.engine.config.ui_max_source_chunks
+            # Materialize iterator up to limit
+            chunks_iter = self.engine.get_source_chunks(node_id, limit=limit)
+            self.source_chunks = list(chunks_iter)
             self.show_source_chunks = True
         except Exception:
             # In a real app we might want to show a notification

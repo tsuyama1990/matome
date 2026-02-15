@@ -227,6 +227,12 @@ class ProcessingConfig(BaseModel):
         ge=1,
         description="Multiplier for context limit during refinement (relative to max_input_length)."
     )
+    ui_max_source_chunks: int = Field(
+        default=100, ge=1, description="Maximum number of source chunks to display in the UI."
+    )
+    ui_max_children: int = Field(
+        default=50, ge=1, description="Maximum number of child nodes to display in the UI."
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(

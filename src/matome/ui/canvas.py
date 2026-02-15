@@ -19,8 +19,8 @@ class MatomeCanvas:
         self._template: pn.template.MaterialTemplate | None = None
         # Default format if not in config (though config usually has it, this is a UI-specific constant)
         # Assuming session.engine.config has level_format (added in recent refactor)
-        # Fallback to default if not present
-        self._level_format = getattr(session.engine.config, "level_format", "L{level}: {dikw}")
+        # Ensure we use the configuration correctly without silent fallback
+        self._level_format = session.engine.config.level_format
 
     def view(self) -> pn.template.MaterialTemplate:
         """Return the main template."""

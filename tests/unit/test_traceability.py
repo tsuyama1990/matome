@@ -34,11 +34,36 @@ def test_get_source_chunks_direct_children(interactive_engine: InteractiveRaptor
     # When get_nodes is called with [1, 2], return [c1, c2]
     mock_store.get_nodes.return_value = iter([c1, c2])
 
-    chunks = interactive_engine.get_source_chunks("s1")
+    chunks_iter = interactive_engine.get_source_chunks("s1")
+    chunks = list(chunks_iter)
 
     assert len(chunks) == 2
     assert c1 in chunks
     assert c2 in chunks
+
+def test_get_source_chunks_limit(interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:
+    """Test retrieving chunks with a limit."""
+    summary_node = SummaryNode(
+        id="s1",
+        text="Summary",
+        level=1,
+        children_indices=[1, 2, 3],
+        metadata=NodeMetadata(),
+    )
+    c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=2)
+    c2 = Chunk(index=2, text="C2", start_char_idx=3, end_char_idx=5)
+    c3 = Chunk(index=3, text="C3", start_char_idx=6, end_char_idx=8)
+
+    mock_store.get_node.return_value = summary_node
+    mock_store.get_nodes.return_value = iter([c1, c2, c3])
+
+    chunks_iter = interactive_engine.get_source_chunks("s1", limit=2)
+    chunks = list(chunks_iter)
+
+    assert len(chunks) == 2
+    assert c1 in chunks
+    assert c2 in chunks
+    assert c3 not in chunks
 
 
 def test_get_source_chunks_nested(interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:
@@ -79,7 +104,8 @@ def test_get_source_chunks_nested(interactive_engine: InteractiveRaptorEngine, m
         iter([c1, c2])
     ]
 
-    chunks = interactive_engine.get_source_chunks("root")
+    chunks_iter = interactive_engine.get_source_chunks("root")
+    chunks = list(chunks_iter)
 
     assert len(chunks) == 2
     assert c1 in chunks
@@ -117,7 +143,8 @@ def test_get_source_chunks_mixed(interactive_engine: InteractiveRaptorEngine, mo
         iter([c1, c2])
     ]
 
-    chunks = interactive_engine.get_source_chunks("root")
+    chunks_iter = interactive_engine.get_source_chunks("root")
+    chunks = list(chunks_iter)
 
     assert len(chunks) == 3
     assert c1 in chunks
@@ -127,8 +154,8 @@ def test_get_source_chunks_mixed(interactive_engine: InteractiveRaptorEngine, mo
 
 def test_get_source_chunks_node_not_found(interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:
     mock_store.get_node.return_value = None
-    chunks = interactive_engine.get_source_chunks("missing")
-    assert chunks == []
+    chunks_iter = interactive_engine.get_source_chunks("missing")
+    assert list(chunks_iter) == []
 
 
 def test_get_source_chunks_from_chunk(interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:
