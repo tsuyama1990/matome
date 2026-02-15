@@ -2457,6 +2457,7 @@ dev = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "ipython" },
     { name = "marimo" },
     { name = "mypy" },
     { name = "pytest" },
@@ -2499,6 +2500,7 @@ provides-extras = ["dev"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "ipython", specifier = ">=8.0.0" },
     { name = "marimo", specifier = ">=0.1.0" },
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "pytest", specifier = ">=9.0.2" },
