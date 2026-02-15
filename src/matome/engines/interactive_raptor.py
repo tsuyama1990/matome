@@ -4,6 +4,7 @@ from collections import deque
 from collections.abc import Iterator
 
 from domain_models.config import ProcessingConfig
+from domain_models.constants import PROMPT_INJECTION_PATTERNS
 from domain_models.manifest import Chunk, SummaryNode
 from domain_models.types import NodeID
 from matome.agents.strategies import (
@@ -12,7 +13,7 @@ from matome.agents.strategies import (
 )
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import MatomeError
-from matome.utils.store import DiskChunkStore
+from matome.utils.store import DiskChunkStore, StoreError
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class InteractiveRaptorEngine:
         """
         try:
             return self.store.get_node(node_id)
-        except Exception:
+        except (StoreError, ValueError):
             logger.exception(f"Failed to retrieve node {node_id}")
             raise
 
@@ -58,7 +59,7 @@ class InteractiveRaptorEngine:
         """
         try:
             node = self.store.get_node(node_id)
-        except Exception:
+        except (StoreError, ValueError):
             logger.exception(f"Failed to retrieve node {node_id} for source tracing")
             return
 
@@ -72,22 +73,36 @@ class InteractiveRaptorEngine:
         yield from self._traverse_source_chunks(node, limit)
 
     def _traverse_source_chunks(self, root: SummaryNode, limit: int | None) -> Iterator[Chunk]:
-        """Helper to traverse source chunks using BFS."""
-        # BFS Traversal using deque for O(1) pops
+        """
+        Helper to traverse source chunks using layer-by-layer BFS with batch fetching.
+        Reduces N+1 queries by fetching children of the entire current layer at once.
+        """
         queue: deque[SummaryNode] = deque([root])
         visited: set[str] = {str(root.id)}
         yielded_count = 0
+
+        # Max queue size safety
+        MAX_QUEUE_SIZE = 10000
 
         while queue:
             if limit and yielded_count >= limit:
                 break
 
-            try:
-                current = queue.popleft()
-                child_ids = current.children_indices
+            # Process current layer
+            current_layer_nodes = list(queue)
+            queue.clear()
 
-                # Fetch children in batch
-                for child in self.store.get_nodes(child_ids):
+            # Collect all child IDs for this layer
+            all_child_ids: list[str | int] = []
+            for node in current_layer_nodes:
+                all_child_ids.extend(node.children_indices)
+
+            if not all_child_ids:
+                continue
+
+            try:
+                # Batch fetch all children for this layer
+                for child in self.store.get_nodes(all_child_ids):
                     if child is None:
                         continue
 
@@ -96,10 +111,14 @@ class InteractiveRaptorEngine:
                         yielded_count += 1
                         if limit and yielded_count >= limit:
                             break
-                    elif isinstance(child, SummaryNode) and str(child.id) not in visited:
+                    # child is SummaryNode because get_nodes return type union, checked Chunk above
+                    elif str(child.id) not in visited:
                         visited.add(str(child.id))
-                        queue.append(child)
-            except Exception:
+                        if len(queue) < MAX_QUEUE_SIZE:
+                            queue.append(child) # type: ignore[arg-type]
+                        else:
+                            logger.warning("Traversal queue limit reached. Truncating search.")
+            except (StoreError, ValueError):
                 logger.exception("Error during source chunk traversal")
                 break
 
@@ -111,15 +130,13 @@ class InteractiveRaptorEngine:
         Returns:
             Iterator[SummaryNode | Chunk]: The immediate children of the given node.
         """
-        # Batch retrieve children for efficiency (avoid N+1)
         child_ids = node.children_indices
 
         try:
-            # get_nodes returns a generator and fetches in batches
             for child in self.store.get_nodes(child_ids):
                 if child is not None:
                     yield child
-        except Exception:
+        except (StoreError, ValueError):
             logger.exception(f"Failed to retrieve children for node {node.id}")
             raise
 
@@ -133,7 +150,7 @@ class InteractiveRaptorEngine:
         """
         try:
             return self._get_root_node_internal()
-        except Exception:
+        except (StoreError, ValueError):
             logger.exception("Failed to retrieve root node")
             raise
 
@@ -141,10 +158,8 @@ class InteractiveRaptorEngine:
         """Internal helper for root node retrieval."""
         max_level = self.store.get_max_level()
         if max_level == 0:
-            # Empty store or only chunks is acceptable
             return None
 
-        # Get nodes at max level
         ids_iter = self.store.get_node_ids_by_level(max_level)
         try:
             root_id = next(ids_iter)
@@ -163,7 +178,7 @@ class InteractiveRaptorEngine:
         """Helper to retrieve and validate a SummaryNode exists."""
         try:
             node = self.store.get_node(node_id)
-        except Exception:
+        except (StoreError, ValueError):
             logger.exception(f"Database error retrieving node {node_id}")
             raise
 
@@ -194,44 +209,47 @@ class InteractiveRaptorEngine:
 
         return self._validate_node(node_id)
 
-    def _retrieve_and_validate_children_content(self, node: SummaryNode) -> str:
+    def _retrieve_children_content(self, node: SummaryNode) -> tuple[list[str], int]:
         """
-        Retrieve children, validate count, and concatenate content safely.
-        Returns the concatenated source text.
+        Stream children and collect text.
+        Returns: (list of text chunks, total length)
         """
         limit = self.config.max_input_length * self.config.refinement_context_limit_multiplier
         current_len = 0
-        children_count = 0
         child_texts: list[str] = []
 
         try:
-            # Stream children to avoid memory issues with huge trees
             for child in self.get_children(node):
-                children_count += 1
                 text_len = len(child.text)
-
-                # Check length limit before appending
                 if current_len + text_len > limit:
                     logger.warning(
                         f"Refinement source text for node {node.id} exceeds safety limit ({limit}). Truncating."
                     )
                     break
-
                 child_texts.append(child.text)
                 current_len += text_len
-        except Exception:
+        except (StoreError, ValueError):
             logger.exception(f"Error retrieving children content for node {node.id}")
             raise
+
+        return child_texts, current_len
+
+    def _retrieve_and_validate_children_content(self, node: SummaryNode) -> str:
+        """
+        Retrieve children, validate count, and concatenate content safely.
+        Returns the concatenated source text.
+        """
+        child_texts, current_len = self._retrieve_children_content(node)
+        children_count = len(child_texts)
 
         if children_count == 0:
              msg = f"Node {node.id} has no accessible children. Cannot refine."
              raise ValueError(msg)
 
-        # Basic consistency check
+        limit = self.config.max_input_length * self.config.refinement_context_limit_multiplier
         if children_count != len(node.children_indices) and current_len <= limit:
              msg = f"Node {node.id} expects {len(node.children_indices)} children but found {children_count}."
              logger.error(msg)
-             # We allow partial recovery if some children are missing but we found some content
              if current_len == 0:
                  raise ValueError(msg)
 
@@ -242,20 +260,20 @@ class InteractiveRaptorEngine:
         Sanitize user instruction to prevent injection or formatting issues.
         Enforces strict content validation.
         """
-        # Strip leading/trailing whitespace
         clean = instruction.strip()
 
-        # Length check (redundant but safe)
         if len(clean) > self.config.max_instruction_length:
              clean = clean[:self.config.max_instruction_length]
 
-        # Remove control characters (except newline/tab) which can mess up logging or some parsers
-        # Using a regex to keep only printable characters + newline + tab
-        # Also strictly disallow common injection patterns if any (though LLM is the sink)
-        # We rely on SummarizationAgent's SYSTEM_INJECTION_PATTERNS for deep inspection,
-        # but here we ensure basic string hygiene.
+        # Check for injection patterns
+        for pattern in PROMPT_INJECTION_PATTERNS:
+            if re.search(pattern, clean):
+                msg = f"Instruction contains forbidden pattern: {pattern}"
+                logger.warning(msg)
+                error_msg = "Instruction contains forbidden content."
+                raise ValueError(error_msg)
 
-        # Remove ASCII control chars < 32 except 9 (tab), 10 (LF), 13 (CR)
+        # Basic sanitization
         return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', clean)
 
     def _generate_refinement_summary(self, source_text: str, instruction: str, node: SummaryNode) -> str:
@@ -282,23 +300,15 @@ class InteractiveRaptorEngine:
         node.metadata.refinement_history.append(instruction)
         node.embedding = None
 
-        # update_node in DiskChunkStore is atomic (uses explicit transaction)
         try:
             self.store.update_node(node)
-        except Exception:
+        except (StoreError, ValueError):
             logger.exception(f"Failed to persist refined node {node.id}")
             raise
 
     def refine_node(self, node_id: str, instruction: str) -> SummaryNode:
         """
         Refine a specific node based on user instruction.
-
-        Refactored to be cleaner and safer:
-        1. Validate inputs
-        2. Sanitize instruction
-        3. Retrieve context
-        4. Generate summary
-        5. Update store
         """
         try:
             return self._refine_node_internal(node_id, instruction)
@@ -311,17 +321,14 @@ class InteractiveRaptorEngine:
         node = self._validate_refinement_input(node_id, instruction)
         clean_instruction = self._sanitize_instruction(instruction)
 
-        # Enforce history limit
         max_history = self.config.max_refinement_history
         if len(node.metadata.refinement_history) >= max_history:
-             # FIFO eviction
              node.metadata.refinement_history.pop(0)
 
         source_text = self._retrieve_and_validate_children_content(node)
 
-        # Truncate source text if it exceeds limits to prevent context overflow errors
         if len(source_text) > self.config.max_input_length:
-             logger.warning(f"Refinement source text for node {node_id} truncated to {self.config.max_input_length} chars.")
+             logger.warning(f"Refinement source text for node {node_id} truncated.")
              source_text = source_text[:self.config.max_input_length]
 
         new_text = self._generate_refinement_summary(source_text, clean_instruction, node)

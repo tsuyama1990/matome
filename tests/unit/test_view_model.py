@@ -28,6 +28,7 @@ class TestInteractiveSession:
 
     @pytest.fixture
     def session(self, mock_engine: MagicMock) -> InteractiveSession:
+        # Use a real instance but we can mock methods on the engine
         return InteractiveSession(engine=mock_engine)
 
     def test_init(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
@@ -91,7 +92,7 @@ class TestInteractiveSession:
 
         # Setup engine returns
         mock_engine.get_node.side_effect = lambda nid: {"root_123": parent, "child_1": child, "100": grandchild}.get(str(nid))
-        mock_engine.get_children.return_value = [grandchild]
+        mock_engine.get_children.return_value = iter([grandchild])
 
         # Action: Select child
         session.select_node("child_1")
@@ -123,13 +124,22 @@ class TestInteractiveSession:
         session.selected_node = child
 
         mock_engine.get_node.return_value = root
-        mock_engine.get_children.return_value = [child]
+        mock_engine.get_children.return_value = iter([child])
 
         session.select_node("root")
 
         assert session.selected_node == root
         assert session.breadcrumbs == [root] # Should truncate path
         assert session.current_view_nodes == [child]
+
+    def test_select_node_store_error(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
+        """Test behavior when store raises an exception during selection."""
+        mock_engine.get_node.side_effect = Exception("Store error")
+
+        # Should catch exception and do nothing
+        session.select_node("node_1")
+
+        assert session.selected_node is None
 
     def test_load_source_chunks(self, session: InteractiveSession, mock_engine: MagicMock) -> None:
         """Test loading source chunks."""

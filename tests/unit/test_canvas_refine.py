@@ -65,7 +65,7 @@ class TestMatomeCanvasRefine:
             # We can inspect call_args but just knowing they were created is enough for now.
 
     def test_refine_button_callback(self, canvas: MatomeCanvas, mock_session: MagicMock) -> None:
-        """Test that clicking the Refine button triggers the session action."""
+        """Test that clicking the Refine button triggers the session action with correct parameters."""
         node = SummaryNode(
             id="node_1",
             text="Summary Text",
@@ -74,6 +74,7 @@ class TestMatomeCanvasRefine:
             metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
         )
 
+        # Mock pn.bind to simply return the function it wraps
         def mock_bind(func: Any, *args: Any, **kwargs: Any) -> Any:
             return func
 
@@ -111,9 +112,4 @@ class TestMatomeCanvasRefine:
             callback(None)  # Event object is ignored usually
 
             # Verify session method called with instruction
-            # BUT: In the implementation, we will likely access textarea.value inside the callback
-            # or bind it.
-            # If we use a lambda: lambda e: session.refine_current_node(textarea.value)
-            # Then executing the callback should trigger the session method.
-
             mock_session.refine_current_node.assert_called_with("New Instruction")
