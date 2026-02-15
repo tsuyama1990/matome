@@ -50,12 +50,7 @@ def run_uat() -> None:
         sources = list(engine.get_source_chunks("summary_1"))
         logger.info(f"Found {len(sources)} source chunks")
 
-        if len(sources) != 2:
-            raise RuntimeError(f"Expected 2 sources, got {len(sources)}")
-        if c1 not in sources:
-            raise RuntimeError("Chunk 1 missing from sources")
-        if c2 not in sources:
-            raise RuntimeError("Chunk 2 missing from sources")
+        _verify_sources(sources, [c1, c2])
 
         logger.info("UAT PASSED: Traceability confirmed.")
     except AttributeError:
@@ -64,6 +59,16 @@ def run_uat() -> None:
     except Exception as e:
         logger.error(f"UAT FAILED: {e}")
         raise
+
+def _verify_sources(sources: list[Chunk], expected: list[Chunk]) -> None:
+    if len(sources) != len(expected):
+        msg = f"Expected {len(expected)} sources, got {len(sources)}"
+        raise RuntimeError(msg)
+
+    for chunk in expected:
+        if chunk not in sources:
+            msg = f"Chunk {chunk.index} missing from sources"
+            raise RuntimeError(msg)
 
 if __name__ == "__main__":
     run_uat()

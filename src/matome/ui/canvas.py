@@ -38,7 +38,7 @@ class MatomeCanvas:
         def _content(show: bool, chunks: list[Chunk]) -> Viewable:
             if not show:
                 # Return empty column but ensure return type is compatible
-                return pn.Column() # type: ignore[no-any-return]
+                return pn.Column()
 
             close_btn = pn.widgets.Button(name="Close", button_type="light")  # type: ignore[no-untyped-call]
 
@@ -58,7 +58,7 @@ class MatomeCanvas:
                     )
                 )
 
-            return pn.Column( # type: ignore[no-any-return]
+            return pn.Column(
                 pn.Row(pn.pane.Markdown("## Source Verification"), pn.Spacer(), close_btn),  # type: ignore[no-untyped-call]
                 pn.Column(*chunk_views, scroll=True, height=600, sizing_mode="stretch_width"),
                 sizing_mode="stretch_width"
