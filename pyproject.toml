@@ -145,4 +145,5 @@ dev = [
     "ruff>=0.15.0",
     "marimo>=0.1.0",
     "types-requests>=2.32.4.20260107",
+    "ipython>=8.0.0",
 ]
