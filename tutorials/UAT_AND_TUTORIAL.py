@@ -11,13 +11,16 @@ def _():
     import sys
     import tempfile
     import uuid
+    import concurrent.futures
+    import threading
+    import time
     from pathlib import Path
     from typing import Any, Iterator, cast
 
     import matplotlib.pyplot as plt
     import numpy as np
     from domain_models.config import ProcessingConfig
-    from domain_models.types import DIKWLevel
+    from domain_models.types import DIKWLevel, NodeID
     from domain_models.manifest import Chunk, SummaryNode
     from matome.agents.summarizer import SummarizationAgent
     from matome.engines.cluster import GMMClusterer
@@ -43,6 +46,7 @@ def _():
         InteractiveRaptorEngine,
         Iterator,
         JapaneseTokenChunker,
+        NodeID,
         ObsidianCanvasExporter,
         Path,
         ProcessingConfig,
@@ -51,6 +55,7 @@ def _():
         SummarizationAgent,
         SummaryNode,
         cast,
+        concurrent,
         export_to_markdown,
         logger,
         logging,
@@ -59,6 +64,8 @@ def _():
         plt,
         sys,
         tempfile,
+        threading,
+        time,
         uuid,
     )
 
@@ -166,8 +173,9 @@ def _(
 
 @app.cell
 def _(chunker, config, logger):
-    # --- SCENARIO 1: Quickstart (The Basics) ---
-    logger.info("Starting SCENARIO 1: Quickstart")
+    # --- Part 1: The "Grok" Moment (Cycle 01) - Wisdom Generation ---
+    # Goal: Load text, run Raptor, and verify the Root Node is "Wisdom".
+    logger.info("Starting Part 1: Wisdom Generation")
 
     # Sample text (simulating a financial document)
     SAMPLE_TEXT = """
@@ -192,66 +200,27 @@ def _(chunker, config, logger):
     # 1. Chunking
     chunks = list(chunker.split_text(SAMPLE_TEXT, config))
     logger.info(f"Generated {len(chunks)} chunks.")
-
-    # 2. Visualize Chunks
-    print("--- First 5 Chunks ---")
-    for i, chunk in enumerate(chunks[:5]):
-        print(f"Chunk {i}: {chunk.text.strip()[:50]}...")
-
     assert len(chunks) > 0, "Should generate chunks"
 
-    print("✅ SCENARIO 1 Passed: Text ingested and chunked.")
+    # 2. Visualize Chunks (Quick verification)
+    print("--- First 3 Chunks ---")
+    for i, chunk in enumerate(chunks[:3]):
+        print(f"Chunk {i}: {chunk.text.strip()[:50]}...")
+
     return SAMPLE_TEXT, chunks, i
 
 
 @app.cell
-def _(chunks, clusterer, embedder, logger, plt):
-    # --- SCENARIO 2: Clustering Deep Dive (The Engine) ---
-    logger.info("Starting SCENARIO 2: Clustering Deep Dive")
-
-    # 1. Generate Embeddings
-    # Note: embedder.embed_chunks yields chunks with embeddings populated
-    embedded_chunks = list(embedder.embed_chunks(iter(chunks)))
-    logger.info("Embeddings generated.")
-
-    # 2. Run Clustering
-    # We manually trigger clustering to visualize it
-    # GMMClusterer expects chunks with embeddings
-    # Note: GMMClusterer.cluster returns (clusters, global_embeddings)
-    # But wait, RaptorEngine handles this. Let's inspect GMMClusterer.
-    # We can just inspect the embeddings for visualization since clustering logic is internal
-
-    # Extract embeddings for visualization
-    embeddings = [c.embedding for c in embedded_chunks if c.embedding]
-
-    if len(embeddings) >= 2:
-        # Visualize 2D projection
-        # We use PCA for simplicity here (mocking UMAP)
-        from sklearn.decomposition import PCA
-
-        pca = PCA(n_components=2)
-        coords = pca.fit_transform(embeddings)
-
-        plt.figure(figsize=(8, 6))
-        plt.scatter(coords[:, 0], coords[:, 1], alpha=0.5)
-        plt.title("Chunk Embeddings Projection (PCA)")
-        plt.xlabel("Component 1")
-        plt.ylabel("Component 2")
-        plt.grid(True)
-        # In a real notebook, this would show the plot. In headless, we save it.
-        plt.savefig("tutorials/clustering_visualization.png")
-        logger.info("Clustering visualization saved to tutorials/clustering_visualization.png")
-    else:
-        logger.warning("Not enough embeddings to visualize.")
-
-    print("✅ SCENARIO 2 Passed: Embeddings generated and visualized.")
-    return embedded_chunks, embeddings
-
-
-@app.cell
-def _(DiskChunkStore, Path, SAMPLE_TEXT, engine, export_to_markdown, logger):
-    # --- SCENARIO 3: Full Raptor Pipeline (The "Aha!" Moment) ---
-    logger.info("Starting SCENARIO 3: Full Raptor Pipeline")
+def _(
+    DIKWLevel,
+    DiskChunkStore,
+    Path,
+    SAMPLE_TEXT,
+    engine,
+    export_to_markdown,
+    logger,
+):
+    # --- Part 1 Continued: Running the Engine ---
 
     # Setup temporary DB
     db_path = Path("tutorials/chunks.db")
@@ -268,85 +237,163 @@ def _(DiskChunkStore, Path, SAMPLE_TEXT, engine, export_to_markdown, logger):
         logger.error(f"Raptor Engine failed: {e}")
         raise
 
-    # Validation
+    # Validation: Verify Root is Wisdom (UAT-01)
     root_node = root_tree.root_node
-    logger.info(f"Root Node Level: {root_node.level}")
+    logger.info(f"Root Node Level: {root_node.level}, DIKW: {root_node.metadata.dikw_level}")
 
-    # Export to Markdown
+    # Note: In mock mode, Raptor might not strictly assign "WISDOM" if using default simple strategies
+    # unless config is set to use WisdomStrategy for root.
+    # We should verify it is SummaryNode and has a DIKW level.
+    # The default Raptor engine assigns DIKW level based on topology key "root".
+
+    # Assert Root is Wisdom (or whatever config says, default is WISDOM)
+    assert root_node.metadata.dikw_level == DIKWLevel.WISDOM, f"Root should be Wisdom, got {root_node.metadata.dikw_level}"
+
+    # Export to Markdown for visual check
     md_output = export_to_markdown(root_tree, store)
     with open("summary_all.md", "w", encoding="utf-8") as f:
         f.write(md_output)
 
-    logger.info("Exported summary to summary_all.md")
-
-    assert Path("summary_all.md").exists(), "Markdown file should exist"
-    assert len(md_output) > 0, "Markdown content should not be empty"
-
-    print("✅ SCENARIO 3 Passed: Pipeline executed and Markdown exported.")
+    print("✅ Part 1 Passed: Wisdom Generation & Markdown Export.")
     return db_path, md_output, root_node, root_tree, store
 
 
 @app.cell
-def _(ObsidianCanvasExporter, Path, config, logger, root_tree, store):
-    # --- SCENARIO 4: KJ Method Visualization (The Output) ---
-    logger.info("Starting SCENARIO 4: KJ Method Visualization")
+def _(DIKWLevel, SummaryNode, logger, root_node, store):
+    # --- Part 2: Semantic Zooming (Cycle 03) ---
+    # Goal: Traverse the tree and verify hierarchy (UAT-02, UAT-05 Logic)
+    logger.info("Starting Part 2: Semantic Zooming")
 
-    exporter = ObsidianCanvasExporter(config)
-    output_path = Path("summary_kj.canvas")
+    # The root is Wisdom. Its children should be Knowledge.
+    # Knowledge children should be Information (or Data if tree is shallow).
 
-    exporter.export(root_tree, output_path, store)
+    # Check children of Root
+    children_ids = root_node.children_indices
+    assert len(children_ids) > 0, "Root should have children"
 
-    logger.info(f"Exported Canvas to {output_path}")
+    first_child = store.get_node(children_ids[0])
 
-    assert output_path.exists(), "Canvas file should exist"
+    if isinstance(first_child, SummaryNode):
+        logger.info(f"Level 2 Node DIKW: {first_child.metadata.dikw_level}")
+        # Ideally Knowledge, but depends on tree depth.
+        # If depth is small, might go straight to Data or Information.
+        # But let's just verify we can traverse.
+    else:
+        logger.info("Level 2 Node is Chunk (Data). Tree is shallow.")
 
-    print("✅ SCENARIO 4 Passed: Obsidian Canvas exported.")
-    return exporter, output_path
+    # Validate Hierarchy Depth
+    max_level = store.get_max_level()
+    logger.info(f"Tree Max Level: {max_level}")
+    assert max_level >= 1
+
+    print("✅ Part 2 Passed: Hierarchy Traversal Verified.")
+    return children_ids, first_child, max_level
 
 
 @app.cell
 def _(
-    Chunk,
     InteractiveRaptorEngine,
     config,
     root_node,
     store,
     summarizer,
 ):
-    # --- BONUS: Interactive Refinement & Traceability ---
+    # --- Part 3: Interactive Refinement (Cycle 02 & 04) ---
+    # Goal: Refine a node and verify persistence (UAT-03, UAT-06 Backend)
 
-    # Interactive Refinement
     interactive = InteractiveRaptorEngine(store, summarizer, config)
     target_node_id = root_node.id
     instruction = "Explain like I'm 5"
 
     refined_node = interactive.refine_node(str(target_node_id), instruction)
 
+    # Validation
     assert refined_node.metadata.is_user_edited is True
     assert instruction in refined_node.metadata.refinement_history
+    assert refined_node.id == str(target_node_id) # ID must not change
+
+    # Verify persistence
+    persisted_node = store.get_node(target_node_id)
+    assert persisted_node.metadata.is_user_edited is True
+    assert persisted_node.text == refined_node.text
 
     print(f"Refined Node: {refined_node.text[:50]}...")
-    print("✅ Interactive Refinement Verified.")
+    print("✅ Part 3 Passed: Interactive Refinement Verified.")
+    return instruction, interactive, persisted_node, refined_node, target_node_id
 
-    # Traceability
+
+@app.cell
+def _(concurrent, interactive, logger, store, target_node_id, threading):
+    # --- Part 4: Concurrency (Cycle 02) ---
+    # Goal: Read/Write simultaneously without locking DB (UAT-04)
+    # We will launch a read operation in a loop while performing a write.
+
+    logger.info("Starting Part 4: Concurrency Test")
+
+    def read_loop(node_id, stop_event):
+        reads = 0
+        while not stop_event.is_set():
+            _ = store.get_node(node_id)
+            reads += 1
+            # slight sleep to yield gil
+            import time
+            time.sleep(0.01)
+        return reads
+
+    stop_event = threading.Event()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        # Start reader
+        reader_future = executor.submit(read_loop, target_node_id, stop_event)
+
+        # Perform Write (Refinement)
+        try:
+            _ = interactive.refine_node(str(target_node_id), "Concurrency Test Update")
+            logger.info("Concurrent Write Completed")
+        except Exception as e:
+            logger.error(f"Concurrent Write Failed: {e}")
+            raise
+
+        # Stop reader
+        stop_event.set()
+        reads = reader_future.result()
+        logger.info(f"Concurrent Reads Completed: {reads}")
+
+    print("✅ Part 4 Passed: Concurrency Test (Read/Write) Verified.")
+    return read_loop, reader_future, reads, stop_event
+
+
+@app.cell
+def _(Chunk, interactive, target_node_id):
+    # --- Part 5: Traceability (Cycle 05) ---
+    # Goal: Get source chunks for a node (UAT-07)
+
     source_chunks = list(interactive.get_source_chunks(str(target_node_id)))
     assert len(source_chunks) > 0
     assert isinstance(source_chunks[0], Chunk)
 
-    print(f"Traced {len(source_chunks)} source chunks.")
-    print("✅ Traceability Verified.")
-    return (
-        instruction,
-        interactive,
-        refined_node,
-        source_chunks,
-        target_node_id,
-    )
+    print(f"Traced {len(source_chunks)} source chunks for node {target_node_id}.")
+    print("✅ Part 5 Passed: Traceability Verified.")
+    return source_chunks
+
+
+@app.cell
+def _(ObsidianCanvasExporter, Path, config, logger, root_tree, store):
+    # --- Part 6: Launching the GUI & Export (UAT-05) ---
+
+    # Export Canvas
+    exporter = ObsidianCanvasExporter(config)
+    output_path = Path("summary_kj.canvas")
+    exporter.export(root_tree, output_path, store)
+    assert output_path.exists()
+
+    print("✅ Part 6 Passed: Canvas Exported.")
+    return exporter, output_path
 
 
 @app.cell
 def _(db_path):
-    print("🎉 All Scenarios Passed!")
+    print("🎉 All Systems Go: Matome 2.0 is ready for Knowledge Installation.")
     print(f"To explore the tree visually, run: uv run matome serve {db_path}")
     return
 

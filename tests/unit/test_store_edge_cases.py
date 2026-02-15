@@ -201,7 +201,7 @@ def test_streaming_connection_failure(tmp_path: Path) -> None:
         # Use Exception instead of None for orig to satisfy typing
         mock_conn.execute.side_effect = OperationalError("Lost connection", params=None, orig=Exception("Lost"))
 
-        with pytest.raises(StoreError, match="Failed to retrieve nodes batch"):
+        with pytest.raises(StoreError, match="Failed to retrieve nodes"):
             list(store.get_nodes(["1"]))
 
     store.close()

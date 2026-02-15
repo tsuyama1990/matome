@@ -6,6 +6,7 @@ from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
+from matome.exceptions import RefinementError
 
 
 @pytest.fixture
@@ -71,7 +72,7 @@ def test_refine_node_success(
 
 def test_refine_node_not_found(interactive_engine: InteractiveRaptorEngine, mock_store: MagicMock) -> None:
     mock_store.get_node.return_value = None
-    with pytest.raises(ValueError, match="Node .* not found"):
+    with pytest.raises(RefinementError, match="Node .* not found"):
         interactive_engine.refine_node("missing", "instruction")
 
 
@@ -80,7 +81,7 @@ def test_refine_node_chunk_error(
 ) -> None:
     chunk = Chunk(index=1, text="Chunk", start_char_idx=0, end_char_idx=5)
     mock_store.get_node.return_value = chunk
-    with pytest.raises(TypeError, match="Only SummaryNodes can be refined"):
+    with pytest.raises(RefinementError, match="Only SummaryNodes can be refined"):
         interactive_engine.refine_node("1", "instruction")
 
 
@@ -130,16 +131,16 @@ def test_refine_node_invalid_instruction(
     mock_store.get_node.return_value = node
 
     # Test empty instruction
-    with pytest.raises(ValueError, match="Instruction cannot be empty"):
+    with pytest.raises(RefinementError, match="Instruction cannot be empty"):
         interactive_engine.refine_node("s1", "")
 
     # Test whitespace-only instruction
-    with pytest.raises(ValueError, match="Instruction cannot be empty"):
+    with pytest.raises(RefinementError, match="Instruction cannot be empty"):
         interactive_engine.refine_node("s1", "   ")
 
     # Test too long instruction
     long_instruction = "a" * 1001
-    with pytest.raises(ValueError, match="Instruction exceeds maximum length"):
+    with pytest.raises(RefinementError, match="Instruction exceeds maximum length"):
         interactive_engine.refine_node("s1", long_instruction)
 
 
@@ -194,7 +195,7 @@ def test_refine_node_update_failure(
     # Simulate DB failure on update
     mock_store.update_node.side_effect = RuntimeError("DB Write Failed")
 
-    with pytest.raises(RuntimeError, match="DB Write Failed"):
+    with pytest.raises(RefinementError, match="DB Write Failed"):
         interactive_engine.refine_node("s1", "Refine")
 
     # Verify update attempted

@@ -347,4 +347,8 @@ class ProcessingConfig(BaseModel):
         """
         Returns a configuration optimized for higher precision (smaller chunks).
         """
-        return cls(max_tokens=HIGH_PRECISION_MAX_TOKENS, overlap=HIGH_PRECISION_OVERLAP)
+        return cls(
+            max_tokens=HIGH_PRECISION_MAX_TOKENS,
+            overlap=HIGH_PRECISION_OVERLAP,
+            max_summary_tokens=HIGH_PRECISION_MAX_TOKENS,
+        )
