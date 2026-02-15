@@ -67,9 +67,9 @@ Matome exports results in multiple formats:
 -   `summary_kj.canvas`: An [Obsidian Canvas](https://obsidian.md/canvas) file for visual exploration.
 -   `chunks.db`: A SQLite database containing the full tree structure.
 
-### 4. Run Tutorials
+### 4. Run Tutorials & UAT
 
-Verify the installation and explore features using the included interactive tutorial.
+Verify the installation and explore features using the included interactive tutorial. This notebook also serves as the User Acceptance Test (UAT).
 
 ```bash
 uv run marimo run tutorials/UAT_AND_TUTORIAL.py
