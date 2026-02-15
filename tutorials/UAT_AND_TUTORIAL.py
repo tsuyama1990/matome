@@ -16,6 +16,7 @@ def _():
     from typing import Any
 
     import numpy as np
+    import marimo as mo
 
     # Add src to path if running from root
     if "src" not in sys.path:
@@ -52,6 +53,7 @@ def _():
         SummaryNode,
         logger,
         logging,
+        mo,
         np,
         os,
         shutil,
@@ -296,10 +298,38 @@ def _(interactive_engine, logger, node_id, sample_text):
     first_chunk_text = source_chunks[0].text
     assert len(first_chunk_text) > 0
 
+    # Ensure the chunk is actually part of the original text
+    # We clean whitespace for comparison as chunking might affect spacing slightly
+    clean_chunk = first_chunk_text.replace("\n", "").replace(" ", "")
+    clean_sample = sample_text.replace("\n", "").replace(" ", "")
+
+    assert clean_chunk in clean_sample
+
     print(f"Source Chunk 1: {first_chunk_text[:50]}...")
 
-    logger.info("✅ Cycle 05 Passed: Source chunks retrieved.")
-    return first_chunk_text, source_chunks
+    logger.info("✅ Cycle 05 Passed: Source chunks retrieved and verified against original text.")
+    return clean_chunk, clean_sample, first_chunk_text, source_chunks
+
+
+@app.cell
+def _(db_path, mo):
+    # Part 5: Launching the GUI
+    return mo.md(
+        f"""
+        ## Part 5: Launching the GUI
+
+        To explore the generated knowledge tree visually, run the following command in your terminal:
+
+        ```bash
+        uv run matome serve {db_path}
+        ```
+
+        This will start a local server (usually at http://127.0.0.1:5006) where you can:
+        - View the DIKW hierarchy.
+        - Click nodes to see details.
+        - Verify source chunks.
+        """
+    )
 
 
 @app.cell
