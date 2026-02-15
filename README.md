@@ -82,7 +82,8 @@ uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 
 **Alternatively, use the Jupyter Notebook version:**
 ```bash
-uv run jupyter notebook tutorials/UAT_AND_TUTORIAL.ipynb
+# Ensure jupyter is installed (e.g. `uv sync --extra dev`) or run with:
+uv run --with jupyter jupyter notebook tutorials/UAT_AND_TUTORIAL.ipynb
 ```
 
 **To run it as an automated test script (Headless):**
