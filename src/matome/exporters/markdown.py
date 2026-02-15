@@ -56,7 +56,9 @@ def stream_markdown(tree: DocumentTree, store: DiskChunkStore) -> Iterator[str]:
     if not tree.root_node:
         return
 
-    for node_id, depth in _stream_nodes(tree.root_node.id, store):
+    root_id = tree.root_node.id if isinstance(tree.root_node, SummaryNode) else str(tree.root_node.index)
+
+    for node_id, depth in _stream_nodes(root_id, store):
         node = store.get_node(node_id)
         if not node:
             continue

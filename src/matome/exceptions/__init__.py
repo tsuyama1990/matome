@@ -1,32 +1,20 @@
-"""
-Custom exceptions for the Matome system.
-"""
-
-
 class MatomeError(Exception):
-    """
-    Base exception for Matome system.
-    All custom exceptions in the system should inherit from this.
-    """
+    """Base exception for Matome."""
 
 
 class SummarizationError(MatomeError):
-    """
-    Raised when summarization fails.
+    """Raised when summarization fails."""
 
-    This error encapsulates failures during the summarization process,
-    such as API connection issues, missing configuration, or parsing errors.
-    """
 
+class StoreError(MatomeError):
+    """Raised when storage operations fail."""
+
+
+class RefinementError(MatomeError):
+    """Raised when interactive refinement fails."""
 
 class ClusteringError(MatomeError):
     """Raised when clustering fails."""
 
-
 class VerificationError(MatomeError):
-    """
-    Raised when verification fails.
-
-    This error encapsulates failures during the verification process,
-    such as parsing errors or API failures.
-    """
+    """Raised when verification fails."""

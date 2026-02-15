@@ -1,10 +1,11 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from domain_models.config import ProcessingConfig
 from domain_models.manifest import Chunk, SummaryNode
+from domain_models.types import CanvasNodeType
 from matome.utils.store import DiskChunkStore
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ class CanvasNode(BaseModel):
     y: int = Field(..., description="Y coordinate of the node.")
     width: int = Field(..., description="Width of the node.")
     height: int = Field(..., description="Height of the node.")
-    type: Literal["text", "file", "group"] = Field(default="text", description="Type of the node.")
+    type: CanvasNodeType = Field(default=CanvasNodeType.TEXT, description="Type of the node.")
     text: str | None = Field(default=None, description="Text content for text nodes.")
 
 
@@ -74,12 +75,14 @@ class ObsidianCanvasExporter:
         if not tree.root_node:
             return CanvasFile(nodes=[], edges=[])
 
+        root_id = tree.root_node.id if isinstance(tree.root_node, SummaryNode) else str(tree.root_node.index)
+
         # 1. Calculate subtree widths (Post-order)
-        self._calculate_subtree_width(tree.root_node.id, store)
+        self._calculate_subtree_width(root_id, store)
 
         # 2. Assign positions (Pre-order)
         # Root starts at (0, 0)
-        self._assign_positions(tree.root_node.id, 0, 0, store)
+        self._assign_positions(root_id, 0, 0, store)
 
         return CanvasFile(nodes=self.nodes, edges=self.edges)
 
@@ -201,7 +204,7 @@ class ObsidianCanvasExporter:
                 y=y,
                 width=self.NODE_WIDTH,
                 height=self.NODE_HEIGHT,
-                type="text",
+                type=CanvasNodeType.TEXT,
                 text=text,
             )
             self.nodes.append(canvas_node)

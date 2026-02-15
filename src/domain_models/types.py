@@ -1,4 +1,4 @@
-from enum import StrEnum
+from enum import Enum, StrEnum
 from typing import Any, TypeAlias
 
 # NodeID can be an integer (Chunk index) or a string (SummaryNode UUID).
@@ -20,3 +20,9 @@ class DIKWLevel(StrEnum):
     KNOWLEDGE = "knowledge"
     INFORMATION = "information"
     DATA = "data"
+
+
+class CanvasNodeType(StrEnum):
+    TEXT = "text"
+    FILE = "file"
+    GROUP = "group"

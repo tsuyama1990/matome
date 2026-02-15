@@ -1,7 +1,6 @@
 import contextlib
 import json
 import logging
-import re
 import shutil
 import tempfile
 from collections.abc import Iterable, Iterator
@@ -24,20 +23,19 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from domain_models.constants import MAX_DB_CONTENT_LENGTH
 from domain_models.manifest import Chunk, SummaryNode
+from matome.exceptions import StoreError
 from matome.utils.compat import batched
+from matome.utils.serialization import deserialize_node
 from matome.utils.store_schema import metadata, nodes_table
+from matome.utils.validation import validate_node_id
+
+__all__ = ["DiskChunkStore", "StoreError"]
 
 logger = logging.getLogger(__name__)
 
 # Configuration Constants
 DEFAULT_WRITE_BATCH_SIZE: Final[int] = 1000
 DEFAULT_READ_BATCH_SIZE: Final[int] = 500
-# Allow alphanumeric, underscore, hyphen only to prevent injection
-VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
-
-
-class StoreError(Exception):
-    """Base exception for storage errors."""
 
 
 class DiskChunkStore:
@@ -115,57 +113,6 @@ class DiskChunkStore:
             msg = f"Failed to create database schema: {e}"
             raise StoreError(msg) from e
 
-    def _validate_node_id(self, node_id: str) -> str:
-        """Validate node ID format to prevent injection/corruption."""
-        if not VALID_NODE_ID_PATTERN.match(node_id):
-            msg = f"Invalid node ID format: {node_id}"
-            raise ValueError(msg)
-        return node_id
-
-    def _deserialize_node(
-        self,
-        node_id: str,
-        node_type: str,
-        content_json: str | None,
-        embedding_json: str | None,
-    ) -> Chunk | SummaryNode:
-        """Helper to deserialize node data."""
-        if not content_json:
-            msg = f"Node {node_id} has empty content."
-            raise ValueError(msg)
-
-        try:
-            embedding = json.loads(embedding_json) if embedding_json else None
-            data = json.loads(content_json)
-            if not isinstance(data, dict):
-                msg = f"Node {node_id} content is not a JSON object."
-                raise TypeError(msg)
-
-            # Basic schema validation
-            required_keys = {"text"}
-            if node_type == "chunk":
-                required_keys.update({"index", "start_char_idx", "end_char_idx"})
-            elif node_type == "summary":
-                required_keys.update({"id", "level", "children_indices", "metadata"})
-
-            if not required_keys.issubset(data.keys()):
-                msg = f"Node {node_id} missing required keys: {required_keys - data.keys()}"
-                raise ValueError(msg)
-
-        except json.JSONDecodeError as e:
-            msg = f"Failed to decode JSON for node {node_id}: {e}"
-            raise ValueError(msg) from e
-
-        if embedding is not None:
-            data["embedding"] = embedding
-
-        if node_type == "chunk":
-            return Chunk.model_validate(data)
-        if node_type == "summary":
-            return SummaryNode.model_validate(data)
-        msg = f"Unknown node type: {node_type} for node {node_id}"
-        raise ValueError(msg)
-
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
         self.add_chunks([chunk])
@@ -206,10 +153,10 @@ class DiskChunkStore:
                     self._validate_content_length(content_json)
 
                     embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
-                    node_id = str(node.index) if isinstance(node, Chunk) else node.id
+                    node_id = str(node.index) if isinstance(node, Chunk) else str(node.id)
 
                     # Validate ID
-                    self._validate_node_id(node_id)
+                    validate_node_id(node_id)
 
                     buffer.append(
                         {
@@ -243,47 +190,50 @@ class DiskChunkStore:
         Note: Does NOT guarantee output order matches input order.
         Yields only found nodes. Missing nodes are skipped.
         """
-        # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
-        for batch_raw_ids in batched(node_ids, self.read_batch_size):
-            # Normalize and validate IDs in batch efficiently
-            batch_ids: list[str] = []
-            for raw_id in batch_raw_ids:
-                normalized_id = str(raw_id)
-                if not VALID_NODE_ID_PATTERN.match(normalized_id):
-                    # We might log this but skipping is safer to avoid injection
-                    logger.warning(f"Skipping invalid node ID: {normalized_id}")
-                    continue
-                batch_ids.append(normalized_id)
+        # Connect once outside the loop to optimize connection usage
+        try:
+            with self.engine.connect() as conn:
+                # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
+                for batch_raw_ids in batched(node_ids, self.read_batch_size):
+                    # Normalize and validate IDs in batch efficiently
+                    batch_ids: list[str] = []
+                    for raw_id in batch_raw_ids:
+                        normalized_id = str(raw_id)
+                        try:
+                            validate_node_id(normalized_id)
+                            batch_ids.append(normalized_id)
+                        except ValueError:
+                            # We might log this but skipping is safer to avoid injection
+                            logger.warning(f"Skipping invalid node ID: {normalized_id}")
+                            continue
 
-            if not batch_ids:
-                continue
+                    if not batch_ids:
+                        continue
 
-            stmt = select(
-                self.nodes_table.c.id,
-                self.nodes_table.c.type,
-                self.nodes_table.c.content,
-                self.nodes_table.c.embedding,
-            ).where(self.nodes_table.c.id.in_(batch_ids))
+                    stmt = select(
+                        self.nodes_table.c.id,
+                        self.nodes_table.c.type,
+                        self.nodes_table.c.content,
+                        self.nodes_table.c.embedding,
+                    ).where(self.nodes_table.c.id.in_(batch_ids))
 
-            try:
-                with self.engine.connect() as conn:
                     # stream_results=True minimizes memory usage for the result set
                     result = conn.execution_options(stream_results=True).execute(stmt)
 
                     for row in result:
                         try:
-                            yield self._deserialize_node(
+                            yield deserialize_node(
                                 row.id, row.type, row.content, row.embedding
                             )
                         except Exception:
                             logger.exception(f"Error deserializing node {row.id}")
                             continue
-            except SQLAlchemyError as e:
-                msg = f"Failed to retrieve nodes batch: {e}"
-                raise StoreError(msg) from e
-            except Exception as e:
-                msg = f"Unexpected error retrieving nodes: {e}"
-                raise StoreError(msg) from e
+        except SQLAlchemyError as e:
+            msg = f"Failed to retrieve nodes: {e}"
+            raise StoreError(msg) from e
+        except Exception as e:
+            msg = f"Unexpected error retrieving nodes: {e}"
+            raise StoreError(msg) from e
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
         """
@@ -294,7 +244,7 @@ class DiskChunkStore:
             return
 
         node_id_str = str(node_id)
-        self._validate_node_id(node_id_str)
+        validate_node_id(node_id_str)
         embedding_json = json.dumps(embedding)
 
         stmt = (
@@ -320,7 +270,7 @@ class DiskChunkStore:
         content_json = node.model_dump_json(exclude={"embedding"})
         embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
 
-        self._validate_node_id(node.id)
+        validate_node_id(str(node.id))
 
         stmt = (
             update(self.nodes_table)
@@ -341,7 +291,7 @@ class DiskChunkStore:
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
         node_id_str = str(node_id)
-        self._validate_node_id(node_id_str)
+        validate_node_id(node_id_str)
 
         stmt = select(
             self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding
@@ -356,7 +306,7 @@ class DiskChunkStore:
                     return None
 
                 node_type, content_json, embedding_json = row
-                return self._deserialize_node(node_id_str, node_type, content_json, embedding_json)
+                return deserialize_node(node_id_str, node_type, content_json, embedding_json)
         except SQLAlchemyError as e:
             msg = f"Failed to retrieve node {node_id}: {e}"
             raise StoreError(msg) from e
