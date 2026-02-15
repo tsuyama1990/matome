@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from domain_models.types import DIKWLevel, Metadata, NodeID
 
@@ -56,13 +56,15 @@ class Chunk(BaseModel):
     @model_validator(mode="after")
     def validate_indices(self) -> "Chunk":
         if self.start_char_idx > self.end_char_idx:
-            raise ValueError("start_char_idx cannot be greater than end_char_idx")
+            msg = "start_char_idx cannot be greater than end_char_idx"
+            raise ValueError(msg)
         return self
 
     @model_validator(mode="after")
     def validate_embedding(self) -> "Chunk":
         if self.embedding is not None and len(self.embedding) == 0:
-            raise ValueError("Embedding cannot be empty list")
+            msg = "Embedding cannot be empty list"
+            raise ValueError(msg)
         return self
 
 
@@ -91,6 +93,16 @@ class Cluster(BaseModel):
     node_indices: list[NodeID]
     metadata: dict[str, Any] = Field(default_factory=dict)
     centroid: list[float] | None = Field(default=None)
+
+    @field_validator("node_indices")
+    @classmethod
+    def validate_node_indices(cls, v: list[NodeID]) -> list[NodeID]:
+        """Ensure all node indices are valid NodeIDs (int or str)."""
+        for idx in v:
+            if not isinstance(idx, (int, str)):
+                msg = f"Invalid node index type: {type(idx)}. Must be int or str."
+                raise ValueError(msg)
+        return v
 
 
 class DocumentTree(BaseModel):

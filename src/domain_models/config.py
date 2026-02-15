@@ -1,7 +1,7 @@
 import os
 import re
 from enum import Enum
-from typing import Final, Self
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -19,6 +19,7 @@ from domain_models.constants import (
     DEFAULT_CLUSTERING_WRITE_BATCH_SIZE,
     DEFAULT_EMBEDDING,
     DEFAULT_EMBEDDING_BATCH_SIZE,
+    DEFAULT_IO_BUFFER_SIZE,
     DEFAULT_LLM_TEMPERATURE,
     DEFAULT_MAX_FILE_SIZE_BYTES,
     DEFAULT_MAX_INPUT_LENGTH,
@@ -29,6 +30,7 @@ from domain_models.constants import (
     DEFAULT_MAX_WORD_LENGTH,
     DEFAULT_OVERLAP,
     DEFAULT_RANDOM_STATE,
+    DEFAULT_REFINEMENT_LIMIT_MULTIPLIER,
     DEFAULT_SEMANTIC_CHUNKING_MODE,
     DEFAULT_SEMANTIC_CHUNKING_PERCENTILE,
     DEFAULT_SEMANTIC_CHUNKING_THRESHOLD,
@@ -47,10 +49,6 @@ from domain_models.constants import (
     LARGE_SCALE_THRESHOLD,
 )
 from domain_models.types import DIKWLevel
-
-# Magic numbers moved to constants/config defaults
-DEFAULT_IO_BUFFER_SIZE: Final[int] = 8192
-DEFAULT_REFINEMENT_LIMIT_MULTIPLIER: Final[int] = 2
 
 
 class ClusteringAlgorithm(Enum):
@@ -312,9 +310,6 @@ class ProcessingConfig(BaseModel):
             raise ValueError(msg)
 
         # Audit requirement: Validate consistency between max_tokens and max_summary_tokens
-        # Usually, a summary should be concise, so typically summary length <= chunk size,
-        # but technically a summary could be detailed.
-        # However, to prevent explosion, we enforce summary <= chunk size as a heuristic.
         if self.max_summary_tokens > self.max_tokens:
             msg = (
                 f"max_summary_tokens ({self.max_summary_tokens}) cannot be greater than "

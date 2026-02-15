@@ -1,7 +1,6 @@
-import pytest
-from unittest.mock import MagicMock
 from domain_models.config import ProcessingConfig
 from matome.engines.token_chunker import JapaneseTokenChunker
+
 
 def test_chunker_basic() -> None:
     """Test basic chunking functionality."""

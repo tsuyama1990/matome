@@ -314,7 +314,12 @@ def run(
     store_path = output_dir / "chunks.db"
 
     # Use context manager for store to ensure cleanup
-    with DiskChunkStore(db_path=store_path) as active_store:
+    # Configure store with batch sizes from config
+    with DiskChunkStore(
+        db_path=store_path,
+        write_batch_size=config.store_write_batch_size,
+        read_batch_size=config.store_read_batch_size
+    ) as active_store:
         tree = _run_pipeline(text_stream, active_store, config, components)
         typer.echo("Tree construction complete.")
 

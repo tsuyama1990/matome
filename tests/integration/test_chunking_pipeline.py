@@ -1,9 +1,10 @@
 import tempfile
 from pathlib import Path
 
+from domain_models.config import ProcessingConfig
 from matome.engines.token_chunker import JapaneseTokenChunker
 from matome.utils.text import normalize_text
-from domain_models.config import ProcessingConfig
+
 
 def test_chunking_pipeline_integration() -> None:
     """
@@ -18,7 +19,7 @@ def test_chunking_pipeline_integration() -> None:
         temp_path = Path(f.name)
 
     try:
-        with open(temp_path, "r", encoding="utf-8") as f:
+        with Path(temp_path).open(encoding="utf-8") as f:
             text = f.read()
 
         normalized_input = normalize_text(text)

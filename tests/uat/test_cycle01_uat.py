@@ -1,6 +1,6 @@
-import pytest
 from domain_models.config import ProcessingConfig
 from matome.engines.token_chunker import JapaneseTokenChunker
+
 
 def test_uat_scenario_04_chunk_size() -> None:
     """

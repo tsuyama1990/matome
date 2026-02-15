@@ -1,8 +1,10 @@
+from collections.abc import Iterable
+from typing import Any
 from unittest.mock import MagicMock
 
 from domain_models.config import ProcessingConfig
+from domain_models.manifest import Chunk, SummaryNode
 from matome.agents.summarizer import SummarizationAgent
-from matome.engines.cluster import GMMClusterer
 from matome.engines.embedder import EmbeddingService
 from matome.engines.raptor import RaptorEngine
 from matome.engines.token_chunker import JapaneseTokenChunker
@@ -33,7 +35,7 @@ def test_full_pipeline_flow() -> None:
     embedder = MagicMock(spec=EmbeddingService)
     # Return dummy embeddings (dim=2 for simple clustering)
     # We need to mock embed_chunks to return chunks with embeddings
-    def mock_embed_chunks(chunks_iter):
+    def mock_embed_chunks(chunks_iter: Iterable[Chunk]) -> Iterable[Chunk]:
         for chunk in chunks_iter:
             chunk.embedding = [0.1, 0.2]
             yield chunk
@@ -47,7 +49,7 @@ def test_full_pipeline_flow() -> None:
     from domain_models.manifest import Cluster
     # Mock clustering result: 1 cluster containing all chunks
     # IMPORTANT: Clusterer side effect must consume the input generator!
-    def mock_cluster_nodes(embeddings_iter, config):
+    def mock_cluster_nodes(embeddings_iter: Iterable[Any], config: ProcessingConfig) -> list[Cluster]:
         _ = list(embeddings_iter) # Consume
         # Assume we have chunks 0, 1, ...
         # Return 1 cluster.
@@ -66,6 +68,9 @@ def test_full_pipeline_flow() -> None:
 
     # Assert
     assert tree is not None
+    # Narrow type for mypy
+    assert tree.root_node is not None
+    assert isinstance(tree.root_node, SummaryNode)
     assert tree.root_node.text == "Summary text."
 
     # Verify interactions

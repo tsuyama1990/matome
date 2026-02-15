@@ -49,10 +49,11 @@ class InteractiveRaptorEngine:
         """
         # Batch retrieve children for efficiency (avoid N+1)
         # children_indices is a list of node IDs.
-        # Ensure IDs are strings as expected by get_nodes
-        child_ids = [str(idx) for idx in node.children_indices]
+        # store.get_nodes accepts int|str, so we don't need to convert if using new store method
+        child_ids = node.children_indices
 
         # get_nodes returns a generator and fetches in batches
+        # Assuming store has been updated to accept node IDs directly
         for child in self.store.get_nodes(child_ids):
             if child is not None:
                 yield child
@@ -205,6 +206,12 @@ class InteractiveRaptorEngine:
         """
         node = self._validate_refinement_input(node_id, instruction)
         clean_instruction = self._sanitize_instruction(instruction)
+
+        # Enforce history limit
+        MAX_HISTORY_LEN = 50
+        if len(node.metadata.refinement_history) >= MAX_HISTORY_LEN:
+             # FIFO eviction
+             node.metadata.refinement_history.pop(0)
 
         source_text = self._retrieve_and_validate_children_content(node)
 

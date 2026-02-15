@@ -1,7 +1,10 @@
 from unittest.mock import MagicMock
+
 import pytest
-from matome.engines.semantic_chunker import JapaneseSemanticChunker
+
 from domain_models.config import ProcessingConfig
+from matome.engines.semantic_chunker import JapaneseSemanticChunker
+
 
 @pytest.fixture
 def mock_embedder() -> MagicMock:

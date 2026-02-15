@@ -80,6 +80,9 @@ def test_document_tree_structure() -> None:
         leaf_chunk_ids=[0, 1, 2],
         metadata={"version": "1.0"}
     )
+    # Type assertion for mypy
+    assert tree.root_node is not None
+    assert isinstance(tree.root_node, SummaryNode)
     assert tree.root_node.id == "root"
     assert len(tree.leaf_chunk_ids) == 3
 
