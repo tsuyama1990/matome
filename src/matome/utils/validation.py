@@ -105,6 +105,31 @@ def sanitize_prompt_injection(text: str, max_input_length: int) -> str:
     return sanitized
 
 
+def sanitize_instruction(instruction: str, max_length: int) -> str:
+    """
+    Sanitize user instruction:
+    1. Truncate length
+    2. Normalize Unicode (NFKC)
+    3. Remove non-printable control characters (except newline)
+    4. Check for injection patterns
+    """
+    clean = instruction.strip()
+
+    if len(clean) > max_length:
+        clean = clean[:max_length]
+
+    # Normalize
+    clean = unicodedata.normalize("NFKC", clean)
+
+    # Remove control characters except standard whitespace
+    # Using regex to remove control chars: ranges 00-08, 0B-0C, 0E-1F, 7F
+    clean = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', clean)
+
+    check_injection_patterns(clean)
+
+    return clean
+
+
 def validate_input(text: str, max_input_length: int, max_word_length: int) -> None:
     """
     Sanitize and validate input text.

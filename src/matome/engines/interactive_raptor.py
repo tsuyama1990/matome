@@ -1,9 +1,7 @@
 import logging
-import re
 from collections.abc import Iterator
 
 from domain_models.config import ProcessingConfig
-from domain_models.constants import PROMPT_INJECTION_PATTERNS
 from domain_models.manifest import Chunk, SummaryNode
 from domain_models.types import NodeID
 from matome.agents.strategies import (
@@ -11,9 +9,10 @@ from matome.agents.strategies import (
     RefinementStrategy,
 )
 from matome.agents.summarizer import SummarizationAgent
-from matome.exceptions import MatomeError
-from matome.utils.store import DiskChunkStore, StoreError
+from matome.exceptions import MatomeError, RefinementError, StoreError
+from matome.utils.store import DiskChunkStore
 from matome.utils.traversal import traverse_source_chunks
+from matome.utils.validation import sanitize_instruction
 
 logger = logging.getLogger(__name__)
 
@@ -208,23 +207,14 @@ class InteractiveRaptorEngine:
     def _sanitize_instruction(self, instruction: str) -> str:
         """
         Sanitize user instruction to prevent injection or formatting issues.
-        Enforces strict content validation.
+        Enforces strict content validation using shared validation logic.
         """
-        clean = instruction.strip()
-
-        if len(clean) > self.config.max_instruction_length:
-             clean = clean[:self.config.max_instruction_length]
-
-        # Check for injection patterns
-        for pattern in PROMPT_INJECTION_PATTERNS:
-            if re.search(pattern, clean):
-                msg = f"Instruction contains forbidden pattern: {pattern}"
-                logger.warning(msg)
-                error_msg = "Instruction contains forbidden content."
-                raise ValueError(error_msg)
-
-        # Basic sanitization
-        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', clean)
+        try:
+            return sanitize_instruction(instruction, self.config.max_instruction_length)
+        except ValueError as e:
+            logger.warning(f"Instruction rejected: {e}")
+            msg = "Instruction contains forbidden content."
+            raise ValueError(msg) from e
 
     def _generate_refinement_summary(self, source_text: str, instruction: str, node: SummaryNode) -> str:
         """Generate the new summary using the LLM."""
@@ -262,9 +252,14 @@ class InteractiveRaptorEngine:
         """
         try:
             return self._refine_node_internal(node_id, instruction)
-        except Exception:
+        except (ValueError, StoreError, RuntimeError) as e:
             logger.exception(f"Refinement failed for node {node_id}")
-            raise
+            msg = f"Refinement failed: {e}"
+            raise RefinementError(msg) from e
+        except Exception as e:
+            logger.exception(f"Unexpected error during refinement for node {node_id}")
+            msg = f"Unexpected error: {e}"
+            raise RefinementError(msg) from e
 
     def _refine_node_internal(self, node_id: str, instruction: str) -> SummaryNode:
         """Internal logic for refinement."""

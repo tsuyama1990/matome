@@ -53,7 +53,7 @@ def test_deserialize_empty_content() -> None:
 def test_deserialize_missing_keys() -> None:
     data = {"text": "incomplete"}
     content_json = json.dumps(data)
-    with pytest.raises(ValueError, match="missing required keys"):
+    with pytest.raises(ValueError, match="Schema validation failed"):
         deserialize_node("1", "chunk", content_json, None)
 
 def test_deserialize_unknown_type() -> None:

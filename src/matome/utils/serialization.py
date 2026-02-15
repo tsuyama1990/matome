@@ -1,5 +1,7 @@
 import json
 
+from pydantic import ValidationError
+
 from domain_models.manifest import Chunk, SummaryNode
 
 
@@ -11,6 +13,7 @@ def deserialize_node(
 ) -> Chunk | SummaryNode:
     """
     Helper to deserialize node data from database storage.
+    Relies on Pydantic's model_validate for robust schema validation.
 
     Args:
         node_id: The ID of the node.
@@ -30,34 +33,26 @@ def deserialize_node(
         raise ValueError(msg)
 
     try:
-        embedding = json.loads(embedding_json) if embedding_json else None
         data = json.loads(content_json)
         if not isinstance(data, dict):
             msg = f"Node {node_id} content is not a JSON object."
             raise TypeError(msg)
 
-        # Basic schema validation
-        required_keys = {"text"}
-        if node_type == "chunk":
-            required_keys.update({"index", "start_char_idx", "end_char_idx"})
-        elif node_type == "summary":
-            required_keys.update({"id", "level", "children_indices", "metadata"})
+        embedding = json.loads(embedding_json) if embedding_json else None
+        if embedding is not None:
+            data["embedding"] = embedding
 
-        if not required_keys.issubset(data.keys()):
-            msg = f"Node {node_id} missing required keys: {required_keys - data.keys()}"
-            raise ValueError(msg)
+        if node_type == "chunk":
+            return Chunk.model_validate(data)
+        if node_type == "summary":
+            return SummaryNode.model_validate(data)
+
+        msg = f"Unknown node type: {node_type} for node {node_id}"
+        raise ValueError(msg)
 
     except json.JSONDecodeError as e:
         msg = f"Failed to decode JSON for node {node_id}: {e}"
         raise ValueError(msg) from e
-
-    if embedding is not None:
-        data["embedding"] = embedding
-
-    if node_type == "chunk":
-        return Chunk.model_validate(data)
-    if node_type == "summary":
-        return SummaryNode.model_validate(data)
-
-    msg = f"Unknown node type: {node_type} for node {node_id}"
-    raise ValueError(msg)
+    except ValidationError as e:
+        msg = f"Schema validation failed for node {node_id}: {e}"
+        raise ValueError(msg) from e

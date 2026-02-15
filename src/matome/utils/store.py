@@ -24,6 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from domain_models.constants import MAX_DB_CONTENT_LENGTH
 from domain_models.manifest import Chunk, SummaryNode
+from matome.exceptions import StoreError
 from matome.utils.compat import batched
 from matome.utils.serialization import deserialize_node
 from matome.utils.store_schema import metadata, nodes_table
@@ -35,10 +36,6 @@ DEFAULT_WRITE_BATCH_SIZE: Final[int] = 1000
 DEFAULT_READ_BATCH_SIZE: Final[int] = 500
 # Allow alphanumeric, underscore, hyphen only to prevent injection
 VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
-
-
-class StoreError(Exception):
-    """Base exception for storage errors."""
 
 
 class DiskChunkStore:
@@ -200,30 +197,31 @@ class DiskChunkStore:
         Note: Does NOT guarantee output order matches input order.
         Yields only found nodes. Missing nodes are skipped.
         """
-        # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
-        for batch_raw_ids in batched(node_ids, self.read_batch_size):
-            # Normalize and validate IDs in batch efficiently
-            batch_ids: list[str] = []
-            for raw_id in batch_raw_ids:
-                normalized_id = str(raw_id)
-                if not VALID_NODE_ID_PATTERN.match(normalized_id):
-                    # We might log this but skipping is safer to avoid injection
-                    logger.warning(f"Skipping invalid node ID: {normalized_id}")
-                    continue
-                batch_ids.append(normalized_id)
+        # Connect once outside the loop to optimize connection usage
+        try:
+            with self.engine.connect() as conn:
+                # Consume the iterable in batches to avoid loading all IDs into memory if it's a generator
+                for batch_raw_ids in batched(node_ids, self.read_batch_size):
+                    # Normalize and validate IDs in batch efficiently
+                    batch_ids: list[str] = []
+                    for raw_id in batch_raw_ids:
+                        normalized_id = str(raw_id)
+                        if not VALID_NODE_ID_PATTERN.match(normalized_id):
+                            # We might log this but skipping is safer to avoid injection
+                            logger.warning(f"Skipping invalid node ID: {normalized_id}")
+                            continue
+                        batch_ids.append(normalized_id)
 
-            if not batch_ids:
-                continue
+                    if not batch_ids:
+                        continue
 
-            stmt = select(
-                self.nodes_table.c.id,
-                self.nodes_table.c.type,
-                self.nodes_table.c.content,
-                self.nodes_table.c.embedding,
-            ).where(self.nodes_table.c.id.in_(batch_ids))
+                    stmt = select(
+                        self.nodes_table.c.id,
+                        self.nodes_table.c.type,
+                        self.nodes_table.c.content,
+                        self.nodes_table.c.embedding,
+                    ).where(self.nodes_table.c.id.in_(batch_ids))
 
-            try:
-                with self.engine.connect() as conn:
                     # stream_results=True minimizes memory usage for the result set
                     result = conn.execution_options(stream_results=True).execute(stmt)
 
@@ -235,12 +233,12 @@ class DiskChunkStore:
                         except Exception:
                             logger.exception(f"Error deserializing node {row.id}")
                             continue
-            except SQLAlchemyError as e:
-                msg = f"Failed to retrieve nodes batch: {e}"
-                raise StoreError(msg) from e
-            except Exception as e:
-                msg = f"Unexpected error retrieving nodes: {e}"
-                raise StoreError(msg) from e
+        except SQLAlchemyError as e:
+            msg = f"Failed to retrieve nodes: {e}"
+            raise StoreError(msg) from e
+        except Exception as e:
+            msg = f"Unexpected error retrieving nodes: {e}"
+            raise StoreError(msg) from e
 
     def update_node_embedding(self, node_id: int | str, embedding: list[float]) -> None:
         """
