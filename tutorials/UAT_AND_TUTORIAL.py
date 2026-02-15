@@ -91,8 +91,8 @@ def __(Iterable, Iterator, Path, mock_mode, mo, np, Any):
     # Initialize Config
     # Ensure strict consistency for testing
     config = ProcessingConfig(
-        max_tokens=1000,
-        max_summary_tokens=200, # Keep summaries concise
+        max_tokens=500, # Reduce for testing to force more chunks
+        max_summary_tokens=200,
         dikw_topology={
             "root": DIKWLevel.WISDOM,
             "intermediate": DIKWLevel.KNOWLEDGE,
@@ -183,19 +183,32 @@ def __(Path, mo):
     test_data_dir = Path("test_data")
     test_data_dir.mkdir(exist_ok=True)
 
-    sample_file = test_data_dir / "sample.txt"
-    if not sample_file.exists():
-        sample_file.write_text(
-            "Matome 2.0 is a system for knowledge installation. "
-            "It uses recursive summarization to build a tree of knowledge. "
-            "This allows users to zoom from high-level wisdom to low-level data. "
-            "The system is built on Python and uses modern libraries like Pydantic and LangChain. "
-            "It supports both batch processing and interactive refinement. " * 10,
-            encoding="utf-8"
-        )
+    sample_file = test_data_dir / "investment_philosophy.txt"
 
-    mo.md(f"### Test Data Ready\n- `{sample_file}`")
-    return sample_file, test_data_dir
+    # Generate content if missing
+    content = ""
+    # Part 1: Wisdom
+    content += "Chapter 1: The Mindset of a Sage Investor.\n"
+    content += "True investment wisdom lies not in chasing trends but in understanding the immutable laws of value. " * 5 + "\n"
+    content += "Patience is the investor's greatest asset. Emotional discipline separates the master from the novice. " * 5 + "\n"
+
+    # Part 2: Knowledge
+    content += "Chapter 2: The Mechanics of Wealth.\n"
+    content += "Compounding is the eighth wonder of the world. Understanding exponential growth is key. " * 5 + "\n"
+    content += "Asset allocation determines 90% of returns. Diversification is the only free lunch in finance. " * 5 + "\n"
+
+    # Part 3: Information
+    content += "Chapter 3: Actionable Steps.\n"
+    content += "1. Review your portfolio quarterly. 2. Rebalance if drift exceeds 5%. 3. Tax loss harvest in December. " * 5 + "\n"
+    content += "Check the expense ratios of your ETFs. Ensure they are below 0.10%. Automate your savings. " * 5 + "\n"
+
+    # Repeat to ensure length
+    content = content * 20
+
+    sample_file.write_text(content, encoding="utf-8")
+
+    mo.md(f"### Test Data Ready\n- `{sample_file}`\n- Size: {len(content)} chars")
+    return content, sample_file, test_data_dir
 
 
 @app.cell
@@ -240,19 +253,15 @@ def __(
     text = sample_file.read_text(encoding="utf-8")
     tree = engine.run(text, store=store)
 
-    # Verify Root is Wisdom
+    # Verify Root is Wisdom (UAT-01)
     root_node = tree.root_node
-    # Note: In mock mode, if single chunk, it might default to WisdomStrategy manually in code
-    # or if recursion happened, it uses topology.
-
-    # Check DIKW level in metadata
     dikw_level = root_node.metadata.dikw_level
 
     # Assertion
     assert dikw_level == DIKWLevel.WISDOM, f"Root node should be WISDOM, got {dikw_level}"
 
     mo.md(
-        f"### DIKW Generation Successful\n"
+        f"### DIKW Generation Successful (UAT-01)\n"
         f"Root Node ID: `{root_node.id}`\n"
         f"DIKW Level: **{dikw_level}**\n"
         f"Text Preview: {root_node.text[:100]}..."
@@ -282,31 +291,26 @@ def __(DIKWLevel, mo, store, tree):
     mo.md("## 2. Cycle 03: Semantic Zooming")
 
     # Traverse hierarchy
-    # Root (Wisdom) -> Children (Knowledge) -> Children (Information) -> Data (Chunks)
-
     layers = {}
-
-    # Layer 1: Wisdom (Root)
     layers[1] = [tree.root_node]
 
-    # Get children recursively
     def get_children_nodes(parent_nodes):
         children = []
         for p in parent_nodes:
             # child indices can be str (SummaryNode) or int (Chunk)
+            # In RaptorEngine, children_indices are stored in metadata or distinct field depending on implementation
+            # Checking SummaryNode schema
             child_ids = [str(c) for c in p.children_indices]
             nodes = list(store.get_nodes(child_ids))
             children.extend([n for n in nodes if n is not None])
         return children
 
-    # Layer 2: Knowledge (Intermediate)
-    # Depending on text size, we might skip straight to Information if small.
-    # But let's see what we got.
-
     current_layer_nodes = layers[1]
     depth = 1
-
     hierarchy_desc = []
+
+    leaf_summaries = []
+
     hierarchy_desc.append(f"**Level {depth} ({current_layer_nodes[0].metadata.dikw_level})**: {len(current_layer_nodes)} node(s)")
 
     while True:
@@ -314,18 +318,32 @@ def __(DIKWLevel, mo, store, tree):
         if not next_nodes:
             break
 
-        # Check if next nodes are chunks or summaries
         first_child = next_nodes[0]
         depth += 1
 
-        # SummaryNodes have 'children_indices', Chunks do not
         if hasattr(first_child, "children_indices"): # SummaryNode
              level_name = first_child.metadata.dikw_level
              hierarchy_desc.append(f"**Level {depth} ({level_name})**: {len(next_nodes)} node(s)")
              current_layer_nodes = next_nodes
+
+             # Check if these are leaf summaries (children are chunks)
+             # To do this robustly, check the first child's children
+             if next_nodes:
+                 grand_children = get_children_nodes([next_nodes[0]])
+                 if grand_children and not hasattr(grand_children[0], "children_indices"):
+                     leaf_summaries.extend(next_nodes)
         else: # Chunk
              hierarchy_desc.append(f"**Level {depth} (DATA)**: {len(next_nodes)} chunk(s)")
              break
+
+    # UAT-02: Verify Leaf Summaries are INFORMATION (if hierarchy exists)
+    if leaf_summaries:
+        for node in leaf_summaries:
+            assert node.metadata.dikw_level == DIKWLevel.INFORMATION, \
+                f"Leaf summary {node.id} should be INFORMATION, got {node.metadata.dikw_level}"
+        mo.md(f"✅ **UAT-02 Verified**: {len(leaf_summaries)} leaf summaries are correctly labeled as INFORMATION.")
+    else:
+         mo.md("⚠️ **UAT-02 Skipped**: Hierarchy too shallow for Information level.")
 
     mo.md(f"### Hierarchy Verified\n" + "\n".join([f"- {h}" for h in hierarchy_desc]))
     return (
@@ -335,12 +353,20 @@ def __(DIKWLevel, mo, store, tree):
         get_children_nodes,
         hierarchy_desc,
         layers,
+        leaf_summaries,
         next_nodes,
     )
 
 
 @app.cell
-def __(config, mo, root_node, store, summarizer):
+def __(
+    config,
+    get_children_nodes,
+    mo,
+    root_node,
+    store,
+    summarizer,
+):
     # --- Step 3: Cycle 02/04 - Interactive Refinement ---
     from matome.engines.interactive_raptor import InteractiveRaptorEngine
 
@@ -348,52 +374,59 @@ def __(config, mo, root_node, store, summarizer):
 
     interactive_engine = InteractiveRaptorEngine(store, summarizer, config)
 
-    # Pick the root node to refine
-    target_node_id = root_node.id
+    # UAT-03: Pick a node to refine. Ideally a Knowledge node (Level 2).
+    target_node = root_node
+
+    # Try to find a child node
+    children = get_children_nodes([root_node])
+    if children and hasattr(children[0], "children_indices"):
+        target_node = children[0]
+
     instruction = "Explain like I'm 5"
 
     # Refine
-    refined_node = interactive_engine.refine_node(target_node_id, instruction)
+    refined_node = interactive_engine.refine_node(target_node.id, instruction)
 
     # Verify
     assert refined_node.metadata.is_user_edited == True
     assert instruction in refined_node.metadata.refinement_history
 
     # Verify persistence
-    persisted_node = store.get_node(target_node_id)
+    persisted_node = store.get_node(target_node.id)
     assert persisted_node.text == refined_node.text
     assert persisted_node.metadata.is_user_edited == True
 
     mo.md(
-        f"### Refinement Successful\n"
-        f"Node `{target_node_id}` updated.\n"
+        f"### Refinement Successful (UAT-03)\n"
+        f"Node `{target_node.id}` ({target_node.metadata.dikw_level}) updated.\n"
         f"Instruction: *'{instruction}'*\n"
         f"New Text: {refined_node.text[:100]}..."
     )
     return (
         InteractiveRaptorEngine,
+        children,
         instruction,
         interactive_engine,
         persisted_node,
         refined_node,
-        target_node_id,
+        target_node,
     )
 
 
 @app.cell
-def __(interactive_engine, mo, root_node):
+def __(interactive_engine, mo, target_node):
     # --- Step 4: Cycle 05 - Traceability ---
     mo.md("## 4. Cycle 05: Traceability")
 
-    # Get source chunks for the root node
-    source_chunks = list(interactive_engine.get_source_chunks(root_node.id))
+    # Get source chunks for the refined node
+    source_chunks = list(interactive_engine.get_source_chunks(target_node.id))
 
     assert len(source_chunks) > 0
     first_chunk = source_chunks[0]
 
     mo.md(
-        f"### Traceability Verified\n"
-        f"Node `{root_node.id}` traces back to **{len(source_chunks)}** original chunks.\n"
+        f"### Traceability Verified (UAT-07)\n"
+        f"Node `{target_node.id}` traces back to **{len(source_chunks)}** original chunks.\n"
         f"First Chunk Preview: *{first_chunk.text[:50]}...*"
     )
     return first_chunk, source_chunks
