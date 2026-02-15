@@ -17,10 +17,10 @@ def test_chunk_embedding_optional() -> None:
 
 def test_config_embedding_model() -> None:
     config = ProcessingConfig()
-    assert config.embedding_model == "intfloat/multilingual-e5-large"
+    assert config.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
 
-    config = ProcessingConfig(embedding_model="mock-model")
-    assert config.embedding_model == "mock-model"
+    config = ProcessingConfig(embedding_model="intfloat/multilingual-e5-large")
+    assert config.embedding_model == "intfloat/multilingual-e5-large"
 
 
 def test_cluster_node_indices() -> None:
@@ -43,9 +43,9 @@ def test_invalid_config_parameters() -> None:
 def test_config_factory_methods() -> None:
     # Test default()
     default_config = ProcessingConfig.default()
-    assert default_config.max_tokens == 500
-    assert default_config.overlap == 0
-    assert default_config.embedding_model == "intfloat/multilingual-e5-large"
+    assert default_config.max_tokens == 1000
+    assert default_config.overlap == 100
+    assert default_config.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
     assert default_config.clustering_algorithm.value == "gmm"
 
     # Test high_precision()
@@ -53,4 +53,4 @@ def test_config_factory_methods() -> None:
     assert hp_config.max_tokens == 200
     assert hp_config.overlap == 20
     # Ensure defaults are preserved for others
-    assert hp_config.embedding_model == "intfloat/multilingual-e5-large"
+    assert hp_config.embedding_model == "sentence-transformers/all-MiniLM-L6-v2"
