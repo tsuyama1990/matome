@@ -129,13 +129,14 @@ def _(MagicMock, patch, is_mock_mode, logger, np):
 
 
 @app.cell
-def _(logger, project_root, os):
+def _(logger, project_root, os, random):
     # Data Generation Logic
     test_data_dir = project_root / "test_data"
     if not test_data_dir.exists():
         os.makedirs(test_data_dir)
         logger.info(f"Created directory: {test_data_dir}")
 
+    # Create sample.txt (Short)
     sample_txt_path = test_data_dir / "sample.txt"
     if not sample_txt_path.exists():
         dummy_text = "これはテスト用の日本語テキストです。\n" * 100
@@ -143,7 +144,21 @@ def _(logger, project_root, os):
             _f_gen.write(dummy_text)
         logger.info(f"Created dummy file: {sample_txt_path}")
 
-    return sample_txt_path, test_data_dir
+    # Create dummy long text (Emin Style)
+    emin_txt_path = test_data_dir / "エミン流「会社四季報」最強の読み方.txt"
+    if not emin_txt_path.exists():
+        # Generate ~10KB of dummy Japanese text with some structure
+        dummy_long_text = ""
+        keywords = ["会社四季報", "PSR", "時価総額", "成長株", "バリュー株", "チャート分析", "業績修正", "外国人投資家", "決算発表", "増益"]
+        for _idx_gen in range(500):
+            sentence = f"第{_idx_gen}章: {random.choice(keywords)}について考える。市場の動向を見る上で{random.choice(keywords)}は重要である。\n"
+            dummy_long_text += sentence
+
+        with open(emin_txt_path, "w", encoding="utf-8") as _f_long:
+            _f_long.write(dummy_long_text)
+        logger.info(f"Created dummy long text file: {emin_txt_path} ({len(dummy_long_text)} chars)")
+
+    return sample_txt_path, test_data_dir, emin_txt_path
 
 
 @app.cell
@@ -185,7 +200,7 @@ def _(
     logger.info(f"Generated {len(chunks_sample)} chunks.")
 
     print("--- First 5 Chunks ---")
-    for i, c in enumerate(chunks_sample[:5]):
+    for _idx_chunk, c in enumerate(chunks_sample[:5]):
         print(f"[{c.index}] {c.text[:50]}...")
 
     return chunker_simple, chunks_sample, config_chunking, embedder_chunking
@@ -233,17 +248,14 @@ def _(
     SummarizationAgent,
     SummaryNode,
     logger,
-    sample_txt_path,
+    emin_txt_path,
     test_data_dir
 ):
     # Scenario 3: Full Raptor Pipeline
     logger.info("--- Scenario 3: Full Raptor Pipeline ---")
 
     # Determine input file
-    target_file = test_data_dir / "エミン流「会社四季報」最強の読み方.txt"
-    if not target_file.exists():
-        logger.warning(f"Target file {target_file.name} not found. Using {sample_txt_path.name} instead.")
-        target_file = sample_txt_path
+    target_file = emin_txt_path
 
     with open(target_file, "r", encoding="utf-8") as _f_sc3:
         full_content = _f_sc3.read()
