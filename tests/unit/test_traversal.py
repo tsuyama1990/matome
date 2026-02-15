@@ -100,6 +100,35 @@ def test_traverse_limit(mock_store: MagicMock) -> None:
     assert len(chunks) == 2
 
 
+def test_traverse_queue_limit(mock_store: MagicMock) -> None:
+    root = create_summary("root", [1, 2])
+    c1 = create_chunk(1)
+    # This child will be skipped due to queue limit if we set max_queue_size to 0 (effectively)
+    # But max_queue_size check happens before appending to queue.
+    # Current queue has root (pop) -> then we add children.
+    # If max_queue_size is small, some children might not be added.
+
+    # Let's say max_queue_size=0.
+    # Queue: [root] (len 1). Pop.
+    # Children: [c1, mid1].
+    # c1 yielded.
+    # mid1: if len(queue) < max_queue_size (0): append.
+    # Queue len is 0. 0 < 0 is False. Not appended.
+
+    mid1 = create_summary("mid1", [2])
+    c2 = create_chunk(2)
+
+    mock_store.get_nodes.side_effect = [
+        iter([c1, mid1]), # result for root's children
+        iter([c2])        # result for mid1's children (should not be called)
+    ]
+
+    chunks = list(traverse_source_chunks(mock_store, root, max_queue_size=0))
+
+    assert len(chunks) == 1
+    assert chunks[0].index == 1
+
+
 def test_traverse_cycle_prevention(mock_store: MagicMock) -> None:
     # Root -> [Mid 1]
     # Mid 1 -> [Root] (Cycle)

@@ -3,11 +3,33 @@ import logging
 import re
 import unicodedata
 import urllib.parse
-from typing import Any
+from typing import Any, Final
 
 from domain_models.constants import PROMPT_INJECTION_PATTERNS, SYSTEM_INJECTION_PATTERNS
 
 logger = logging.getLogger(__name__)
+
+# Allow alphanumeric, underscore, hyphen only to prevent injection
+VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
+def validate_node_id(node_id: str) -> str:
+    """
+    Validate node ID format to prevent injection/corruption.
+
+    Args:
+        node_id: The ID to validate.
+
+    Returns:
+        The validated node ID.
+
+    Raises:
+        ValueError: If the ID format is invalid.
+    """
+    if not VALID_NODE_ID_PATTERN.match(node_id):
+        msg = f"Invalid node ID format: {node_id}"
+        raise ValueError(msg)
+    return node_id
 
 
 def check_length(text: str, max_input_length: int) -> None:

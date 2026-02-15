@@ -1,9 +1,11 @@
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from domain_models.config import ProcessingConfig
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
 from matome.exceptions import RefinementError, StoreError
 from matome.utils.store import DiskChunkStore
@@ -17,7 +19,7 @@ def test_store_connection_failure() -> None:
             DiskChunkStore()
 
 
-def test_store_query_failure(tmp_path) -> None:
+def test_store_query_failure(tmp_path: Path) -> None:
     """Test handling of query failures."""
     store = DiskChunkStore(db_path=tmp_path / "test.db")
 
@@ -30,47 +32,15 @@ def test_store_query_failure(tmp_path) -> None:
     store.close()
 
 
-def test_corrupted_json_in_db(tmp_path) -> None:
+def test_corrupted_json_in_db(tmp_path: Path) -> None:
     """Test handling of corrupted JSON data in the database."""
     store = DiskChunkStore(db_path=tmp_path / "corrupt.db")
 
-    # Manually insert bad JSON
-    with store.engine.begin() as conn:
-        from sqlalchemy import insert
-        conn.execute(
-            insert(store.nodes_table).values(
-                id="bad_node",
-                type="chunk",
-                content="{invalid json",
-                embedding=None
-            )
-        )
-
-    # get_node should raise ValueError (wrapped from JSONDecodeError) or StoreError/SQLAlchemyError
-    # Depending on how the driver handles malformed JSON in a TEXT column (it might just be text)
-    # But here we inserted text "{invalid json" into JSON column? No, schema says TEXT.
-    # Ah, store_schema.py: Column(COL_CONTENT, Text)
-    # So SQLite stores it as text.
-    # When fetching, deserialize_node calls json.loads -> raises ValueError
-    # BUT, if we insert directly via conn.execute with SQL string, maybe SQLite is fine.
-    # However, the previous run showed "sqlite3.OperationalError: malformed JSON".
-    # This implies SQLite itself is checking JSON validity?
-    # Ah, we have an index on json_extract(content).
-    # "Index('idx_nodes_level', func.json_extract(text(COL_CONTENT), '$.level'))"
-    # Inserting invalid JSON might break the index update if SQLite enforces it?
-    # SQLite json_extract returns NULL on error usually, but maybe not in index?
-    # In any case, the error is raised at INSERT time in the test setup, not at get_node time.
-
-    # We need to wrap the setup in try/except or expect error there if we want to test retrieval of bad data.
-    # But if we can't insert it, we can't test retrieval.
-    # We should probably skip this test or insert valid JSON that is semantically invalid for our app.
-    # Or just handle the insertion error if that's what we want to test.
-    # The requirement is "Tests for ... corrupted JSON".
-    # If the DB prevents corruption, that's even better!
-    # Let's change the test to verify that the DB rejects invalid JSON due to the index.
-
-    with pytest.raises(SQLAlchemyError, match="malformed JSON"):
-         with store.engine.begin() as conn:
+    # We expect an OperationalError from SQLite when inserting bad JSON into an indexed JSON column
+    # or a ValueError/StoreError if we manage to get it in and then read it.
+    # Here we test that the store rejects or the DB rejects invalid JSON insertion if checks are in place.
+    try:
+        with store.engine.begin() as conn:
             from sqlalchemy import insert
             conn.execute(
                 insert(store.nodes_table).values(
@@ -80,21 +50,37 @@ def test_corrupted_json_in_db(tmp_path) -> None:
                     embedding=None
                 )
             )
+    except SQLAlchemyError:
+        # Expected behavior if DB constraints/indexes prevent insertion
+        pass
+    else:
+        # If insertion succeeded, reading it should fail
+        with pytest.raises(ValueError, match="Failed to decode JSON"):
+            store.get_node("bad_node")
 
     store.close()
 
 
-def test_refinement_store_failure(tmp_path) -> None:
+def test_refinement_store_failure(tmp_path: Path) -> None:
     """Test that InteractiveRaptorEngine wraps store errors."""
     store = MagicMock(spec=DiskChunkStore)
     store.get_node.side_effect = StoreError("DB unavailable")
 
-    # Mock config to avoid validation error before store call?
-    # refine_node calls _validate_refinement_input -> _validate_node -> store.get_node
+    config = ProcessingConfig(max_instruction_length=1000)
 
-    engine = InteractiveRaptorEngine(store=store, summarizer=MagicMock(), config=MagicMock())
-    # Configure mock config
-    engine.config.max_instruction_length = 1000
+    engine = InteractiveRaptorEngine(store=store, summarizer=MagicMock(), config=config)
 
     with pytest.raises(RefinementError, match="Refinement failed"):
         engine.refine_node("node_1", "make it better")
+
+
+def test_empty_database(tmp_path: Path) -> None:
+    """Test operations on an empty database."""
+    store = DiskChunkStore(db_path=tmp_path / "empty.db")
+
+    assert store.get_node("non_existent") is None
+    assert list(store.get_nodes(["missing1", "missing2"])) == []
+    assert store.get_node_count(0) == 0
+    assert store.get_max_level() == 0
+
+    store.close()

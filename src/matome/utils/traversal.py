@@ -2,16 +2,19 @@ import logging
 from collections import deque
 from collections.abc import Iterator
 
+from domain_models.constants import DEFAULT_TRAVERSAL_MAX_QUEUE_SIZE
 from domain_models.manifest import Chunk, SummaryNode
-from matome.utils.store import DiskChunkStore, StoreError
+from matome.exceptions import StoreError
+from matome.utils.store import DiskChunkStore
 
 logger = logging.getLogger(__name__)
 
-MAX_QUEUE_SIZE = 10000
-
 
 def traverse_source_chunks(
-    store: DiskChunkStore, root: SummaryNode, limit: int | None = None
+    store: DiskChunkStore,
+    root: SummaryNode,
+    limit: int | None = None,
+    max_queue_size: int = DEFAULT_TRAVERSAL_MAX_QUEUE_SIZE,
 ) -> Iterator[Chunk]:
     """
     Traverse source chunks using layer-by-layer BFS with batch fetching.
@@ -44,7 +47,7 @@ def traverse_source_chunks(
                         return
                 elif isinstance(child, SummaryNode) and str(child.id) not in visited:
                     visited.add(str(child.id))
-                    if len(queue) < MAX_QUEUE_SIZE:
+                    if len(queue) < max_queue_size:
                         queue.append(child)
                     else:
                         logger.warning("Traversal queue limit reached. Truncating search.")

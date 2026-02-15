@@ -69,7 +69,9 @@ class InteractiveRaptorEngine:
             yield node
             return
 
-        yield from traverse_source_chunks(self.store, node, limit)
+        yield from traverse_source_chunks(
+            self.store, node, limit, self.config.traversal_max_queue_size
+        )
 
     def get_children(self, node: SummaryNode) -> Iterator[SummaryNode | Chunk]:
         """
@@ -158,14 +160,15 @@ class InteractiveRaptorEngine:
 
         return self._validate_node(node_id)
 
-    def _retrieve_children_content(self, node: SummaryNode) -> tuple[list[str], int]:
+    def _retrieve_children_content(self, node: SummaryNode) -> tuple[str, int, int]:
         """
-        Stream children and collect text.
-        Returns: (list of text chunks, total length)
+        Stream children and collect text efficiently.
+        Returns: (concatenated text, total length, number of children processed)
         """
         limit = self.config.max_input_length * self.config.refinement_context_limit_multiplier
         current_len = 0
-        child_texts: list[str] = []
+        child_count = 0
+        parts: list[str] = []
 
         try:
             for child in self.get_children(node):
@@ -175,21 +178,21 @@ class InteractiveRaptorEngine:
                         f"Refinement source text for node {node.id} exceeds safety limit ({limit}). Truncating."
                     )
                     break
-                child_texts.append(child.text)
+                parts.append(child.text)
                 current_len += text_len
+                child_count += 1
         except (StoreError, ValueError):
             logger.exception(f"Error retrieving children content for node {node.id}")
             raise
 
-        return child_texts, current_len
+        return "\n\n".join(parts), current_len, child_count
 
     def _retrieve_and_validate_children_content(self, node: SummaryNode) -> str:
         """
         Retrieve children, validate count, and concatenate content safely.
         Returns the concatenated source text.
         """
-        child_texts, current_len = self._retrieve_children_content(node)
-        children_count = len(child_texts)
+        source_text, current_len, children_count = self._retrieve_children_content(node)
 
         if children_count == 0:
              msg = f"Node {node.id} has no accessible children. Cannot refine."
@@ -202,7 +205,7 @@ class InteractiveRaptorEngine:
              if current_len == 0:
                  raise ValueError(msg)
 
-        return "\n\n".join(child_texts)
+        return source_text
 
     def _sanitize_instruction(self, instruction: str) -> str:
         """

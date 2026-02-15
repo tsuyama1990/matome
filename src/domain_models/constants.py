@@ -1,141 +1,86 @@
-"""
-Centralized constants for the Matome project.
-Includes security patterns, defaults, and configuration whitelists.
-"""
 from typing import Final
 
-# Security / Validation
-PROMPT_INJECTION_PATTERNS = [
-    r"(?i)ignore\s+previous\s+instructions",
-    r"(?i)ignore\s+all\s+instructions",
-    r"(?i)system\s+prompt",
-    r"(?i)simulated\s+response",
-    r"(?i)base64",
-    r"(?i)encoded\s+text",
-    r"(?i)developer\s+mode",
-    r"(?i)jailbreak",
-    r"(?i)DAN\s+mode",
-    r"(?i)unrestricted\s+mode",
-]
+# Constants for DB Schema
+MAX_DB_CONTENT_LENGTH: Final[int] = 10_000_000
 
-SYSTEM_INJECTION_PATTERNS = [
-    r"(?i)\b(DROP|DELETE|UPDATE|INSERT|ALTER)\s+(TABLE|FROM|INTO|DATABASE)\b",
-    r"(?i)\b(rm|sudo|chmod|chown|wget|curl|nc|netcat)\s+",
-    r"(?i)\b(cat|ls|pwd|whoami)\s+",
-    r"(?i)/bin/sh",
-    r"(?i)/bin/bash",
-]
+# Constants for Processing
+DEFAULT_MAX_TOKENS: Final[int] = 1000
+DEFAULT_OVERLAP: Final[int] = 100
+DEFAULT_SEMANTIC_CHUNKING_MODE: Final[bool] = False
+DEFAULT_SEMANTIC_CHUNKING_THRESHOLD: Final[float] = 0.5
+DEFAULT_SEMANTIC_CHUNKING_PERCENTILE: Final[int] = 90
+DEFAULT_EMBEDDING: Final[str] = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_EMBEDDING_BATCH_SIZE: Final[int] = 32
+DEFAULT_RANDOM_STATE: Final[int] = 42
+DEFAULT_UMAP_N_NEIGHBORS: Final[int] = 15
+DEFAULT_UMAP_MIN_DIST: Final[float] = 0.1
+DEFAULT_UMAP_N_COMPONENTS: Final[int] = 2
+DEFAULT_CLUSTERING_WRITE_BATCH_SIZE: Final[int] = 1000
+DEFAULT_CLUSTERING_PROBABILITY_THRESHOLD: Final[float] = 0.1
+LARGE_SCALE_THRESHOLD: Final[int] = 10000
+DEFAULT_CLUSTER_BATCH_SIZE: Final[int] = 10
+DEFAULT_CHUNK_BUFFER_SIZE: Final[int] = 1000
+DEFAULT_CANVAS_NODE_WIDTH: Final[int] = 400
+DEFAULT_CANVAS_NODE_HEIGHT: Final[int] = 200
+DEFAULT_CANVAS_GAP_X: Final[int] = 50
+DEFAULT_CANVAS_GAP_Y: Final[int] = 100
+DEFAULT_STORE_WRITE_BATCH_SIZE: Final[int] = 1000
+DEFAULT_STORE_READ_BATCH_SIZE: Final[int] = 500
+DEFAULT_IO_BUFFER_SIZE: Final[int] = 65536
+DEFAULT_MAX_INSTRUCTION_LENGTH: Final[int] = 1000
+DEFAULT_SERVER_PORT: Final[int] = 5006
+DEFAULT_MAX_FILE_SIZE_BYTES: Final[int] = 500 * 1024 * 1024  # 500 MB
+DEFAULT_REFINEMENT_LIMIT_MULTIPLIER: Final[int] = 2
+DEFAULT_UI_MAX_SOURCE_CHUNKS: Final[int] = 100
+DEFAULT_UI_MAX_CHILDREN: Final[int] = 50
+DEFAULT_MAX_REFINEMENT_HISTORY: Final[int] = 10
+DEFAULT_SUMMARIZER: Final[str] = "openai/gpt-4o-mini"
+DEFAULT_MAX_SUMMARY_TOKENS: Final[int] = 500
+DEFAULT_MAX_RETRIES: Final[int] = 3
+DEFAULT_LLM_TEMPERATURE: Final[float] = 0.0
+DEFAULT_MAX_WORD_LENGTH: Final[int] = 1000
+DEFAULT_MAX_INPUT_LENGTH: Final[int] = 100000
+DEFAULT_VERIFIER_ENABLED: Final[bool] = False
+HIGH_PRECISION_MAX_TOKENS: Final[int] = 200
+HIGH_PRECISION_OVERLAP: Final[int] = 20
+DEFAULT_TRAVERSAL_MAX_QUEUE_SIZE: Final[int] = 10000
 
-# Defaults
-DEFAULT_TOKENIZER = "cl100k_base"
-DEFAULT_EMBEDDING = "intfloat/multilingual-e5-large"
-DEFAULT_SUMMARIZER = "gpt-4o"
+# Constants for Validation
+DEFAULT_TOKENIZER: Final[str] = "cl100k_base"
+ALLOWED_EMBEDDING_MODELS: Final[set[str]] = {
+    "sentence-transformers/all-MiniLM-L6-v2",
+    "intfloat/multilingual-e5-large",
+    "text-embedding-3-small",
+    "text-embedding-3-large",
+}
+ALLOWED_SUMMARIZATION_MODELS: Final[set[str]] = {
+    "openai/gpt-4o-mini",
+    "openai/gpt-4o",
+    "anthropic/claude-3.5-sonnet",
+    "anthropic/claude-3-haiku",
+    "google/gemini-flash-1.5",
+    "meta-llama/llama-3-8b-instruct",
+}
+ALLOWED_TOKENIZER_MODELS: Final[set[str]] = {"cl100k_base", "gpt2", "p50k_base", "r50k_base"}
 
-# Configuration Defaults
-LARGE_SCALE_THRESHOLD = 20000
-
-# Chunking Defaults
-DEFAULT_MAX_TOKENS = 500
-DEFAULT_OVERLAP = 0
-HIGH_PRECISION_MAX_TOKENS = 200
-HIGH_PRECISION_OVERLAP = 20
-DEFAULT_SEMANTIC_CHUNKING_MODE = False
-DEFAULT_SEMANTIC_CHUNKING_THRESHOLD = 0.8
-DEFAULT_SEMANTIC_CHUNKING_PERCENTILE = 90
-
-# Embedding Defaults
-DEFAULT_EMBEDDING_BATCH_SIZE = 32
-
-# Clustering Defaults
-DEFAULT_RANDOM_STATE = 42
-DEFAULT_UMAP_N_NEIGHBORS = 15
-DEFAULT_UMAP_MIN_DIST = 0.1
-DEFAULT_UMAP_N_COMPONENTS = 2
-DEFAULT_CLUSTERING_WRITE_BATCH_SIZE = 1000
-DEFAULT_CLUSTERING_PROBABILITY_THRESHOLD = 0.1
-DEFAULT_CLUSTER_BATCH_SIZE = 20
-DEFAULT_CHUNK_BUFFER_SIZE = 50
-MIN_CLUSTERING_SAMPLES = 5
-MAX_RECURSION_DEPTH = 10
-
-DEFAULT_STRATEGY_MAPPING = {
+DEFAULT_STRATEGY_MAPPING: Final[dict[str, str]] = {
     "wisdom": "wisdom",
     "knowledge": "knowledge",
     "information": "information",
 }
 
-# Canvas Defaults
-DEFAULT_CANVAS_NODE_WIDTH = 400
-DEFAULT_CANVAS_NODE_HEIGHT = 200
-DEFAULT_CANVAS_GAP_X = 50
-DEFAULT_CANVAS_GAP_Y = 300
-
-# Store Defaults
-DEFAULT_STORE_WRITE_BATCH_SIZE = 1000
-DEFAULT_STORE_READ_BATCH_SIZE = 500
-MAX_DB_CONTENT_LENGTH = 1_000_000  # 1MB limit for single node content
-
-# Interactive Defaults
-DEFAULT_MAX_INSTRUCTION_LENGTH = 1000
-DEFAULT_SERVER_PORT = 5006
-DEFAULT_REFINEMENT_LIMIT_MULTIPLIER: Final[int] = 2
-DEFAULT_UI_MAX_SOURCE_CHUNKS: Final[int] = 100
-DEFAULT_UI_MAX_CHILDREN: Final[int] = 50
-DEFAULT_MAX_REFINEMENT_HISTORY: Final[int] = 50
-
-# File Processing Defaults
-DEFAULT_MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024  # 500 MB
-DEFAULT_IO_BUFFER_SIZE: Final[int] = 8192
-
-# Summarization Defaults
-DEFAULT_MAX_SUMMARY_TOKENS = 200
-DEFAULT_MAX_RETRIES = 3
-DEFAULT_LLM_TEMPERATURE = 0.0
-DEFAULT_MAX_WORD_LENGTH = 1000
-DEFAULT_MAX_INPUT_LENGTH = 500_000
-
-# Verification Defaults
-DEFAULT_VERIFIER_ENABLED = True
-
-# Security Whitelists
-ALLOWED_TOKENIZER_MODELS = {
-    "cl100k_base",
-    "p50k_base",
-    "r50k_base",
-    "gpt2",
-    "gpt-3.5-turbo",
-    "gpt-4",
-    "gpt-4o",
-    "text-embedding-ada-002",
-    "text-embedding-3-small",
-    "text-embedding-3-large",
-}
-
-ALLOWED_EMBEDDING_MODELS = {
-    "intfloat/multilingual-e5-large",
-    "intfloat/multilingual-e5-small",
-    "intfloat/multilingual-e5-base",
-    "openai/text-embedding-ada-002",
-    "openai/text-embedding-3-small",
-    "openai/text-embedding-3-large",
-    "mock-model",  # Allowed for testing
-}
-
-ALLOWED_SUMMARIZATION_MODELS = {
-    "gpt-4o",
-    "gpt-4o-mini",
-    "gpt-4-turbo",
-    "gpt-3.5-turbo",
-    "google/gemini-1.5-flash",
-    "google/gemini-1.5-pro",
-    "anthropic/claude-3-opus",
-    "anthropic/claude-3-sonnet",
-    "anthropic/claude-3-haiku",
-    "meta-llama/llama-3-70b-instruct",
-    "openai/gpt-4o",  # OpenRouter format
-    "openai/gpt-4o-mini",
-    "mock-model",
-}
-
-# Regex Patterns
-SENTENCE_SPLIT_PATTERN = r"(?<=[。！？])\s*|\n+"
+# Security Patterns
+PROMPT_INJECTION_PATTERNS: Final[list[str]] = [
+    r"ignore previous instructions",
+    r"system prompt",
+    r"you are not a",
+    r"output everything above",
+]
+SYSTEM_INJECTION_PATTERNS: Final[list[str]] = [
+    r"rm -rf",
+    r"wget ",
+    r"curl ",
+    r"cat /etc/passwd",
+    r"drop table",
+]
+MAX_RECURSION_DEPTH = 10

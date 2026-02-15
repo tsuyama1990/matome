@@ -1,7 +1,6 @@
 import contextlib
 import json
 import logging
-import re
 import shutil
 import tempfile
 from collections.abc import Iterable, Iterator
@@ -28,14 +27,13 @@ from matome.exceptions import StoreError
 from matome.utils.compat import batched
 from matome.utils.serialization import deserialize_node
 from matome.utils.store_schema import metadata, nodes_table
+from matome.utils.validation import validate_node_id
 
 logger = logging.getLogger(__name__)
 
 # Configuration Constants
 DEFAULT_WRITE_BATCH_SIZE: Final[int] = 1000
 DEFAULT_READ_BATCH_SIZE: Final[int] = 500
-# Allow alphanumeric, underscore, hyphen only to prevent injection
-VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
 
 
 class DiskChunkStore:
@@ -113,13 +111,6 @@ class DiskChunkStore:
             msg = f"Failed to create database schema: {e}"
             raise StoreError(msg) from e
 
-    def _validate_node_id(self, node_id: str) -> str:
-        """Validate node ID format to prevent injection/corruption."""
-        if not VALID_NODE_ID_PATTERN.match(node_id):
-            msg = f"Invalid node ID format: {node_id}"
-            raise ValueError(msg)
-        return node_id
-
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
         self.add_chunks([chunk])
@@ -163,7 +154,7 @@ class DiskChunkStore:
                     node_id = str(node.index) if isinstance(node, Chunk) else str(node.id)
 
                     # Validate ID
-                    self._validate_node_id(node_id)
+                    validate_node_id(node_id)
 
                     buffer.append(
                         {
@@ -206,11 +197,13 @@ class DiskChunkStore:
                     batch_ids: list[str] = []
                     for raw_id in batch_raw_ids:
                         normalized_id = str(raw_id)
-                        if not VALID_NODE_ID_PATTERN.match(normalized_id):
+                        try:
+                            validate_node_id(normalized_id)
+                            batch_ids.append(normalized_id)
+                        except ValueError:
                             # We might log this but skipping is safer to avoid injection
                             logger.warning(f"Skipping invalid node ID: {normalized_id}")
                             continue
-                        batch_ids.append(normalized_id)
 
                     if not batch_ids:
                         continue
@@ -249,7 +242,7 @@ class DiskChunkStore:
             return
 
         node_id_str = str(node_id)
-        self._validate_node_id(node_id_str)
+        validate_node_id(node_id_str)
         embedding_json = json.dumps(embedding)
 
         stmt = (
@@ -275,7 +268,7 @@ class DiskChunkStore:
         content_json = node.model_dump_json(exclude={"embedding"})
         embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
 
-        self._validate_node_id(str(node.id))
+        validate_node_id(str(node.id))
 
         stmt = (
             update(self.nodes_table)
@@ -296,7 +289,7 @@ class DiskChunkStore:
     def get_node(self, node_id: int | str) -> Chunk | SummaryNode | None:
         """Retrieve a node by ID."""
         node_id_str = str(node_id)
-        self._validate_node_id(node_id_str)
+        validate_node_id(node_id_str)
 
         stmt = select(
             self.nodes_table.c.type, self.nodes_table.c.content, self.nodes_table.c.embedding

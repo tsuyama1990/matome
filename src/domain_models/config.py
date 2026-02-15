@@ -41,6 +41,7 @@ from domain_models.constants import (
     DEFAULT_STRATEGY_MAPPING,
     DEFAULT_SUMMARIZER,
     DEFAULT_TOKENIZER,
+    DEFAULT_TRAVERSAL_MAX_QUEUE_SIZE,
     DEFAULT_UI_MAX_CHILDREN,
     DEFAULT_UI_MAX_SOURCE_CHUNKS,
     DEFAULT_UMAP_MIN_DIST,
@@ -238,6 +239,9 @@ class ProcessingConfig(BaseModel):
     )
     max_refinement_history: int = Field(
         default=DEFAULT_MAX_REFINEMENT_HISTORY, ge=1, description="Maximum number of refinement history entries to keep per node."
+    )
+    traversal_max_queue_size: int = Field(
+        default=DEFAULT_TRAVERSAL_MAX_QUEUE_SIZE, ge=1, description="Maximum queue size for graph traversal."
     )
 
     # Summarization Configuration
