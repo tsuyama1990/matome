@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 
 # Allow alphanumeric, underscore, hyphen only to prevent injection
 VALID_NODE_ID_PATTERN: Final[re.Pattern[str]] = re.compile(r"^[a-zA-Z0-9_\-]+$")
+# Control characters to remove (ranges 00-08, 0B-0C, 0E-1F, 7F)
+CONTROL_CHARS_PATTERN: Final[re.Pattern[str]] = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 def validate_node_id(node_id: str) -> str:

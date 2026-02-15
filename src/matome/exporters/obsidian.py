@@ -1,15 +1,11 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from domain_models.config import ProcessingConfig
-from domain_models.constants import (
-    CANVAS_NODE_TYPE_FILE,
-    CANVAS_NODE_TYPE_GROUP,
-    CANVAS_NODE_TYPE_TEXT,
-)
 from domain_models.manifest import Chunk, SummaryNode
+from domain_models.types import CanvasNodeType
 from matome.utils.store import DiskChunkStore
 
 if TYPE_CHECKING:
@@ -26,9 +22,7 @@ class CanvasNode(BaseModel):
     y: int = Field(..., description="Y coordinate of the node.")
     width: int = Field(..., description="Width of the node.")
     height: int = Field(..., description="Height of the node.")
-    type: Literal[
-        CANVAS_NODE_TYPE_TEXT, CANVAS_NODE_TYPE_FILE, CANVAS_NODE_TYPE_GROUP  # type: ignore[valid-type]
-    ] = Field(default=CANVAS_NODE_TYPE_TEXT, description="Type of the node.")
+    type: CanvasNodeType = Field(default=CanvasNodeType.TEXT, description="Type of the node.")
     text: str | None = Field(default=None, description="Text content for text nodes.")
 
 
@@ -210,7 +204,7 @@ class ObsidianCanvasExporter:
                 y=y,
                 width=self.NODE_WIDTH,
                 height=self.NODE_HEIGHT,
-                type=CANVAS_NODE_TYPE_TEXT,
+                type=CanvasNodeType.TEXT,
                 text=text,
             )
             self.nodes.append(canvas_node)

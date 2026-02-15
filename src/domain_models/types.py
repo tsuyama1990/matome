@@ -20,3 +20,10 @@ class DIKWLevel(StrEnum):
     KNOWLEDGE = "knowledge"
     INFORMATION = "information"
     DATA = "data"
+
+from enum import Enum
+
+class CanvasNodeType(str, Enum):
+    TEXT = "text"
+    FILE = "file"
+    GROUP = "group"
