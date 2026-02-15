@@ -25,6 +25,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from domain_models.constants import MAX_DB_CONTENT_LENGTH
 from domain_models.manifest import Chunk, SummaryNode
 from matome.utils.compat import batched
+from matome.utils.serialization import deserialize_node
 from matome.utils.store_schema import metadata, nodes_table
 
 logger = logging.getLogger(__name__)
@@ -122,50 +123,6 @@ class DiskChunkStore:
             raise ValueError(msg)
         return node_id
 
-    def _deserialize_node(
-        self,
-        node_id: str,
-        node_type: str,
-        content_json: str | None,
-        embedding_json: str | None,
-    ) -> Chunk | SummaryNode:
-        """Helper to deserialize node data."""
-        if not content_json:
-            msg = f"Node {node_id} has empty content."
-            raise ValueError(msg)
-
-        try:
-            embedding = json.loads(embedding_json) if embedding_json else None
-            data = json.loads(content_json)
-            if not isinstance(data, dict):
-                msg = f"Node {node_id} content is not a JSON object."
-                raise TypeError(msg)
-
-            # Basic schema validation
-            required_keys = {"text"}
-            if node_type == "chunk":
-                required_keys.update({"index", "start_char_idx", "end_char_idx"})
-            elif node_type == "summary":
-                required_keys.update({"id", "level", "children_indices", "metadata"})
-
-            if not required_keys.issubset(data.keys()):
-                msg = f"Node {node_id} missing required keys: {required_keys - data.keys()}"
-                raise ValueError(msg)
-
-        except json.JSONDecodeError as e:
-            msg = f"Failed to decode JSON for node {node_id}: {e}"
-            raise ValueError(msg) from e
-
-        if embedding is not None:
-            data["embedding"] = embedding
-
-        if node_type == "chunk":
-            return Chunk.model_validate(data)
-        if node_type == "summary":
-            return SummaryNode.model_validate(data)
-        msg = f"Unknown node type: {node_type} for node {node_id}"
-        raise ValueError(msg)
-
     def add_chunk(self, chunk: Chunk) -> None:
         """Store a chunk. ID is its index converted to str."""
         self.add_chunks([chunk])
@@ -206,7 +163,7 @@ class DiskChunkStore:
                     self._validate_content_length(content_json)
 
                     embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
-                    node_id = str(node.index) if isinstance(node, Chunk) else node.id
+                    node_id = str(node.index) if isinstance(node, Chunk) else str(node.id)
 
                     # Validate ID
                     self._validate_node_id(node_id)
@@ -272,7 +229,7 @@ class DiskChunkStore:
 
                     for row in result:
                         try:
-                            yield self._deserialize_node(
+                            yield deserialize_node(
                                 row.id, row.type, row.content, row.embedding
                             )
                         except Exception:
@@ -320,7 +277,7 @@ class DiskChunkStore:
         content_json = node.model_dump_json(exclude={"embedding"})
         embedding_json = json.dumps(node.embedding) if node.embedding is not None else None
 
-        self._validate_node_id(node.id)
+        self._validate_node_id(str(node.id))
 
         stmt = (
             update(self.nodes_table)
@@ -356,7 +313,7 @@ class DiskChunkStore:
                     return None
 
                 node_type, content_json, embedding_json = row
-                return self._deserialize_node(node_id_str, node_type, content_json, embedding_json)
+                return deserialize_node(node_id_str, node_type, content_json, embedding_json)
         except SQLAlchemyError as e:
             msg = f"Failed to retrieve node {node_id}: {e}"
             raise StoreError(msg) from e

@@ -73,17 +73,19 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
 
         assert isinstance(tree, DocumentTree)
         assert tree.root_node is not None
+        root = tree.root_node
+        assert isinstance(root, SummaryNode)
         assert len(tree.leaf_chunk_ids) == 10
-        assert tree.root_node.level >= 1
+        assert root.level >= 1
 
-        assert tree.root_node.metadata.dikw_level == DIKWLevel.WISDOM
+        assert root.metadata.dikw_level == DIKWLevel.WISDOM
 
         # Check children of root (Level 1)
         # If root is Level 2 (chunks -> L1 -> Root), then L1 should be INFORMATION (or KNOWLEDGE if depth > 2)
         # With 10 chunks and GMM, we likely get L1 nodes.
         # Let's verify at least one child exists and has correct level
-        if tree.root_node.children_indices:
-            child_id = tree.root_node.children_indices[0]
+        if root.children_indices:
+            child_id = root.children_indices[0]
             child_node = store.get_node(child_id)
             if child_node and isinstance(child_node, SummaryNode):
                 # If level is 1 (directly above chunks), it should be INFORMATION
@@ -97,8 +99,8 @@ def test_raptor_pipeline_integration(config: ProcessingConfig) -> None:
         assert first_chunk is not None
         assert first_chunk.embedding is not None, "Leaf chunks must retain embeddings."
 
-        root_fetched = store.get_node(tree.root_node.id)
+        root_fetched = store.get_node(root.id)
         if root_fetched:
             assert root_fetched.embedding is not None, "Root node must have an embedding in store."
 
-        assert tree.root_node.embedding is not None, "Root node object must have an embedding."
+        assert root.embedding is not None, "Root node object must have an embedding."

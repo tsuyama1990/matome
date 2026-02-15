@@ -74,12 +74,14 @@ class ObsidianCanvasExporter:
         if not tree.root_node:
             return CanvasFile(nodes=[], edges=[])
 
+        root_id = tree.root_node.id if isinstance(tree.root_node, SummaryNode) else tree.root_node.index
+
         # 1. Calculate subtree widths (Post-order)
-        self._calculate_subtree_width(tree.root_node.id, store)
+        self._calculate_subtree_width(root_id, store)
 
         # 2. Assign positions (Pre-order)
         # Root starts at (0, 0)
-        self._assign_positions(tree.root_node.id, 0, 0, store)
+        self._assign_positions(root_id, 0, 0, store)
 
         return CanvasFile(nodes=self.nodes, edges=self.edges)
 

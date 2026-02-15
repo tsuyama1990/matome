@@ -1,6 +1,5 @@
 import logging
 import re
-from collections import deque
 from collections.abc import Iterator
 
 from domain_models.config import ProcessingConfig
@@ -14,6 +13,7 @@ from matome.agents.strategies import (
 from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import MatomeError
 from matome.utils.store import DiskChunkStore, StoreError
+from matome.utils.traversal import traverse_source_chunks
 
 logger = logging.getLogger(__name__)
 
@@ -70,57 +70,7 @@ class InteractiveRaptorEngine:
             yield node
             return
 
-        yield from self._traverse_source_chunks(node, limit)
-
-    def _traverse_source_chunks(self, root: SummaryNode, limit: int | None) -> Iterator[Chunk]:
-        """
-        Helper to traverse source chunks using layer-by-layer BFS with batch fetching.
-        Reduces N+1 queries by fetching children of the entire current layer at once.
-        """
-        queue: deque[SummaryNode] = deque([root])
-        visited: set[str] = {str(root.id)}
-        yielded_count = 0
-
-        # Max queue size safety
-        MAX_QUEUE_SIZE = 10000
-
-        while queue:
-            if limit and yielded_count >= limit:
-                break
-
-            # Process current layer
-            current_layer_nodes = list(queue)
-            queue.clear()
-
-            # Collect all child IDs for this layer
-            all_child_ids: list[str | int] = []
-            for node in current_layer_nodes:
-                all_child_ids.extend(node.children_indices)
-
-            if not all_child_ids:
-                continue
-
-            try:
-                # Batch fetch all children for this layer
-                for child in self.store.get_nodes(all_child_ids):
-                    if child is None:
-                        continue
-
-                    if isinstance(child, Chunk):
-                        yield child
-                        yielded_count += 1
-                        if limit and yielded_count >= limit:
-                            break
-                    # child is SummaryNode because get_nodes return type union, checked Chunk above
-                    elif str(child.id) not in visited:
-                        visited.add(str(child.id))
-                        if len(queue) < MAX_QUEUE_SIZE:
-                            queue.append(child) # type: ignore[arg-type]
-                        else:
-                            logger.warning("Traversal queue limit reached. Truncating search.")
-            except (StoreError, ValueError):
-                logger.exception("Error during source chunk traversal")
-                break
+        yield from traverse_source_chunks(self.store, node, limit)
 
     def get_children(self, node: SummaryNode) -> Iterator[SummaryNode | Chunk]:
         """

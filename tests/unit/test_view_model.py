@@ -151,6 +151,7 @@ class TestInteractiveSession:
 
         session.load_source_chunks("node_1")
 
-        mock_engine.get_source_chunks.assert_called_once_with("node_1")
+        # Limit comes from DEFAULT_UI_MAX_SOURCE_CHUNKS which is 100
+        mock_engine.get_source_chunks.assert_called_once_with("node_1", limit=100)
         assert session.source_chunks == [c1, c2]
         assert session.show_source_chunks is True
