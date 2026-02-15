@@ -249,8 +249,10 @@ def _(
     RaptorEngine,
     SummarizationAgent,
     SummaryNode,
-    logger,
     emin_txt_path,
+    logger,
+    os,
+    project_root,
     test_data_dir
 ):
     # Scenario 3: Full Raptor Pipeline
@@ -263,8 +265,16 @@ def _(
         full_content = _f_sc3.read()
 
     # Initialize Full Engine
-    # We use a temporary store for the tutorial
-    store = DiskChunkStore(db_path=None) # In-memory/Temp file
+    # We use a persistent store for the tutorial so we can run the GUI later
+    db_path = project_root / "tutorials" / "chunks.db"
+    if db_path.exists():
+        try:
+            os.remove(db_path)
+            logger.info(f"Removed existing DB: {db_path}")
+        except Exception as e:
+            logger.warning(f"Could not remove existing DB: {e}")
+
+    store = DiskChunkStore(db_path=db_path)
 
     config = ProcessingConfig(
         n_clusters=2,
@@ -430,7 +440,7 @@ def _(logger):
     # Scenario 9: GUI Instructions
     logger.info("--- Scenario 9: GUI Launch Instructions ---")
     print("\nTo explore the results visually, run the following command in your terminal:")
-    print("uv run matome serve")
+    print("uv run matome serve tutorials/chunks.db")
     print("\nThis will launch the Panel-based interactive application.")
     return
 
