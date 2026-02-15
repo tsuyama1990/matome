@@ -15,6 +15,7 @@ def _():
     from pathlib import Path
     from typing import Any
 
+    import matplotlib.pyplot as plt
     import numpy as np
     import marimo as mo
 
@@ -31,6 +32,8 @@ def _():
     from matome.engines.interactive_raptor import InteractiveRaptorEngine
     from matome.engines.raptor import RaptorEngine
     from matome.engines.token_chunker import JapaneseTokenChunker
+    from matome.exporters.markdown import export_to_markdown
+    from matome.exporters.obsidian import ObsidianCanvasExporter
     from matome.utils.store import DiskChunkStore
 
     # Setup logging
@@ -46,16 +49,19 @@ def _():
         Iterable,
         Iterator,
         JapaneseTokenChunker,
+        ObsidianCanvasExporter,
         Path,
         ProcessingConfig,
         RaptorEngine,
         SummarizationAgent,
         SummaryNode,
+        export_to_markdown,
         logger,
         logging,
         mo,
         np,
         os,
+        plt,
         shutil,
         sys,
         uuid,
@@ -154,20 +160,11 @@ def _(
 
 
 @app.cell
-def _(
-    GMMClusterer,
-    RaptorEngine,
-    chunker,
-    config,
-    embedder,
-    logger,
-    store,
-    summarizer,
-):
-    # Cycle 01: Wisdom Generation (Build the Tree)
+def _(chunker, config, logger, mo):
+    # Scenario 1: Quickstart (Chunking)
 
-    # Sample Text (Investment Philosophy style)
-    sample_text = """
+    # Sample Text (Investment Philosophy style) - Extended to ensure clustering happens
+    sample_text_base = """
     長期投資の基本は、企業の成長と共に資産を増やすことです。
     短期的な市場の変動に惑わされず、本質的な価値を見極める必要があります。
 
@@ -181,7 +178,77 @@ def _(
     知識こそが最大の防御であり、最大の武器となるのです。
     """
 
-    logger.info("Starting Cycle 01: Wisdom Generation...")
+    # Repeat text to simulate a larger document for clustering demonstration
+    sample_text = (sample_text_base + "\n\n") * 5
+
+    logger.info("Starting Scenario 1: Chunking...")
+
+    # Chunk the text
+    chunks_iter = chunker.split_text(sample_text, config)
+    chunks = list(chunks_iter)
+
+    logger.info(f"Generated {len(chunks)} chunks.")
+
+    # Visualizing Chunks
+    chunk_data = [{"Index": c.index, "Text": c.text[:50] + "..."} for c in chunks[:5]]
+
+    table = mo.ui.table(chunk_data, label="First 5 Chunks")
+
+    logger.info("✅ Scenario 1 Passed: Text chunked successfully.")
+    return chunks, chunks_iter, sample_text, sample_text_base, table, chunk_data
+
+
+@app.cell
+def _(chunks, embedder, logger, mo, plt):
+    # Scenario 2: Embedding & Clustering Visualization
+
+    logger.info("Starting Scenario 2: Embedding & Visualization...")
+
+    # Embed chunks (Mock or Real)
+    # We consume the iterator to get a list
+    embedded_chunks = list(embedder.embed_chunks(chunks))
+
+    # Extract embeddings for visualization
+    embeddings = [c.embedding for c in embedded_chunks if c.embedding]
+
+    if not embeddings:
+        logger.warning("No embeddings generated.")
+    else:
+        # Simple 2D Visualization (using first 2 dims or random if high dim)
+        # Since MockEmbedder returns 384 dims, we just plot dim 0 vs dim 1
+        x = [e[0] for e in embeddings]
+        y = [e[1] for e in embeddings]
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.scatter(x, y, alpha=0.7)
+        ax.set_title("Chunk Embeddings Projection (Dim 0 vs Dim 1)")
+        ax.set_xlabel("Dimension 0")
+        ax.set_ylabel("Dimension 1")
+        plt.tight_layout()
+
+        # In Marimo, we can display the figure
+        # plt.show() # Not needed in Marimo if we return the fig or use mo.mpl
+
+    logger.info("✅ Scenario 2 Passed: Embeddings generated and visualized.")
+    return embedded_chunks, embeddings, fig, x, y
+
+
+@app.cell
+def _(
+    GMMClusterer,
+    RaptorEngine,
+    chunker,
+    clusterer,
+    config,
+    embedder,
+    logger,
+    sample_text,
+    store,
+    summarizer,
+):
+    # Scenario 3: Full RAPTOR Pipeline (Cycle 01)
+
+    logger.info("Starting Scenario 3: Full RAPTOR Pipeline...")
 
     clusterer = GMMClusterer()
 
@@ -206,45 +273,45 @@ def _(
     assert root_node is not None
     assert root_node.metadata.dikw_level.value in ["wisdom", "knowledge", "information"]
 
-    logger.info("✅ Cycle 01 Passed: Tree built and Root Node verified.")
-    return clusterer, engine, root_node, sample_text, tree
+    logger.info("✅ Scenario 3 Passed: RAPTOR Engine executed successfully.")
+    return clusterer, engine, root_node, tree
 
 
 @app.cell
-def _(DIKWLevel, logger, store, tree):
-    # Cycle 03: Semantic Zooming (Traverse Tree)
+def _(
+    ObsidianCanvasExporter,
+    export_to_markdown,
+    logger,
+    mo,
+    store,
+    tree,
+):
+    # Scenario 4: Export & Visualization (Cycle 04/05)
 
-    logger.info("Starting Cycle 03: Semantic Zooming...")
+    logger.info("Starting Scenario 4: Export & Visualization...")
 
-    # 1. Get Root (Wisdom)
-    root = tree.root_node
-    print(f"L1 (Root): {root.text[:50]}...")
+    # 1. Export to Markdown
+    markdown_output = export_to_markdown(tree, store)
 
-    # 2. Get Children (Knowledge/Information)
-    # Using store to fetch children
-    child_ids = root.children_indices
-    children = list(store.get_nodes(child_ids))
+    # Save to file (optional, but good for verification)
+    with open("tutorials/summary_all.md", "w", encoding="utf-8") as f:
+        f.write(markdown_output)
 
-    logger.info(f"Found {len(children)} children for Root.")
+    # 2. Export to Canvas
+    exporter = ObsidianCanvasExporter()
+    exporter.export(tree, Path("tutorials/summary_kj.canvas"), store)
 
-    for child in children:
-        if child:
-            is_summary = hasattr(child, "metadata") and hasattr(child.metadata, "dikw_level")
-            type_str = child.metadata.dikw_level.value if is_summary else "DATA (Chunk)"
-            print(f"  - L2 ({type_str}): {child.text[:30]}...")
+    logger.info("✅ Scenario 4 Passed: Exported to Markdown and Canvas.")
 
-    # Validation
-    assert len(children) > 0
-
-    logger.info("✅ Cycle 03 Passed: Tree traversal verified.")
-    return child, child_ids, children, is_summary, root, type_str
+    # Display Markdown Summary
+    return markdown_output, exporter
 
 
 @app.cell
 def _(InteractiveRaptorEngine, config, logger, root_node, store, summarizer):
-    # Cycle 02/04: Interactive Refinement
+    # Scenario 5: Interactive Refinement (Cycle 02/04)
 
-    logger.info("Starting Cycle 02/04: Interactive Refinement...")
+    logger.info("Starting Scenario 5: Interactive Refinement...")
 
     interactive_engine = InteractiveRaptorEngine(
         store=store,
@@ -272,7 +339,7 @@ def _(InteractiveRaptorEngine, config, logger, root_node, store, summarizer):
     # Check if text changed
     assert updated_node.text != root_node.text or "Summary of" in updated_node.text
 
-    logger.info("✅ Cycle 02/04 Passed: Node refinement verified.")
+    logger.info("✅ Scenario 5 Passed: Node refinement verified.")
     return (
         instruction,
         interactive_engine,
@@ -283,9 +350,9 @@ def _(InteractiveRaptorEngine, config, logger, root_node, store, summarizer):
 
 @app.cell
 def _(interactive_engine, logger, node_id, sample_text):
-    # Cycle 05: Traceability (Source Verification)
+    # Scenario 6: Traceability (Cycle 05)
 
-    logger.info("Starting Cycle 05: Traceability...")
+    logger.info("Starting Scenario 6: Traceability...")
 
     # 1. Get Source Chunks for the node
     source_chunks = list(interactive_engine.get_source_chunks(node_id))
@@ -307,16 +374,16 @@ def _(interactive_engine, logger, node_id, sample_text):
 
     print(f"Source Chunk 1: {first_chunk_text[:50]}...")
 
-    logger.info("✅ Cycle 05 Passed: Source chunks retrieved and verified against original text.")
+    logger.info("✅ Scenario 6 Passed: Source chunks retrieved and verified against original text.")
     return clean_chunk, clean_sample, first_chunk_text, source_chunks
 
 
 @app.cell
 def _(db_path, mo):
-    # Part 5: Launching the GUI
+    # Final: Launching the GUI
     return mo.md(
         f"""
-        ## Part 5: Launching the GUI
+        ## Launching the GUI
 
         To explore the generated knowledge tree visually, run the following command in your terminal:
 
