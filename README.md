@@ -67,17 +67,26 @@ Matome exports results in multiple formats:
 -   `summary_kj.canvas`: An [Obsidian Canvas](https://obsidian.md/canvas) file for visual exploration.
 -   `chunks.db`: A SQLite database containing the full tree structure.
 
-### 4. Run Tutorials (UAT)
+### 4. Interactive Tutorial & UAT
 
-Explore the interactive tutorial and verify the installation.
+The project includes a comprehensive interactive tutorial that also serves as the User Acceptance Test (UAT).
+It demonstrates the full pipeline: Chunking -> Clustering -> Summarization -> Refinement -> Traceability.
 
+**To run the interactive tutorial:**
 ```bash
-# Run the interactive tutorial app
-uv run marimo run tutorials/UAT_AND_TUTORIAL.py
+# Opens the notebook in your browser where you can execute cells step-by-step.
+uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 ```
 
-After running the tutorial, you can visualize the generated knowledge base:
+**To run it as an automated test script (Headless):**
+```bash
+# Useful for CI/CD or quick verification without GUI
+uv run marimo export script tutorials/UAT_AND_TUTORIAL.py > run_uat.py
+uv run python run_uat.py
+rm run_uat.py
+```
 
+**After running the tutorial**, you can visualize the generated knowledge base:
 ```bash
 uv run matome serve tutorials/chunks.db
 ```
