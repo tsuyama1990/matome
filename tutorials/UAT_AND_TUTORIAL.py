@@ -9,12 +9,10 @@ def __():
     import logging
     import os
     import sys
-    from pathlib import Path
-    import random
     import shutil
     import time
-    from typing import Iterator, Iterable
-
+    from pathlib import Path
+    from typing import Iterator, Iterable, Any
     import numpy as np
     import marimo as mo
 
@@ -32,13 +30,13 @@ def __():
         Iterable,
         Iterator,
         Path,
+        Any,
         current_dir,
         logger,
         logging,
         mo,
         np,
         os,
-        random,
         shutil,
         sys,
         time,
@@ -55,10 +53,11 @@ def __(mo, os):
         It covers the entire pipeline from raw text to a structured, interactive knowledge base.
 
         **Scenarios:**
-        1.  **Quickstart**: Text Ingestion & Chunking (The Basics)
-        2.  **Clustering**: Semantic Embedding & Grouping (The Engine)
-        3.  **Raptor Pipeline**: Recursive Summarization (The "Aha!" Moment)
-        4.  **Visualization**: Obsidian Canvas Export (The Output)
+        1.  **Cycle 01: DIKW Generation**: Generate a tree where Root is Wisdom.
+        2.  **Cycle 03: Semantic Zooming**: Traverse from Wisdom -> Knowledge -> Information -> Data.
+        3.  **Cycle 02/04: Interactive Refinement**: Refine a node and verify persistence.
+        4.  **Cycle 05: Traceability**: Verify source chunks for a summary node.
+        5.  **GUI Launch**: Instructions to explore visually.
 
         **Modes:**
         *   **Real Mode**: Uses OpenAI/OpenRouter API for actual summarization (Requires `OPENROUTER_API_KEY`).
@@ -68,10 +67,10 @@ def __(mo, os):
 
     # Determine Mode
     api_key = os.getenv("OPENROUTER_API_KEY")
-    mock_mode = not bool(api_key)
+    mock_mode = not bool(api_key) or api_key == "mock"
 
     if mock_mode:
-        mode_msg = "⚠️ **MOCK MODE ACTIVE** (No API Key found). Using dummy data."
+        mode_msg = "⚠️ **MOCK MODE ACTIVE** (No API Key found or set to 'mock'). Using dummy data."
     else:
         mode_msg = "✅ **REAL MODE ACTIVE**. Using live API."
 
@@ -80,16 +79,26 @@ def __(mo, os):
 
 
 @app.cell
-def __(Iterable, Iterator, Path, mock_mode, mo, np):
+def __(Iterable, Iterator, Path, mock_mode, mo, np, Any):
     # --- Configuration & Mocks ---
     from domain_models.config import ProcessingConfig
-    from domain_models.manifest import Chunk
+    from domain_models.manifest import Chunk, SummaryNode
+    from domain_models.types import DIKWLevel, NodeID
     from matome.engines.embedder import EmbeddingService
     from matome.agents.summarizer import SummarizationAgent
     from matome.interfaces import PromptStrategy
 
     # Initialize Config
-    config = ProcessingConfig()
+    # Ensure strict consistency for testing
+    config = ProcessingConfig(
+        max_tokens=1000,
+        max_summary_tokens=200, # Keep summaries concise
+        dikw_topology={
+            "root": DIKWLevel.WISDOM,
+            "intermediate": DIKWLevel.KNOWLEDGE,
+            "leaf": DIKWLevel.INFORMATION,
+        }
+    )
 
     # Mock Classes
     class MockEmbeddingService(EmbeddingService):
@@ -100,7 +109,7 @@ def __(Iterable, Iterator, Path, mock_mode, mo, np):
 
         def embed_strings(self, texts: list[str] | tuple[str, ...]) -> Iterator[list[float]]:
             for _ in texts:
-                # Deterministic random for stability
+                # Deterministic random for stability based on length
                 yield list(np.random.rand(self.dim))
 
         def embed_chunks(self, chunks: list[Chunk]) -> Iterator[Chunk]:
@@ -109,7 +118,7 @@ def __(Iterable, Iterator, Path, mock_mode, mo, np):
                 yield chunk
 
     class MockSummarizationAgent(SummarizationAgent):
-        """Generates dummy summaries."""
+        """Generates dummy summaries respecting DIKW levels."""
         def __init__(self, config: ProcessingConfig):
             self.config = config
             self.mock_mode = True
@@ -121,16 +130,27 @@ def __(Iterable, Iterator, Path, mock_mode, mo, np):
             text: str,
             config: ProcessingConfig | None = None,
             strategy: PromptStrategy | None = None,
-            context: dict | None = None,
+            context: dict[str, Any] | None = None,
         ) -> str:
             prefix = "Summary"
             if strategy:
-                # strategy.dikw_level is an Enum
+                # strategy.dikw_level is likely a DIKWLevel Enum member
                 try:
-                    level = strategy.dikw_level.value
+                    # Access the .value if it's an enum, or just str()
+                    level = getattr(strategy, "target_dikw_level", "UNKNOWN")
+                    # If it's an Enum, get value
+                    if hasattr(level, "value"):
+                        level = level.value
                 except AttributeError:
                     level = "UNKNOWN"
+
+                # Check context for instruction (Refinement)
+                instruction = context.get("instruction") if context else None
+                if instruction:
+                    return f"[REFINED] {instruction} -> {text[:30]}..."
+
                 prefix = f"[{str(level).upper()}] Summary"
+
             return f"{prefix} of: {text[:30]}... (Mocked Content)"
 
     # Factory
@@ -143,12 +163,15 @@ def __(Iterable, Iterator, Path, mock_mode, mo, np):
     mo.md("### System Configuration Loaded")
     return (
         Chunk,
+        DIKWLevel,
         EmbeddingService,
         MockEmbeddingService,
         MockSummarizationAgent,
+        NodeID,
         ProcessingConfig,
         PromptStrategy,
         SummarizationAgent,
+        SummaryNode,
         config,
         get_services,
     )
@@ -167,51 +190,17 @@ def __(Path, mo):
             "It uses recursive summarization to build a tree of knowledge. "
             "This allows users to zoom from high-level wisdom to low-level data. "
             "The system is built on Python and uses modern libraries like Pydantic and LangChain. "
-            "It supports both batch processing and interactive refinement. " * 5,
+            "It supports both batch processing and interactive refinement. " * 10,
             encoding="utf-8"
         )
 
-    target_file = test_data_dir / "エミン流「会社四季報」最強の読み方.txt"
-    if not target_file.exists():
-        target_file.write_text(
-            "会社四季報は、日本の全上場企業のデータが網羅された書籍です。\n"
-            "エミン・ユルマズ氏は、四季報を「お宝の山」と呼びます。\n"
-            "彼の読み方は、単なる数字の確認にとどまりません。\n"
-            "業績の変化、株主構成、そして企業のコメント欄を入念にチェックします。\n"
-            "特に「ニコちゃんマーク」の変化に注目することで、成長株を早期に発見できるのです。\n" * 20,
-            encoding="utf-8"
-        )
-
-    mo.md(f"### Test Data Ready\n- `{sample_file}`\n- `{target_file}`")
-    return sample_file, target_file, test_data_dir
-
-
-@app.cell
-def __(ProcessingConfig, config, mo, sample_file):
-    # --- Step 1: Quickstart (Chunking) ---
-    from matome.engines.token_chunker import JapaneseTokenChunker
-
-    mo.md("## 1. Quickstart: Text Chunking")
-
-    # Load text
-    quickstart_text = sample_file.read_text(encoding="utf-8")
-
-    # Initialize Chunker
-    quickstart_chunker = JapaneseTokenChunker(config)
-
-    # Execute Chunking
-    quickstart_chunks = list(quickstart_chunker.split_text(quickstart_text, config))
-
-    # Visualize
-    chunk_preview = "\n".join([f"- **Chunk {c.index}**: {c.text[:50]}..." for c in quickstart_chunks[:5]])
-
-    mo.md(f"### Chunking Results\nGenerated **{len(quickstart_chunks)}** chunks.\n\n{chunk_preview}")
-    return JapaneseTokenChunker, chunk_preview, quickstart_chunker, quickstart_chunks, quickstart_text
+    mo.md(f"### Test Data Ready\n- `{sample_file}`")
+    return sample_file, test_data_dir
 
 
 @app.cell
 def __(
-    JapaneseTokenChunker,
+    DIKWLevel,
     ProcessingConfig,
     config,
     get_services,
@@ -219,181 +208,214 @@ def __(
     mo,
     sample_file,
 ):
-    # --- Step 2: Clustering Deep Dive ---
-    from matome.engines.cluster import GMMClusterer
-
-    mo.md("## 2. Clustering Deep Dive")
-
-    # Setup
-    clustering_embedder, _ = get_services(config, mock_mode)
-    clustering_chunker = JapaneseTokenChunker(config)
-    clustering_clusterer = GMMClusterer()
-
-    # Process
-    text_cluster = sample_file.read_text(encoding="utf-8")
-    chunks_cluster = list(clustering_chunker.split_text(text_cluster, config))
-
-    # Embed & Cluster
-    embedded_chunks_iter = clustering_embedder.embed_chunks(chunks_cluster)
-
-    # Manually collect for the clusterer input
-    embeddings_input = []
-    for chunk in embedded_chunks_iter:
-        if chunk.embedding:
-            embeddings_input.append((str(chunk.index), chunk.embedding))
-
-    # Run Clustering
-    # Create a config suitable for small data (force fewer clusters)
-    cluster_config = ProcessingConfig(n_clusters=2, write_batch_size=10)
-
-    clustering_clusters = clustering_clusterer.cluster_nodes(embeddings_input, cluster_config)
-
-    cluster_info = "\n".join([f"- **Cluster {c.id}**: {len(c.node_indices)} nodes" for c in clustering_clusters])
-
-    mo.md(f"### Clustering Results\nGenerated **{len(clustering_clusters)}** clusters.\n\n{cluster_info}")
-    return (
-        GMMClusterer,
-        cluster_config,
-        cluster_info,
-        clustering_chunker,
-        clustering_clusterer,
-        clustering_clusters,
-        clustering_embedder,
-        embedded_chunks_iter,
-        embeddings_input,
-        chunks_cluster,
-        text_cluster,
-    )
-
-
-@app.cell
-def __(
-    GMMClusterer,
-    JapaneseTokenChunker,
-    Path,
-    config,
-    get_services,
-    mock_mode,
-    mo,
-    target_file,
-):
-    # --- Step 3: Full Raptor Pipeline ---
+    # --- Step 1: Cycle 01 - DIKW Generation ---
     from matome.engines.raptor import RaptorEngine
+    from matome.engines.token_chunker import JapaneseTokenChunker
+    from matome.engines.cluster import GMMClusterer
+    from matome.utils.store import DiskChunkStore
 
-    mo.md("## 3. Full Raptor Pipeline (The 'Aha!' Moment)")
+    mo.md("## 1. Cycle 01: DIKW Generation")
+
+    # Clean DB
+    store_path = Path("tutorials/chunks.db")
+    if store_path.exists():
+        store_path.unlink()
+
+    store = DiskChunkStore(db_path=store_path)
 
     # Setup Components
-    chunker_raptor = JapaneseTokenChunker(config)
-    clusterer_raptor = GMMClusterer()
-    embedder_raptor, summarizer_raptor = get_services(config, mock_mode)
+    chunker = JapaneseTokenChunker(config)
+    clusterer = GMMClusterer()
+    embedder, summarizer = get_services(config, mock_mode)
 
-    raptor_engine = RaptorEngine(
-        chunker=chunker_raptor,
-        embedder=embedder_raptor,
-        clusterer=clusterer_raptor,
-        summarizer=summarizer_raptor,
+    engine = RaptorEngine(
+        chunker=chunker,
+        embedder=embedder,
+        clusterer=clusterer,
+        summarizer=summarizer,
         config=config
     )
 
     # Run Pipeline
-    raptor_target_text = target_file.read_text(encoding="utf-8")
-    # Using default ephemeral store logic here for demonstration,
-    # but typically one would provide a store.
-    # We will do a full run with store in the next step/cell to enable visualization.
+    text = sample_file.read_text(encoding="utf-8")
+    tree = engine.run(text, store=store)
 
-    # For now, let's run it to verify the pipeline works in memory/temp.
-    raptor_tree = raptor_engine.run(raptor_target_text)
+    # Verify Root is Wisdom
+    root_node = tree.root_node
+    # Note: In mock mode, if single chunk, it might default to WisdomStrategy manually in code
+    # or if recursion happened, it uses topology.
 
-    summary_content = f"# Summary Tree\n\nRoot: {raptor_tree.root_node.text}\n"
+    # Check DIKW level in metadata
+    dikw_level = root_node.metadata.dikw_level
 
-    output_md = Path("summary_all.md")
-    output_md.write_text(summary_content, encoding="utf-8")
+    # Assertion
+    assert dikw_level == DIKWLevel.WISDOM, f"Root node should be WISDOM, got {dikw_level}"
 
     mo.md(
-        f"### Pipeline Complete\n"
-        f"Generated Tree with Root Level: **{raptor_tree.root_node.level}**\n"
-        f"Output saved to `{output_md}`"
+        f"### DIKW Generation Successful\n"
+        f"Root Node ID: `{root_node.id}`\n"
+        f"DIKW Level: **{dikw_level}**\n"
+        f"Text Preview: {root_node.text[:100]}..."
     )
     return (
+        DiskChunkStore,
+        GMMClusterer,
+        JapaneseTokenChunker,
         RaptorEngine,
-        chunker_raptor,
-        clusterer_raptor,
-        embedder_raptor,
-        output_md,
-        raptor_engine,
-        raptor_target_text,
-        raptor_tree,
-        summarizer_raptor,
-        summary_content,
+        chunker,
+        clusterer,
+        dikw_level,
+        embedder,
+        engine,
+        root_node,
+        store,
+        store_path,
+        summarizer,
+        text,
+        tree,
     )
 
 
 @app.cell
-def __(
-    GMMClusterer,
-    JapaneseTokenChunker,
-    Path,
-    RaptorEngine,
-    config,
-    get_services,
-    mock_mode,
-    mo,
-    raptor_target_text,
-):
-    # --- Step 4: Visualization (Obsidian Canvas) ---
-    from matome.exporters.obsidian import ObsidianCanvasExporter
-    from matome.utils.store import DiskChunkStore
+def __(DIKWLevel, mo, store, tree):
+    # --- Step 2: Cycle 03 - Semantic Zooming ---
+    mo.md("## 2. Cycle 03: Semantic Zooming")
 
-    mo.md("## 4. Visualization (Obsidian Canvas)")
+    # Traverse hierarchy
+    # Root (Wisdom) -> Children (Knowledge) -> Children (Information) -> Data (Chunks)
 
-    # Re-run for export with persistent store
-    store_path = Path("tutorials/chunks.db")
-    if store_path.exists():
-        store_path.unlink() # Clean start
+    layers = {}
 
-    store = DiskChunkStore(db_path=store_path)
+    # Layer 1: Wisdom (Root)
+    layers[1] = [tree.root_node]
 
-    # Setup again
-    chunker_r = JapaneseTokenChunker(config)
-    clusterer_r = GMMClusterer()
-    embedder_r, summarizer_r = get_services(config, mock_mode)
+    # Get children recursively
+    def get_children_nodes(parent_nodes):
+        children = []
+        for p in parent_nodes:
+            # child indices can be str (SummaryNode) or int (Chunk)
+            child_ids = [str(c) for c in p.children_indices]
+            nodes = list(store.get_nodes(child_ids))
+            children.extend([n for n in nodes if n is not None])
+        return children
 
-    engine_r = RaptorEngine(
-        chunker=chunker_r,
-        embedder=embedder_r,
-        clusterer=clusterer_r,
-        summarizer=summarizer_r,
-        config=config
+    # Layer 2: Knowledge (Intermediate)
+    # Depending on text size, we might skip straight to Information if small.
+    # But let's see what we got.
+
+    current_layer_nodes = layers[1]
+    depth = 1
+
+    hierarchy_desc = []
+    hierarchy_desc.append(f"**Level {depth} ({current_layer_nodes[0].metadata.dikw_level})**: {len(current_layer_nodes)} node(s)")
+
+    while True:
+        next_nodes = get_children_nodes(current_layer_nodes)
+        if not next_nodes:
+            break
+
+        # Check if next nodes are chunks or summaries
+        first_child = next_nodes[0]
+        depth += 1
+
+        # SummaryNodes have 'children_indices', Chunks do not
+        if hasattr(first_child, "children_indices"): # SummaryNode
+             level_name = first_child.metadata.dikw_level
+             hierarchy_desc.append(f"**Level {depth} ({level_name})**: {len(next_nodes)} node(s)")
+             current_layer_nodes = next_nodes
+        else: # Chunk
+             hierarchy_desc.append(f"**Level {depth} (DATA)**: {len(next_nodes)} chunk(s)")
+             break
+
+    mo.md(f"### Hierarchy Verified\n" + "\n".join([f"- {h}" for h in hierarchy_desc]))
+    return (
+        current_layer_nodes,
+        depth,
+        first_child,
+        get_children_nodes,
+        hierarchy_desc,
+        layers,
+        next_nodes,
     )
 
-    # Run with store
-    tree_r = engine_r.run(raptor_target_text, store=store)
 
-    # Export Canvas
-    exporter = ObsidianCanvasExporter(config)
-    output_canvas = Path("summary_kj.canvas")
-    exporter.export(tree_r, output_canvas, store)
+@app.cell
+def __(config, mo, root_node, store, summarizer):
+    # --- Step 3: Cycle 02/04 - Interactive Refinement ---
+    from matome.engines.interactive_raptor import InteractiveRaptorEngine
+
+    mo.md("## 3. Cycle 02/04: Interactive Refinement")
+
+    interactive_engine = InteractiveRaptorEngine(store, summarizer, config)
+
+    # Pick the root node to refine
+    target_node_id = root_node.id
+    instruction = "Explain like I'm 5"
+
+    # Refine
+    refined_node = interactive_engine.refine_node(target_node_id, instruction)
+
+    # Verify
+    assert refined_node.metadata.is_user_edited == True
+    assert instruction in refined_node.metadata.refinement_history
+
+    # Verify persistence
+    persisted_node = store.get_node(target_node_id)
+    assert persisted_node.text == refined_node.text
+    assert persisted_node.metadata.is_user_edited == True
 
     mo.md(
-        f"### Canvas Exported\n"
-        f"File saved to: `{output_canvas}`\n"
-        f"Database: `{store_path}`\n\n"
-        f"**Next Step**: Open `{output_canvas}` in Obsidian to visualize!"
+        f"### Refinement Successful\n"
+        f"Node `{target_node_id}` updated.\n"
+        f"Instruction: *'{instruction}'*\n"
+        f"New Text: {refined_node.text[:100]}..."
     )
     return (
-        DiskChunkStore,
-        ObsidianCanvasExporter,
-        chunker_r,
-        clusterer_r,
-        embedder_r,
-        engine_r,
-        exporter,
-        output_canvas,
-        store,
-        store_path,
-        summarizer_r,
-        tree_r,
+        InteractiveRaptorEngine,
+        instruction,
+        interactive_engine,
+        persisted_node,
+        refined_node,
+        target_node_id,
     )
+
+
+@app.cell
+def __(interactive_engine, mo, root_node):
+    # --- Step 4: Cycle 05 - Traceability ---
+    mo.md("## 4. Cycle 05: Traceability")
+
+    # Get source chunks for the root node
+    source_chunks = list(interactive_engine.get_source_chunks(root_node.id))
+
+    assert len(source_chunks) > 0
+    first_chunk = source_chunks[0]
+
+    mo.md(
+        f"### Traceability Verified\n"
+        f"Node `{root_node.id}` traces back to **{len(source_chunks)}** original chunks.\n"
+        f"First Chunk Preview: *{first_chunk.text[:50]}...*"
+    )
+    return first_chunk, source_chunks
+
+
+@app.cell
+def __(mo, store_path):
+    # --- Step 5: GUI Launch ---
+    mo.md(
+        f"""
+        ## 🎉 All Systems Go!
+
+        The Matome 2.0 pipeline has been verified.
+        You can now launch the interactive GUI to explore the generated knowledge base.
+
+        Run this command in your terminal:
+        ```bash
+        uv run matome serve {store_path}
+        ```
+        """
+    )
+    return
 
 
 if __name__ == "__main__":
