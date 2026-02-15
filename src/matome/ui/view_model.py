@@ -1,3 +1,4 @@
+import itertools
 from typing import Any
 
 import param
@@ -21,6 +22,10 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
     breadcrumbs = param.List(default=[], item_type=(SummaryNode, Chunk))
     current_view_nodes = param.List(default=[], item_type=(SummaryNode, Chunk))
 
+    # Traceability
+    source_chunks = param.List(default=[], item_type=Chunk)
+    show_source_chunks = param.Boolean(default=False)
+
     is_processing = param.Boolean(default=False)
 
     def __init__(self, engine: InteractiveRaptorEngine, **params: Any) -> None:
@@ -42,7 +47,12 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
 
     def select_node(self, node_id: NodeID) -> None:
         """Select a node and update view state."""
-        node = self.engine.get_node(node_id)
+        try:
+            node = self.engine.get_node(node_id)
+        except Exception:
+            # Handle store errors gracefully
+            return
+
         if not node:
             return
 
@@ -67,16 +77,15 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
         elif not self.breadcrumbs:
             self.breadcrumbs = [node]
         else:
-            # In a strict tree navigation, we might check if 'node' is a child of the last breadcrumb.
-            # However, for flexible navigation (jumping), we append.
-            # Ideally, we should check lineage, but that requires traversing up which is expensive or storing parent pointers.
             self.breadcrumbs.append(node)
 
         # Update current view nodes (children of selected node)
         if isinstance(node, SummaryNode):
-            # get_children returns an Iterator, but param.List expects a list.
-            # Materialize it.
-            self.current_view_nodes = list(self.engine.get_children(node))
+            # get_children returns an Iterator.
+            # Limit the number of children displayed to avoid UI overload.
+            limit = self.engine.config.ui_max_children
+            # Use islice to safely limit memory usage when materializing for UI
+            self.current_view_nodes = list(itertools.islice(self.engine.get_children(node), limit))
         else:
             self.current_view_nodes = []
 
@@ -106,5 +115,24 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
                     new_breadcrumbs.append(crumb)
             self.breadcrumbs = new_breadcrumbs
 
+        finally:
+            self.is_processing = False
+
+    def load_source_chunks(self, node_id: NodeID) -> None:
+        """
+        Load the source chunks for the given node and display them.
+        """
+        self.is_processing = True
+        try:
+            limit = self.engine.config.ui_max_source_chunks
+            # Materialize iterator up to limit
+            chunks_iter = self.engine.get_source_chunks(node_id, limit=limit)
+            self.source_chunks = list(chunks_iter)
+            self.show_source_chunks = True
+        except Exception:
+            # In a real app we might want to show a notification
+            self.source_chunks = []
+            self.show_source_chunks = False
+            raise
         finally:
             self.is_processing = False

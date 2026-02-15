@@ -24,6 +24,7 @@ from domain_models.constants import (
     DEFAULT_MAX_FILE_SIZE_BYTES,
     DEFAULT_MAX_INPUT_LENGTH,
     DEFAULT_MAX_INSTRUCTION_LENGTH,
+    DEFAULT_MAX_REFINEMENT_HISTORY,
     DEFAULT_MAX_RETRIES,
     DEFAULT_MAX_SUMMARY_TOKENS,
     DEFAULT_MAX_TOKENS,
@@ -40,6 +41,8 @@ from domain_models.constants import (
     DEFAULT_STRATEGY_MAPPING,
     DEFAULT_SUMMARIZER,
     DEFAULT_TOKENIZER,
+    DEFAULT_UI_MAX_CHILDREN,
+    DEFAULT_UI_MAX_SOURCE_CHUNKS,
     DEFAULT_UMAP_MIN_DIST,
     DEFAULT_UMAP_N_COMPONENTS,
     DEFAULT_UMAP_N_NEIGHBORS,
@@ -226,6 +229,15 @@ class ProcessingConfig(BaseModel):
         default=DEFAULT_REFINEMENT_LIMIT_MULTIPLIER,
         ge=1,
         description="Multiplier for context limit during refinement (relative to max_input_length)."
+    )
+    ui_max_source_chunks: int = Field(
+        default=DEFAULT_UI_MAX_SOURCE_CHUNKS, ge=1, description="Maximum number of source chunks to display in the UI."
+    )
+    ui_max_children: int = Field(
+        default=DEFAULT_UI_MAX_CHILDREN, ge=1, description="Maximum number of child nodes to display in the UI."
+    )
+    max_refinement_history: int = Field(
+        default=DEFAULT_MAX_REFINEMENT_HISTORY, ge=1, description="Maximum number of refinement history entries to keep per node."
     )
 
     # Summarization Configuration

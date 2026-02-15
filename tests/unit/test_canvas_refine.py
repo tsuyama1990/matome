@@ -65,7 +65,7 @@ class TestMatomeCanvasRefine:
             # We can inspect call_args but just knowing they were created is enough for now.
 
     def test_refine_button_callback(self, canvas: MatomeCanvas, mock_session: MagicMock) -> None:
-        """Test that clicking the Refine button triggers the session action."""
+        """Test that clicking the Refine button triggers the session action with correct parameters."""
         node = SummaryNode(
             id="node_1",
             text="Summary Text",
@@ -74,16 +74,27 @@ class TestMatomeCanvasRefine:
             metadata=NodeMetadata(dikw_level=DIKWLevel.KNOWLEDGE)
         )
 
+        # Mock pn.bind to simply return the function it wraps
         def mock_bind(func: Any, *args: Any, **kwargs: Any) -> Any:
             return func
 
-        mock_button_instance = MagicMock()
+        # Setup separate mocks for buttons
+        mock_refine_button = MagicMock(name="RefineButton")
+        mock_source_button = MagicMock(name="SourceButton")
+
+        def button_side_effect(**kwargs: Any) -> MagicMock:
+            if kwargs.get('name') == "Refine":
+                return mock_refine_button
+            if kwargs.get('name') == "Show Source":
+                return mock_source_button
+            return MagicMock()
+
         mock_textarea_instance = MagicMock()
         mock_textarea_instance.value = "New Instruction"
 
         with patch("matome.ui.canvas.pn.bind", side_effect=mock_bind), \
              patch("matome.ui.canvas.pn.widgets.TextAreaInput", return_value=mock_textarea_instance), \
-             patch("matome.ui.canvas.pn.widgets.Button", return_value=mock_button_instance), \
+             patch("matome.ui.canvas.pn.widgets.Button", side_effect=button_side_effect), \
              patch("matome.ui.canvas.pn.indicators.LoadingSpinner"), \
              patch("matome.ui.canvas.pn.Column"), \
              patch("matome.ui.canvas.pn.pane.Markdown"):
@@ -92,18 +103,13 @@ class TestMatomeCanvasRefine:
             render_func(node, False)
 
             # Verify button callback was registered
-            mock_button_instance.on_click.assert_called()
+            mock_refine_button.on_click.assert_called()
 
             # Get the callback function
-            callback = mock_button_instance.on_click.call_args[0][0]
+            callback = mock_refine_button.on_click.call_args[0][0]
 
             # Execute callback
             callback(None)  # Event object is ignored usually
 
             # Verify session method called with instruction
-            # BUT: In the implementation, we will likely access textarea.value inside the callback
-            # or bind it.
-            # If we use a lambda: lambda e: session.refine_current_node(textarea.value)
-            # Then executing the callback should trigger the session method.
-
             mock_session.refine_current_node.assert_called_with("New Instruction")

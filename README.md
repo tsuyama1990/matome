@@ -15,7 +15,7 @@
     -   **Information (Level 3):** Extracts actionable checklists and steps (Leaf Summaries).
 -   **Interactive Refinement:** Refine individual summary nodes with natural language instructions.
 -   **Semantic Zooming:** Navigate documents like a map, zooming from "Big Idea" to "Evidence".
--   **Traceability:** Every summary links back to source chunks ("Data").
+-   **Traceability (Source Verification):** Every summary links back to source chunks ("Data"). Click "Show Source" to view the original text evidence for any summary.
 -   **Scalability:** Uses streaming processing and disk-based storage (`SQLite`) with WAL mode for concurrency to handle large documents without memory overflows.
 -   **Local First:** Your data stays on your machine (except for LLM calls).
 
@@ -66,6 +66,14 @@ Matome exports results in multiple formats:
 -   `summary_all.md`: A readable Markdown file organized by hierarchy.
 -   `summary_kj.canvas`: An [Obsidian Canvas](https://obsidian.md/canvas) file for visual exploration.
 -   `chunks.db`: A SQLite database containing the full tree structure.
+
+### 4. Run Tutorials
+
+Verify the installation and explore features using the included tutorial script.
+
+```bash
+uv run python tutorials/UAT_AND_TUTORIAL.py
+```
 
 ## Architecture
 

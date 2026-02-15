@@ -39,6 +39,15 @@ class NodeMetadata(BaseModel):
         default=None, description="Type identifier for the node (e.g., 'single_chunk_root')."
     )
 
+    @field_validator("dikw_level", mode="after")
+    @classmethod
+    def validate_dikw_level(cls, v: DIKWLevel) -> DIKWLevel:
+        """Ensure dikw_level is a valid enum member."""
+        if v not in DIKWLevel:
+            msg = f"Invalid DIKW level: {v}"
+            raise ValueError(msg)
+        return v
+
 
 class Chunk(BaseModel):
     """
@@ -101,7 +110,7 @@ class Cluster(BaseModel):
         for idx in v:
             if not isinstance(idx, (int, str)):
                 msg = f"Invalid node index type: {type(idx)}. Must be int or str."
-                raise ValueError(msg)
+                raise TypeError(msg)
         return v
 
 
