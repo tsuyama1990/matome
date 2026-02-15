@@ -233,6 +233,9 @@ class ProcessingConfig(BaseModel):
     ui_max_children: int = Field(
         default=50, ge=1, description="Maximum number of child nodes to display in the UI."
     )
+    max_refinement_history: int = Field(
+        default=50, ge=1, description="Maximum number of refinement history entries to keep per node."
+    )
 
     # Summarization Configuration
     summarization_model: str = Field(

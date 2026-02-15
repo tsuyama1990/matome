@@ -163,7 +163,8 @@ def test_get_source_chunks_from_chunk(interactive_engine: InteractiveRaptorEngin
     c1 = Chunk(index=1, text="C1", start_char_idx=0, end_char_idx=2)
     mock_store.get_node.return_value = c1
 
-    chunks = interactive_engine.get_source_chunks(1)
+    chunks_iter = interactive_engine.get_source_chunks(1)
+    chunks = list(chunks_iter)
 
     assert len(chunks) == 1
     assert chunks[0] == c1

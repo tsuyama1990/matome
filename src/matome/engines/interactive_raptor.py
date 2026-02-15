@@ -68,9 +68,13 @@ class InteractiveRaptorEngine:
             yield node
             return
 
+        yield from self._traverse_source_chunks(node, limit)
+
+    def _traverse_source_chunks(self, root: SummaryNode, limit: int | None) -> Iterator[Chunk]:
+        """Helper to traverse source chunks using BFS."""
         # BFS Traversal
-        queue: list[SummaryNode] = [node]
-        visited: set[str] = {str(node.id)}
+        queue: list[SummaryNode] = [root]
+        visited: set[str] = {str(root.id)}
         yielded_count = 0
 
         while queue:
@@ -97,10 +101,6 @@ class InteractiveRaptorEngine:
             except Exception:
                 logger.exception("Error during source chunk traversal")
                 break
-
-        # Note: Sorting by index is impossible with true streaming/limited traversal without buffering all.
-        # We prioritize memory safety and responsiveness over guaranteed order for huge trees.
-        # BFS roughly follows tree structure.
 
     def get_children(self, node: SummaryNode) -> Iterator[SummaryNode | Chunk]:
         """
@@ -131,29 +131,32 @@ class InteractiveRaptorEngine:
             MatomeError: If the tree structure is invalid (e.g. max level exists but no root).
         """
         try:
-            max_level = self.store.get_max_level()
-            if max_level == 0:
-                # Empty store or only chunks is acceptable
-                return None
-
-            # Get nodes at max level
-            ids_iter = self.store.get_node_ids_by_level(max_level)
-            try:
-                root_id = next(ids_iter)
-            except StopIteration:
-                msg = f"Max level is {max_level} but no nodes found at this level."
-                logger.exception(msg)
-                raise MatomeError(msg) from None
-
-            node = self.store.get_node(root_id)
-            if isinstance(node, SummaryNode):
-                return node
-
-            msg = f"Root node {root_id} is not a SummaryNode."
-            raise MatomeError(msg)
+            return self._get_root_node_internal()
         except Exception:
             logger.exception("Failed to retrieve root node")
             raise
+
+    def _get_root_node_internal(self) -> SummaryNode | None:
+        """Internal helper for root node retrieval."""
+        max_level = self.store.get_max_level()
+        if max_level == 0:
+            # Empty store or only chunks is acceptable
+            return None
+
+        # Get nodes at max level
+        ids_iter = self.store.get_node_ids_by_level(max_level)
+        try:
+            root_id = next(ids_iter)
+        except StopIteration:
+            msg = f"Max level is {max_level} but no nodes found at this level."
+            raise MatomeError(msg) from None
+
+        node = self.store.get_node(root_id)
+        if isinstance(node, SummaryNode):
+            return node
+
+        msg = f"Root node {root_id} is not a SummaryNode."
+        raise MatomeError(msg)
 
     def _validate_node(self, node_id: str) -> SummaryNode:
         """Helper to retrieve and validate a SummaryNode exists."""
@@ -297,28 +300,32 @@ class InteractiveRaptorEngine:
         5. Update store
         """
         try:
-            node = self._validate_refinement_input(node_id, instruction)
-            clean_instruction = self._sanitize_instruction(instruction)
-
-            # Enforce history limit
-            MAX_HISTORY_LEN = 50
-            if len(node.metadata.refinement_history) >= MAX_HISTORY_LEN:
-                 # FIFO eviction
-                 node.metadata.refinement_history.pop(0)
-
-            source_text = self._retrieve_and_validate_children_content(node)
-
-            # Truncate source text if it exceeds limits to prevent context overflow errors
-            if len(source_text) > self.config.max_input_length:
-                 logger.warning(f"Refinement source text for node {node_id} truncated to {self.config.max_input_length} chars.")
-                 source_text = source_text[:self.config.max_input_length]
-
-            new_text = self._generate_refinement_summary(source_text, clean_instruction, node)
-
-            self._update_refined_node(node, new_text, clean_instruction)
-
-            logger.info(f"Refined node {node_id} with instruction: {clean_instruction}")
-            return node
+            return self._refine_node_internal(node_id, instruction)
         except Exception:
             logger.exception(f"Refinement failed for node {node_id}")
             raise
+
+    def _refine_node_internal(self, node_id: str, instruction: str) -> SummaryNode:
+        """Internal logic for refinement."""
+        node = self._validate_refinement_input(node_id, instruction)
+        clean_instruction = self._sanitize_instruction(instruction)
+
+        # Enforce history limit
+        max_history = self.config.max_refinement_history
+        if len(node.metadata.refinement_history) >= max_history:
+             # FIFO eviction
+             node.metadata.refinement_history.pop(0)
+
+        source_text = self._retrieve_and_validate_children_content(node)
+
+        # Truncate source text if it exceeds limits to prevent context overflow errors
+        if len(source_text) > self.config.max_input_length:
+             logger.warning(f"Refinement source text for node {node_id} truncated to {self.config.max_input_length} chars.")
+             source_text = source_text[:self.config.max_input_length]
+
+        new_text = self._generate_refinement_summary(source_text, clean_instruction, node)
+
+        self._update_refined_node(node, new_text, clean_instruction)
+
+        logger.info(f"Refined node {node_id} with instruction: {clean_instruction}")
+        return node

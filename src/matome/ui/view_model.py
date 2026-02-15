@@ -47,7 +47,12 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
 
     def select_node(self, node_id: NodeID) -> None:
         """Select a node and update view state."""
-        node = self.engine.get_node(node_id)
+        try:
+            node = self.engine.get_node(node_id)
+        except Exception:
+            # Handle store errors gracefully
+            return
+
         if not node:
             return
 
@@ -72,9 +77,6 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
         elif not self.breadcrumbs:
             self.breadcrumbs = [node]
         else:
-            # In a strict tree navigation, we might check if 'node' is a child of the last breadcrumb.
-            # However, for flexible navigation (jumping), we append.
-            # Ideally, we should check lineage, but that requires traversing up which is expensive or storing parent pointers.
             self.breadcrumbs.append(node)
 
         # Update current view nodes (children of selected node)
@@ -82,6 +84,7 @@ class InteractiveSession(param.Parameterized):  # type: ignore[misc]
             # get_children returns an Iterator.
             # Limit the number of children displayed to avoid UI overload.
             limit = self.engine.config.ui_max_children
+            # Use islice to safely limit memory usage when materializing for UI
             self.current_view_nodes = list(itertools.islice(self.engine.get_children(node), limit))
         else:
             self.current_view_nodes = []

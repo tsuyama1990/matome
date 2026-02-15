@@ -37,7 +37,8 @@ class MatomeCanvas:
         """Render the source chunks viewer modal content."""
         def _content(show: bool, chunks: list[Chunk]) -> Viewable:
             if not show:
-                return pn.Column()
+                # Return empty column but ensure return type is compatible
+                return pn.Column() # type: ignore[no-any-return]
 
             close_btn = pn.widgets.Button(name="Close", button_type="light")  # type: ignore[no-untyped-call]
 
@@ -57,7 +58,7 @@ class MatomeCanvas:
                     )
                 )
 
-            return pn.Column(
+            return pn.Column( # type: ignore[no-any-return]
                 pn.Row(pn.pane.Markdown("## Source Verification"), pn.Spacer(), close_btn),  # type: ignore[no-untyped-call]
                 pn.Column(*chunk_views, scroll=True, height=600, sizing_mode="stretch_width"),
                 sizing_mode="stretch_width"
@@ -75,7 +76,7 @@ class MatomeCanvas:
 
     def _format_level_label(self, level: int, dikw_val: str) -> str:
         """Format the level label using configuration."""
-        return self._level_format.format(level=level, dikw=dikw_val.upper())
+        return str(self._level_format.format(level=level, dikw=dikw_val.upper()))
 
     def _render_breadcrumbs(self) -> Viewable:
         """Render the breadcrumb navigation rail."""
