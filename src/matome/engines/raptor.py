@@ -14,7 +14,7 @@ from matome.agents.strategies import (
     WisdomStrategy,
 )
 from matome.engines.embedder import EmbeddingService
-from matome.exceptions import MatomeError
+from matome.exceptions import MatomeError, SummarizationError
 from matome.interfaces import Chunker, Clusterer, PromptStrategy, Summarizer
 from matome.utils.compat import batched
 from matome.utils.store import DiskChunkStore

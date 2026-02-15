@@ -7,7 +7,7 @@ import panel as pn
 import typer
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import DocumentTree
+from domain_models.manifest import Chunk, DocumentTree, SummaryNode
 from matome.agents.summarizer import SummarizationAgent
 from matome.agents.verifier import VerifierAgent
 from matome.engines.cluster import GMMClusterer
@@ -70,19 +70,12 @@ def _validate_output_dir(output_dir: Path) -> None:
 
         # Check for symbolic link attacks
         # We check if the directory itself or any of its parents (up to CWD) are symlinks.
-        current = output_dir
         # We traverse up until we hit the root or CWD or the path doesn't exist.
-        # Since we resolved it above, we can use the unresolved path to check for symlinks
-        # (resolve() eats symlinks, so we check original path components)
-
-        # However, checking non-existent paths for is_symlink returns False.
-        # We only care about existing components.
 
         check_path = output_dir
         while check_path != Path(check_path.anchor): # Stop at root
-             if check_path.exists():
-                 if check_path.is_symlink():
-                     _fail_with_error(f"Path component '{check_path.name}' is a symbolic link. Symlinks are not allowed for security.")
+             if check_path.exists() and check_path.is_symlink():
+                 _fail_with_error(f"Path component '{check_path.name}' is a symbolic link. Symlinks are not allowed for security.")
 
              if check_path == cwd:
                  break
@@ -167,22 +160,35 @@ def _verify_results(
     """Run verification on the generated tree."""
     typer.echo("Running Verification...")
     try:
-        root_summary = tree.root_node.text
-        child_texts = []
-        for idx in tree.root_node.children_indices:
-            node = store.get_node(idx)
-            if node:
-                child_texts.append(node.text)
+        # Narrow type for mypy
+        if isinstance(tree.root_node, (SummaryNode, Chunk)):
+             root_summary = tree.root_node.text
 
-        source_text = "\n\n".join(child_texts)
-        if len(source_text) > config.verification_context_length:
-            source_text = source_text[:config.verification_context_length] + "...(truncated)"
+             child_texts = []
+             # root_node could be Chunk which has no children_indices or SummaryNode which does
+             # The loop only makes sense if it's a SummaryNode
+             if isinstance(tree.root_node, SummaryNode):
+                 for idx in tree.root_node.children_indices:
+                     node = store.get_node(idx)
+                     if node:
+                         child_texts.append(node.text)
+             elif isinstance(tree.root_node, Chunk):
+                 # If root is a chunk, verification source is the chunk itself?
+                 # Or we verify summary against source. But root IS source if it's a chunk.
+                 # Let's just use the chunk text itself as source.
+                 child_texts.append(tree.root_node.text)
 
-        result = verifier.verify(root_summary, source_text)
-        typer.echo(f"Verification Score: {result.score}")
+             source_text = "\n\n".join(child_texts)
+             if len(source_text) > config.verification_context_length:
+                 source_text = source_text[:config.verification_context_length] + "...(truncated)"
 
-        with (output_dir / "verification_result.json").open("w") as f:
-            f.write(result.model_dump_json(indent=2))
+             result = verifier.verify(root_summary, source_text)
+             typer.echo(f"Verification Score: {result.score}")
+
+             with (output_dir / "verification_result.json").open("w") as f:
+                 f.write(result.model_dump_json(indent=2))
+        else:
+             typer.echo("Root node is empty, skipping verification.")
 
     except Exception as e:
         logger.exception("Verification failed.")

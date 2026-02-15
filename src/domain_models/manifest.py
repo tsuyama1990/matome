@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from domain_models.types import DIKWLevel, Metadata, NodeID
 
@@ -46,11 +46,24 @@ class Chunk(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
 
-    index: int
-    text: str
-    start_char_idx: int
-    end_char_idx: int
+    index: int = Field(..., ge=0, description="Sequential index of the chunk.")
+    text: str = Field(..., min_length=1, description="Text content of the chunk.")
+    start_char_idx: int = Field(..., ge=0, description="Start character index.")
+    end_char_idx: int = Field(..., ge=0, description="End character index.")
     embedding: list[float] | None = None
+    metadata: Metadata = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_indices(self) -> "Chunk":
+        if self.start_char_idx > self.end_char_idx:
+            raise ValueError("start_char_idx cannot be greater than end_char_idx")
+        return self
+
+    @model_validator(mode="after")
+    def validate_embedding(self) -> "Chunk":
+        if self.embedding is not None and len(self.embedding) == 0:
+            raise ValueError("Embedding cannot be empty list")
+        return self
 
 
 class SummaryNode(BaseModel):
@@ -61,7 +74,7 @@ class SummaryNode(BaseModel):
 
     id: NodeID
     text: str
-    level: int
+    level: int = Field(..., ge=1, description="Level in the tree (1+).")
     children_indices: list[NodeID]
     metadata: NodeMetadata
     embedding: list[float] | None = None
@@ -74,9 +87,10 @@ class Cluster(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int
-    level: int
+    level: int = Field(..., ge=0, description="Level of the cluster.")
     node_indices: list[NodeID]
     metadata: dict[str, Any] = Field(default_factory=dict)
+    centroid: list[float] | None = Field(default=None)
 
 
 class DocumentTree(BaseModel):

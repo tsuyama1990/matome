@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, create_autospec, patch
 import pytest
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, DocumentTree
+from domain_models.manifest import Chunk, Cluster, DocumentTree, SummaryNode
 from domain_models.types import NodeID
 from matome.agents.strategies import InformationStrategy, WisdomStrategy
 from matome.engines.embedder import EmbeddingService
@@ -85,8 +85,12 @@ def test_raptor_run_short_text(
 
     assert isinstance(tree, DocumentTree)
     assert len(tree.leaf_chunk_ids) == 1
-    assert tree.root_node.level == 1
-    assert tree.root_node.text == "Wisdom Summary"
+
+    # Assert type narrowing for tree.root_node before accessing SummaryNode fields
+    root_node = tree.root_node
+    assert isinstance(root_node, SummaryNode)
+    assert root_node.level == 1
+    assert root_node.text == "Wisdom Summary"
 
     # Ensure it used Wisdom strategy
     args, kwargs = summarizer.summarize.call_args

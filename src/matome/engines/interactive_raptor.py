@@ -1,4 +1,5 @@
 import logging
+import re
 from collections.abc import Iterator
 
 from domain_models.config import ProcessingConfig
@@ -149,16 +150,26 @@ class InteractiveRaptorEngine:
         return "\n\n".join(child_texts)
 
     def _sanitize_instruction(self, instruction: str) -> str:
-        """Sanitize user instruction to prevent injection or formatting issues."""
-        # Simple sanitization: strip and remove potentially dangerous control chars if necessary.
-        # Since this goes to an LLM as a prompt value, we primarily want to ensure it doesn't break prompt structure.
-        # But `SummarizationAgent` handles prompt construction safely (usually via templates).
-        return instruction.strip()
+        """
+        Sanitize user instruction to prevent injection or formatting issues.
+        Removes dangerous characters that might break prompts or internal logs.
+        """
+        # Strip leading/trailing whitespace
+        clean = instruction.strip()
+
+        # Remove control characters (except newline/tab) which can mess up logging or some parsers
+        # Using a regex to keep only printable characters + newline + tab
+        # This is a basic sanitization for prompt safety.
+        # \x20-\x7E is printable ASCII. We also allow unicode via \w if needed,
+        # but let's be strict for safety unless Japanese input is expected (it is).
+        # So we remove ASCII control chars < 32 except 9 (tab), 10 (LF), 13 (CR)
+        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', clean)
 
     def _generate_refinement_summary(self, source_text: str, instruction: str, node: SummaryNode) -> str:
         """Generate the new summary using the LLM."""
         if self.summarizer is None:
-            raise RuntimeError("Summarizer not initialized")
+            msg = "Summarizer not initialized"
+            raise RuntimeError(msg)
 
         level_key = node.metadata.dikw_level.value
         base_strategy_cls = STRATEGY_REGISTRY.get(level_key)

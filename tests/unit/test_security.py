@@ -1,10 +1,13 @@
-import pytest
 from pathlib import Path
 from unittest.mock import MagicMock
+
+import pytest
+import typer
+
+from domain_models.config import ProcessingConfig
 from matome.cli import _validate_output_dir
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
-from domain_models.config import ProcessingConfig
-import typer
+
 
 class TestSecurity:
     def test_validate_output_dir_symlink_attack(self, tmp_path: Path) -> None:
@@ -25,17 +28,13 @@ class TestSecurity:
         except OSError:
             pytest.skip("Symlinks not supported on this OS")
 
-        # Mock CWD to be tmp_path for the test
-        with pytest.raises(typer.Exit):
-             # We must change cwd so is_relative_to works as expected in the test environment
-             # But _validate_output_dir calls Path.cwd().
-             # We can't easily change real CWD safely in parallel tests.
-             # We should rely on passing relative paths or mocking Path.cwd
+        # Use MonkeyPatch to simulate running context where CWD is tmp_path
+        # We can't rely on pytest.raises context manager nesting logic with other CMs easily in one line in ruff's view?
+        # Ruff complaint was about complex statement in with block.
 
-             # Assuming _validate_output_dir is imported from matome.cli
-             # We'll monkeypatch Path.cwd
-             with pytest.MonkeyPatch.context() as m:
-                 m.setattr(Path, "cwd", lambda: tmp_path)
+        with pytest.MonkeyPatch.context() as m:
+             m.setattr(Path, "cwd", lambda: tmp_path)
+             with pytest.raises(typer.Exit):
                  _validate_output_dir(link_dir)
 
     def test_validate_output_dir_parent_traversal(self, tmp_path: Path) -> None:
@@ -62,6 +61,11 @@ class TestSecurity:
         clean = engine._sanitize_instruction(dirty)
         assert clean == "Refine this"
 
-        # Test basic pass-through of valid chars (we aren't doing heavy sanitization yet, just structure)
+        # Test control char removal
+        dirty_chars = "Refine\x00this\x1f"
+        clean = engine._sanitize_instruction(dirty_chars)
+        assert clean == "Refinethis"
+
+        # Test basic pass-through of valid chars
         valid = "Make it shorter."
         assert engine._sanitize_instruction(valid) == valid

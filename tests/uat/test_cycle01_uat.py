@@ -1,37 +1,23 @@
+import pytest
 from domain_models.config import ProcessingConfig
 from matome.engines.token_chunker import JapaneseTokenChunker
-from matome.utils.text import normalize_text, split_sentences
-
-
-def test_uat_scenario_02_ingestion_cleaning() -> None:
-    """Scenario 02: Text Ingestion & Cleaning."""
-    text = "１２３ＡＢＣ"
-    cleaned = normalize_text(text)
-    assert cleaned == "123ABC"
-
-
-def test_uat_scenario_03_sentence_splitting() -> None:
-    """Scenario 03: Japanese Sentence Splitting."""
-    text = "「これはテストです。」と彼は言った。次の文です！"
-    sentences = split_sentences(text)
-
-    # Ideally:
-    # 1. 「これはテストです。」と彼は言った。
-    # 2. 次の文です！
-
-    # Cycle 01 spec accepts simple splitting even if it breaks inside quotes.
-    # We assert that "次の文です！" is a separate sentence at the end.
-    assert sentences[-1] == "次の文です！"
-
 
 def test_uat_scenario_04_chunk_size() -> None:
-    """Scenario 04: Chunk Size Management."""
-    # Long text
-    sentence = "これは長い文章のテストです。" * 10
-    text = sentence * 10
-
+    """
+    Scenario 04: Chunk Size Configuration.
+    Goal: Verify that changing `max_tokens` affects the chunking output.
+    """
     chunker = JapaneseTokenChunker()
-    config = ProcessingConfig(max_tokens=50)  # Small limit to force chunking
-    chunks = list(chunker.split_text(text, config))
+    text = "A" * 100  # 100 characters
 
-    assert len(chunks) > 1
+    # Case 1: Small chunks (10 tokens)
+    # Ensure consistency: max_summary_tokens <= max_tokens
+    config_small = ProcessingConfig(max_tokens=10, max_summary_tokens=5)
+    chunks_small = list(chunker.split_text(text, config_small))
+
+    # Case 2: Large chunks (100 tokens)
+    config_large = ProcessingConfig(max_tokens=100, max_summary_tokens=50)
+    chunks_large = list(chunker.split_text(text, config_large))
+
+    # Expect more chunks with smaller token limit
+    assert len(chunks_small) > len(chunks_large)

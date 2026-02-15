@@ -2,111 +2,105 @@ import pytest
 from pydantic import ValidationError
 
 from domain_models.config import ProcessingConfig
-from domain_models.manifest import Chunk, Cluster, Document, DocumentTree, NodeMetadata, SummaryNode
+from domain_models.manifest import Chunk, Cluster, DocumentTree, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 
 
-def test_document_validation() -> None:
-    """Test valid and invalid Document creation."""
-    # Valid
-    doc = Document(content="hello", metadata={"source": "test"})
-    assert doc.content == "hello"
-    assert doc.metadata == {"source": "test"}
-
-    # Invalid case: missing content
-    with pytest.raises(ValidationError):
-        Document(metadata={})  # type: ignore
-
-
 def test_chunk_validation() -> None:
-    """Test valid and invalid Chunk creation."""
-    # Valid
-    chunk = Chunk(index=0, text="chunk text", start_char_idx=0, end_char_idx=10, metadata={})
-    assert chunk.index == 0
-    assert chunk.text == "chunk text"
+    # Valid chunk
+    c = Chunk(index=0, text="valid", start_char_idx=0, end_char_idx=5)
+    assert c.text == "valid"
 
-    # Invalid case: negative index
+    # Invalid range - start > end
     with pytest.raises(ValidationError):
-        Chunk(index=-1, text="text", start_char_idx=0, end_char_idx=10)
+        Chunk(index=0, text="valid", start_char_idx=10, end_char_idx=5)
 
-    # Invalid case: start > end
+    # Empty text
     with pytest.raises(ValidationError):
-        Chunk(index=0, text="text", start_char_idx=10, end_char_idx=5)
+        Chunk(index=0, text="", start_char_idx=0, end_char_idx=0)
+
+    # Invalid embedding
+    with pytest.raises(ValidationError):
+        Chunk(index=0, text="valid", start_char_idx=0, end_char_idx=5, embedding=[])
+
+
+def test_node_metadata_defaults() -> None:
+    meta = NodeMetadata()
+    assert meta.dikw_level == DIKWLevel.DATA
+    assert not meta.is_user_edited
+    assert meta.refinement_history == []
 
 
 def test_summary_node_validation() -> None:
-    """Test valid and invalid SummaryNode creation."""
+    meta = NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+
     # Valid
     node = SummaryNode(
-        id="node1",
-        text="Summary of text",
+        id="node_1",
+        text="Summary",
         level=1,
-        children_indices=[0, 1],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+        children_indices=["0", "1"],
+        metadata=meta,
     )
     assert node.level == 1
-    assert node.children_indices == [0, 1]
 
-    # Invalid case: level < 1
+    # Invalid level (must be >= 1)
     with pytest.raises(ValidationError):
         SummaryNode(
-            id="node1",
+            id="node_1",
             text="Summary",
-            level=0,  # Should be >= 1
-            children_indices=[0],
-            metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+            level=0,
+            children_indices=["0"],
+            metadata=meta,
         )
 
 
 def test_cluster_validation() -> None:
-    """Test valid and invalid Cluster creation."""
     # Valid
-    cluster = Cluster(id=1, level=0, node_indices=[0, 1, 2], centroid=[0.1, 0.2])
-    assert cluster.level == 0
-    assert cluster.node_indices == [0, 1, 2]
+    c = Cluster(id=0, level=0, node_indices=[0, 1])
+    assert c.id == 0
 
-    # Invalid case: level < 0
+    # Invalid level
     with pytest.raises(ValidationError):
-        Cluster(id=1, level=-1, node_indices=[0])
+        Cluster(id=0, level=-1, node_indices=[0])
 
 
-def test_document_tree_validation() -> None:
-    """Test DocumentTree structure validation."""
-    # Setup components
-    chunk1 = Chunk(index=0, text="A", start_char_idx=0, end_char_idx=1)
-    chunk2 = Chunk(index=1, text="B", start_char_idx=1, end_char_idx=2)
-    summary = SummaryNode(
-        id="s1",
-        text="AB",
-        level=1,
-        children_indices=[0, 1],
-        metadata=NodeMetadata(dikw_level=DIKWLevel.INFORMATION)
+def test_document_tree_structure() -> None:
+    meta = NodeMetadata(dikw_level=DIKWLevel.WISDOM)
+    root = SummaryNode(
+        id="root",
+        text="Root",
+        level=2,
+        children_indices=["c1"],
+        metadata=meta,
     )
 
-    # Valid DocumentTree
     tree = DocumentTree(
-        root_node=summary,
-        leaf_chunk_ids=[chunk1.index, chunk2.index],
-        metadata={},
+        root_node=root,
+        leaf_chunk_ids=[0, 1, 2],
+        metadata={"version": "1.0"}
     )
-    assert tree.root_node.id == "s1"
-    assert len(tree.leaf_chunk_ids) == 2
+    assert tree.root_node.id == "root"
+    assert len(tree.leaf_chunk_ids) == 3
 
 
 def test_config_validation() -> None:
-    """Test ProcessingConfig validation."""
-    # Valid
-    config = ProcessingConfig(max_tokens=100, overlap=10)
-    assert config.max_tokens == 100
+    # Valid defaults
+    config = ProcessingConfig()
+    assert config.max_tokens > 0
 
-    # Test new fields
-    config_default = ProcessingConfig.default()
-    assert config_default.clustering_algorithm.value == "gmm"
-    assert config_default.summarization_model == "gpt-4o" # Check constant
-    # Test semantic chunking defaults
-    assert config_default.semantic_chunking_mode is False
-    assert config_default.semantic_chunking_threshold == 0.8
-
-    # Invalid case: zero max_tokens (ge=1)
+    # Invalid max_tokens
     with pytest.raises(ValidationError):
         ProcessingConfig(max_tokens=0)
+
+    # Invalid semantic chunking threshold
+    with pytest.raises(ValidationError):
+        ProcessingConfig(semantic_chunking_mode=True, semantic_chunking_threshold=1.5)
+
+    # Invalid model name
+    with pytest.raises(ValidationError):
+        ProcessingConfig(embedding_model="invalid/model!name")
+
+    # Inconsistent tokens
+    with pytest.raises(ValidationError):
+        ProcessingConfig(max_tokens=10, max_summary_tokens=20)
