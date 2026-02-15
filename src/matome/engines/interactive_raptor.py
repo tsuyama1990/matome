@@ -12,7 +12,7 @@ from matome.agents.summarizer import SummarizationAgent
 from matome.exceptions import MatomeError, RefinementError, StoreError
 from matome.utils.store import DiskChunkStore
 from matome.utils.traversal import traverse_source_chunks
-from matome.utils.validation import sanitize_instruction
+from matome.utils.validation import sanitize_instruction, validate_node_id
 
 logger = logging.getLogger(__name__)
 
@@ -253,6 +253,7 @@ class InteractiveRaptorEngine:
         """
         Refine a specific node based on user instruction.
         """
+        validate_node_id(node_id)
         try:
             return self._refine_node_internal(node_id, instruction)
         except (ValueError, StoreError, RuntimeError) as e:
@@ -280,6 +281,21 @@ class InteractiveRaptorEngine:
              source_text = source_text[:self.config.max_input_length]
 
         new_text = self._generate_refinement_summary(source_text, clean_instruction, node)
+
+        # Sanitize output text to prevent injection of malicious content from LLM
+        if len(new_text) > self.config.max_input_length:
+             logger.warning(f"Refinement result for node {node_id} truncated.")
+             new_text = new_text[:self.config.max_input_length]
+
+        # Ensure no invalid control characters in the generated text
+        try:
+            from matome.utils.validation import check_control_chars
+            check_control_chars(new_text, self.config.max_input_length)
+        except ValueError as e:
+            logger.warning(f"Refinement result for node {node_id} contains invalid chars: {e}")
+            # We might choose to strip them or fail. For now, let's fail to be safe/strict as per Constitution.
+            msg = f"Refinement result invalid: {e}"
+            raise RefinementError(msg) from e
 
         self._update_refined_node(node, new_text, clean_instruction)
 
