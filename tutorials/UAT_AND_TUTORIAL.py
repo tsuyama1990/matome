@@ -29,6 +29,7 @@ def _():
     from domain_models.manifest import Chunk, SummaryNode, DocumentTree, Cluster
     from domain_models.types import DIKWLevel
     from matome.engines.raptor import RaptorEngine
+    from matome.engines.interactive_raptor import InteractiveRaptorEngine
     from matome.engines.semantic_chunker import JapaneseSemanticChunker
     from matome.engines.embedder import EmbeddingService
     from matome.engines.cluster import GMMClusterer
@@ -50,6 +51,7 @@ def _():
         DocumentTree,
         EmbeddingService,
         GMMClusterer,
+        InteractiveRaptorEngine,
         JapaneseSemanticChunker,
         List,
         MagicMock,
@@ -270,6 +272,7 @@ def _(
         embedding_model="sentence-transformers/all-MiniLM-L6-v2",
         summarization_model="openai/gpt-4o-mini",
         chunk_buffer_size=10,
+        max_summary_tokens=200, # Small summaries for speed
     )
 
     embedder = EmbeddingService(config)
@@ -299,8 +302,106 @@ def _(
 
 
 @app.cell
+def _(DIKWLevel, SummaryNode, tree, logger):
+    # Scenario 4: Validation (The "Grok" Moment)
+    logger.info("--- Scenario 4: Validation (DIKW) ---")
+
+    root = tree.root_node
+    if isinstance(root, SummaryNode):
+        # In mock/small data, it might not reach Wisdom level if depth is low
+        # But we check whatever level it reached.
+        logger.info(f"Root Node Level: {root.level}")
+        logger.info(f"Root Node DIKW: {root.metadata.dikw_level}")
+
+        # We ideally want Wisdom, but if text is short it might be Knowledge or Information
+        # Assert it's at least Information if we have summary nodes
+        assert root.metadata.dikw_level in [DIKWLevel.WISDOM, DIKWLevel.KNOWLEDGE, DIKWLevel.INFORMATION]
+        logger.info("✅ Root Node Level Validated")
+    else:
+        logger.warning("Root is a Chunk (text too short for summarization). Skipping DIKW check.")
+
+    return root,
+
+
+@app.cell
+def _(InteractiveRaptorEngine, config, store, summarizer, logger, root, SummaryNode):
+    # Scenario 5: Interactive Engine & Traversal
+    logger.info("--- Scenario 5: Interactive Traversal ---")
+
+    interactive_engine = InteractiveRaptorEngine(store=store, summarizer=summarizer, config=config)
+
+    # Traverse children of root
+    if isinstance(root, SummaryNode):
+        children = list(interactive_engine.get_children(root))
+        logger.info(f"Root has {len(children)} children.")
+
+        # Traverse grandchildren
+        if children and isinstance(children[0], SummaryNode):
+            grandchildren = list(interactive_engine.get_children(children[0]))
+            logger.info(f"First child has {len(grandchildren)} children.")
+        else:
+            logger.info("First child is a Leaf Chunk.")
+            grandchildren = []
+    else:
+        children = []
+        grandchildren = []
+
+    return interactive_engine, children, grandchildren
+
+
+@app.cell
+def _(interactive_engine, children, SummaryNode, logger):
+    # Scenario 6: Refinement
+    logger.info("--- Scenario 6: Interactive Refinement ---")
+
+    # Pick a node to refine (preferably a SummaryNode)
+    target_node = None
+    for child in children:
+        if isinstance(child, SummaryNode):
+            target_node = child
+            break
+
+    if target_node:
+        logger.info(f"Refining Node: {target_node.id}")
+        logger.info(f"Original Text: {target_node.text[:50]}...")
+
+        refined_node = interactive_engine.refine_node(target_node.id, "Explain simply.")
+
+        logger.info(f"Refined Text: {refined_node.text[:50]}...")
+        assert refined_node.metadata.is_user_edited is True
+        assert "Explain simply." in refined_node.metadata.refinement_history
+        logger.info("✅ Node Refinement Validated")
+    else:
+        logger.warning("No SummaryNode children found to refine.")
+
+    return target_node, refined_node if target_node else None
+
+
+@app.cell
+def _(interactive_engine, target_node, logger):
+    # Scenario 7: Traceability
+    logger.info("--- Scenario 7: Traceability (Source Chunks) ---")
+
+    if target_node:
+        source_chunks = list(interactive_engine.get_source_chunks(target_node.id, limit=5))
+        logger.info(f"Retrieved {len(source_chunks)} source chunks for node {target_node.id}")
+
+        for sc in source_chunks:
+            logger.info(f" - Chunk {sc.index}: {sc.text[:30]}...")
+
+        assert len(source_chunks) > 0
+        logger.info("✅ Source Chunk Retrieval Validated")
+    else:
+        logger.warning("Skipping traceability check (no target node).")
+
+    return source_chunks if target_node else None
+
+
+@app.cell
 def _(export_to_markdown, project_root, store, tree, logger):
-    # Scenario 3 Continued: Markdown Export
+    # Scenario 8: Markdown Export
+    logger.info("--- Scenario 8: Export ---")
+
     md_content = export_to_markdown(tree, store)
 
     output_md_path = project_root / "summary_all.md"
@@ -312,9 +413,7 @@ def _(export_to_markdown, project_root, store, tree, logger):
 
 @app.cell
 def _(ObsidianCanvasExporter, project_root, store, tree, logger):
-    # Scenario 4: KJ Method Visualization (Canvas Export)
-    logger.info("--- Scenario 4: Export to Obsidian Canvas ---")
-
+    # Scenario 8 Continued: Canvas Export
     canvas_exporter = ObsidianCanvasExporter()
 
     output_canvas_path = project_root / "summary_kj.canvas"
@@ -327,13 +426,23 @@ def _(ObsidianCanvasExporter, project_root, store, tree, logger):
 
 
 @app.cell
+def _(logger):
+    # Scenario 9: GUI Instructions
+    logger.info("--- Scenario 9: GUI Launch Instructions ---")
+    print("\nTo explore the results visually, run the following command in your terminal:")
+    print("uv run matome serve")
+    print("\nThis will launch the Panel-based interactive application.")
+    return
+
+
+@app.cell
 def _(context_managers, logger, store):
     # Cleanup
     store.close()
     for _cm in context_managers:
         _cm.stop()
     logger.info("Mocks deactivated.")
-    logger.info("✅ UAT COMPLETE")
+    logger.info("🎉 All Systems Go: Matome 2.0 is ready for Knowledge Installation.")
     return
 
 
