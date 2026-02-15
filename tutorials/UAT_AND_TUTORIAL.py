@@ -1,3 +1,5 @@
+# Copyright (c) 2024 Matome Project
+# Validated by QA Lead & Developer Advocate
 import marimo
 
 __generated_with = "0.10.14"
