@@ -72,6 +72,8 @@ Matome exports results in multiple formats:
 The project includes a comprehensive interactive tutorial that also serves as the User Acceptance Test (UAT).
 It demonstrates the full pipeline: Chunking -> Clustering -> Summarization -> Refinement -> Traceability.
 
+**Note:** The tutorial automatically runs in **Mock Mode** if no `OPENROUTER_API_KEY` is found, using dummy data for testing without API costs.
+
 **To run the interactive tutorial:**
 ```bash
 # Opens the notebook in your browser where you can execute cells step-by-step.
