@@ -221,20 +221,27 @@ def _(chunks_sample, embedder_chunking, logger, np, PCA, plt, project_root):
     logger.info(f"Generated embeddings shape: {embeddings_np.shape}")
 
     # Reduce dimensions to 2D
-    pca = PCA(n_components=2)
-    reduced_embeddings = pca.fit_transform(embeddings_np)
+    n_samples = embeddings_np.shape[0]
+    if n_samples < 2:
+        logger.warning(f"Not enough samples for 2D PCA ({n_samples}). Skipping plot.")
+        reduced_embeddings = np.zeros((n_samples, 2))
+        pca = None
+        plot_path = None
+    else:
+        pca = PCA(n_components=2)
+        reduced_embeddings = pca.fit_transform(embeddings_np)
 
-    # Plot
-    plt.figure(figsize=(10, 6))
-    plt.scatter(reduced_embeddings[:, 0], reduced_embeddings[:, 1], alpha=0.7)
-    plt.title("Chunk Embeddings Visualization (PCA)")
-    plt.xlabel("Component 1")
-    plt.ylabel("Component 2")
-    plt.grid(True)
+        # Plot
+        plt.figure(figsize=(10, 6))
+        plt.scatter(reduced_embeddings[:, 0], reduced_embeddings[:, 1], alpha=0.7)
+        plt.title("Chunk Embeddings Visualization (PCA)")
+        plt.xlabel("Component 1")
+        plt.ylabel("Component 2")
+        plt.grid(True)
 
-    plot_path = project_root / "clustering_plot.png"
-    plt.savefig(plot_path)
-    logger.info(f"Saved clustering plot to {plot_path}")
+        plot_path = project_root / "clustering_plot.png"
+        plt.savefig(plot_path)
+        logger.info(f"Saved clustering plot to {plot_path}")
 
     return embeddings_np, plot_path, reduced_embeddings, pca, texts
 

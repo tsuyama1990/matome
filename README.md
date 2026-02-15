@@ -76,6 +76,12 @@ Explore the interactive tutorial and verify the installation.
 uv run marimo run tutorials/UAT_AND_TUTORIAL.py
 ```
 
+After running the tutorial, you can visualize the generated knowledge base:
+
+```bash
+uv run matome serve tutorials/chunks.db
+```
+
 ## Architecture
 
 ```
