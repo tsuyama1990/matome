@@ -28,7 +28,7 @@ def test_verification_integration_flow(mock_llm_chain: MagicMock) -> None:
     """
     Test the verification agent integrated with config and mocked LLM.
     """
-    config = ProcessingConfig(verification_model="gpt-4o")
+    config = ProcessingConfig(verification_model="openai/gpt-4o")
     agent = VerifierAgent(config, llm=mock_llm_chain)
 
     summary = "Claim 1. Claim 2."
@@ -39,4 +39,4 @@ def test_verification_integration_flow(mock_llm_chain: MagicMock) -> None:
     assert result.score == 0.8
     assert len(result.details) == 2
     assert "Claim 2" in result.unsupported_claims
-    assert result.model_name == "gpt-4o"
+    assert result.model_name == "openai/gpt-4o"
