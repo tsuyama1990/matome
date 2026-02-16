@@ -188,7 +188,16 @@ def __(mo):
 
 
 @app.cell
-def __(Chunk, DIKWLevel, InteractiveRaptorEngine, config, mo, store, summarizer):
+def __(
+    Chunk,
+    DIKWLevel,
+    InteractiveRaptorEngine,
+    config,
+    mo,
+    root,
+    store,
+    summarizer,
+):
     # Initialize Interactive Engine for traversal
     interactive_engine = InteractiveRaptorEngine(
         store=store,
@@ -197,9 +206,31 @@ def __(Chunk, DIKWLevel, InteractiveRaptorEngine, config, mo, store, summarizer)
     )
 
     # Verification: UAT-02 (Information Gen) & Semantic Zooming
-    # We want to check Level 1 nodes (summaries of chunks).
-    # These should be 'information' or 'knowledge' depending on depth, but definitely Summaries.
 
+    # 1. Demonstrate Traversal (Parent -> Child)
+    print(f"🔽 Traversing down from Root ({root.metadata.dikw_level})...")
+
+    current_node = root
+    depth_check = 0
+    max_depth_check = 10
+
+    while not isinstance(current_node, Chunk) and depth_check < max_depth_check:
+        print(f" - Level {getattr(current_node, 'level', 0)} Node ({current_node.id}): {current_node.text[:40]}...")
+
+        # Drill down to first child
+        if not hasattr(current_node, 'children_indices') or not current_node.children_indices:
+            print("   (No children found)")
+            break
+
+        first_child_id = current_node.children_indices[0]
+        current_node = store.get_node(first_child_id)
+        depth_check += 1
+
+    if isinstance(current_node, Chunk):
+         print(f" - reached Leaf Chunk ({current_node.index}): {current_node.text[:40]}...")
+
+    # 2. Verify Level 1 nodes (Information)
+    # These should be 'information' or 'knowledge' depending on depth, but definitely Summaries.
     level_1_ids = list(store.get_node_ids_by_level(1))
     print(f"Found {len(level_1_ids)} Level 1 nodes.")
 
@@ -225,9 +256,13 @@ def __(Chunk, DIKWLevel, InteractiveRaptorEngine, config, mo, store, summarizer)
     mo.md("### 🎯 **UAT-02 Passed**: Level 1 nodes are valid Summaries of Chunks (Semantic Zoom Verified).")
     return (
         child_ids,
+        current_node,
+        depth_check,
         first_child,
+        first_child_id,
         interactive_engine,
         level_1_ids,
+        max_depth_check,
         sample_l1_id,
         sample_l1_node,
     )
