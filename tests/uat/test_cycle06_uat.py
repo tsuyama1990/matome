@@ -165,7 +165,8 @@ def test_scenario_18_full_e2e_pipeline(
             "--output-dir",
             str(output_dir),
             "--max-tokens",
-            "300",  # Set > 200
+            "600",  # Must be >= default max_summary_tokens (500)
+            "--verify",
         ],
     )
 
@@ -191,7 +192,7 @@ def test_scenario_18_full_e2e_pipeline(
     # Or args[1]
     args = mock_clusterer_instance.cluster_nodes.call_args[0]
     assert isinstance(args[1], ProcessingConfig)
-    assert args[1].max_tokens == 300 # Check overridden config value
+    assert args[1].max_tokens == 600 # Check overridden config value
 
     # 4. Summarizer called
     mock_summarizer_instance.summarize.assert_called()

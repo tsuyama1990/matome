@@ -174,6 +174,7 @@ def __(DIKWLevel, mo, tree):
 
     # Allow weak check for Mock Mode if strategy returns default or something else,
     # but normally Raptor should set Wisdom for top level.
+    # We check if it is either the Enum value or the string value "wisdom"
     assert root.metadata.dikw_level == DIKWLevel.WISDOM or root.metadata.dikw_level == "wisdom", \
         f"Expected Wisdom, got {root.metadata.dikw_level}"
 

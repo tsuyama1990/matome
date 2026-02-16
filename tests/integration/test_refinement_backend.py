@@ -10,6 +10,7 @@ from domain_models.manifest import Chunk, NodeMetadata, SummaryNode
 from domain_models.types import DIKWLevel
 from matome.agents.summarizer import SummarizationAgent
 from matome.engines.interactive_raptor import InteractiveRaptorEngine
+from matome.exceptions import RefinementError
 from matome.utils.store import DiskChunkStore
 
 
@@ -110,7 +111,7 @@ class TestInteractiveRefinementBackend:
             # Case 1: Summarizer Failure
             mock_summarizer.summarize.side_effect = RuntimeError("LLM Down")
 
-            with pytest.raises(RuntimeError, match="LLM Down"):
+            with pytest.raises(RefinementError, match="Refinement failed: LLM Down"):
                 engine.refine_node("node_fail", "instr")
 
             # Verify node NOT updated
@@ -120,5 +121,5 @@ class TestInteractiveRefinementBackend:
             assert not node.metadata.is_user_edited
 
             # Case 2: Invalid Node ID
-            with pytest.raises(ValueError, match="Node invalid_id not found"):
+            with pytest.raises(RefinementError, match="Refinement failed: Node invalid_id not found"):
                 engine.refine_node("invalid_id", "instr")
