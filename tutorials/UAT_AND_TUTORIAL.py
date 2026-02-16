@@ -6,13 +6,14 @@ app = marimo.App(width="medium")
 
 @app.cell
 def __():
-    import marimo as mo
+    import logging
     import os
     import sys
-    import logging
     import threading
     import time
     from pathlib import Path
+
+    import marimo as mo
 
     # Ensure src is in path for local execution
     src_path = str(Path.cwd() / "src")
@@ -55,15 +56,15 @@ def __(os):
 @app.cell
 def __(mock_mode):
     from domain_models.config import ProcessingConfig
+    from domain_models.manifest import Chunk, SummaryNode
     from domain_models.types import DIKWLevel
-    from domain_models.manifest import SummaryNode, Chunk
+    from matome.agents.summarizer import SummarizationAgent
+    from matome.engines.cluster import GMMClusterer
+    from matome.engines.embedder import EmbeddingService
+    from matome.engines.interactive_raptor import InteractiveRaptorEngine
     from matome.engines.raptor import RaptorEngine
     from matome.engines.token_chunker import JapaneseTokenChunker
-    from matome.engines.embedder import EmbeddingService
-    from matome.engines.cluster import GMMClusterer
-    from matome.agents.summarizer import SummarizationAgent
     from matome.utils.store import DiskChunkStore
-    from matome.engines.interactive_raptor import InteractiveRaptorEngine
 
     # 1. Configuration
     config = ProcessingConfig(
@@ -117,7 +118,6 @@ def __(mock_mode):
 @app.cell
 def __(mo):
     mo.md("## Part 1: The 'Grok' Moment (Cycle 01)")
-    return
 
 
 @app.cell
@@ -185,7 +185,6 @@ def __(DIKWLevel, mo, tree):
 @app.cell
 def __(mo):
     mo.md("## Part 2: Semantic Zooming (Cycle 03)")
-    return
 
 
 @app.cell
@@ -223,7 +222,7 @@ def __(Chunk, DIKWLevel, InteractiveRaptorEngine, config, mo, store, summarizer)
     assert sample_l1_node.metadata.dikw_level in [DIKWLevel.INFORMATION, DIKWLevel.KNOWLEDGE, "information", "knowledge"], \
         f"Unexpected L1 level: {sample_l1_node.metadata.dikw_level}"
 
-    mo.md(f"### 🎯 **UAT-02 Passed**: Level 1 nodes are valid Summaries of Chunks (Semantic Zoom Verified).")
+    mo.md("### 🎯 **UAT-02 Passed**: Level 1 nodes are valid Summaries of Chunks (Semantic Zoom Verified).")
     return (
         child_ids,
         first_child,
@@ -237,7 +236,6 @@ def __(Chunk, DIKWLevel, InteractiveRaptorEngine, config, mo, store, summarizer)
 @app.cell
 def __(mo):
     mo.md("## Part 3: Interactive Refinement (Cycle 02 & 04)")
-    return
 
 
 @app.cell
@@ -304,7 +302,6 @@ def __(interactive_engine, mo, target_node, threading, time):
 @app.cell
 def __(mo):
     mo.md("## Part 4: Traceability (Cycle 05)")
-    return
 
 
 @app.cell
@@ -339,10 +336,8 @@ def __(db_path, mo):
         3. Open your browser to `http://localhost:5006`
         """
     )
-    return
 
 
 @app.cell
 def __(mo):
     mo.md("# 🎉 All Systems Go: Matome 2.0 is ready for Knowledge Installation.")
-    return
