@@ -1,0 +1,18 @@
+[project]
+name = "matome"
+authors = [
+    { name = "tomo", email = "tomoyuki.tsuyaman@gmail.com" }
+]
+version = "0.1.0"
+description = "Interactive summarization for very long texts"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.15.5",
+]
