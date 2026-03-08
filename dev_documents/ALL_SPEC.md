@@ -83,6 +83,7 @@ The main learning screen, featuring an intuitive, smooth, visually beautiful, an
 
 ### 3.3 Interactive Unlock Questions (Question)
 A powerful hook feature that physically prevents passive reading and puts the brain in "search mode."
+This fuction sometimes provent the users from reading the text, so we need to make it optional.
 
 *   **FR-3.1: Adaptive Question Prompt Generation:**
     *   When the user attempts to open a locked node, instead of showing the contents directly, the AI throws a "question" that strikes at the core of that node via pop-up or voice.
@@ -95,22 +96,6 @@ A powerful hook feature that physically prevents passive reading and puts the br
     *   For "frozen" users (unable to answer), a "Show Hint" button is provided. It gently unblocks cognition by gradually providing hints, first hiding some letters, then offering a multiple-choice quiz.
 *   **FR-3.3: Immediate Reward Effects:**
     *   Upon unlocking, a pleasant sound (and light vibration for haptic-supported devices) and visual effects (unlock animations or confetti) accompany the display of the highly dense summary refined by CoD. This "micro-reward" is the driving force behind the learning dopamine loop.
-
-### 3.4 Voice Interactive "Recite" (Feynman Method) Phase
-A feature that eliminates the pain of typing and aims to anchor information in long-term memory by "explaining it in your own words as if teaching someone else" (the Feynman technique).
-
-*   **FR-4.1: Context-Aware Microphone Activation:**
-    *   When finishing learning one node (or an entire section) and returning to a higher level (zooming out), a microphone button showing a waveform becomes active at the bottom centre of the screen.
-*   **FR-4.2: Conceptualisation via Voice (Sounding Board Dialogue):**
-    *   The user speaks into the microphone, verbalising the main points to the AI (e.g., "In short, it means this," "From what I understand...").
-    *   It also supports seamless fallback to text input for use in office environments or public transport.
-*   **FR-4.3: Immediate Fact-Checking and Hallucination Detection via CAHM:**
-    *   The AI instantly transcribes the user's voice input into text using Whisper API or similar.
-    *   Using the Context-Aware Hierarchical Merging (CAHM) algorithm, it immediately cross-references the user's statements with the original facts (corresponding chunks in the vector DB). It strictly determines if the user's memory is suffering from hallucinations (running wild with personal interpretations, confusing terms, or misrecognition).
-*   **FR-4.4: Affirmative and Complementary Sandwich Feedback (AI Tutor Behaviour):**
-    *   Based on the cross-referencing results, the AI returns immediate feedback. The AI's tone is set as an "accompanying excellent coach," not a "strict teacher."
-    *   **Correct/Close:** "Excellent! You perfectly captured the core idea of 'cost reduction.' By the way, the original text made it even more specific with the expression 'compressing running costs'."
-    *   **Misunderstanding:** "I see, that's an interesting perspective! However, the author's argument was actually the opposite, stating 'initial investment increases, but long-term returns exceed it.' Shall we check the graph in that section again?" The AI corrects the course while ensuring maximum psychological safety.
 
 ### 3.5 Pivot KJ for Requirements Definition and Knowledge Reconstruction (Review & Insight)
 The highest-order insight generation (output) feature, used after completing the table-of-contents-based learning (input). This killer feature transforms reading from "consumption" to "production."
@@ -130,6 +115,7 @@ The highest-order insight generation (output) feature, used after completing the
 *   **FR-5.5: Automatic Export of Requirements Documents and UML:**
     *   When the user accepts the AI's suggestions and finalises the arrangement and dependencies (arrows) of the cards, the AI automatically generates a PRD or Executive Summary from that new layout.
     *   Furthermore, it simultaneously outputs Mermaid.js or PlantUML code snippets (sequence diagrams, flowcharts, state machine diagrams, ER diagrams). This allows seamless handover from requirements definition to the development team, or the creation of presentation materials for management.
+    *   However this function potentially includes the hallucination, so we need to make it optional. And even the users choose to use it, we need to make it clear that the output is AI-generated and may contain errors. The output should be minimized to reduced the risks.
 
 ### 3.6 AI Model Configuration and API Key Management (Config Management)
 A configuration foundation feature to perfectly balance cost, processing speed, and accuracy using OpenRouter.
@@ -167,6 +153,3 @@ A configuration foundation feature to perfectly balance cost, processing speed, 
 *   **Enterprise Authentication and Fine-Grained Access Control:** Support Single Sign-On (SSO) via SAML/OAuth2 to integrate with existing corporate ID infrastructure (Entra ID, Okta). Strictly implement Role-Based Access Control (RBAC: Viewer, Editor, Admin) for team features (collaboration canvas), allowing access control per document.
 *   **Local Inference Option (On-Premise Extensibility):** For highly sensitive medical information (PHI) or military/legal documents, the architecture must be designed from the ground up to support a hybrid/on-premise mode. This routes inference requests to LLMs running in local environments or VPCs (like quantised Llama 3 models) without using cloud LLMs at all.
 
-### 4.4 Learning Analytics and Cost Management
-*   **Review Algorithm Based on the Forgetting Curve (Spaced Repetition / FSRS):** Provide a learning dashboard per user. Accumulate data on time spent per learning session, correct answer rate for Questions, and keyword coverage rate during Recite. Run the latest FSRS algorithm in the backend to highlight nodes that are difficult to remember at optimal timings (e.g., next day, 3 days later, 2 weeks later) to prompt review.
-*   **Extreme Cost Control via Prompt Caching:** To prevent deficits caused by bloated API calls, fully utilise the "Prompt Caching" features provided by Anthropic or Gemini. This significantly reduces the context token costs for long system prompts or repeated access to the same document (e.g., during zoom in/out). The goal is to keep the total AI processing cost per document (100,000 token scale) below $1.00, ensuring high gross margins as a sustainable SaaS.
