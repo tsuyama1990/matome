@@ -4,6 +4,7 @@
 The following scenarios are designed to act both as User Acceptance Tests and engaging tutorials for new users. They will guide the user through the "Aha! Moment" of using the matome platform. We use `marimo` to provide a reproducible, interactive Python notebook experience.
 
 ### Scenario ID: UAT-01 - The "Aha!" Moment for a Product Manager (Quick Start)
+**Priority:** High
 **Description:** A Product Manager (PdM) wants to understand a dense legacy system manual and convert it into a modern workflow without falling into the "As-Is" trap.
 **Steps:**
 1.  **Ingestion (Survey):** The user uploads a complex text file (e.g., `testfiles/test_text.txt`) representing a legacy business manual. The system should rapidly process this and display an interactive tree structure (the RAPTOR graph), not a wall of text.
@@ -14,6 +15,7 @@ The following scenarios are designed to act both as User Acceptance Tests and en
 **Expected Result:** The user feels relief from the cognitive load of reading the raw text and experiences the excitement of instantly generating a structured system design from an unstructured manual.
 
 ### Scenario ID: UAT-02 - Multi-Dimensional Analysis for a Consultant (Advanced)
+**Priority:** Medium
 **Description:** A business consultant needs to synthesise multiple market reports to find a unique angle for a strategy pitch.
 **Steps:**
 1.  **Ingestion:** The user uploads three separate documents detailing market trends, competitor analysis, and regulatory changes.
