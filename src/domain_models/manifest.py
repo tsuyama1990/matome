@@ -105,9 +105,6 @@ class DocumentNode(BaseModel):
 
     identity: NodeIdentity = Field(..., description="Structural and identity data for the node")
     content: DocumentContent = Field(..., description="The content components of the node")
-    metadata_container: DocumentMetadataContainer = Field(
-        ..., description="Separated metadata components for this node"
-    )
 
     @property
     def id(self) -> str:

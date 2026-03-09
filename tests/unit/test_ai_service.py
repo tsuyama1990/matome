@@ -3,11 +3,9 @@ import pytest
 from src.application.ai import DefaultAIService
 from src.config import Settings
 from src.domain_models import (
-    AIProcessingMetadata,
     DocumentContent,
     DocumentNode,
     NodeIdentity,
-    NodeMetadata,
     NodeStatus,
     PivotAxis,
     PivotBoard,
@@ -79,7 +77,6 @@ def test_default_ai_service_calls_generate_summary_valid() -> None:
 
 
 def test_default_ai_service_calls_generate_question_valid() -> None:
-    from src.domain_models.manifest import DocumentMetadataContainer
 
     ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
     node = DocumentNode(
@@ -90,12 +87,6 @@ def test_default_ai_service_calls_generate_question_valid() -> None:
             status=NodeStatus.LOCKED,
         ),
         content=DocumentContent(summary=None, text=None),
-        metadata_container=DocumentMetadataContainer(
-            metadata=NodeMetadata(source=None, author=None, category=None, time_axis=None),
-            ai_metadata=AIProcessingMetadata(
-                chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
-            ),
-        ),
     )
     with pytest.raises(AIServiceError):
         ai.generate_question(node)

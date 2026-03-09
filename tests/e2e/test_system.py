@@ -1,8 +1,12 @@
 from src.config import Settings
 from src.domain_models.manifest import PipelineContext
-from src.domain_models.services import DocumentFactory
+from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
-from src.infrastructure.orchestrator import PipelineOrchestrator
+from src.infrastructure.orchestrator import (
+    PipelineConfig,
+    PipelineDependencies,
+    PipelineOrchestrator,
+)
 from src.infrastructure.services import (
     DefaultClusteringService,
     DefaultEntityExtractor,
@@ -24,6 +28,7 @@ def test_pipeline_orchestrator_integration() -> None:
     repo = InMemoryDocumentRepository()
     ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
     factory = DocumentFactory()
+    metadata_service = MetadataService()
 
     import os
 
@@ -44,16 +49,21 @@ def test_pipeline_orchestrator_integration() -> None:
     entity_extractor = DefaultEntityExtractor(settings.spacy_model)
     clustering_service = DefaultClusteringService(settings.random_seed)
 
-    orchestrator = PipelineOrchestrator(
+    deps = PipelineDependencies(
         doc_repo=repo,
+        transaction_manager=repo,
         ai_service=ai,
         doc_factory=factory,
+        metadata_service=metadata_service,
         text_splitter=text_splitter,
         entity_extractor=entity_extractor,
         clustering_service=clustering_service,
+    )
+    config = PipelineConfig(
         pipeline_timeout=settings.pipeline_timeout,
         raptor_max_clusters=settings.raptor_max_clusters,
     )
+    orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
 
     # Run the pipeline
     root_doc_id = settings.default_root_doc_id
@@ -73,4 +83,7 @@ def test_pipeline_orchestrator_integration() -> None:
     assert root.content.summary is not None
     assert "System Actor" in root.content.summary
     assert "Action" in root.content.summary
-    assert root.metadata_container.metadata.category == "business"
+
+    metadata = metadata_service.get_metadata(root.id)
+    assert metadata is not None
+    assert metadata.metadata.category == "business"

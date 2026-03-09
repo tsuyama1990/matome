@@ -15,7 +15,7 @@ class DefaultAIService(AIServiceProtocol):
 
     def __init__(
         self,
-        api_key: SecretStr | None,
+        api_key: SecretStr,
         api_url: str,
         text_fast_model: str,
         text_reasoning_model: str,
@@ -23,25 +23,13 @@ class DefaultAIService(AIServiceProtocol):
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
     ) -> None:
-        from src.utils.validation import validate_api_key_format
-
         self.http_client = http_client
         self.retry_policy = retry_policy
         self.api_url = api_url
         self.text_fast_model = text_fast_model
         self.text_reasoning_model = text_reasoning_model
         self.ai_timeout = ai_timeout
-
-        if not api_key:
-            msg = "A valid API Key is required to initialize DefaultAIService."
-            raise ValueError(msg)
-
-        raw_key = api_key.get_secret_value() if isinstance(api_key, SecretStr) else str(api_key)
-        validated_key = validate_api_key_format(raw_key)
-        if validated_key is None:
-            raise ValueError(msg)
-
-        self.api_key = SecretStr(validated_key)
+        self.api_key = api_key
 
     def _call_api(self, prompt: str, model: str | None = None) -> str:
         def _execute() -> str:

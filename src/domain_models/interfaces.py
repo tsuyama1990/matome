@@ -5,8 +5,8 @@ from .analysis import PivotBoard
 from .manifest import DocumentNode, UserInteractionContext
 
 
-class DocumentRepository(Protocol):
-    """Protocol for combining Read, Write, Query, and Transaction operations."""
+class TransactionManager(Protocol):
+    """Protocol for handling transaction lifecycle operations."""
 
     def begin(self) -> None:
         """Starts a new transaction. Should raise RepositoryError on failure."""
@@ -20,6 +20,10 @@ class DocumentRepository(Protocol):
         """Rolls back the active transaction. Should raise RepositoryError on failure."""
         ...
 
+
+class DocumentRepository(Protocol):
+    """Protocol for data persistence operations regarding DocumentNodes."""
+
     def get_node(self, node_id: str) -> DocumentNode | None:
         """Retrieves a node by its ID. Raises RepositoryError on DB failure."""
         ...
@@ -29,11 +33,11 @@ class DocumentRepository(Protocol):
         ...
 
     def save_node(self, node: DocumentNode) -> None:
-        """Saves or updates a single node. Should be within a transaction. Raises RepositoryError on failure."""
+        """Saves or updates a single node. Raises RepositoryError on failure."""
         ...
 
     def save_nodes(self, nodes: list[DocumentNode]) -> None:
-        """Saves or updates multiple nodes. Should be within a transaction. Raises RepositoryError on failure."""
+        """Saves or updates multiple nodes. Raises RepositoryError on failure."""
         ...
 
     def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]:

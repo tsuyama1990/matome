@@ -27,10 +27,27 @@ class DocumentFactory:
                 status=NodeStatus.LOCKED,
             ),
             content=DocumentContent(summary=summary, text=content_text),
-            metadata_container=DocumentMetadataContainer(
-                metadata=NodeMetadata(
-                    category="business", author="System", source="upload", time_axis=None
-                ),
-                ai_metadata=AIProcessingMetadata(chunk_id=None, chunk_index=None),
-            ),
         )
+
+
+class MetadataService:
+    """Domain service responsible for managing metadata separately from nodes."""
+
+    def __init__(self) -> None:
+        self._metadata_store: dict[str, DocumentMetadataContainer] = {}
+
+    def create_root_metadata(self, node_id: str) -> DocumentMetadataContainer:
+        metadata = DocumentMetadataContainer(
+            metadata=NodeMetadata(
+                category="business", author="System", source="upload", time_axis=None
+            ),
+            ai_metadata=AIProcessingMetadata(chunk_id=None, chunk_index=None),
+        )
+        self._metadata_store[node_id] = metadata
+        return metadata
+
+    def get_metadata(self, node_id: str) -> DocumentMetadataContainer | None:
+        return self._metadata_store.get(node_id)
+
+    def save_metadata(self, node_id: str, metadata: DocumentMetadataContainer) -> None:
+        self._metadata_store[node_id] = metadata

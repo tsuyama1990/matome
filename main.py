@@ -4,9 +4,13 @@ import sys
 from src.application.ai import DefaultAIService
 from src.config import Settings
 from src.domain_models.manifest import PipelineContext
-from src.domain_models.services import DocumentFactory
+from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
-from src.infrastructure.orchestrator import PipelineOrchestrator
+from src.infrastructure.orchestrator import (
+    PipelineConfig,
+    PipelineDependencies,
+    PipelineOrchestrator,
+)
 from src.infrastructure.services import (
     DefaultClusteringService,
     DefaultEntityExtractor,
@@ -66,6 +70,7 @@ class AppBuilder:
             retry_policy=retry_policy,
         )
         factory = DocumentFactory()
+        metadata_service = MetadataService()
         text_splitter = DefaultTextSplitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
@@ -73,16 +78,21 @@ class AppBuilder:
         entity_extractor = DefaultEntityExtractor(settings.spacy_model)
         clustering_service = DefaultClusteringService(settings.random_seed)
 
-        orchestrator = PipelineOrchestrator(
+        deps = PipelineDependencies(
             doc_repo=repo,
+            transaction_manager=repo,
             ai_service=ai,
             doc_factory=factory,
+            metadata_service=metadata_service,
             text_splitter=text_splitter,
             entity_extractor=entity_extractor,
             clustering_service=clustering_service,
+        )
+        config = PipelineConfig(
             pipeline_timeout=settings.pipeline_timeout,
             raptor_max_clusters=settings.raptor_max_clusters,
         )
+        orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
         return Application(settings=settings, orchestrator=orchestrator)
 
 

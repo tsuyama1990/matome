@@ -17,6 +17,7 @@ from .interfaces import (
     HTTPClientProtocol,
     RetryPolicyProtocol,
     TextSplitterProtocol,
+    TransactionManager,
 )
 from .manifest import (
     AIProcessingMetadata,
@@ -31,7 +32,7 @@ from .manifest import (
     UserInteractionContext,
     WisdomData,
 )
-from .services import DocumentFactory
+from .services import DocumentFactory, MetadataService
 from .types import CanvasNodeType, DIKWLevel, NodeID
 
 __all__ = [
@@ -49,6 +50,7 @@ __all__ = [
     "DocumentRepository",
     "EntityExtractorProtocol",
     "HTTPClientProtocol",
+    "MetadataService",
     "NodeID",
     "NodeIdentity",
     "NodeMetadata",
@@ -62,6 +64,7 @@ __all__ = [
     "RetryPolicyProtocol",
     "SummaryNode",
     "TextSplitterProtocol",
+    "TransactionManager",
     "UserInteractionContext",
     "WisdomData",
 ]
