@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from src.domain_models import (
     AIServiceError,
@@ -51,10 +52,16 @@ class PipelineOrchestrator:
         # like clustering or embedding don't permanently block threads
         # and can be reliably terminated on timeout.
 
-        def process_target(ctx: PipelineContext) -> None:
-            self._execute_pipeline_logic(ctx)
+        queue: multiprocessing.Queue[Any] = multiprocessing.Queue()
 
-        process = multiprocessing.Process(target=process_target, args=(context,))
+        def process_target(ctx: PipelineContext, q: Any) -> None:
+            try:
+                result = self._execute_pipeline_logic(ctx)
+                q.put(result)
+            except Exception as e:
+                q.put(e)
+
+        process = multiprocessing.Process(target=process_target, args=(context, queue))
         process.start()
         process.join(self.pipeline_timeout)
 
@@ -69,35 +76,55 @@ class PipelineOrchestrator:
             msg = f"Pipeline failed with exit code {process.exitcode}"
             raise RuntimeError(msg)
 
-    def _get_chunks_and_content(self, context: PipelineContext) -> tuple[list[str], str]:
+        result = queue.get()
+        if isinstance(result, Exception):
+            raise result
+
+        if result is not None:
+            self.doc_repo.save_node(result)
+            self.doc_repo.commit()
+
+    def _get_chunk_iterator_and_content(self, context: PipelineContext) -> tuple[Any, str]:
+        import itertools
         if context.file_path:
-            chunks = self.text_splitter.split_document(context.file_path)
-            # Combine a truncated portion for summarization purposes to avoid blowing up the API
-            # or use a dedicated map-reduce flow. For now, limit the summary context to first N chunks.
-            combined_content = "\n".join(chunks[:5])
-            return chunks, combined_content
+            # We tee the generator into two iterators to avoid exhausting the single stream,
+            # allowing sequential stream consumption without forced list materialization.
+            # Warning: tee buffers elements if consumers advance at different speeds.
+            # Since we consume them sequentially, we should process them iteratively,
+            # but to fully avoid buffering, the best is to just re-open the stream or use MiniBatch processing.
+            # We will use re-yielding to avoid loading full streams at once.
+
+            # Extract truncated content for summarizer limit bounds
+            preview_chunks = list(itertools.islice(self.text_splitter.split_document(context.file_path), 5))
+            combined_content = "\n".join(preview_chunks)
+
+            return self.text_splitter.split_document(context.file_path), combined_content
         if context.content:
-            return self.text_splitter.split_text(context.content), context.content
+            return iter(self.text_splitter.split_text(context.content)), context.content
 
         msg = "PipelineContext must provide either content or file_path"
         raise ValueError(msg)
 
-    def _execute_pipeline_logic(self, context: PipelineContext) -> None:
-        # Initialize the transaction layer natively ensuring atomicity.
-        self.doc_repo.begin()
-
+    def _execute_pipeline_logic(self, context: PipelineContext) -> Any:
         try:
             # 1. Ingestion and Semantic Chunking Stage
             logger.info("Ingesting document and performing semantic chunking...")
-            chunks, combined_content = self._get_chunks_and_content(context)
+            chunks_iterator, combined_content = self._get_chunk_iterator_and_content(context)
 
             # 2. Entity Extraction Stage
-            logger.info("Extracting entities...")
-            entities = self.entity_extractor.extract_entities(chunks)
+            logger.info("Extracting entities via streaming...")
+            entities = self.entity_extractor.extract_entities(chunks_iterator)
 
             # 3. RAPTOR Clustering and Tree Generation
-            logger.info("Generating hierarchical tree via RAPTOR...")
-            tree_metadata = self.clustering_service.cluster_chunks(chunks, self.raptor_max_clusters)
+            # Regenerate the iterator to stream to the clustering service safely
+            # without expanding everything to a list.
+            logger.info("Generating hierarchical tree via RAPTOR streaming...")
+            if context.file_path:
+                clustering_iterator = self.text_splitter.split_document(context.file_path)
+            else:
+                clustering_iterator = iter(self.text_splitter.split_text(context.content)) # type: ignore
+
+            tree_metadata = self.clustering_service.cluster_chunks(clustering_iterator, self.raptor_max_clusters)
 
             # 4. Chain of Density (CoD) Summarization
             logger.info("Applying Chain of Density summarization...")
@@ -121,8 +148,6 @@ class PipelineOrchestrator:
             root_node.metadata_container.ai_metadata.chunk_id = f"chunk_{context.root_doc_id}"
             root_node.metadata_container.ai_metadata.chunk_index = 0
 
-            self.doc_repo.save_node(root_node)
-
             # 5. Question Generation
             logger.info(f"Generating learning loop for node {root_node.id}...")
             try:
@@ -133,11 +158,10 @@ class PipelineOrchestrator:
                     f"Question generation failed: {e}. Skipping interactive prompt loop."
                 )
 
-            self.doc_repo.commit()
-            logger.info("Pipeline execution completed successfully.")
-
         except Exception as e:
-            logger.exception("Pipeline execution failed at an intermediate step. Rolling back...")
-            self.doc_repo.rollback()
+            logger.exception("Pipeline execution failed at an intermediate step.")
             msg = f"Pipeline failure: {e}"
             raise RuntimeError(msg) from e
+        else:
+            logger.info("Pipeline ML logic completed successfully.")
+            return root_node

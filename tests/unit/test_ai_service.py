@@ -1,8 +1,8 @@
-from typing import Any
 
 import pytest
 
 from src.application.ai import DefaultAIService
+from src.config import Settings
 from src.domain_models import (
     AIProcessingMetadata,
     DocumentContent,
@@ -17,10 +17,8 @@ from src.domain_models import (
 from src.domain_models.interfaces import AIServiceError
 
 
-def _create_mock_settings(api_key: str | None = None) -> Any:
+def _create_mock_settings(api_key: str | None = None) -> Settings:
     import os
-
-    from src.config import Settings
 
     if api_key is not None:
         os.environ["OPENROUTER_API_KEY"] = api_key

@@ -34,16 +34,16 @@ src/domain_models/__init__.py            6      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           2      0   100%
 src/domain_models/enums.py              12      0   100%
-src/domain_models/interfaces.py         18      0   100%
+src/domain_models/interfaces.py         19      0   100%
 src/domain_models/manifest.py           60      0   100%
-src/domain_models/services.py            6      0   100%
+src/domain_models/services.py            6      1    83%   21
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
-src/infrastructure/orchestrator.py      78     33    58%   42-43, 46-70, 74-78, 82-83, 107-109, 131-132, 139-143
-src/infrastructure/repository.py        48      5    90%   25-29
-src/infrastructure/services.py         127     51    60%   31-36, 39-40, 49-84, 95-98, 115-116, 127-129, 157-161, 173, 175-176, 180-184
+src/infrastructure/orchestrator.py      91     59    35%   42-44, 58-62, 69-73, 76-77, 81, 88-106, 109-167
+src/infrastructure/repository.py        48      8    83%   15-17, 25-29
+src/infrastructure/services.py         130     54    58%   32-37, 40-41, 46-76, 87-90, 98, 107-108, 117, 124-126, 154-158, 170, 172-173, 177-181
 src/utils/__init__.py                    0      0   100%
 src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  479     94    80%
-=================== 28 passed, 1 warning in 69.10s (0:01:09) ===================
+TOTAL                                  496    127    74%
+=================== 28 passed, 1 warning in 67.18s (0:01:07) ===================

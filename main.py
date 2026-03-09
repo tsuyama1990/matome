@@ -115,6 +115,10 @@ def main() -> None:
         app = AppBuilder.build(mode="cli")
 
         file_path = Path(args.file).resolve()
+        if not app.settings.allowed_base_dir:
+            logger.error("Configuration Error: ALLOWED_BASE_DIR must be configured in settings.")
+            sys.exit(1)
+
         allowed_dir = Path(app.settings.allowed_base_dir).resolve()
 
         # Prevent directory traversal by checking against configured allowed directory

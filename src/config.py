@@ -22,7 +22,7 @@ class Settings(MatomeConfig):
         default=None, description="BYOK API key for OpenRouter", validate_default=True
     )
     openrouter_api_url: str = Field(
-        default_factory=lambda: __import__("os").getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions"),
+        default_factory=lambda: str(__import__("os").getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")),
         description="The base URL for the OpenRouter API endpoint",
     )
     text_fast_model: str = Field(
@@ -39,7 +39,7 @@ class Settings(MatomeConfig):
     )
 
     default_root_doc_id: str = Field(
-        default_factory=lambda: __import__("os").getenv("DEFAULT_ROOT_DOC_ID", ROOT_DOC_ID),
+        default_factory=lambda: str(__import__("os").getenv("DEFAULT_ROOT_DOC_ID", ROOT_DOC_ID)),
         description="Default root document ID used in pipeline initialization"
     )
 
@@ -48,7 +48,7 @@ class Settings(MatomeConfig):
         description="Maximum allowed file size in bytes (default 10MB)"
     )
     allowed_base_dir: str = Field(
-        default_factory=lambda: __import__("os").getenv("ALLOWED_BASE_DIR", ""),
+        default_factory=lambda: str(__import__("os").getenv("ALLOWED_BASE_DIR", str(__import__("pathlib").Path.cwd().resolve()))),
         description="Base directory allowed for file ingestion"
     )
     chunk_size: int = Field(

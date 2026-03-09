@@ -49,9 +49,8 @@ def test_pipeline_orchestrator_integration() -> None:
 
     content = "This is a very long business manual about strategy."
     context = PipelineContext(root_doc_id=ROOT_DOC_ID, content=content, file_path=None)
-    # Use _execute_pipeline_logic directly to bypass the multiprocessing fork boundary
-    # so that the InMemoryDocumentRepository state changes are visible in this test thread.
-    orchestrator._execute_pipeline_logic(context)
+
+    orchestrator.run_pipeline(context)
 
     # Verify the results in the repository
     nodes = [repo.get_node(ROOT_DOC_ID)]  # Since it's saved as root (parent_id=None)

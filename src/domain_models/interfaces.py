@@ -1,3 +1,4 @@
+from collections.abc import Callable, Iterator
 from typing import Any, Protocol
 
 from .analysis import PivotBoard
@@ -59,23 +60,25 @@ class AIServiceProtocol(Protocol):
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
 
 
+
+
 class TextSplitterProtocol(Protocol):
     """Protocol for splitting text into smaller chunks."""
 
     def split_text(self, text: str) -> list[str]: ...
-    def split_document(self, file_path: str) -> list[str]: ...
+    def split_document(self, file_path: str) -> Iterator[str]: ...
 
 
 class EntityExtractorProtocol(Protocol):
-    """Protocol for extracting entities from a list of text chunks."""
+    """Protocol for extracting entities from an iterator of text chunks."""
 
-    def extract_entities(self, chunks: list[str]) -> dict[str, str]: ...
+    def extract_entities(self, chunks: Iterator[str] | list[str]) -> dict[str, str]: ...
 
 
 class ClusteringServiceProtocol(Protocol):
     """Protocol for clustering chunks and returning metadata."""
 
-    def cluster_chunks(self, chunks: list[str], max_clusters: int) -> dict[str, str]: ...
+    def cluster_chunks(self, chunks: Iterator[str] | list[str], max_clusters: int) -> dict[str, str]: ...
 
 
 class HTTPClientProtocol(Protocol):
@@ -89,4 +92,4 @@ class HTTPClientProtocol(Protocol):
 class RetryPolicyProtocol(Protocol):
     """Protocol for defining execution retry policies."""
 
-    def execute(self, func: Any) -> Any: ...
+    def execute(self, func: Callable[..., Any]) -> Any: ...
