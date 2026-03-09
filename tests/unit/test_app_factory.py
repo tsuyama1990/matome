@@ -1,6 +1,6 @@
 import os
 
-from src.config import Settings, create_app_context
+from src.config import ModeConfig, Settings, create_app_context
 
 
 def test_settings_default() -> None:
@@ -18,7 +18,8 @@ def test_settings_default() -> None:
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
         )
-        assert settings.mode == "cli"
+        mode_config = ModeConfig()
+        assert mode_config.mode == "cli"
         assert settings.text_fast_model == "google/gemini-2.5-flash"
     finally:
         del os.environ["MODE"]
@@ -42,8 +43,9 @@ def test_app_context_creation() -> None:
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
         )
-        context = create_app_context(settings)
-        assert context.mode == "test"
+        mode_config = ModeConfig()
+        context = create_app_context(settings, mode_config)
+        assert context.mode_config.mode == "test"
         assert context.settings is settings
         assert context.db is None
     finally:

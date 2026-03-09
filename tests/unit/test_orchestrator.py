@@ -9,9 +9,7 @@ from src.infrastructure.orchestrator import (
     PipelineOrchestrator,
 )
 from src.infrastructure.services import (
-    DefaultClusteringService,
-    DefaultEntityExtractor,
-    DefaultTextSplitter,
+    ServiceFactory,
 )
 from tests.helpers.mocks import MockAIService
 
@@ -27,16 +25,17 @@ def _create_orchestrator() -> PipelineOrchestrator:
     ai = MockAIService()
     factory = DocumentFactory()
     metadata_service = MetadataService()
-    text_splitter = DefaultTextSplitter(
+    text_splitter = ServiceFactory.create_text_splitter(
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
     )
-    entity_extractor = DefaultEntityExtractor(settings.spacy_model)
-    clustering_service = DefaultClusteringService(settings.random_seed)
+    entity_extractor = ServiceFactory.create_entity_extractor(settings.spacy_model)
+    clustering_service = ServiceFactory.create_clustering_service(settings.random_seed)
 
     deps = PipelineDependencies(
         doc_repo=repo,
         transaction_manager=repo,
-        ai_service=ai,
+        summary_service=ai,
+        question_service=ai,
         doc_factory=factory,
         metadata_service=metadata_service,
         text_splitter=text_splitter,

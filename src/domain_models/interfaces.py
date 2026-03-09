@@ -5,6 +5,16 @@ from .analysis import PivotBoard
 from .manifest import DocumentNode, UserInteractionContext
 
 
+class ConfigService(Protocol):
+    """Protocol for fetching application configuration."""
+    def get(self, key: str) -> Any: ...
+
+
+class SecurityService(Protocol):
+    """Protocol for security operations such as API key validation."""
+    def validate_api_key(self, api_key: str) -> str: ...
+
+
 class TransactionManager(Protocol):
     """Protocol for handling transaction lifecycle operations."""
 
@@ -45,11 +55,26 @@ class DocumentRepository(Protocol):
         ...
 
 
-class AIServiceProtocol(Protocol):
+class SummaryServiceProtocol(Protocol):
     def generate_summary(self, content: str) -> str: ...
+
+class QuestionServiceProtocol(Protocol):
     def generate_question(self, node: DocumentNode) -> str: ...
+
+class DiagramServiceProtocol(Protocol):
     def generate_mermaid_diagram(self, board: PivotBoard) -> str: ...
+
+class EvaluationServiceProtocol(Protocol):
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
+
+class AIServiceProtocol(
+    SummaryServiceProtocol,
+    QuestionServiceProtocol,
+    DiagramServiceProtocol,
+    EvaluationServiceProtocol,
+    Protocol
+):
+    """Aggregate protocol for backward compatibility or cases where all are needed."""
 
 
 class TextSplitterProtocol(Protocol):

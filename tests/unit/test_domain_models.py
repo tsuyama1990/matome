@@ -16,7 +16,7 @@ from src.domain_models import (
     UserInteractionContext,
     WisdomData,
 )
-from src.domain_models.manifest import DocumentMetadataContainer
+from src.domain_models.manifest import MetadataContainer
 
 
 def test_document_node_valid() -> None:
@@ -29,7 +29,7 @@ def test_document_node_valid() -> None:
         ),
         content=DocumentContent(summary=None, text=None),
     )
-    metadata_container = DocumentMetadataContainer(
+    metadata_container = MetadataContainer(
         metadata=NodeMetadata(
             source=None,
             author="test",

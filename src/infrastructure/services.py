@@ -76,6 +76,22 @@ class DefaultTextSplitter(TextSplitterProtocol):
                 yield chunk
 
 
+class ServiceFactory:
+    """Factory for creating infrastructure services using dependency injection."""
+
+    @staticmethod
+    def create_text_splitter(chunk_size: int, chunk_overlap: int) -> TextSplitterProtocol:
+        return DefaultTextSplitter(chunk_size, chunk_overlap)
+
+    @staticmethod
+    def create_entity_extractor(spacy_model: str) -> EntityExtractorProtocol:
+        return DefaultEntityExtractor(spacy_model)
+
+    @staticmethod
+    def create_clustering_service(random_seed: int) -> ClusteringServiceProtocol:
+        return DefaultClusteringService(random_seed)
+
+
 class DefaultEntityExtractor(EntityExtractorProtocol):
     def __init__(self, spacy_model: str) -> None:
         self.spacy_model = spacy_model

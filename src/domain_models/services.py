@@ -1,8 +1,8 @@
 from .manifest import (
     AIProcessingMetadata,
     DocumentContent,
-    DocumentMetadataContainer,
     DocumentNode,
+    MetadataContainer,
     NodeIdentity,
     NodeMetadata,
     NodeStatus,
@@ -34,10 +34,10 @@ class MetadataService:
     """Domain service responsible for managing metadata separately from nodes."""
 
     def __init__(self) -> None:
-        self._metadata_store: dict[str, DocumentMetadataContainer] = {}
+        self._metadata_store: dict[str, MetadataContainer] = {}
 
-    def create_root_metadata(self, node_id: str) -> DocumentMetadataContainer:
-        metadata = DocumentMetadataContainer(
+    def create_root_metadata(self, node_id: str) -> MetadataContainer:
+        metadata = MetadataContainer(
             metadata=NodeMetadata(
                 category="business", author="System", source="upload", time_axis=None
             ),
@@ -46,8 +46,8 @@ class MetadataService:
         self._metadata_store[node_id] = metadata
         return metadata
 
-    def get_metadata(self, node_id: str) -> DocumentMetadataContainer | None:
+    def get_metadata(self, node_id: str) -> MetadataContainer | None:
         return self._metadata_store.get(node_id)
 
-    def save_metadata(self, node_id: str, metadata: DocumentMetadataContainer) -> None:
+    def save_metadata(self, node_id: str, metadata: MetadataContainer) -> None:
         self._metadata_store[node_id] = metadata

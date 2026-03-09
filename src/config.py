@@ -12,12 +12,16 @@ class MatomeConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
 
-class Settings(MatomeConfig):
-    """Global application configuration settings utilizing pydantic-settings."""
-
+class ModeConfig(MatomeConfig):
+    """Application mode configuration."""
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
     )
+
+
+class Settings(MatomeConfig):
+    """Global application configuration settings utilizing pydantic-settings."""
+
     openrouter_api_key: SecretStr = Field(..., description="BYOK API key for OpenRouter")
     openrouter_api_url: str = Field(
         default_factory=lambda: str(
@@ -123,17 +127,25 @@ class Settings(MatomeConfig):
 
 class AppContext(BaseModel):
     settings: Settings
-    mode: str
+    mode_config: ModeConfig
     db: Any | None = None
 
 
-def create_app_context(settings: Settings) -> AppContext:
+class ConcreteConfigService:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def get(self, key: str) -> Any:
+        return getattr(self._settings, key)
+
+
+def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
     """Application factory pattern for injecting global settings."""
     return AppContext(
         settings=settings,
-        mode=settings.mode,
+        mode_config=mode_config,
         db=None,  # Placeholder for a DB connection dependency
     )
 
 
-__all__ = ["Settings", "create_app_context"]
+__all__ = ["ConcreteConfigService", "ModeConfig", "Settings", "create_app_context"]

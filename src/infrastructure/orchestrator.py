@@ -4,7 +4,6 @@ from typing import Any
 
 from src.domain_models import (
     AIServiceError,
-    AIServiceProtocol,
     ClusteringServiceProtocol,
     DocumentFactory,
     DocumentNode,
@@ -12,6 +11,8 @@ from src.domain_models import (
     EntityExtractorProtocol,
     MetadataService,
     PipelineContext,
+    QuestionServiceProtocol,
+    SummaryServiceProtocol,
     TextSplitterProtocol,
     TransactionManager,
 )
@@ -38,7 +39,8 @@ class PipelineDependencies:
         self,
         doc_repo: DocumentRepository,
         transaction_manager: TransactionManager,
-        ai_service: AIServiceProtocol,
+        summary_service: SummaryServiceProtocol,
+        question_service: QuestionServiceProtocol,
         doc_factory: DocumentFactory,
         metadata_service: MetadataService,
         text_splitter: TextSplitterProtocol,
@@ -47,7 +49,8 @@ class PipelineDependencies:
     ) -> None:
         self.doc_repo = doc_repo
         self.transaction_manager = transaction_manager
-        self.ai_service = ai_service
+        self.summary_service = summary_service
+        self.question_service = question_service
         self.doc_factory = doc_factory
         self.metadata_service = metadata_service
         self.text_splitter = text_splitter
@@ -55,8 +58,52 @@ class PipelineDependencies:
         self.clustering_service = clustering_service
 
 
+class ProcessManager:
+    """Handles multiprocessing process lifecycle management."""
+    def __init__(self, timeout: float) -> None:
+        self.timeout = timeout
+
+    def run_with_timeout(self, target_func: typing.Callable[[PipelineContext], Any], context: PipelineContext) -> Any:
+        import multiprocessing
+
+        queue: multiprocessing.Queue[Any] = multiprocessing.Queue()
+
+        def process_target(ctx: PipelineContext, q: Any) -> None:
+            try:
+                result = target_func(ctx)
+                q.put(result)
+            except Exception as e:
+                q.put(e)
+
+        process = multiprocessing.Process(target=process_target, args=(context, queue))
+        try:
+            process.start()
+            process.join(self.timeout)
+
+            if process.is_alive():
+                logger.error(f"Process execution timed out after {self.timeout} seconds. Terminating process.")
+                process.terminate()
+                process.join()
+                msg = f"Process execution timed out after {self.timeout} seconds."
+                raise TimeoutError(msg)
+
+            if process.exitcode != 0:
+                msg = f"Process failed with exit code {process.exitcode}"
+                raise RuntimeError(msg)
+
+            result = queue.get()
+            if isinstance(result, Exception):
+                raise result
+            return result
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join()
+            process.close()
+
+
 class PipelineOrchestrator:
-    """Handles the heavy lifting of orchestrating document ingestion and AI operations."""
+    """Handles the high-level orchestration of ingestion, analysis, and output workflows."""
 
     def __init__(
         self,
@@ -65,6 +112,7 @@ class PipelineOrchestrator:
     ) -> None:
         self.deps = dependencies
         self.config = config
+        self.process_manager = ProcessManager(timeout=config.pipeline_timeout)
 
     def _validate_content_length(self, content: str) -> None:
         if len(content) > self.deps.doc_factory.max_content_length:
@@ -72,58 +120,17 @@ class PipelineOrchestrator:
             raise ValueError(msg)
 
     def run_pipeline(self, context: PipelineContext) -> None:
-        import multiprocessing
-
         logger.info("Starting document ingestion and analysis pipeline...")
+        result = self.process_manager.run_with_timeout(self._execute_pipeline_logic, context)
 
-        # We use a proper multiprocessing Process to ensure CPU bound tasks
-        # like clustering or embedding don't permanently block threads
-        # and can be reliably terminated on timeout.
-
-        queue: multiprocessing.Queue[Any] = multiprocessing.Queue()
-
-        def process_target(ctx: PipelineContext, q: Any) -> None:
-            try:
-                result = self._execute_pipeline_logic(ctx)
-                q.put(result)
-            except Exception as e:
-                q.put(e)
-
-        process = multiprocessing.Process(target=process_target, args=(context, queue))
-        try:
-            process.start()
-            process.join(self.config.pipeline_timeout)
-
-            if process.is_alive():
-                logger.error(
-                    f"Pipeline execution timed out after {self.config.pipeline_timeout} seconds. Terminating process."
-                )
-                process.terminate()
-                process.join()
-                msg = f"Pipeline execution timed out after {self.config.pipeline_timeout} seconds."
-                raise TimeoutError(msg)
-
-            if process.exitcode != 0:
-                msg = f"Pipeline failed with exit code {process.exitcode}"
-                raise RuntimeError(msg)
-
-            result = queue.get()
-            if isinstance(result, Exception):
-                raise result
-
-            if result is not None:
-                if isinstance(result, tuple):
-                    root_node, metadata = result
-                    self.deps.metadata_service.save_metadata(root_node.id, metadata)
-                else:
-                    root_node = result
-                self.deps.doc_repo.save_node(root_node)
-                self.deps.transaction_manager.commit()
-        finally:
-            if process.is_alive():
-                process.terminate()
-                process.join()
-            process.close()
+        if result is not None:
+            if isinstance(result, tuple):
+                root_node, metadata = result
+                self.deps.metadata_service.save_metadata(root_node.id, metadata)
+            else:
+                root_node = result
+            self.deps.doc_repo.save_node(root_node)
+            self.deps.transaction_manager.commit()
 
     def _get_chunk_iterator_and_content(
         self, context: PipelineContext
@@ -170,7 +177,7 @@ class PipelineOrchestrator:
             logger.info("Applying Chain of Density summarization...")
             self._validate_content_length(combined_content)
             try:
-                summary = self.deps.ai_service.generate_summary(combined_content)
+                summary = self.deps.summary_service.generate_summary(combined_content)
             except AIServiceError as e:
                 logger.warning(f"Summarization failed: {e}. Using fallback summary.")
                 summary = "Fallback Summary: Content processing currently impaired due to AI unavailability."
@@ -192,7 +199,7 @@ class PipelineOrchestrator:
             # 5. Question Generation
             logger.info(f"Generating learning loop for node {root_node.id}...")
             try:
-                question = self.deps.ai_service.generate_question(root_node)
+                question = self.deps.question_service.generate_question(root_node)
                 logger.info(f"AI Question: {question}")
             except AIServiceError as e:
                 logger.warning(
