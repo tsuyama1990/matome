@@ -55,7 +55,7 @@ def __(
     repo = InMemoryDocumentRepository()
 
     # Conditional AI service initialization based on environment config
-    api_key = settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
+    api_key = settings.openrouter_api_key if settings.openrouter_api_key else None
 
     if api_key:
         ai = DefaultAIService(api_key=api_key, model=settings.text_fast_model)

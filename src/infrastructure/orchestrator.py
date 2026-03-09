@@ -40,18 +40,29 @@ class PipelineOrchestrator:
         return None
 
     def _perform_semantic_chunking(self, content: str) -> list[str]:
-        """Implements actual LangChain semantic chunking logic."""
+        """Implements actual LangChain semantic chunking logic with a robust fallback."""
         logger.debug("Executing LangChain semantic chunking...")
         try:
             from langchain_text_splitters import RecursiveCharacterTextSplitter
             splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            return splitter.split_text(content)
+            chunks = splitter.split_text(content)
         except ImportError:
-            logger.warning("LangChain not installed, falling back to basic split.")
-            return [content[i:i + 1000] for i in range(0, len(content), 1000)]
+            logger.warning("LangChain not installed, falling back to pure python overlap split.")
+            # Robust pure python fallback mimicking the overlap behavior
+            chunk_size = 1000
+            overlap = 100
+            step = chunk_size - overlap
+            chunks = []
+            for i in range(0, len(content), step):
+                chunks.append(content[i:i + chunk_size])
+
+        if not chunks:
+            msg = "Semantic chunking returned no content."
+            raise ValueError(msg)
+        return chunks
 
     def _extract_entities(self, chunks: list[str]) -> dict[str, str]:
-        """Implements actual SpaCy NER logic."""
+        """Implements actual SpaCy NER logic with a dynamic mock fallback."""
         logger.debug("Executing SpaCy NER logic...")
         entities = {}
         try:
@@ -61,23 +72,34 @@ class PipelineOrchestrator:
                 doc = nlp(chunk)
                 for ent in doc.ents:
                     entities[f"chunk_{i}_{ent.label_}"] = ent.text
-        except Exception as e:
-            logger.warning(f"SpaCy NER failed: {e}. Falling back to basic entity extraction.")
-            entities = {"primary_actor": "System User", "constraints": "budget limits"}
+        except (ImportError, OSError) as e:
+            logger.warning(f"SpaCy module/model not loaded: {e}. Falling back to regex entity extraction.")
+            # Dynamic regex-based mock fallback mimicking extraction over the real input chunks
+            import re
+            for i, chunk in enumerate(chunks):
+                matches = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", chunk)
+                if matches:
+                    entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
+            if not entities:
+                entities["document_level"] = "No obvious entities found"
         return entities
 
     def _generate_raptor_tree(self, chunks: list[str]) -> dict[str, str]:
-        """Implements actual RAPTOR clustering using UMAP and GMM."""
+        """Implements actual RAPTOR clustering using UMAP and GMM with individual exception guards."""
         logger.debug("Executing UMAP/GMM clustering for RAPTOR tree generation...")
         if len(chunks) < 3:
-            return {"level_0": "root", "clusters_found": "1 (not enough chunks for UMAP)"}
+            return {"level_0": "root", "clusters_found": "1 (not enough chunks for clustering)"}
 
         try:
             import numpy as np
             import umap
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.mixture import GaussianMixture
+        except ImportError as e:
+            logger.warning(f"ML dependency missing: {e}. Returning basic flat tree.")
+            return {"level_0": "root", "algorithm": "None (Missing ML modules)", "nodes": str(len(chunks))}
 
+        try:
             # Dummy embedding step (usually this is done with an LLM embedder)
             vectorizer = TfidfVectorizer()
             embeddings = vectorizer.fit_transform(chunks).toarray()
@@ -97,12 +119,15 @@ class PipelineOrchestrator:
                 "clusters_found": str(len(np.unique(clusters))),
                 "algorithm": "UMAP+GMM"
             }
-        except ImportError:
-            logger.warning("UMAP/Scikit-learn not installed, falling back to basic tree.")
-            return {"level_0": "root", "clusters_found": "2"}
+        except Exception as e:
+            logger.exception("RAPTOR processing failed during mathematical execution. Falling back.")
+            return {"level_0": "root", "error_fallback": str(e)}
 
     def run_pipeline(self, context: PipelineContext) -> None:
         logger.info("Starting document ingestion and analysis pipeline...")
+
+        # Initialize the transaction layer natively ensuring atomicity.
+        self.doc_repo.begin()
 
         try:
             # 1. Ingestion and Semantic Chunking Stage
@@ -141,9 +166,12 @@ class PipelineOrchestrator:
             question = self._execute_with_retry(self.ai_service.generate_question, root_node)
             logger.info(f"AI Question: {question}")
 
+            self.doc_repo.commit()
             logger.info("UI initialized. Awaiting user interaction...")
             sys.stdout.write("Pipeline execution completed successfully.\n")
 
-        except Exception:
-            logger.exception("Pipeline execution failed")
-            raise
+        except Exception as e:
+            logger.exception("Pipeline execution failed at an intermediate step. Rolling back...")
+            self.doc_repo.rollback()
+            msg = f"Pipeline failure: {e}"
+            raise RuntimeError(msg) from e

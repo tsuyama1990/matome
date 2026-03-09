@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
     )
-    openrouter_api_key: SecretStr | None = Field(
-        default=None, description="BYOK API key for OpenRouter"
+    openrouter_api_key: str | None = Field(
+        default=None, description="BYOK API key for OpenRouter", validate_default=True
     )
     openrouter_api_url: str = Field(
         default="https://openrouter.ai/api/v1/chat/completions",
@@ -35,12 +35,23 @@ class Settings(BaseSettings):
         default=ROOT_DOC_ID, description="Default root document ID used in pipeline initialization"
     )
 
-    @classmethod
     @field_validator("openrouter_api_key", mode="before")
-    def validate_api_key(cls, value: str | None) -> str | None:
-        if value is not None and len(value) < 10:
-            msg = "API Key must be at least 10 characters long if provided."
+    @classmethod
+    def validate_api_key(cls, value: Any) -> Any:
+        if not value:
+            return value
+
+        # Unwrap if it's passed as a SecretStr or handle plain strings from env vars
+        val_str = value.get_secret_value() if isinstance(value, SecretStr) else str(value)
+
+        import re
+        if len(val_str) < 10:
+            msg = "API Key must be at least 10 characters long."
             raise ValueError(msg)
+        if not re.match(r"^[a-zA-Z0-9_-]+$", val_str):
+            msg = "API Key format is invalid. It must contain only alphanumeric characters, dashes, or underscores."
+            raise ValueError(msg)
+
         return value
 
 

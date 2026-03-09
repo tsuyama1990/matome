@@ -12,21 +12,29 @@ from src.domain_models import (
     PivotBoardViewNode,
     UserInteractionContext,
 )
+from src.domain_models.interfaces import AIServiceError
 
 
 def test_default_ai_service_missing_key_init() -> None:
     with pytest.raises(ValueError, match="A valid API Key is required"):
         DefaultAIService(api_key="")
 
+def test_default_ai_service_invalid_key_length() -> None:
+    with pytest.raises(ValueError, match="API Key must be at least 10 characters long"):
+        DefaultAIService(api_key="123")
+
+def test_default_ai_service_invalid_key_format() -> None:
+    with pytest.raises(ValueError, match="API Key format is invalid"):
+        DefaultAIService(api_key="invalid_format_key_with_spaces and_tabs")
 
 def test_default_ai_service_calls_generate_summary_valid() -> None:
-    ai = DefaultAIService(api_key="valid_key")
-    # This will result in an API Error string if the network is disconnected or token is bad, but it shouldn't raise natively.
-    res = ai.generate_summary("test content")
-    assert isinstance(res, str)
+    ai = DefaultAIService(api_key="sk-or-v1-validkey123")
+    with pytest.raises(AIServiceError):
+        # Without a mocked network interface, this should raise the AIServiceError (either HTTP/Connection)
+        ai.generate_summary("test content")
 
 def test_default_ai_service_calls_generate_question_valid() -> None:
-    ai = DefaultAIService(api_key="valid_key")
+    ai = DefaultAIService(api_key="sk-or-v1-validkey123")
     node = DocumentNode(
         id="test1",
         parent_id=None,
@@ -38,11 +46,11 @@ def test_default_ai_service_calls_generate_question_valid() -> None:
             chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
         ),
     )
-    res = ai.generate_question(node)
-    assert isinstance(res, str)
+    with pytest.raises(AIServiceError):
+        ai.generate_question(node)
 
 def test_default_ai_service_calls_generate_mermaid_valid() -> None:
-    ai = DefaultAIService(api_key="valid_key")
+    ai = DefaultAIService(api_key="sk-or-v1-validkey123")
     board = PivotBoard(
         id="board_1",
         original_root_id="root_1",
@@ -52,11 +60,11 @@ def test_default_ai_service_calls_generate_mermaid_valid() -> None:
             PivotBoardViewNode(node_id="test1", x_position=0.1, y_position=0.2, cluster_id=None)
         ],
     )
-    res = ai.generate_mermaid_diagram(board)
-    assert isinstance(res, str)
+    with pytest.raises(AIServiceError):
+        ai.generate_mermaid_diagram(board)
 
 def test_default_ai_service_calls_evaluate_answer_valid() -> None:
-    ai = DefaultAIService(api_key="valid_key")
+    ai = DefaultAIService(api_key="sk-or-v1-validkey123")
     context = UserInteractionContext(
         node_id="test1",
         status=NodeStatus.LOCKED,
@@ -65,6 +73,5 @@ def test_default_ai_service_calls_evaluate_answer_valid() -> None:
         feedback=None,
         hints_used=0,
     )
-    success, feedback = ai.evaluate_answer(context)
-    assert isinstance(success, bool)
-    assert isinstance(feedback, str)
+    with pytest.raises(AIServiceError):
+        ai.evaluate_answer(context)

@@ -30,9 +30,7 @@ def create_app(mode: str = "cli") -> Application:
     settings = Settings(mode=mode)
     repo = InMemoryDocumentRepository()
 
-    api_key_str = (
-        settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else ""
-    )
+    api_key_str = settings.openrouter_api_key if settings.openrouter_api_key else ""
     ai = DefaultAIService(api_key=api_key_str, model=settings.text_fast_model, api_url=settings.openrouter_api_url)
     factory = DocumentFactory()
     orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
@@ -52,19 +50,30 @@ def main() -> None:
 
         file_path = Path(args.file)
         if not file_path.exists():
-            logger.error(f"File not found: {file_path}")
+            logger.error(f"Failed to execute pipeline: File not found -> {file_path}")
+            sys.exit(1)
+        if not file_path.is_file():
+            logger.error(f"Failed to execute pipeline: Path is not a valid file -> {file_path}")
             sys.exit(1)
 
         content = file_path.read_text(encoding="utf-8")
+        if not content.strip():
+            logger.error("Failed to execute pipeline: File is empty.")
+            sys.exit(1)
 
         context = PipelineContext(
             root_doc_id=app.settings.default_root_doc_id,
             content=content
         )
-
         app.start(context)
-    except Exception:
-        logger.exception("Application failed to start")
+    except ValueError:
+        logger.exception("Configuration or validation error during startup")
+        sys.exit(1)
+    except RuntimeError:
+        logger.exception("Pipeline execution halted due to a runtime error")
+        sys.exit(1)
+    except Exception as e:
+        logger.critical(f"An unexpected critical failure occurred: {e}", exc_info=True)
         sys.exit(1)
 
 
