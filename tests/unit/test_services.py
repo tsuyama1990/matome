@@ -5,20 +5,8 @@ from src.infrastructure.services import (
     DefaultEntityExtractor,
     DefaultTextSplitter,
     RequestsHTTPClient,
-    ServiceFactory,
     TenacityRetryPolicy,
 )
-
-
-def test_service_factory() -> None:
-    text_splitter = ServiceFactory.create_text_splitter(chunk_size=10, chunk_overlap=2)
-    assert isinstance(text_splitter, DefaultTextSplitter)
-
-    entity_extractor = ServiceFactory.create_entity_extractor(spacy_model="en_core_web_sm")
-    assert isinstance(entity_extractor, DefaultEntityExtractor)
-
-    clustering_service = ServiceFactory.create_clustering_service(random_seed=42)
-    assert isinstance(clustering_service, DefaultClusteringService)
 
 
 def test_default_text_splitter_split_text() -> None:

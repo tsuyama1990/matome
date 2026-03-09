@@ -14,7 +14,6 @@ from src.infrastructure.orchestrator import (
 )
 from src.infrastructure.services import (
     RequestsHTTPClient,
-    ServiceFactory,
     TenacityRetryPolicy,
 )
 
@@ -64,12 +63,19 @@ def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, Pipel
     )
     factory = DocumentFactory()
     metadata_service = MetadataService()
-    text_splitter = ServiceFactory.create_text_splitter(
+
+    from src.infrastructure.services import (
+        DefaultClusteringService,
+        DefaultEntityExtractor,
+        DefaultTextSplitter,
+    )
+
+    text_splitter = DefaultTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
     )
-    entity_extractor = ServiceFactory.create_entity_extractor(settings.spacy_model)
-    clustering_service = ServiceFactory.create_clustering_service(settings.random_seed)
+    entity_extractor = DefaultEntityExtractor(settings.spacy_model)
+    clustering_service = DefaultClusteringService(settings.random_seed)
 
     deps = PipelineDependencies(
         doc_repo=repo,
@@ -108,7 +114,7 @@ def main() -> None:
                 raise ValueError(msg)
 
             filtered_env = {k.lower(): v for k, v in os.environ.items() if k.lower() in Settings.model_fields}
-            settings = Settings.model_validate(filtered_env)
+            settings = Settings(**filtered_env)  # type: ignore[arg-type]
             mode_config = ModeConfig(mode=mode)
 
             deps, config = create_dependencies(settings)

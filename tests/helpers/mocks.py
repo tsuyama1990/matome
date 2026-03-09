@@ -1,4 +1,10 @@
-from src.domain_models import AIServiceProtocol, DocumentNode, PivotBoard, UserInteractionContext
+from src.domain_models import (
+    AIServiceProtocol,
+    ContentNode,
+    IdentityNode,
+    PivotBoard,
+    UserInteractionContext,
+)
 
 
 class MockAIService(AIServiceProtocol):
@@ -7,8 +13,8 @@ class MockAIService(AIServiceProtocol):
     def generate_summary(self, content: str) -> str:
         return "1. System Actor: Approver\n2. Key Constraint: budget > 5000\n3. Action: Approval required."
 
-    def generate_question(self, node: DocumentNode) -> str:
-        return f"What is the key point of {node.title}?"
+    def generate_question(self, identity: IdentityNode, content: ContentNode) -> str:
+        return f"What is the key point of {identity.title}?"
 
     def generate_mermaid_diagram(self, board: PivotBoard) -> str:
         return f"graph TD;\n  A[{board.original_root_id}]-->B[Workflow];"

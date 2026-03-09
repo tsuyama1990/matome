@@ -24,9 +24,7 @@ class Settings(MatomeConfig):
 
     openrouter_api_key: SecretStr = Field(..., description="BYOK API key for OpenRouter")
     openrouter_api_url: str = Field(
-        default_factory=lambda: str(
-            os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
-        ),
+        ...,
         description="The base URL for the OpenRouter API endpoint",
     )
     text_fast_model: str = Field(

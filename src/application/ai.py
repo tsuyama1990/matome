@@ -2,8 +2,9 @@ from pydantic import SecretStr
 
 from src.domain_models import (
     AIServiceProtocol,
-    DocumentNode,
+    ContentNode,
     HTTPClientProtocol,
+    IdentityNode,
     PivotBoard,
     RetryPolicyProtocol,
     UserInteractionContext,
@@ -57,8 +58,8 @@ class DefaultAIService(AIServiceProtocol):
         )
         return self._call_api(prompt, model=self.text_fast_model)
 
-    def generate_question(self, node: DocumentNode) -> str:
-        prompt = f"Generate an engaging SQ3R question for the following content node:\n\n{node.title}\n{node.content.summary}"
+    def generate_question(self, identity: IdentityNode, content: ContentNode) -> str:
+        prompt = f"Generate an engaging SQ3R question for the following content node:\n\n{identity.title}\n{content.summary}"
         return self._call_api(prompt, model=self.text_fast_model)
 
     def generate_mermaid_diagram(self, board: PivotBoard) -> str:

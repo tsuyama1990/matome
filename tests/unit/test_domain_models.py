@@ -4,9 +4,8 @@ from pydantic import ValidationError
 from src.domain_models import (
     AIProcessingMetadata,
     BestPracticeData,
-    DocumentContent,
-    DocumentNode,
-    NodeIdentity,
+    ContentNode,
+    IdentityNode,
     NodeMetadata,
     NodeStatus,
     PivotAxis,
@@ -19,16 +18,14 @@ from src.domain_models import (
 from src.domain_models.manifest import MetadataContainer
 
 
-def test_document_node_valid() -> None:
-    node = DocumentNode(
-        identity=NodeIdentity(
-            id="node1",
-            parent_id=None,
-            title="Test Node",
-            status=NodeStatus.LOCKED,
-        ),
-        content=DocumentContent(summary=None, text=None),
+def test_identity_and_content_nodes_valid() -> None:
+    identity = IdentityNode(
+        id="node1",
+        parent_id=None,
+        title="Test Node",
+        status=NodeStatus.LOCKED,
     )
+    content = ContentNode(node_id="node1", summary=None, text=None)
     metadata_container = MetadataContainer(
         metadata=NodeMetadata(
             source=None,
@@ -42,24 +39,22 @@ def test_document_node_valid() -> None:
             chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
         ),
     )
-    assert node.id == "node1"
-    assert node.title == "Test Node"
-    assert node.status == NodeStatus.LOCKED
+    assert identity.id == "node1"
+    assert identity.title == "Test Node"
+    assert identity.status == NodeStatus.LOCKED
+    assert content.node_id == "node1"
     assert metadata_container.metadata.author == "test"
     assert len(metadata_container.metadata.best_practices) == 1
     assert metadata_container.metadata.best_practices[0].content == "Test best practice"
 
 
-def test_document_node_invalid_extra() -> None:
+def test_identity_node_invalid_extra() -> None:
     with pytest.raises(ValidationError):
-        DocumentNode(
-            identity=NodeIdentity(
-                id="node1",
-                parent_id=None,
-                title="Test Node",
-                status=NodeStatus.LOCKED,
-            ),
-            content=DocumentContent(summary=None, text=None),
+        IdentityNode(
+            id="node1",
+            parent_id=None,
+            title="Test Node",
+            status=NodeStatus.LOCKED,
             extra_field="Not allowed",  # type: ignore
         )
 

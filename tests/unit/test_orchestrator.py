@@ -16,15 +16,16 @@ from src.infrastructure.orchestrator import (
 from tests.helpers.mocks import MockAIService
 
 
-def _create_dependencies() -> tuple[PipelineDependencies, PipelineConfig]:
+def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineConfig]:
     from unittest.mock import MagicMock
 
     settings = Settings(
         openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
+        openrouter_api_url="https://mock.api.url",
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
-        allowed_base_dir="/tmp",  # noqa: S108
+        allowed_base_dir=base_dir,
     )
 
     repo = InMemoryDocumentRepository()
@@ -64,27 +65,27 @@ def _create_dependencies() -> tuple[PipelineDependencies, PipelineConfig]:
     return deps, config
 
 
-def _create_orchestrator() -> PipelineOrchestrator:
-    deps, config = _create_dependencies()
+def _create_orchestrator(base_dir: str) -> PipelineOrchestrator:
+    deps, config = _create_dependencies(base_dir=base_dir)
     return PipelineOrchestrator(dependencies=deps, config=config)
 
 
-def test_orchestrator_chunking_fallback() -> None:
-    orchestrator = _create_orchestrator()
+def test_orchestrator_chunking_fallback(tmp_path: pytest.TempPathFactory) -> None:
+    orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     chunks = orchestrator.deps.text_splitter.split_text("test " * 1000)
     assert len(chunks) > 0
     assert "test" in chunks[0]
 
 
-def test_orchestrator_ner_fallback() -> None:
-    orchestrator = _create_orchestrator()
+def test_orchestrator_ner_fallback(tmp_path: pytest.TempPathFactory) -> None:
+    orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     entities = orchestrator.deps.entity_extractor.extract_entities(["test chunk 1", "test chunk 2"])
     # May use Spacy if present, or fallback. Ensure it returns a dictionary.
     assert isinstance(entities, dict)
 
 
-def test_orchestrator_raptor_fallback() -> None:
-    orchestrator = _create_orchestrator()
+def test_orchestrator_raptor_fallback(tmp_path: pytest.TempPathFactory) -> None:
+    orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     # Pass more than 15 chunks to avoid the UMAP dimensionality error for N <= 15 when using defaults
     chunks = [f"test document chunk number {i}" for i in range(20)]
     tree = orchestrator.deps.clustering_service.cluster_chunks(
@@ -94,8 +95,8 @@ def test_orchestrator_raptor_fallback() -> None:
     assert "level_0" in tree
 
 
-def test_ingestion_orchestrator_execute_content() -> None:
-    deps, _ = _create_dependencies()
+def test_ingestion_orchestrator_execute_content(tmp_path: pytest.TempPathFactory) -> None:
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
     ingestion = IngestionOrchestrator(deps)
     ctx = PipelineContext(root_doc_id="test_id", content="Short test content.", file_path=None)
 
@@ -106,7 +107,7 @@ def test_ingestion_orchestrator_execute_content() -> None:
 
 
 def test_ingestion_orchestrator_execute_file(tmp_path: pytest.TempPathFactory) -> None:
-    deps, _ = _create_dependencies()
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
     ingestion = IngestionOrchestrator(deps)
 
     fpath = tmp_path / "test.txt"  # type: ignore[operator]
@@ -120,8 +121,8 @@ def test_ingestion_orchestrator_execute_file(tmp_path: pytest.TempPathFactory) -
     assert len(chunks) > 0
 
 
-def test_ingestion_orchestrator_execute_empty_context() -> None:
-    deps, _ = _create_dependencies()
+def test_ingestion_orchestrator_execute_empty_context(tmp_path: pytest.TempPathFactory) -> None:
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
     ingestion = IngestionOrchestrator(deps)
 
     ctx = PipelineContext(root_doc_id="test_id", content=None, file_path=None)
@@ -129,8 +130,8 @@ def test_ingestion_orchestrator_execute_empty_context() -> None:
         ingestion.execute(ctx)
 
 
-def test_analysis_orchestrator_execute() -> None:
-    deps, config = _create_dependencies()
+def test_analysis_orchestrator_execute(tmp_path: pytest.TempPathFactory) -> None:
+    deps, config = _create_dependencies(base_dir=str(tmp_path))
     analysis = AnalysisOrchestrator(deps, config)
 
     ctx = PipelineContext(root_doc_id="test_id", content="Short test content.", file_path=None)
@@ -143,7 +144,7 @@ def test_analysis_orchestrator_execute() -> None:
 
 
 def test_analysis_orchestrator_execute_with_file(tmp_path: pytest.TempPathFactory) -> None:
-    deps, config = _create_dependencies()
+    deps, config = _create_dependencies(base_dir=str(tmp_path))
     analysis = AnalysisOrchestrator(deps, config)
 
     fpath = tmp_path / "test.txt"  # type: ignore[operator]
@@ -158,12 +159,12 @@ def test_analysis_orchestrator_execute_with_file(tmp_path: pytest.TempPathFactor
     assert isinstance(summary, str)
 
 
-def test_analysis_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_analysis_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
     import typing
 
     from src.domain_models.exceptions import AIServiceError
 
-    deps, config = _create_dependencies()
+    deps, config = _create_dependencies(base_dir=str(tmp_path))
     analysis = AnalysisOrchestrator(deps, config)
 
     def raise_error(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
@@ -179,24 +180,24 @@ def test_analysis_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch) -> None
     assert "Fallback Summary:" in summary
 
 
-def test_output_orchestrator_execute() -> None:
-    deps, _ = _create_dependencies()
+def test_output_orchestrator_execute(tmp_path: pytest.TempPathFactory) -> None:
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
     output = OutputOrchestrator(deps)
 
     ctx = PipelineContext(root_doc_id="test_id", content="Test", file_path=None)
-    root_node, metadata = output.execute(ctx, "content", "summary", {}, {})
+    identity, content, metadata = output.execute(ctx, "content", "summary", {}, {})
 
-    assert root_node.id == "test_id"
-    assert root_node.content.summary == "summary"
+    assert identity.id == "test_id"
+    assert content.summary == "summary"
     assert metadata.ai_metadata.chunk_index == 0
 
 
-def test_output_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_output_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
     import typing
 
     from src.domain_models.exceptions import AIServiceError
 
-    deps, _ = _create_dependencies()
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
     output = OutputOrchestrator(deps)
 
     def raise_error(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
@@ -206,25 +207,25 @@ def test_output_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(deps.question_service, "generate_question", raise_error)
 
     ctx = PipelineContext(root_doc_id="test_id", content="Test", file_path=None)
-    root_node, metadata = output.execute(ctx, "content", "summary", {}, {})
+    identity, content, metadata = output.execute(ctx, "content", "summary", {}, {})
 
-    assert root_node.id == "test_id"
+    assert identity.id == "test_id"
     # Should not raise exception
 
 
-def test_pipeline_orchestrator_run_pipeline() -> None:
-    orchestrator = _create_orchestrator()
+def test_pipeline_orchestrator_run_pipeline(tmp_path: pytest.TempPathFactory) -> None:
+    orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     ctx = PipelineContext(root_doc_id="test_id", content="Short content.", file_path=None)
 
     # Should run end-to-end without errors
     orchestrator.run_pipeline(ctx)
-    node = orchestrator.deps.doc_repo.get_node("test_id")
+    node = orchestrator.deps.doc_repo.get_identity("test_id")
     assert node is not None
 
 
-def test_pipeline_orchestrator_validate_length() -> None:
+def test_pipeline_orchestrator_validate_length(tmp_path: pytest.TempPathFactory) -> None:
     import typing
-    orchestrator = _create_orchestrator()
+    orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     # Mock the text_splitter to return an empty iterator so ingestion works,
     # but the combined_content is somehow extremely long (simulating a bypass or internal logic edge case).
 

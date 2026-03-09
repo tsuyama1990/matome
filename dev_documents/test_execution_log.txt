@@ -4,17 +4,17 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: base-url-2.1.0, cov-7.0.0, playwright-0.7.2, anyio-4.12.1, langsmith-0.7.14
-collected 52 items
+collected 51 items
 
 tests/e2e/test_system.py .                                               [  1%]
 tests/unit/test_ai_service.py .......                                    [ 15%]
 tests/unit/test_app_factory.py ..                                        [ 19%]
 tests/unit/test_config.py ...                                            [ 25%]
-tests/unit/test_domain_models.py ......                                  [ 36%]
-tests/unit/test_interfaces.py .                                          [ 38%]
-tests/unit/test_orchestrator.py ...............                          [ 67%]
-tests/unit/test_repository.py ...                                        [ 73%]
-tests/unit/test_services.py ..............                               [100%]
+tests/unit/test_domain_models.py ......                                  [ 37%]
+tests/unit/test_interfaces.py .                                          [ 39%]
+tests/unit/test_orchestrator.py ...............                          [ 68%]
+tests/unit/test_repository.py ...                                        [ 74%]
+tests/unit/test_services.py .............                                [100%]
 
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.12-final-0 _______________
@@ -24,22 +24,22 @@ Name                                 Stmts   Miss  Cover   Missing
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
 src/application/ai.py                   32      0   100%
-src/config.py                           65      8    88%   107-108, 111-112, 122-123, 143, 146
+src/config.py                           65      8    88%   105-106, 109-110, 120-121, 141, 144
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           1      0   100%
 src/domain_models/enums.py              12      0   100%
 src/domain_models/exceptions.py          3      0   100%
-src/domain_models/interfaces.py         26      0   100%
-src/domain_models/manifest.py           74      0   100%
-src/domain_models/services.py           17      0   100%
+src/domain_models/interfaces.py         21      0   100%
+src/domain_models/manifest.py           59      0   100%
+src/domain_models/services.py           19      0   100%
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
-src/infrastructure/orchestrator.py     125      1    99%   216
-src/infrastructure/repository.py        48      8    83%   15-17, 25-29
-src/infrastructure/services.py         157     33    79%   58-60, 72, 118-130, 139, 166-167, 178-207, 226-228
+src/infrastructure/orchestrator.py     157     32    80%   76-80, 95-96, 101-102, 110-114, 213-215, 222-224, 268-291
+src/infrastructure/repository.py        43      7    84%   28-34
+src/infrastructure/services.py         147     33    78%   58-60, 72, 104-116, 125, 152-153, 164-193, 212-214
 src/utils/__init__.py                    0      0   100%
-src/utils/validation.py                 20      5    75%   7, 26-31
+src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  623     55    91%
-============================== 52 passed in 4.80s ==============================
+TOTAL                                  613     81    87%
+============================== 51 passed in 6.18s ==============================

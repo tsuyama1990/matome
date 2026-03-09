@@ -2,7 +2,7 @@ from collections.abc import Callable, Iterator
 from typing import Any, Protocol
 
 from .analysis import PivotBoard
-from .manifest import DocumentNode, UserInteractionContext
+from .manifest import ContentNode, IdentityNode, UserInteractionContext
 
 
 class ConfigService(Protocol):
@@ -34,26 +34,21 @@ class TransactionManager(Protocol):
 
 
 class DocumentRepository(Protocol):
-    """Protocol for data persistence operations regarding DocumentNodes."""
+    """Protocol for data persistence operations regarding decoupled nodes."""
 
-    def get_node(self, node_id: str) -> DocumentNode | None:
-        """Retrieves a node by its ID. Raises RepositoryError on DB failure."""
+    def get_identity(self, node_id: str) -> IdentityNode | None:
         ...
 
-    def get_children(self, parent_id: str) -> list[DocumentNode]:
-        """Retrieves all children of a given parent node ID. Raises RepositoryError on DB failure."""
+    def get_content(self, node_id: str) -> ContentNode | None:
         ...
 
-    def save_node(self, node: DocumentNode) -> None:
-        """Saves or updates a single node. Raises RepositoryError on failure."""
+    def get_children(self, parent_id: str) -> list[IdentityNode]:
         ...
 
-    def save_nodes(self, nodes: list[DocumentNode]) -> None:
-        """Saves or updates multiple nodes. Raises RepositoryError on failure."""
+    def save_identity(self, node: IdentityNode) -> None:
         ...
 
-    def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]:
-        """Queries nodes based on provided filters. Raises RepositoryError on failure."""
+    def save_content(self, node: ContentNode) -> None:
         ...
 
 
@@ -62,7 +57,7 @@ class SummaryServiceProtocol(Protocol):
 
 
 class QuestionServiceProtocol(Protocol):
-    def generate_question(self, node: DocumentNode) -> str: ...
+    def generate_question(self, identity: IdentityNode, content: ContentNode) -> str: ...
 
 
 class DiagramServiceProtocol(Protocol):

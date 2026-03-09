@@ -7,8 +7,8 @@ from .types import NodeID
 __all__ = [
     "AIProcessingMetadata",
     "BestPracticeData",
-    "DocumentContent",
-    "DocumentNode",
+    "ContentNode",
+    "IdentityNode",
     "NodeMetadata",
     "NodeStatus",
     "PipelineContext",
@@ -42,8 +42,11 @@ class NodeMetadata(BaseModel):
     )
 
 
-class DocumentContent(BaseModel):
+class ContentNode(BaseModel):
+    """Encapsulates the content of a node entirely separated from its identity structure."""
     model_config = ConfigDict(extra="forbid")
+
+    node_id: str = Field(..., description="Link to the identity node this content belongs to")
     summary: str | None = Field(
         None, description="CoD summary of the node content", max_length=2000
     )
@@ -77,8 +80,8 @@ class MetadataContainer(BaseModel):
     ai_metadata: AIProcessingMetadata = Field(..., description="AI processing metadata")
 
 
-class NodeIdentity(BaseModel):
-    """Identity and structure properties of a node in the graph."""
+class IdentityNode(BaseModel):
+    """Identity and structure properties of a node in the graph, completely independent of content."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -98,29 +101,6 @@ class NodeIdentity(BaseModel):
     status: NodeStatus = Field(
         NodeStatus.LOCKED, description="Current status of the node in the learning journey"
     )
-
-
-class DocumentNode(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    identity: NodeIdentity = Field(..., description="Structural and identity data for the node")
-    content: DocumentContent = Field(..., description="The content components of the node")
-
-    @property
-    def id(self) -> str:
-        return self.identity.id
-
-    @property
-    def parent_id(self) -> str | None:
-        return self.identity.parent_id
-
-    @property
-    def title(self) -> str:
-        return self.identity.title
-
-    @property
-    def status(self) -> NodeStatus:
-        return self.identity.status
 
 
 class SummaryNode(BaseModel):

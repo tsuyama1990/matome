@@ -5,10 +5,11 @@ from typing import Any
 from src.domain_models import (
     AIServiceError,
     ClusteringServiceProtocol,
+    ContentNode,
     DocumentFactory,
-    DocumentNode,
     DocumentRepository,
     EntityExtractorProtocol,
+    IdentityNode,
     MetadataService,
     PipelineContext,
     QuestionServiceProtocol,
@@ -59,7 +60,7 @@ class PipelineDependencies:
 
 
 class ProcessManager:
-    """Handles concurrent thread timeout lifecycle management without fork-related container issues."""
+    """Handles multiprocessing process lifecycle management ensuring strict termination and zero resource leaks."""
 
     def __init__(self, timeout: float) -> None:
         self.timeout = timeout
@@ -67,17 +68,53 @@ class ProcessManager:
     def run_with_timeout(
         self, target_func: typing.Callable[[PipelineContext], Any], context: PipelineContext
     ) -> Any:
-        import concurrent.futures
+        import multiprocessing
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(target_func, context)
+        queue: multiprocessing.Queue[Any] = multiprocessing.Queue()
+
+        def process_target(ctx: PipelineContext, q: Any) -> None:
             try:
-                return future.result(timeout=self.timeout)
-            except concurrent.futures.TimeoutError as e:
-                logger.exception(f"Execution timed out after {self.timeout} seconds. Cancelling task.")
-                future.cancel()
-                msg = f"Execution timed out after {self.timeout} seconds."
-                raise TimeoutError(msg) from e
+                result = target_func(ctx)
+                q.put(result)
+            except Exception as e:
+                q.put(e)
+
+        process = multiprocessing.Process(target=process_target, args=(context, queue))
+        try:
+            process.start()
+            process.join(self.timeout)
+
+            if process.is_alive():
+                logger.error(
+                    f"Process execution timed out after {self.timeout} seconds. Terminating process."
+                )
+                process.terminate()
+                process.join()
+                if process.is_alive():
+                    # Fallback to kill if terminate fails to avoid zombie processes entirely
+                    process.kill()
+                    process.join()
+                msg = f"Process execution timed out after {self.timeout} seconds."
+                raise TimeoutError(msg)
+
+            if process.exitcode != 0:
+                msg = f"Process failed with exit code {process.exitcode}"
+                raise RuntimeError(msg)
+
+            result = queue.get()
+            if isinstance(result, Exception):
+                raise result
+            return result
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join()
+                if process.is_alive():
+                    process.kill()
+                    process.join()
+            process.close()
+            queue.close()
+            queue.join_thread()
 
 
 class IngestionOrchestrator:
@@ -144,27 +181,27 @@ class OutputOrchestrator:
         summary: str,
         entities: dict[str, str],
         tree_metadata: dict[str, str],
-    ) -> tuple[DocumentNode, Any]:
-        root_node = self.deps.doc_factory.create_root_node(
+    ) -> tuple[IdentityNode, ContentNode, Any]:
+        identity, content = self.deps.doc_factory.create_root_node(
             node_id=context.root_doc_id,
             title="Business Manual",
             content_text=combined_content,
             summary=summary,
         )
 
-        metadata_container = self.deps.metadata_service.create_root_metadata(root_node.id)
+        metadata_container = self.deps.metadata_service.create_root_metadata(identity.id)
         metadata_container.ai_metadata.entity_metadata = entities
         metadata_container.ai_metadata.hierarchical_tree = tree_metadata
         metadata_container.ai_metadata.chunk_id = f"chunk_{context.root_doc_id}"
         metadata_container.ai_metadata.chunk_index = 0
 
         try:
-            question = self.deps.question_service.generate_question(root_node)
+            question = self.deps.question_service.generate_question(identity, content)
             logger.info(f"AI Question: {question}")
         except AIServiceError as e:
             logger.warning(f"Question generation failed: {e}. Skipping interactive prompt loop.")
 
-        return root_node, metadata_container
+        return identity, content, metadata_container
 
 
 class PipelineValidator:
@@ -187,6 +224,19 @@ class PipelineErrorHandler:
         raise RuntimeError(msg) from e
 
 
+class PipelineTransactionManager:
+    """Handles the transaction lifecycle of pipeline outputs."""
+    def __init__(self, deps: PipelineDependencies) -> None:
+        self.deps = deps
+
+    def save_and_commit(self, result: tuple[IdentityNode, ContentNode, Any]) -> None:
+        identity, content, metadata = result
+        self.deps.metadata_service.save_metadata(identity.id, metadata)
+        self.deps.doc_repo.save_identity(identity)
+        self.deps.doc_repo.save_content(content)
+        self.deps.transaction_manager.commit()
+
+
 class PipelineOrchestrator:
     """Handles the high-level orchestration of ingestion, analysis, and output workflows."""
 
@@ -200,6 +250,7 @@ class PipelineOrchestrator:
         self.process_manager = ProcessManager(timeout=config.pipeline_timeout)
         self.validator = PipelineValidator(doc_factory=dependencies.doc_factory)
         self.error_handler = PipelineErrorHandler()
+        self.transaction_handler = PipelineTransactionManager(dependencies)
         self.ingestion_orchestrator = IngestionOrchestrator(dependencies)
         self.analysis_orchestrator = AnalysisOrchestrator(dependencies, config)
         self.output_orchestrator = OutputOrchestrator(dependencies)
@@ -209,17 +260,11 @@ class PipelineOrchestrator:
         result = self.process_manager.run_with_timeout(self._execute_pipeline_logic, context)
 
         if result is not None:
-            if isinstance(result, tuple):
-                root_node, metadata = result
-                self.deps.metadata_service.save_metadata(root_node.id, metadata)
-            else:
-                root_node = result
-            self.deps.doc_repo.save_node(root_node)
-            self.deps.transaction_manager.commit()
+            self.transaction_handler.save_and_commit(result)
 
     def _execute_pipeline_logic(
         self, context: PipelineContext
-    ) -> tuple[DocumentNode, Any]:
+    ) -> tuple[IdentityNode, ContentNode, Any]:
         try:
             # 1. Ingestion and Semantic Chunking Stage
             logger.info("Ingesting document and performing semantic chunking...")
@@ -236,11 +281,11 @@ class PipelineOrchestrator:
 
             # 5. Output Generation Stage
             logger.info("Generating output...")
-            root_node, metadata_container = self.output_orchestrator.execute(
+            identity, content, metadata_container = self.output_orchestrator.execute(
                 context, combined_content, summary, entities, tree_metadata
             )
         except Exception as e:
             self.error_handler.handle_execution_error(e)
         else:
             logger.info("Pipeline ML logic completed successfully.")
-            return root_node, metadata_container
+            return identity, content, metadata_container
