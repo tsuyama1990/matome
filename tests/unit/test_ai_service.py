@@ -3,19 +3,17 @@ import pytest
 from src.application.ai import DefaultAIService
 from src.config import Settings
 from src.domain_models import (
-    DocumentContent,
-    DocumentNode,
-    NodeIdentity,
+    ContentNode,
+    IdentityNode,
     NodeStatus,
     PivotAxis,
     PivotBoard,
     PivotBoardViewNode,
     UserInteractionContext,
 )
-from src.domain_models.exceptions import AIServiceError
 
 
-def _create_mock_settings(api_key: str | None = None) -> Settings:
+def _create_mock_settings(base_dir: str, api_key: str | None = None) -> Settings:
     from pydantic import SecretStr
 
     # Completely isolate tests from os.environ side-effects and avoid hardcoded secrets where unnecessary
@@ -23,77 +21,115 @@ def _create_mock_settings(api_key: str | None = None) -> Settings:
     # Since pydantic validator catches invalid secrets, we can test validation behaviors here.
     return Settings(
         openrouter_api_key=SecretStr(api_key) if api_key is not None else None,  # type: ignore
+        openrouter_api_url="https://mock.api.url",
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
+        allowed_base_dir=base_dir,
     )
 
 
-def _create_service(api_key: str | None = None) -> DefaultAIService:
-    from src.infrastructure.services import RequestsHTTPClient, TenacityRetryPolicy
+def _create_service(
+    base_dir: str, api_key: str | None = None, http_client: object = None
+) -> DefaultAIService:
+    from unittest.mock import MagicMock
 
-    settings = _create_mock_settings(api_key)
+    from src.config import EnvCredentialProvider
+
+    settings = _create_mock_settings(base_dir=base_dir, api_key=api_key)
+    provider = EnvCredentialProvider(settings)
+
+    mock_http_client = http_client or MagicMock()
+
+    # We create a dummy retry policy that runs 1 time to bypass Tenacity sleep in tests
+    import typing
+
+    class DummyRetry:
+        def execute(self, func: typing.Any) -> typing.Any:
+            return func()
+
     return DefaultAIService(
-        api_key=settings.openrouter_api_key,
+        credential_provider=provider,
         api_url=settings.openrouter_api_url,
         text_fast_model=settings.text_fast_model,
         text_reasoning_model=settings.text_reasoning_model,
         ai_timeout=settings.ai_timeout,
-        http_client=RequestsHTTPClient(),
-        retry_policy=TenacityRetryPolicy(
-            ai_retry_attempts=settings.ai_retry_attempts,
-            ai_retry_min_wait=settings.ai_retry_min_wait,
-            ai_retry_max_wait=settings.ai_retry_max_wait,
-        ),
+        http_client=mock_http_client,  # type: ignore
+        retry_policy=DummyRetry(),
     )
 
 
-def test_default_ai_service_missing_key_init() -> None:
-    from src.domain_models.exceptions import ConfigurationError
+def test_default_ai_service_missing_key_init(tmp_path: pytest.TempPathFactory) -> None:
+    from pydantic import ValidationError
 
-    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY is required"):
-        _create_service(api_key=None)
+    with pytest.raises(ValidationError, match="Input should be a valid string"):
+        _create_service(base_dir=str(tmp_path), api_key=None)
 
 
-def test_default_ai_service_invalid_key_length() -> None:
+def test_default_ai_service_invalid_key_length(tmp_path: pytest.TempPathFactory) -> None:
     from src.domain_models.exceptions import ConfigurationError
 
     with pytest.raises(ConfigurationError, match="API Key must be at least 30 characters long"):
-        _create_service(api_key="123")
+        _create_service(base_dir=str(tmp_path), api_key="123")
 
 
-def test_default_ai_service_invalid_key_format() -> None:
+def test_default_ai_service_invalid_key_format(tmp_path: pytest.TempPathFactory) -> None:
     from src.domain_models.exceptions import ConfigurationError
 
     with pytest.raises(ConfigurationError, match="API Key format is invalid"):
-        _create_service(api_key="invalid_format_key_with_spaces and_tabs")
+        _create_service(base_dir=str(tmp_path), api_key="invalid_format_key_with_spaces and_tabs")
 
 
-def test_default_ai_service_calls_generate_summary_valid() -> None:
-    ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
-    with pytest.raises(AIServiceError):
-        # Without a mocked network interface, this should raise the AIServiceError (either HTTP/Connection)
-        ai.generate_summary("test content")
+def test_default_ai_service_calls_generate_summary_valid(tmp_path: pytest.TempPathFactory) -> None:
+    from unittest.mock import MagicMock
 
+    mock_http = MagicMock()
+    mock_http.post.return_value = {"choices": [{"message": {"content": "mock summary"}}]}
 
-def test_default_ai_service_calls_generate_question_valid() -> None:
-
-    ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
-    node = DocumentNode(
-        identity=NodeIdentity(
-            id="test1",
-            parent_id=None,
-            title="Test Title",
-            status=NodeStatus.LOCKED,
-        ),
-        content=DocumentContent(summary=None, text=None),
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
     )
-    with pytest.raises(AIServiceError):
-        ai.generate_question(node)
+
+    summary = ai.generate_summary("test content")
+    assert summary == "mock summary"
 
 
-def test_default_ai_service_calls_generate_mermaid_valid() -> None:
-    ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
+def test_default_ai_service_calls_generate_question_valid(tmp_path: pytest.TempPathFactory) -> None:
+    from unittest.mock import MagicMock
+
+    mock_http = MagicMock()
+    mock_http.post.return_value = {"choices": [{"message": {"content": "mock question"}}]}
+
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
+    identity = IdentityNode(
+        id="test1",
+        parent_id=None,
+        title="Test Title",
+        status=NodeStatus.LOCKED,
+    )
+    content = ContentNode(node_id="test1", summary=None, text=None)
+
+    question = ai.generate_question(identity, content)
+    assert question == "mock question"
+
+
+def test_default_ai_service_calls_generate_mermaid_valid(tmp_path: pytest.TempPathFactory) -> None:
+    from unittest.mock import MagicMock
+
+    mock_http = MagicMock()
+    mock_http.post.return_value = {"choices": [{"message": {"content": "graph TD"}}]}
+
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
     board = PivotBoard(
         id="board_1",
         original_root_id="root_1",
@@ -103,12 +139,21 @@ def test_default_ai_service_calls_generate_mermaid_valid() -> None:
             PivotBoardViewNode(node_id="test1", x_position=0.1, y_position=0.2, cluster_id=None)
         ],
     )
-    with pytest.raises(AIServiceError):
-        ai.generate_mermaid_diagram(board)
+    diagram = ai.generate_mermaid_diagram(board)
+    assert diagram == "graph TD"
 
 
-def test_default_ai_service_calls_evaluate_answer_valid() -> None:
-    ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
+def test_default_ai_service_calls_evaluate_answer_valid(tmp_path: pytest.TempPathFactory) -> None:
+    from unittest.mock import MagicMock
+
+    mock_http = MagicMock()
+    mock_http.post.return_value = {"choices": [{"message": {"content": "YES it is correct"}}]}
+
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
     context = UserInteractionContext(
         node_id="test1",
         status=NodeStatus.LOCKED,
@@ -117,5 +162,6 @@ def test_default_ai_service_calls_evaluate_answer_valid() -> None:
         feedback=None,
         hints_used=0,
     )
-    with pytest.raises(AIServiceError):
-        ai.evaluate_answer(context)
+    success, response = ai.evaluate_answer(context)
+    assert success is True
+    assert "YES" in response

@@ -2,17 +2,25 @@ from collections.abc import Callable, Iterator
 from typing import Any, Protocol
 
 from .analysis import PivotBoard
-from .manifest import DocumentNode, UserInteractionContext
+from .manifest import ContentNode, IdentityNode, UserInteractionContext
 
 
 class ConfigService(Protocol):
     """Protocol for fetching application configuration."""
+
     def get(self, key: str) -> Any: ...
 
 
 class SecurityService(Protocol):
     """Protocol for security operations such as API key validation."""
+
     def validate_api_key(self, api_key: str) -> str: ...
+
+
+class CredentialProviderProtocol(Protocol):
+    """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
+
+    def get_api_key(self) -> str: ...
 
 
 class TransactionManager(Protocol):
@@ -32,49 +40,49 @@ class TransactionManager(Protocol):
 
 
 class DocumentRepository(Protocol):
-    """Protocol for data persistence operations regarding DocumentNodes."""
+    """Protocol for data persistence operations regarding decoupled nodes."""
 
-    def get_node(self, node_id: str) -> DocumentNode | None:
-        """Retrieves a node by its ID. Raises RepositoryError on DB failure."""
-        ...
+    def get_identity(self, node_id: str) -> IdentityNode | None: ...
 
-    def get_children(self, parent_id: str) -> list[DocumentNode]:
-        """Retrieves all children of a given parent node ID. Raises RepositoryError on DB failure."""
-        ...
+    def get_content(self, node_id: str) -> ContentNode | None: ...
 
-    def save_node(self, node: DocumentNode) -> None:
-        """Saves or updates a single node. Raises RepositoryError on failure."""
-        ...
+    def get_children(self, parent_id: str) -> list[IdentityNode]: ...
 
-    def save_nodes(self, nodes: list[DocumentNode]) -> None:
-        """Saves or updates multiple nodes. Raises RepositoryError on failure."""
-        ...
+    def save_identity(self, node: IdentityNode) -> None: ...
 
-    def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]:
-        """Queries nodes based on provided filters. Raises RepositoryError on failure."""
-        ...
+    def save_content(self, node: ContentNode) -> None: ...
 
 
 class SummaryServiceProtocol(Protocol):
     def generate_summary(self, content: str) -> str: ...
 
+
 class QuestionServiceProtocol(Protocol):
-    def generate_question(self, node: DocumentNode) -> str: ...
+    def generate_question(self, identity: IdentityNode, content: ContentNode) -> str: ...
+
 
 class DiagramServiceProtocol(Protocol):
     def generate_mermaid_diagram(self, board: PivotBoard) -> str: ...
 
+
 class EvaluationServiceProtocol(Protocol):
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
+
 
 class AIServiceProtocol(
     SummaryServiceProtocol,
     QuestionServiceProtocol,
     DiagramServiceProtocol,
     EvaluationServiceProtocol,
-    Protocol
+    Protocol,
 ):
     """Aggregate protocol for backward compatibility or cases where all are needed."""
+
+
+class SplitterStrategyProtocol(Protocol):
+    """Protocol for the underlying strategy used to split text into list of chunks."""
+
+    def split_text(self, text: str, chunk_size: int, chunk_overlap: int) -> list[str]: ...
 
 
 class TextSplitterProtocol(Protocol):

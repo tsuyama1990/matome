@@ -5,10 +5,11 @@ from typing import Any
 from src.domain_models import (
     AIServiceError,
     ClusteringServiceProtocol,
+    ContentNode,
     DocumentFactory,
-    DocumentNode,
     DocumentRepository,
     EntityExtractorProtocol,
+    IdentityNode,
     MetadataService,
     PipelineContext,
     QuestionServiceProtocol,
@@ -59,47 +60,176 @@ class PipelineDependencies:
 
 
 class ProcessManager:
-    """Handles multiprocessing process lifecycle management."""
+    """Handles async-based timeout lifecycle management ensuring resource cleanup without heavy multiprocessing."""
+
     def __init__(self, timeout: float) -> None:
         self.timeout = timeout
 
-    def run_with_timeout(self, target_func: typing.Callable[[PipelineContext], Any], context: PipelineContext) -> Any:
-        import multiprocessing
+    def run_with_timeout(
+        self, target_func: typing.Callable[[PipelineContext], Any], context: PipelineContext
+    ) -> Any:
+        import asyncio
+        import concurrent.futures
 
-        queue: multiprocessing.Queue[Any] = multiprocessing.Queue()
-
-        def process_target(ctx: PipelineContext, q: Any) -> None:
+        async def _run() -> Any:
+            loop = asyncio.get_running_loop()
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             try:
-                result = target_func(ctx)
-                q.put(result)
-            except Exception as e:
-                q.put(e)
+                # Use wait_for on the coroutine directly, ensuring graceful dropout upon timeout.
+                # shutdown(wait=False, cancel_futures=True) natively prevents the executor from blocking on exit.
+                return await asyncio.wait_for(
+                    loop.run_in_executor(executor, target_func, context), timeout=self.timeout
+                )
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
 
-        process = multiprocessing.Process(target=process_target, args=(context, queue))
         try:
-            process.start()
-            process.join(self.timeout)
+            return asyncio.run(_run())
+        except TimeoutError as e:
+            logger.exception(f"Execution timed out after {self.timeout} seconds.")
+            msg = f"Execution timed out after {self.timeout} seconds."
+            raise TimeoutError(msg) from e
 
-            if process.is_alive():
-                logger.error(f"Process execution timed out after {self.timeout} seconds. Terminating process.")
-                process.terminate()
-                process.join()
-                msg = f"Process execution timed out after {self.timeout} seconds."
-                raise TimeoutError(msg)
 
-            if process.exitcode != 0:
-                msg = f"Process failed with exit code {process.exitcode}"
-                raise RuntimeError(msg)
+class IngestionOrchestrator:
+    def __init__(self, deps: PipelineDependencies) -> None:
+        self.deps = deps
 
-            result = queue.get()
-            if isinstance(result, Exception):
-                raise result
-            return result
-        finally:
-            if process.is_alive():
-                process.terminate()
-                process.join()
-            process.close()
+    def execute(self, context: PipelineContext) -> tuple[typing.Iterator[str], str]:
+        import itertools
+
+        if context.file_path:
+            preview_chunks = list(
+                itertools.islice(self.deps.text_splitter.split_document(context.file_path), 5)
+            )
+            combined_content = "\n".join(preview_chunks)
+            return self.deps.text_splitter.split_document(context.file_path), combined_content
+        if context.content:
+            return iter(self.deps.text_splitter.split_text(context.content)), context.content
+
+        msg = "PipelineContext must provide either content or file_path"
+        raise ValueError(msg)
+
+
+class AnalysisOrchestrator:
+    def __init__(self, deps: PipelineDependencies, config: PipelineConfig) -> None:
+        self.deps = deps
+        self.config = config
+
+    def execute(
+        self,
+        context: PipelineContext,
+        chunks_iterator: typing.Iterator[str],
+        combined_content: str,
+    ) -> tuple[dict[str, str], dict[str, str], str]:
+        entities = self.deps.entity_extractor.extract_entities(chunks_iterator)
+
+        if context.file_path:
+            clustering_iterator = self.deps.text_splitter.split_document(context.file_path)
+        else:
+            clustering_iterator = iter(self.deps.text_splitter.split_text(context.content))  # type: ignore
+
+        tree_metadata = self.deps.clustering_service.cluster_chunks(
+            clustering_iterator, self.config.raptor_max_clusters
+        )
+
+        try:
+            summary = self.deps.summary_service.generate_summary(combined_content)
+        except AIServiceError as e:
+            logger.warning(f"Summarization failed: {e}. Using fallback summary.")
+            summary = (
+                "Fallback Summary: Content processing currently impaired due to AI unavailability."
+            )
+
+        return entities, tree_metadata, summary
+
+
+class OutputOrchestrator:
+    def __init__(self, deps: PipelineDependencies) -> None:
+        self.deps = deps
+
+    def execute(
+        self,
+        context: PipelineContext,
+        combined_content: str,
+        summary: str,
+        entities: dict[str, str],
+        tree_metadata: dict[str, str],
+    ) -> tuple[IdentityNode, ContentNode, Any]:
+        identity, content = self.deps.doc_factory.create_root_node(
+            node_id=context.root_doc_id,
+            title="Business Manual",
+            content_text=combined_content,
+            summary=summary,
+        )
+
+        metadata_container = self.deps.metadata_service.create_root_metadata(identity.id)
+        metadata_container.ai_metadata.entity_metadata = entities
+        metadata_container.ai_metadata.hierarchical_tree = tree_metadata
+        metadata_container.ai_metadata.chunk_id = f"chunk_{context.root_doc_id}"
+        metadata_container.ai_metadata.chunk_index = 0
+
+        try:
+            question = self.deps.question_service.generate_question(identity, content)
+            logger.info(f"AI Question: {question}")
+        except AIServiceError as e:
+            logger.warning(f"Question generation failed: {e}. Skipping interactive prompt loop.")
+
+        return identity, content, metadata_container
+
+
+class PipelineValidator:
+    """Handles logic for validating state inside the pipeline."""
+
+    def __init__(self, doc_factory: DocumentFactory) -> None:
+        self.doc_factory = doc_factory
+
+    def validate_content_length(self, content: str) -> None:
+        if len(content) > self.doc_factory.max_content_length:
+            msg = f"Root document content exceeds allowed length of {self.doc_factory.max_content_length} characters."
+            raise ValueError(msg)
+
+
+class PipelineErrorHandler:
+    """Decoupled handler for processing exceptions inside the pipeline executor."""
+
+    @staticmethod
+    def handle_execution_error(e: Exception) -> typing.NoReturn:
+        logger.exception("Pipeline execution failed at an intermediate step.")
+        msg = f"Pipeline failure: {e}"
+        raise RuntimeError(msg) from e
+
+
+class PipelineTransactionManager:
+    """Handles the transaction lifecycle of pipeline outputs."""
+
+    def __init__(self, deps: PipelineDependencies) -> None:
+        self.deps = deps
+
+    def save_and_commit(self, result: tuple[IdentityNode, ContentNode, Any]) -> None:
+        identity, content, metadata = result
+        self.deps.metadata_service.save_metadata(identity.id, metadata)
+        self.deps.doc_repo.save_identity(identity)
+        self.deps.doc_repo.save_content(content)
+        self.deps.transaction_manager.commit()
+
+
+class CircuitBreaker:
+    """A simplistic circuit breaker to halt cascading failures against external resources."""
+
+    def __init__(self, threshold: int = 3) -> None:
+        self.failures = 0
+        self.threshold = threshold
+        self.open = False
+
+    def record_failure(self) -> None:
+        self.failures += 1
+        if self.failures >= self.threshold:
+            self.open = True
+
+    def reset(self) -> None:
+        self.failures = 0
+        self.open = False
 
 
 class PipelineOrchestrator:
@@ -113,103 +243,53 @@ class PipelineOrchestrator:
         self.deps = dependencies
         self.config = config
         self.process_manager = ProcessManager(timeout=config.pipeline_timeout)
-
-    def _validate_content_length(self, content: str) -> None:
-        if len(content) > self.deps.doc_factory.max_content_length:
-            msg = f"Root document content exceeds allowed length of {self.deps.doc_factory.max_content_length} characters."
-            raise ValueError(msg)
+        self.validator = PipelineValidator(doc_factory=dependencies.doc_factory)
+        self.error_handler = PipelineErrorHandler()
+        self.transaction_handler = PipelineTransactionManager(dependencies)
+        self.ingestion_orchestrator = IngestionOrchestrator(dependencies)
+        self.analysis_orchestrator = AnalysisOrchestrator(dependencies, config)
+        self.output_orchestrator = OutputOrchestrator(dependencies)
+        self.circuit_breaker = CircuitBreaker()
 
     def run_pipeline(self, context: PipelineContext) -> None:
+        if self.circuit_breaker.open:
+            msg = "Circuit breaker is OPEN. Failing fast to prevent cascading system collapse."
+            raise RuntimeError(msg)
+
         logger.info("Starting document ingestion and analysis pipeline...")
-        result = self.process_manager.run_with_timeout(self._execute_pipeline_logic, context)
-
-        if result is not None:
-            if isinstance(result, tuple):
-                root_node, metadata = result
-                self.deps.metadata_service.save_metadata(root_node.id, metadata)
-            else:
-                root_node = result
-            self.deps.doc_repo.save_node(root_node)
-            self.deps.transaction_manager.commit()
-
-    def _get_chunk_iterator_and_content(
-        self, context: PipelineContext
-    ) -> tuple[typing.Iterator[str], str]:
-        import itertools
-
-        if context.file_path:
-            preview_chunks = list(
-                itertools.islice(self.deps.text_splitter.split_document(context.file_path), 5)
-            )
-            combined_content = "\n".join(preview_chunks)
-
-            return self.deps.text_splitter.split_document(context.file_path), combined_content
-        if context.content:
-            return iter(self.deps.text_splitter.split_text(context.content)), context.content
-
-        msg = "PipelineContext must provide either content or file_path"
-        raise ValueError(msg)
+        try:
+            result = self.process_manager.run_with_timeout(self._execute_pipeline_logic, context)
+            self.circuit_breaker.reset()
+            if result is not None:
+                self.transaction_handler.save_and_commit(result)
+        except Exception:
+            self.circuit_breaker.record_failure()
+            raise
 
     def _execute_pipeline_logic(
         self, context: PipelineContext
-    ) -> tuple[DocumentNode, Any] | DocumentNode:
+    ) -> tuple[IdentityNode, ContentNode, Any]:
         try:
             # 1. Ingestion and Semantic Chunking Stage
             logger.info("Ingesting document and performing semantic chunking...")
-            chunks_iterator, combined_content = self._get_chunk_iterator_and_content(context)
+            chunks_iterator, combined_content = self.ingestion_orchestrator.execute(context)
 
-            # 2. Entity Extraction Stage
-            logger.info("Extracting entities via streaming...")
-            entities = self.deps.entity_extractor.extract_entities(chunks_iterator)
+            # Validate length before ML processing
+            self.validator.validate_content_length(combined_content)
 
-            # 3. RAPTOR Clustering and Tree Generation
-            logger.info("Generating hierarchical tree via RAPTOR streaming...")
-            if context.file_path:
-                clustering_iterator = self.deps.text_splitter.split_document(context.file_path)
-            else:
-                clustering_iterator = iter(self.deps.text_splitter.split_text(context.content))  # type: ignore
-
-            tree_metadata = self.deps.clustering_service.cluster_chunks(
-                clustering_iterator, self.config.raptor_max_clusters
+            # 2, 3, 4. Analysis Stage
+            logger.info("Performing analysis...")
+            entities, tree_metadata, summary = self.analysis_orchestrator.execute(
+                context, chunks_iterator, combined_content
             )
 
-            # 4. Chain of Density (CoD) Summarization
-            logger.info("Applying Chain of Density summarization...")
-            self._validate_content_length(combined_content)
-            try:
-                summary = self.deps.summary_service.generate_summary(combined_content)
-            except AIServiceError as e:
-                logger.warning(f"Summarization failed: {e}. Using fallback summary.")
-                summary = "Fallback Summary: Content processing currently impaired due to AI unavailability."
-
-            root_node = self.deps.doc_factory.create_root_node(
-                node_id=context.root_doc_id,
-                title="Business Manual",
-                content_text=combined_content,
-                summary=summary,
+            # 5. Output Generation Stage
+            logger.info("Generating output...")
+            identity, content, metadata_container = self.output_orchestrator.execute(
+                context, combined_content, summary, entities, tree_metadata
             )
-
-            # Update AI Processing metadata with extracted data using the metadata service
-            metadata_container = self.deps.metadata_service.create_root_metadata(root_node.id)
-            metadata_container.ai_metadata.entity_metadata = entities
-            metadata_container.ai_metadata.hierarchical_tree = tree_metadata
-            metadata_container.ai_metadata.chunk_id = f"chunk_{context.root_doc_id}"
-            metadata_container.ai_metadata.chunk_index = 0
-
-            # 5. Question Generation
-            logger.info(f"Generating learning loop for node {root_node.id}...")
-            try:
-                question = self.deps.question_service.generate_question(root_node)
-                logger.info(f"AI Question: {question}")
-            except AIServiceError as e:
-                logger.warning(
-                    f"Question generation failed: {e}. Skipping interactive prompt loop."
-                )
-
         except Exception as e:
-            logger.exception("Pipeline execution failed at an intermediate step.")
-            msg = f"Pipeline failure: {e}"
-            raise RuntimeError(msg) from e
+            self.error_handler.handle_execution_error(e)
         else:
             logger.info("Pipeline ML logic completed successfully.")
-            return root_node, metadata_container
+            return identity, content, metadata_container

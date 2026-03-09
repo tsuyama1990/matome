@@ -1,33 +1,27 @@
 from .manifest import (
     AIProcessingMetadata,
-    DocumentContent,
-    DocumentNode,
+    ContentNode,
+    IdentityNode,
     MetadataContainer,
-    NodeIdentity,
     NodeMetadata,
     NodeStatus,
 )
 
 
 class DocumentFactory:
-    """Domain service responsible for creating DocumentNode entities."""
+    """Domain service responsible for creating decoupled Identity and Content entities."""
 
     def __init__(self, max_content_length: int = 100000) -> None:
         self.max_content_length = max_content_length
 
     def create_root_node(
         self, node_id: str, title: str, content_text: str, summary: str
-    ) -> DocumentNode:
-        """Creates a properly initialized root DocumentNode."""
-        return DocumentNode(
-            identity=NodeIdentity(
-                id=node_id,
-                parent_id=None,
-                title=title,
-                status=NodeStatus.LOCKED,
-            ),
-            content=DocumentContent(summary=summary, text=content_text),
-        )
+    ) -> tuple[IdentityNode, ContentNode]:
+        """Creates correctly isolated identity and content structures."""
+
+        identity = IdentityNode(id=node_id, parent_id=None, title=title, status=NodeStatus.LOCKED)
+        content = ContentNode(node_id=node_id, summary=summary, text=content_text)
+        return identity, content
 
 
 class MetadataService:

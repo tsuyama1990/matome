@@ -1,9 +1,9 @@
-from pydantic import SecretStr
-
 from src.domain_models import (
     AIServiceProtocol,
-    DocumentNode,
+    ContentNode,
+    CredentialProviderProtocol,
     HTTPClientProtocol,
+    IdentityNode,
     PivotBoard,
     RetryPolicyProtocol,
     UserInteractionContext,
@@ -15,7 +15,7 @@ class DefaultAIService(AIServiceProtocol):
 
     def __init__(
         self,
-        api_key: SecretStr,
+        credential_provider: "CredentialProviderProtocol",
         api_url: str,
         text_fast_model: str,
         text_reasoning_model: str,
@@ -29,12 +29,12 @@ class DefaultAIService(AIServiceProtocol):
         self.text_fast_model = text_fast_model
         self.text_reasoning_model = text_reasoning_model
         self.ai_timeout = ai_timeout
-        self.api_key = api_key
+        self.credential_provider = credential_provider
 
     def _call_api(self, prompt: str, model: str | None = None) -> str:
         def _execute() -> str:
             headers = {
-                "Authorization": f"Bearer {self.api_key.get_secret_value()}",
+                "Authorization": f"Bearer {self.credential_provider.get_api_key()}",
                 "Content-Type": "application/json",
             }
             data = {
@@ -57,8 +57,8 @@ class DefaultAIService(AIServiceProtocol):
         )
         return self._call_api(prompt, model=self.text_fast_model)
 
-    def generate_question(self, node: DocumentNode) -> str:
-        prompt = f"Generate an engaging SQ3R question for the following content node:\n\n{node.title}\n{node.content.summary}"
+    def generate_question(self, identity: IdentityNode, content: ContentNode) -> str:
+        prompt = f"Generate an engaging SQ3R question for the following content node:\n\n{identity.title}\n{content.summary}"
         return self._call_api(prompt, model=self.text_fast_model)
 
     def generate_mermaid_diagram(self, board: PivotBoard) -> str:

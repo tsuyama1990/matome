@@ -1,3 +1,5 @@
+import pytest
+
 from src.config import Settings
 from src.domain_models.manifest import PipelineContext
 from src.domain_models.services import DocumentFactory, MetadataService
@@ -7,9 +9,6 @@ from src.infrastructure.orchestrator import (
     PipelineDependencies,
     PipelineOrchestrator,
 )
-from src.infrastructure.services import (
-    ServiceFactory,
-)
 from tests.helpers.mocks import MockAIService
 
 
@@ -17,7 +16,7 @@ class IntegrationTestSettings(Settings):
     """Test-specific configuration class strictly for safe mock validations."""
 
 
-def test_pipeline_orchestrator_integration() -> None:
+def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> None:
     """
     Tests the core document ingestion and AI pipeline.
     This demonstrates E2E capabilities directly on the orchestrator.
@@ -28,23 +27,33 @@ def test_pipeline_orchestrator_integration() -> None:
     factory = DocumentFactory()
     metadata_service = MetadataService()
 
-    import os
+    from unittest.mock import patch
 
     from pydantic import SecretStr
 
-    mock_key = os.environ.get("OPENROUTER_API_KEY", "sk-or-v1-validkey12345678901234567890")
+    with patch(
+        "src.config.Settings.validate_api_key", return_value=SecretStr("sk-or-v1-" + "a" * 30)
+    ):
+        settings = IntegrationTestSettings(
+            openrouter_api_key=SecretStr("sk-or-v1-" + "a" * 30),
+            openrouter_api_url="https://mock.api.url",
+            text_fast_model="google/gemini-2.5-flash",
+            text_reasoning_model="deepseek/deepseek-reasoner",
+            multimodal_model="openai/gpt-4o",
+            allowed_base_dir=str(tmp_path),
+        )
 
-    settings = IntegrationTestSettings(
-        openrouter_api_key=SecretStr(mock_key),
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
+    from src.infrastructure.services import (
+        DefaultClusteringService,
+        DefaultEntityExtractor,
+        DefaultTextSplitter,
     )
-    text_splitter = ServiceFactory.create_text_splitter(
+
+    text_splitter = DefaultTextSplitter(
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
     )
-    entity_extractor = ServiceFactory.create_entity_extractor(settings.spacy_model)
-    clustering_service = ServiceFactory.create_clustering_service(settings.random_seed)
+    entity_extractor = DefaultEntityExtractor(settings.spacy_model)
+    clustering_service = DefaultClusteringService(settings.random_seed)
 
     deps = PipelineDependencies(
         doc_repo=repo,
@@ -66,22 +75,22 @@ def test_pipeline_orchestrator_integration() -> None:
     # Run the pipeline
     root_doc_id = settings.default_root_doc_id
 
-    content = "This is a very long business manual about strategy."
-    context = PipelineContext(root_doc_id=root_doc_id, content=content, file_path=None)
+    content_text = "This is a very long business manual about strategy."
+    context = PipelineContext(root_doc_id=root_doc_id, content=content_text, file_path=None)
 
     orchestrator.run_pipeline(context)
 
     # Verify the results in the repository
-    nodes = [repo.get_node(root_doc_id)]  # Since it's saved as root (parent_id=None)
-    assert len(nodes) == 1
-    root = nodes[0]
+    identity = repo.get_identity(root_doc_id)
+    content_node = repo.get_content(root_doc_id)
 
-    assert root is not None
-    assert root.id == root_doc_id
-    assert root.content.summary is not None
-    assert "System Actor" in root.content.summary
-    assert "Action" in root.content.summary
+    assert identity is not None
+    assert content_node is not None
+    assert identity.id == root_doc_id
+    assert content_node.summary is not None
+    assert "System Actor" in content_node.summary
+    assert "Action" in content_node.summary
 
-    metadata = metadata_service.get_metadata(root.id)
+    metadata = metadata_service.get_metadata(identity.id)
     assert metadata is not None
     assert metadata.metadata.category == "business"

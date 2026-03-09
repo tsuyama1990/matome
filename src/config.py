@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
@@ -9,11 +8,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class MatomeConfig(BaseSettings):
     """Base configuration model class"""
 
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(extra="forbid")
 
 
 class ModeConfig(MatomeConfig):
     """Application mode configuration."""
+
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
     )
@@ -24,9 +24,7 @@ class Settings(MatomeConfig):
 
     openrouter_api_key: SecretStr = Field(..., description="BYOK API key for OpenRouter")
     openrouter_api_url: str = Field(
-        default_factory=lambda: str(
-            os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
-        ),
+        ...,
         description="The base URL for the OpenRouter API endpoint",
     )
     text_fast_model: str = Field(
@@ -52,7 +50,7 @@ class Settings(MatomeConfig):
         description="Maximum allowed file size in bytes (default 10MB)",
     )
     allowed_base_dir: str = Field(
-        default_factory=lambda: str(Path(os.getenv("ALLOWED_BASE_DIR", "."))),
+        ...,
         description="Base directory allowed for file ingestion",
     )
     chunk_size: int = Field(
@@ -91,6 +89,18 @@ class Settings(MatomeConfig):
         default_factory=lambda: str(os.getenv("SPACY_MODEL", "en_core_web_sm")),
         description="SpaCy model used for Entity Extraction",
     )
+    trusted_spacy_models: list[str] = Field(
+        default_factory=lambda: os.getenv(
+            "TRUSTED_SPACY_MODELS", "en_core_web_sm,en_core_web_md"
+        ).split(","),
+        description="List of trusted SpaCy models that are allowed to load",
+    )
+    fallback_ner_regex: str = Field(
+        default_factory=lambda: str(
+            os.getenv("FALLBACK_NER_REGEX", r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b")
+        ),
+        description="Regex pattern used for fallback entity extraction",
+    )
     random_seed: int = Field(
         default_factory=lambda: int(os.getenv("RANDOM_SEED", "42")),
         description="Random seed for clustering ML models (UMAP/GMM)",
@@ -99,16 +109,22 @@ class Settings(MatomeConfig):
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
     def validate_allowed_base_dir(cls, value: str) -> str:
+        from pathlib import Path
+
         from src.domain_models.exceptions import ConfigurationError
 
         if not value:
             err_msg = "ALLOWED_BASE_DIR must be configured in settings."
             raise ConfigurationError(err_msg)
+
+        if not Path(value).is_absolute():
+            err_msg = "ALLOWED_BASE_DIR must be an absolute path."
+            raise ConfigurationError(err_msg)
         return value
 
-    @field_validator("openrouter_api_key", mode="before")
+    @field_validator("openrouter_api_key", mode="after")
     @classmethod
-    def validate_api_key(cls, value: Any) -> Any:
+    def validate_api_key(cls, value: SecretStr) -> SecretStr:
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
 
@@ -116,13 +132,14 @@ class Settings(MatomeConfig):
             err_msg = "OPENROUTER_API_KEY is required"
             raise ConfigurationError(err_msg)
 
-        # Unwrap if it's passed as a SecretStr or handle plain strings from env vars
-        val_str = value.get_secret_value() if isinstance(value, SecretStr) else str(value)
+        val_str = value.get_secret_value()
 
         try:
-            return validate_api_key_format(val_str)
+            validate_api_key_format(val_str)
         except ValueError as e:
             raise ConfigurationError(str(e)) from e
+        else:
+            return value
 
 
 class AppContext(BaseModel):
@@ -137,6 +154,16 @@ class ConcreteConfigService:
 
     def get(self, key: str) -> Any:
         return getattr(self._settings, key)
+
+
+class EnvCredentialProvider:
+    """Secure credential provider strictly executing JIT string extraction directly returning values to the HTTP Client without storing them inside AI services."""
+
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def get_api_key(self) -> str:
+        return self._settings.openrouter_api_key.get_secret_value()
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
