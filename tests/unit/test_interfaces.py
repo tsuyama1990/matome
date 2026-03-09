@@ -24,6 +24,7 @@ class MockDocumentRepository:
     def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]:
         return []
 
+
 class MockUserInteractionRepository:
     def save_context(self, context: UserInteractionContext) -> None:
         pass
@@ -31,12 +32,14 @@ class MockUserInteractionRepository:
     def get_context(self, node_id: str) -> UserInteractionContext | None:
         return None
 
+
 class MockPivotBoardRepository:
     def save_board(self, board: PivotBoard) -> None:
         pass
 
     def get_board(self, board_id: str) -> PivotBoard | None:
         return None
+
 
 def test_mock_document_repository_implements_protocol() -> None:
     repo: DocumentRepository = MockDocumentRepository()
@@ -46,10 +49,12 @@ def test_mock_document_repository_implements_protocol() -> None:
     assert hasattr(repo, "get_children")
     assert hasattr(repo, "query_nodes")
 
+
 def test_mock_user_interaction_repository_implements_protocol() -> None:
     repo: UserInteractionRepository = MockUserInteractionRepository()
     assert hasattr(repo, "save_context")
     assert hasattr(repo, "get_context")
+
 
 def test_mock_pivot_board_repository_implements_protocol() -> None:
     repo: PivotBoardRepository = MockPivotBoardRepository()

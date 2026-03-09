@@ -4,6 +4,7 @@ from src.interfaces.protocols import AIServiceProtocol
 
 class MockAIService(AIServiceProtocol):
     """Mock implementation of the AIServiceProtocol for testing and isolated pipelines."""
+
     def generate_summary(self, content: str) -> str:
         return f"CoD Summary of: {content[:20]}..."
 
