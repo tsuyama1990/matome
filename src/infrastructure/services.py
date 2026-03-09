@@ -3,8 +3,8 @@ import re
 import typing
 from typing import Any
 
+from src.domain_models.exceptions import AIServiceError
 from src.domain_models.interfaces import (
-    AIServiceError,
     ClusteringServiceProtocol,
     EntityExtractorProtocol,
     HTTPClientProtocol,

@@ -4,8 +4,12 @@ from .analysis import (
     PivotBoardView,
     PivotBoardViewNode,
 )
-from .interfaces import (
+from .exceptions import (
     AIServiceError,
+    ConfigurationError,
+    RepositoryError,
+)
+from .interfaces import (
     AIServiceProtocol,
     ClusteringServiceProtocol,
     DocumentQueryService,
@@ -15,7 +19,6 @@ from .interfaces import (
     EntityExtractorProtocol,
     HTTPClientProtocol,
     PivotBoardRepository,
-    RepositoryError,
     RetryPolicyProtocol,
     TextSplitterProtocol,
     Transactional,
@@ -43,6 +46,7 @@ __all__ = [
     "BestPracticeData",
     "CanvasNodeType",
     "ClusteringServiceProtocol",
+    "ConfigurationError",
     "DIKWLevel",
     "DocumentContent",
     "DocumentFactory",

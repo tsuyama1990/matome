@@ -38,22 +38,11 @@ class AppBuilder:
     @staticmethod
     def build(mode: str = "cli") -> Application:
         import os
-
-        from pydantic import SecretStr
-
-        from src.domain_models.interfaces import ConfigurationError
-
-        api_key_str = os.getenv("OPENROUTER_API_KEY")
-        if not api_key_str or len(api_key_str) < 30:
-            err_msg = "OPENROUTER_API_KEY is required"
-            raise ConfigurationError(err_msg)
-
-        api_key = SecretStr(api_key_str)
-
         from pathlib import Path
+
         settings = Settings(
             mode=mode,
-            openrouter_api_key=api_key,
+            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"), # type: ignore
             openrouter_api_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions"),
             text_fast_model=os.getenv("TEXT_FAST_MODEL", "google/gemini-2.5-flash"),
             text_reasoning_model=os.getenv("TEXT_REASONING_MODEL", "deepseek/deepseek-reasoner"),
@@ -114,7 +103,7 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        from src.domain_models.interfaces import ConfigurationError
+        from src.domain_models.exceptions import ConfigurationError
 
         try:
             app = AppBuilder.build(mode="cli")
@@ -122,12 +111,12 @@ def main() -> None:
             logger.exception("Configuration Error")
             sys.exit(1)
 
-        file_path = Path(args.file).resolve()
         if not app.settings.allowed_base_dir:
             logger.error("Configuration Error: ALLOWED_BASE_DIR must be configured in settings.")
             sys.exit(1)
 
         allowed_dir = Path(app.settings.allowed_base_dir).resolve()
+        file_path = Path(args.file).resolve()
 
         # Prevent directory traversal by checking against configured allowed directory
         if not file_path.is_relative_to(allowed_dir):

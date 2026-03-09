@@ -28,22 +28,23 @@ Name                                 Stmts   Miss  Cover   Missing
 ------------------------------------------------------------------
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
-src/application/ai.py                   40      4    90%   42, 62, 83-84
-src/config.py                           37      0   100%
-src/domain_models/__init__.py            6      0   100%
+src/application/ai.py                   40      6    85%   36-37, 42, 62, 83-84
+src/config.py                           46      0   100%
+src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           2      0   100%
 src/domain_models/enums.py              12      0   100%
-src/domain_models/interfaces.py         20      0   100%
+src/domain_models/exceptions.py          3      0   100%
+src/domain_models/interfaces.py         17      0   100%
 src/domain_models/manifest.py           60      0   100%
 src/domain_models/services.py            6      1    83%   21
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
-src/infrastructure/orchestrator.py      91     59    35%   43-45, 59-63, 70-74, 77-78, 82, 89-107, 110-168
+src/infrastructure/orchestrator.py      92     59    36%   44-46, 60-64, 71-75, 78-79, 83, 90-108, 111-169
 src/infrastructure/repository.py        48      8    83%   15-17, 25-29
-src/infrastructure/services.py         130     54    58%   32-37, 40-41, 46-76, 87-90, 98, 107-108, 117, 124-126, 154-158, 170, 172-173, 177-181
+src/infrastructure/services.py         131     54    59%   32-37, 40-41, 46-76, 87-90, 98, 107-108, 117, 124-126, 154-158, 170, 172-173, 177-181
 src/utils/__init__.py                    0      0   100%
 src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  499    127    75%
-=================== 28 passed, 1 warning in 63.85s (0:01:03) ===================
+TOTAL                                  511    129    75%
+=================== 28 passed, 1 warning in 64.73s (0:01:04) ===================

@@ -1,4 +1,5 @@
 import logging
+import typing
 from typing import Any
 
 from src.domain_models import (
@@ -85,7 +86,7 @@ class PipelineOrchestrator:
             self.doc_repo.save_node(result)
             self.doc_repo.commit()
 
-    def _get_chunk_iterator_and_content(self, context: PipelineContext) -> tuple[Any, str]:
+    def _get_chunk_iterator_and_content(self, context: PipelineContext) -> tuple[typing.Iterator[str], str]:
         import itertools
         if context.file_path:
             # We tee the generator into two iterators to avoid exhausting the single stream,

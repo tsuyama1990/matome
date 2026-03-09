@@ -14,7 +14,7 @@ from src.domain_models import (
     PivotBoardViewNode,
     UserInteractionContext,
 )
-from src.domain_models.interfaces import AIServiceError
+from src.domain_models.exceptions import AIServiceError
 
 
 def _create_mock_settings(api_key: str | None = None) -> Settings:
@@ -25,8 +25,14 @@ def _create_mock_settings(api_key: str | None = None) -> Settings:
     elif "OPENROUTER_API_KEY" in os.environ:
         del os.environ["OPENROUTER_API_KEY"]
 
+    from pydantic import SecretStr
+
     try:
+        # Pass dynamically resolved secret from environment to satisfy strict typings.
+        api_key_str = os.environ.get("OPENROUTER_API_KEY", "")
+        # Since pydantic validator catches invalid secrets, we can pass it directly
         return Settings(
+            openrouter_api_key=SecretStr(api_key_str) if api_key_str else None, # type: ignore
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
@@ -56,21 +62,22 @@ def _create_service(api_key: str | None = None) -> DefaultAIService:
 
 
 def test_default_ai_service_missing_key_init() -> None:
-    with pytest.raises(ValueError, match="A valid API Key is required"):
+    from src.domain_models.exceptions import ConfigurationError
+    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY is required"):
         _create_service(api_key=None)
 
 
 def test_default_ai_service_invalid_key_length() -> None:
-    from pydantic import ValidationError
+    from src.domain_models.exceptions import ConfigurationError
 
-    with pytest.raises(ValidationError, match="API Key must be at least 30 characters long"):
+    with pytest.raises(ConfigurationError, match="API Key must be at least 30 characters long"):
         _create_service(api_key="123")
 
 
 def test_default_ai_service_invalid_key_format() -> None:
-    from pydantic import ValidationError
+    from src.domain_models.exceptions import ConfigurationError
 
-    with pytest.raises(ValidationError, match="API Key format is invalid"):
+    with pytest.raises(ConfigurationError, match="API Key format is invalid"):
         _create_service(api_key="invalid_format_key_with_spaces and_tabs")
 
 

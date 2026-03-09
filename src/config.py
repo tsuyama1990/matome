@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import ROOT_DOC_ID
@@ -20,8 +20,8 @@ class Settings(MatomeConfig):
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
     )
-    openrouter_api_key: SecretStr | None = Field(
-        default=None, description="BYOK API key for OpenRouter", validate_default=True
+    openrouter_api_key: SecretStr = Field(
+        ..., description="BYOK API key for OpenRouter"
     )
     openrouter_api_url: str = Field(
         default_factory=lambda: str(os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")),
@@ -89,23 +89,37 @@ class Settings(MatomeConfig):
     @field_validator("openrouter_api_key", mode="before")
     @classmethod
     def validate_api_key(cls, value: Any) -> Any:
+        from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
 
         if not value:
-            return value
+            err_msg = "OPENROUTER_API_KEY is required"
+            raise ConfigurationError(err_msg)
 
         # Unwrap if it's passed as a SecretStr or handle plain strings from env vars
         val_str = value.get_secret_value() if isinstance(value, SecretStr) else str(value)
-        return validate_api_key_format(val_str)
+
+        try:
+            return validate_api_key_format(val_str)
+        except ValueError as e:
+            raise ConfigurationError(str(e)) from e
 
 
-def create_app_context(settings: Settings) -> dict[str, Any]:
+
+
+class AppContext(BaseModel):
+    settings: Settings
+    mode: str
+    db: Any | None = None
+
+
+def create_app_context(settings: Settings) -> AppContext:
     """Application factory pattern for injecting global settings."""
-    return {
-        "settings": settings,
-        "mode": settings.mode,
-        "db": None,  # Placeholder for a DB connection dependency
-    }
+    return AppContext(
+        settings=settings,
+        mode=settings.mode,
+        db=None,  # Placeholder for a DB connection dependency
+    )
 
 
 __all__ = ["Settings", "create_app_context"]
