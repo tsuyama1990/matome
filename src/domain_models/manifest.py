@@ -1,13 +1,10 @@
-from enum import StrEnum
-
 from pydantic import BaseModel, ConfigDict, Field
 
+from .constants import NODE_ID_PATTERN
+from .enums import NodeStatus
 
-class NodeStatus(StrEnum):
-    LOCKED = "LOCKED"
-    UNLOCKED = "UNLOCKED"
-    COMPLETED = "COMPLETED"
 
+__all__ = ["NodeStatus", "NodeMetadata", "DocumentContent", "AIProcessingMetadata", "DocumentNode", "UserInteractionContext"]
 
 class NodeMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -48,21 +45,18 @@ class DocumentNode(BaseModel):
         ...,
         description="Unique identifier for the node",
         max_length=100,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=NODE_ID_PATTERN,
     )
     parent_id: str | None = Field(
         None,
         description="Identifier of the parent node",
         max_length=100,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=NODE_ID_PATTERN,
     )
     title: str = Field(..., description="Title of the node", max_length=500)
     content: DocumentContent = Field(..., description="The content components of the node")
     status: NodeStatus = Field(
         NodeStatus.LOCKED, description="Current status of the node in the learning journey"
-    )
-    children_ids: list[str] = Field(
-        default_factory=list, description="List of child node identifiers"
     )
     metadata: NodeMetadata = Field(..., description="Metadata tags such as Time Axis, Actor, etc.")
 
@@ -79,7 +73,7 @@ class UserInteractionContext(BaseModel):
         ...,
         description="The node being interacted with",
         max_length=100,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=NODE_ID_PATTERN,
     )
     status: NodeStatus = Field(..., description="Current status before interaction")
     question_asked: str | None = Field(

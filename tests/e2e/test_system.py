@@ -10,17 +10,21 @@ def test_pipeline_orchestrator_integration() -> None:
     Tests the core document ingestion and AI pipeline.
     This demonstrates E2E capabilities directly on the orchestrator, mocking dependencies appropriately.
     """
+    import os
+
+    os.environ["MODE"] = "test"
+    os.environ["DEFAULT_AI_MODEL"] = "google/gemini-2.5-flash"
+    os.environ["DEFAULT_ROOT_DOC_ID"] = "root_doc_1"
+
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
-    factory = DocumentFactory(ai_service=ai)
-    settings = Settings(mode="test")
-    orchestrator = PipelineOrchestrator(
-        doc_repo=repo, ai_service=ai, settings=settings, doc_factory=factory
-    )
+    factory = DocumentFactory()
+    settings = Settings()
+    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
 
     # Run the pipeline
     content = "This is a very long business manual about strategy."
-    orchestrator.run_pipeline(content)
+    orchestrator.run_pipeline(root_doc_id=settings.default_root_doc_id, content=content)
 
     # Verify the results in the repository
     nodes = [

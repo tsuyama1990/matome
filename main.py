@@ -1,10 +1,11 @@
 import logging
+import os
 import sys
 
+from src.application.ai import DefaultAIService
 from src.config import Settings
 from src.domain_models.services import DocumentFactory
 from src.infrastructure import InMemoryDocumentRepository
-from src.infrastructure.ai_service import DefaultAIService
 from src.infrastructure.orchestrator import PipelineOrchestrator
 
 # Setup basic logging
@@ -23,17 +24,21 @@ class Application:
         logger.info(f"Initializing matome application in {self.settings.mode} mode...")
         # Provide sample content directly instead of hardcoding in settings
         sample_content = "This is a very long business manual about strategy."
-        self.orchestrator.run_pipeline(sample_content)
+        self.orchestrator.run_pipeline(
+            root_doc_id=self.settings.default_root_doc_id, content=sample_content
+        )
 
 
 def create_app(mode: str = "cli") -> Application:
-    settings = Settings(mode=mode)
+    os.environ["MODE"] = mode
+    os.environ["DEFAULT_AI_MODEL"] = "google/gemini-2.5-flash"
+    os.environ["DEFAULT_ROOT_DOC_ID"] = "root_doc_1"
+
+    settings = Settings()
     repo = InMemoryDocumentRepository()
     ai = DefaultAIService()
-    factory = DocumentFactory(ai_service=ai)
-    orchestrator = PipelineOrchestrator(
-        doc_repo=repo, ai_service=ai, settings=settings, doc_factory=factory
-    )
+    factory = DocumentFactory()
+    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
     return Application(settings=settings, orchestrator=orchestrator)
 
 

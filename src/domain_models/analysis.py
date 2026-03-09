@@ -1,16 +1,10 @@
-from enum import StrEnum
-
 from pydantic import BaseModel, ConfigDict, Field
 
+from .constants import NODE_ID_PATTERN
+from .enums import PivotAxis
 
-class PivotAxis(StrEnum):
-    ACTOR_STATE = "Actor vs. State Transition"
-    OPPORTUNITIES_THREATS = "Opportunities vs Threats"
-    TIME = "Time Axis"
-    SWOT = "SWOT Analysis"
-    PESTLE = "PESTLE Analysis"
-    CUSTOM = "Custom Axis"
 
+__all__ = ["PivotAxis", "PivotBoardViewNode", "PivotBoard", "PivotBoardView"]
 
 class PivotBoardViewNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -19,7 +13,7 @@ class PivotBoardViewNode(BaseModel):
         ...,
         description="Reference to the original DocumentNode ID",
         max_length=100,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=NODE_ID_PATTERN,
     )
     x_position: float = Field(
         ..., description="Calculated X coordinate on the pivot board", ge=0.0, le=1.0
@@ -31,7 +25,7 @@ class PivotBoardViewNode(BaseModel):
         None,
         description="The cluster this node belongs to on the pivot board",
         max_length=100,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=NODE_ID_PATTERN,
     )
 
 
@@ -42,13 +36,13 @@ class PivotBoard(BaseModel):
         ...,
         description="Unique identifier for the pivot board",
         max_length=100,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=NODE_ID_PATTERN,
     )
     original_root_id: str = Field(
         ...,
         description="The root DocumentNode ID this board is based on",
         max_length=100,
-        pattern=r"^[a-zA-Z0-9_-]+$",
+        pattern=NODE_ID_PATTERN,
     )
     axis: PivotAxis = Field(..., description="The multidimensional axis used for this pivot")
     custom_axis_description: str | None = Field(
