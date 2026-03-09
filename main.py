@@ -1,5 +1,4 @@
 import logging
-import os
 import sys
 
 from src.application.ai import DefaultAIService
@@ -32,17 +31,14 @@ class Application:
 
 
 def create_app(mode: str = "cli") -> Application:
-    os.environ["MODE"] = mode
-    os.environ["DEFAULT_AI_MODEL"] = "google/gemini-2.5-flash"
-    os.environ["DEFAULT_ROOT_DOC_ID"] = "root_doc_1"
-
-    settings = Settings()
+    # Use settings passed directly or initialized from the environment
+    settings = Settings(mode=mode)
     repo = InMemoryDocumentRepository()
 
     api_key_str = (
         settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
     )
-    ai = DefaultAIService(api_key=api_key_str, model=settings.default_ai_model)
+    ai = DefaultAIService(api_key=api_key_str, model=settings.text_fast_model)
     factory = DocumentFactory()
     orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
     return Application(settings=settings, orchestrator=orchestrator)

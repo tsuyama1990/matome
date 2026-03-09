@@ -11,6 +11,7 @@ def __():
     sys.path.append(".")
     import marimo as mo
 
+    from src.application.ai import DefaultAIService
     from src.config import Settings
     from src.domain_models import (
         DocumentFactory,
@@ -25,6 +26,7 @@ def __():
     from tests.helpers.mocks import MockAIService
 
     return (
+        DefaultAIService,
         DocumentFactory,
         InMemoryDocumentRepository,
         MockAIService,
@@ -42,6 +44,7 @@ def __():
 
 @app.cell
 def __(
+    DefaultAIService,
     DocumentFactory,
     InMemoryDocumentRepository,
     MockAIService,
@@ -53,11 +56,21 @@ def __(
 
     settings = Settings()
     repo = InMemoryDocumentRepository()
-    ai = MockAIService()
+
+    # Conditional AI service initialization based on environment config
+    api_key = settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
+
+    if api_key:
+        ai = DefaultAIService(api_key=api_key, model=settings.text_fast_model)
+        mode_text = "Real AI Integration Mode (OpenRouter active)."
+    else:
+        ai = MockAIService()
+        mode_text = "Mock Mode (No OpenRouter key found. Running with mock AI logic)."
+
     factory = DocumentFactory()
     orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
 
-    mo.md("System initialized successfully in Mock Mode.")
+    mo.md(f"System initialized successfully in: **{mode_text}**")
     return ai, factory, orchestrator, repo, settings
 
 
