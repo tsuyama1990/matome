@@ -67,7 +67,7 @@ def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, Pipel
         http_client=http_client,
         retry_policy=retry_policy,
     )
-    factory = DocumentFactory()
+    factory = DocumentFactory(max_content_length=settings.max_content_length)
     metadata_service = MetadataService()
 
     from src.infrastructure.services import (
@@ -86,7 +86,11 @@ def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, Pipel
         trusted_models=set(settings.trusted_spacy_models),
         fallback_ner_regex=settings.fallback_ner_regex,
     )
-    clustering_service = DefaultClusteringService(settings.random_seed)
+    clustering_service = DefaultClusteringService(
+        random_seed=settings.random_seed,
+        n_features=settings.hashing_n_features,
+        batch_size=settings.kmeans_batch_size,
+    )
 
     deps = PipelineDependencies(
         doc_repo=repo,
@@ -102,6 +106,8 @@ def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, Pipel
     config = PipelineConfig(
         pipeline_timeout=settings.pipeline_timeout,
         raptor_max_clusters=settings.raptor_max_clusters,
+        preview_chunk_count=settings.preview_chunk_count,
+        default_doc_title=settings.default_doc_title,
     )
     return deps, config
 
