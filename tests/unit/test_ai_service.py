@@ -6,6 +6,7 @@ from src.domain_models import (
     AIProcessingMetadata,
     DocumentContent,
     DocumentNode,
+    NodeIdentity,
     NodeMetadata,
     NodeStatus,
     PivotAxis,
@@ -82,11 +83,13 @@ def test_default_ai_service_calls_generate_question_valid() -> None:
 
     ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
     node = DocumentNode(
-        id="test1",
-        parent_id=None,
-        title="Test Title",
+        identity=NodeIdentity(
+            id="test1",
+            parent_id=None,
+            title="Test Title",
+            status=NodeStatus.LOCKED,
+        ),
         content=DocumentContent(summary=None, text=None),
-        status=NodeStatus.LOCKED,
         metadata_container=DocumentMetadataContainer(
             metadata=NodeMetadata(source=None, author=None, category=None, time_axis=None),
             ai_metadata=AIProcessingMetadata(

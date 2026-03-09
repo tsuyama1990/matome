@@ -6,6 +6,7 @@ from src.domain_models import (
     BestPracticeData,
     DocumentContent,
     DocumentNode,
+    NodeIdentity,
     NodeMetadata,
     NodeStatus,
     PivotAxis,
@@ -20,11 +21,13 @@ from src.domain_models.manifest import DocumentMetadataContainer
 
 def test_document_node_valid() -> None:
     node = DocumentNode(
-        id="node1",
-        parent_id=None,
-        title="Test Node",
+        identity=NodeIdentity(
+            id="node1",
+            parent_id=None,
+            title="Test Node",
+            status=NodeStatus.LOCKED,
+        ),
         content=DocumentContent(summary=None, text=None),
-        status=NodeStatus.LOCKED,
         metadata_container=DocumentMetadataContainer(
             metadata=NodeMetadata(
                 source=None,
@@ -50,9 +53,12 @@ def test_document_node_valid() -> None:
 def test_document_node_invalid_extra() -> None:
     with pytest.raises(ValidationError):
         DocumentNode(
-            id="node1",
-            parent_id=None,
-            title="Test Node",
+            identity=NodeIdentity(
+                id="node1",
+                parent_id=None,
+                title="Test Node",
+                status=NodeStatus.LOCKED,
+            ),
             content=DocumentContent(summary=None, text=None),
             metadata_container=DocumentMetadataContainer(
                 metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None),
@@ -92,12 +98,12 @@ def test_user_interaction_context_invalid_hints() -> None:
 
 def test_summary_node_valid() -> None:
     summary_node = SummaryNode(
-        id=123,
+        id="123",
         title="Summary Title",
         summary="This is a summary",
-        children_indices=[1, "child_2"],
+        children_indices=["1", "child_2"],
     )
-    assert summary_node.id == 123
+    assert summary_node.id == "123"
     assert len(summary_node.children_indices) == 2
     assert summary_node.children_indices[1] == "child_2"
 

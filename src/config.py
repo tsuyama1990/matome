@@ -5,8 +5,6 @@ from typing import Any
 from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.domain_models.constants import ROOT_DOC_ID
-
 
 class MatomeConfig(BaseSettings):
     """Base configuration model class"""
@@ -41,7 +39,7 @@ class Settings(MatomeConfig):
     )
 
     default_root_doc_id: str = Field(
-        default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", ROOT_DOC_ID)),
+        default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", "root_doc_1")),
         description="Default root document ID used in pipeline initialization",
     )
 

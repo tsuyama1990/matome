@@ -14,4 +14,4 @@ class CanvasNodeType(StrEnum):
     EVIDENCE = "evidence"
 
 
-NodeID = int | str
+NodeID = str

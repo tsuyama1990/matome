@@ -56,20 +56,20 @@ def test_pipeline_orchestrator_integration() -> None:
     )
 
     # Run the pipeline
-    from src.domain_models.constants import ROOT_DOC_ID
+    root_doc_id = settings.default_root_doc_id
 
     content = "This is a very long business manual about strategy."
-    context = PipelineContext(root_doc_id=ROOT_DOC_ID, content=content, file_path=None)
+    context = PipelineContext(root_doc_id=root_doc_id, content=content, file_path=None)
 
     orchestrator.run_pipeline(context)
 
     # Verify the results in the repository
-    nodes = [repo.get_node(ROOT_DOC_ID)]  # Since it's saved as root (parent_id=None)
+    nodes = [repo.get_node(root_doc_id)]  # Since it's saved as root (parent_id=None)
     assert len(nodes) == 1
     root = nodes[0]
 
     assert root is not None
-    assert root.id == ROOT_DOC_ID
+    assert root.id == root_doc_id
     assert root.content.summary is not None
     assert "System Actor" in root.content.summary
     assert "Action" in root.content.summary

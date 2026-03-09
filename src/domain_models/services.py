@@ -3,6 +3,7 @@ from .manifest import (
     DocumentContent,
     DocumentMetadataContainer,
     DocumentNode,
+    NodeIdentity,
     NodeMetadata,
     NodeStatus,
 )
@@ -19,11 +20,13 @@ class DocumentFactory:
     ) -> DocumentNode:
         """Creates a properly initialized root DocumentNode."""
         return DocumentNode(
-            id=node_id,
-            parent_id=None,
-            title=title,
+            identity=NodeIdentity(
+                id=node_id,
+                parent_id=None,
+                title=title,
+                status=NodeStatus.LOCKED,
+            ),
             content=DocumentContent(summary=summary, text=content_text),
-            status=NodeStatus.LOCKED,
             metadata_container=DocumentMetadataContainer(
                 metadata=NodeMetadata(
                     category="business", author="System", source="upload", time_axis=None

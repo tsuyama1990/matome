@@ -77,7 +77,9 @@ class DocumentMetadataContainer(BaseModel):
     ai_metadata: AIProcessingMetadata = Field(..., description="AI processing metadata")
 
 
-class DocumentNode(BaseModel):
+class NodeIdentity(BaseModel):
+    """Identity and structure properties of a node in the graph."""
+
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(
@@ -93,13 +95,35 @@ class DocumentNode(BaseModel):
         pattern=NODE_ID_PATTERN,
     )
     title: str = Field(..., description="Title of the node", max_length=500)
-    content: DocumentContent = Field(..., description="The content components of the node")
     status: NodeStatus = Field(
         NodeStatus.LOCKED, description="Current status of the node in the learning journey"
     )
+
+
+class DocumentNode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    identity: NodeIdentity = Field(..., description="Structural and identity data for the node")
+    content: DocumentContent = Field(..., description="The content components of the node")
     metadata_container: DocumentMetadataContainer = Field(
         ..., description="Separated metadata components for this node"
     )
+
+    @property
+    def id(self) -> str:
+        return self.identity.id
+
+    @property
+    def parent_id(self) -> str | None:
+        return self.identity.parent_id
+
+    @property
+    def title(self) -> str:
+        return self.identity.title
+
+    @property
+    def status(self) -> NodeStatus:
+        return self.identity.status
 
 
 class SummaryNode(BaseModel):
@@ -111,7 +135,7 @@ class SummaryNode(BaseModel):
     )
     title: str = Field(..., description="Title of the summary node", max_length=500)
     summary: str = Field(..., description="The summary text", max_length=2000)
-    children_indices: list[int | str] = Field(
+    children_indices: list[str] = Field(
         default_factory=list, description="Indices/IDs of the children nodes"
     )
 

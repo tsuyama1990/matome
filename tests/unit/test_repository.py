@@ -2,6 +2,7 @@ from src.domain_models import (
     AIProcessingMetadata,
     DocumentContent,
     DocumentNode,
+    NodeIdentity,
     NodeMetadata,
     NodeStatus,
 )
@@ -13,11 +14,13 @@ def create_mock_node(
     node_id: str, parent_id: str | None = None, status: NodeStatus = NodeStatus.LOCKED
 ) -> DocumentNode:
     return DocumentNode(
-        id=node_id,
-        parent_id=parent_id,
-        title=node_id,
+        identity=NodeIdentity(
+            id=node_id,
+            parent_id=parent_id,
+            title=node_id,
+            status=status,
+        ),
         content=DocumentContent(summary=None, text=None),
-        status=status,
         metadata_container=DocumentMetadataContainer(
             metadata=NodeMetadata(source=None, author=None, category=None, time_axis=None),
             ai_metadata=AIProcessingMetadata(
