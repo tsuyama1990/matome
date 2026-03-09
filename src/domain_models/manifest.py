@@ -1,4 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .constants import NODE_ID_PATTERN
 from .enums import NodeStatus
@@ -72,6 +74,18 @@ class DocumentNode(BaseModel):
 
     # Adding fields mandated by auditor in FR-1.2 and FR-1.3 requirements
     ai_metadata: AIProcessingMetadata = Field(..., description="AI processing metadata")
+
+    @model_validator(mode="after")
+    def validate_content_length(self) -> Self:
+        from src.config import Settings
+
+        settings = Settings()
+        if self.parent_id is not None and self.content.text:
+            max_allowed = settings.chunk_size + settings.chunk_overlap
+            if len(self.content.text) > max_allowed:
+                msg = f"Leaf node content length ({len(self.content.text)}) exceeds allowed configured semantic chunk boundary ({max_allowed})."
+                raise ValueError(msg)
+        return self
 
 
 class PipelineContext(BaseModel):

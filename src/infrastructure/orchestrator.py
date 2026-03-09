@@ -3,6 +3,7 @@ import threading
 
 from src.config import Settings
 from src.domain_models import (
+    AIServiceError,
     AIServiceProtocol,
     ClusteringServiceProtocol,
     DocumentFactory,
@@ -67,7 +68,11 @@ class PipelineOrchestrator:
 
             # 4. Chain of Density (CoD) Summarization
             logger.info("Applying Chain of Density summarization...")
-            summary = self.ai_service.generate_summary(context.content)
+            try:
+                summary = self.ai_service.generate_summary(context.content)
+            except AIServiceError as e:
+                logger.warning(f"Summarization failed: {e}. Using fallback summary.")
+                summary = "Fallback Summary: Content processing currently impaired due to AI unavailability."
 
             root_node = self.doc_factory.create_root_node(
                 node_id=context.root_doc_id,
@@ -86,8 +91,13 @@ class PipelineOrchestrator:
 
             # 5. Question Generation
             logger.info(f"Generating learning loop for node {root_node.id}...")
-            question = self.ai_service.generate_question(root_node)
-            logger.info(f"AI Question: {question}")
+            try:
+                question = self.ai_service.generate_question(root_node)
+                logger.info(f"AI Question: {question}")
+            except AIServiceError as e:
+                logger.warning(
+                    f"Question generation failed: {e}. Skipping interactive prompt loop."
+                )
 
             self.doc_repo.commit()
             logger.info("Pipeline execution completed successfully.")

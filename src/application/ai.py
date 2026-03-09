@@ -27,7 +27,7 @@ class DefaultAIService(AIServiceProtocol):
             settings = Settings()
 
         self.http_client = http_client or RequestsHTTPClient()
-        self.retry_policy = retry_policy or TenacityRetryPolicy()
+        self.retry_policy = retry_policy or TenacityRetryPolicy(settings=settings)
 
         self.settings = settings
         api_key = self.settings.openrouter_api_key
@@ -54,7 +54,10 @@ class DefaultAIService(AIServiceProtocol):
                 "messages": [{"role": "user", "content": prompt}],
             }
             result = self.http_client.post(
-                self.settings.openrouter_api_url, json=data, headers=headers, timeout=10
+                self.settings.openrouter_api_url,
+                json=data,
+                headers=headers,
+                timeout=self.settings.ai_timeout,
             )
             return str(result["choices"][0]["message"]["content"])
 

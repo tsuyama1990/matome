@@ -37,9 +37,7 @@ def create_app(mode: str = "cli") -> Application:
 
     ai = DefaultAIService(settings=settings)
     factory = DocumentFactory()
-    text_splitter = DefaultTextSplitter(
-        chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
-    )
+    text_splitter = DefaultTextSplitter(settings=settings)
     entity_extractor = DefaultEntityExtractor()
     clustering_service = DefaultClusteringService()
 

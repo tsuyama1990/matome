@@ -50,6 +50,14 @@ class Settings(BaseSettings):
     pipeline_timeout: float = Field(
         default=300.0, description="Pipeline execution timeout in seconds"
     )
+    ai_timeout: int = Field(
+        default=10, description="Timeout for external AI API requests in seconds"
+    )
+    ai_retry_attempts: int = Field(
+        default=3, description="Maximum number of retry attempts for AI requests"
+    )
+    ai_retry_min_wait: int = Field(default=1, description="Minimum backoff wait time in seconds")
+    ai_retry_max_wait: int = Field(default=10, description="Maximum backoff wait time in seconds")
 
     @field_validator("openrouter_api_key", mode="before")
     @classmethod

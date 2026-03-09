@@ -17,7 +17,7 @@ def _create_orchestrator() -> PipelineOrchestrator:
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
     factory = DocumentFactory()
-    text_splitter = DefaultTextSplitter(chunk_size=1000, chunk_overlap=100)
+    text_splitter = DefaultTextSplitter(settings=settings)
     entity_extractor = DefaultEntityExtractor()
     clustering_service = DefaultClusteringService()
 

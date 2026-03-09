@@ -22,7 +22,7 @@ def test_pipeline_orchestrator_integration() -> None:
     factory = DocumentFactory()
 
     settings = Settings(mode="test")
-    text_splitter = DefaultTextSplitter(chunk_size=1000, chunk_overlap=100)
+    text_splitter = DefaultTextSplitter(settings=settings)
     entity_extractor = DefaultEntityExtractor()
     clustering_service = DefaultClusteringService()
 
@@ -38,14 +38,13 @@ def test_pipeline_orchestrator_integration() -> None:
 
     # Run the pipeline
     from src.domain_models.constants import ROOT_DOC_ID
+
     content = "This is a very long business manual about strategy."
     context = PipelineContext(root_doc_id=ROOT_DOC_ID, content=content)
     orchestrator.run_pipeline(context)
 
     # Verify the results in the repository
-    nodes = [
-        repo.get_node(ROOT_DOC_ID)
-    ]  # Since it's saved as root (parent_id=None)
+    nodes = [repo.get_node(ROOT_DOC_ID)]  # Since it's saved as root (parent_id=None)
     assert len(nodes) == 1
     root = nodes[0]
 
