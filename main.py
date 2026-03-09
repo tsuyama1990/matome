@@ -38,23 +38,15 @@ class AppBuilder:
     @staticmethod
     def build(mode: str = "cli") -> Application:
         import os
-        from pathlib import Path
 
-        settings = Settings(
-            mode=mode,
-            openrouter_api_key=os.getenv("OPENROUTER_API_KEY"), # type: ignore
-            openrouter_api_url=os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions"),
-            text_fast_model=os.getenv("TEXT_FAST_MODEL", "google/gemini-2.5-flash"),
-            text_reasoning_model=os.getenv("TEXT_REASONING_MODEL", "deepseek/deepseek-reasoner"),
-            multimodal_model=os.getenv("MULTIMODAL_MODEL", "openai/gpt-4o"),
-            chunk_size=int(os.getenv("CHUNK_SIZE", "1000")),
-            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "100")),
-            raptor_max_clusters=int(os.getenv("RAPTOR_MAX_CLUSTERS", "5")),
-            pipeline_timeout=float(os.getenv("PIPELINE_TIMEOUT", "300.0")),
-            ai_timeout=int(os.getenv("AI_TIMEOUT", "10")),
-            max_file_size=int(os.getenv("MAX_FILE_SIZE", str(10 * 1024 * 1024))),
-            allowed_base_dir=os.getenv("ALLOWED_BASE_DIR", str(Path.cwd().resolve()))
-        )
+        # Initialize Settings directly; pydantic_settings will auto-load os.environ
+        # We only override defaults where explicitly passed.
+        # Strict validation of OPENROUTER_API_KEY and ALLOWED_BASE_DIR happens inside Settings.
+        os.environ["MODE"] = mode
+
+        # Pydantic BaseSettings natively pulls OPENROUTER_API_KEY from env, but type checkers don't know it.
+        # It's validated internally via field_validators. We disable type checking on init kwargs.
+        settings = Settings() # type: ignore
 
         repo = InMemoryDocumentRepository()
 
@@ -109,10 +101,6 @@ def main() -> None:
             app = AppBuilder.build(mode="cli")
         except ConfigurationError:
             logger.exception("Configuration Error")
-            sys.exit(1)
-
-        if not app.settings.allowed_base_dir:
-            logger.error("Configuration Error: ALLOWED_BASE_DIR must be configured in settings.")
             sys.exit(1)
 
         allowed_dir = Path(app.settings.allowed_base_dir).resolve()

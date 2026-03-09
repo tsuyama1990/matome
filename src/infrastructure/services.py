@@ -80,24 +80,42 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
     def extract_entities(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
         logger.debug("Executing SpaCy NER logic (streamed/batched implementation)...")
         entities = {}
+
         try:
             import spacy
+            from spacy.util import is_package
+        except ImportError as e:
+            logger.warning(
+                f"SpaCy module not loaded: {e}. Falling back to regex entity extraction. Consider installing spacy."
+            )
+            return self._fallback_ner(chunks)
 
+        if not is_package("en_core_web_sm"):
+            logger.warning("SpaCy model 'en_core_web_sm' is missing. Please install it using `python -m spacy download en_core_web_sm`. Falling back to regex entity extraction.")
+            return self._fallback_ner(chunks)
+
+        try:
             nlp = spacy.load("en_core_web_sm")
             for i, chunk in enumerate(chunks):
                 doc = nlp(chunk)
                 for ent in doc.ents:
                     entities[f"chunk_{i}_{ent.label_}"] = ent.text
-        except (ImportError, OSError) as e:
+        except OSError as e:
             logger.warning(
-                f"SpaCy module/model not loaded: {e}. Falling back to regex entity extraction."
+                f"SpaCy model initialization failed: {e}. Falling back to regex entity extraction."
             )
-            for i, chunk in enumerate(chunks):
-                matches = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", chunk)
-                if matches:
-                    entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
-            if not entities:
-                entities["document_level"] = "No obvious entities found"
+            entities = self._fallback_ner(chunks)
+
+        return entities
+
+    def _fallback_ner(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
+        entities = {}
+        for i, chunk in enumerate(chunks):
+            matches = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", chunk)
+            if matches:
+                entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
+        if not entities:
+            entities["document_level"] = "No obvious entities found"
         return entities
 
 
@@ -122,7 +140,7 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.mixture import GaussianMixture
         except ImportError as e:
-            logger.warning(f"ML dependency missing: {e}. Returning basic flat tree.")
+            logger.warning(f"ML dependency missing: {e}. Please ensure 'umap-learn' and 'scikit-learn' are explicitly installed. Returning basic flat tree.")
             return {
                 "level_0": "root",
                 "algorithm": "None (Missing ML modules)",

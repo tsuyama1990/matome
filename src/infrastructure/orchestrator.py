@@ -64,27 +64,33 @@ class PipelineOrchestrator:
                 q.put(e)
 
         process = multiprocessing.Process(target=process_target, args=(context, queue))
-        process.start()
-        process.join(self.pipeline_timeout)
+        try:
+            process.start()
+            process.join(self.pipeline_timeout)
 
-        if process.is_alive():
-            logger.error(f"Pipeline execution timed out after {self.pipeline_timeout} seconds. Terminating process.")
-            process.terminate()
-            process.join()
-            msg = f"Pipeline execution timed out after {self.pipeline_timeout} seconds."
-            raise TimeoutError(msg)
+            if process.is_alive():
+                logger.error(f"Pipeline execution timed out after {self.pipeline_timeout} seconds. Terminating process.")
+                process.terminate()
+                process.join()
+                msg = f"Pipeline execution timed out after {self.pipeline_timeout} seconds."
+                raise TimeoutError(msg)
 
-        if process.exitcode != 0:
-            msg = f"Pipeline failed with exit code {process.exitcode}"
-            raise RuntimeError(msg)
+            if process.exitcode != 0:
+                msg = f"Pipeline failed with exit code {process.exitcode}"
+                raise RuntimeError(msg)
 
-        result = queue.get()
-        if isinstance(result, Exception):
-            raise result
+            result = queue.get()
+            if isinstance(result, Exception):
+                raise result
 
-        if result is not None:
-            self.doc_repo.save_node(result)
-            self.doc_repo.commit()
+            if result is not None:
+                self.doc_repo.save_node(result)
+                self.doc_repo.commit()
+        finally:
+            if process.is_alive():
+                process.terminate()
+                process.join()
+            process.close()
 
     def _get_chunk_iterator_and_content(self, context: PipelineContext) -> tuple[typing.Iterator[str], str]:
         import itertools

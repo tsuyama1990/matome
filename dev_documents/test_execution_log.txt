@@ -29,7 +29,7 @@ Name                                 Stmts   Miss  Cover   Missing
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
 src/application/ai.py                   40      6    85%   36-37, 42, 62, 83-84
-src/config.py                           46      0   100%
+src/config.py                           54      2    96%   94-95
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           2      0   100%
@@ -40,11 +40,11 @@ src/domain_models/manifest.py           60      0   100%
 src/domain_models/services.py            6      1    83%   21
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
-src/infrastructure/orchestrator.py      92     59    36%   44-46, 60-64, 71-75, 78-79, 83, 90-108, 111-169
+src/infrastructure/orchestrator.py      97     61    37%   44-46, 60-64, 72-76, 79-80, 84, 91-92, 96-114, 117-175
 src/infrastructure/repository.py        48      8    83%   15-17, 25-29
-src/infrastructure/services.py         131     54    59%   32-37, 40-41, 46-76, 87-90, 98, 107-108, 117, 124-126, 154-158, 170, 172-173, 177-181
+src/infrastructure/services.py         143     63    56%   32-37, 40-41, 46-76, 87-91, 97-109, 116, 125-126, 135, 142-144, 172-176, 188, 190-191, 195-199
 src/utils/__init__.py                    0      0   100%
 src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  511    129    75%
-=================== 28 passed, 1 warning in 64.73s (0:01:04) ===================
+TOTAL                                  536    142    74%
+=================== 28 passed, 1 warning in 65.54s (0:01:05) ===================

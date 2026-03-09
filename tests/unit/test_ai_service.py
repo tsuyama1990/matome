@@ -18,28 +18,17 @@ from src.domain_models.exceptions import AIServiceError
 
 
 def _create_mock_settings(api_key: str | None = None) -> Settings:
-    import os
-
-    if api_key is not None:
-        os.environ["OPENROUTER_API_KEY"] = api_key
-    elif "OPENROUTER_API_KEY" in os.environ:
-        del os.environ["OPENROUTER_API_KEY"]
-
     from pydantic import SecretStr
 
-    try:
-        # Pass dynamically resolved secret from environment to satisfy strict typings.
-        api_key_str = os.environ.get("OPENROUTER_API_KEY", "")
-        # Since pydantic validator catches invalid secrets, we can pass it directly
-        return Settings(
-            openrouter_api_key=SecretStr(api_key_str) if api_key_str else None, # type: ignore
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
-        )
-    finally:
-        if "OPENROUTER_API_KEY" in os.environ:
-            del os.environ["OPENROUTER_API_KEY"]
+    # Completely isolate tests from os.environ side-effects and avoid hardcoded secrets where unnecessary
+    # Pass dynamically resolved secret or mock parameter directly to Settings constructor
+    # Since pydantic validator catches invalid secrets, we can test validation behaviors here.
+    return Settings(
+        openrouter_api_key=SecretStr(api_key) if api_key is not None else None, # type: ignore
+        text_fast_model="google/gemini-2.5-flash",
+        text_reasoning_model="deepseek/deepseek-reasoner",
+        multimodal_model="openai/gpt-4o",
+    )
 
 
 def _create_service(api_key: str | None = None) -> DefaultAIService:

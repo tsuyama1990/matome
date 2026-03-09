@@ -86,6 +86,15 @@ class Settings(MatomeConfig):
         description="Maximum backoff wait time in seconds"
     )
 
+    @field_validator("allowed_base_dir", mode="after")
+    @classmethod
+    def validate_allowed_base_dir(cls, value: str) -> str:
+        from src.domain_models.exceptions import ConfigurationError
+        if not value:
+            err_msg = "ALLOWED_BASE_DIR must be configured in settings."
+            raise ConfigurationError(err_msg)
+        return value
+
     @field_validator("openrouter_api_key", mode="before")
     @classmethod
     def validate_api_key(cls, value: Any) -> Any:

@@ -25,10 +25,15 @@ def test_pipeline_orchestrator_integration() -> None:
     ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
     factory = DocumentFactory()
 
+    import os
+
     from pydantic import SecretStr
+
+    mock_key = os.environ.get("OPENROUTER_API_KEY", "sk-or-v1-validkey12345678901234567890")
+
     settings = IntegrationTestSettings(
         mode="test",
-        openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
+        openrouter_api_key=SecretStr(mock_key),
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
