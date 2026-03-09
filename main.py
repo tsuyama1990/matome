@@ -46,7 +46,7 @@ class AppBuilder:
 
         # Pydantic BaseSettings natively pulls OPENROUTER_API_KEY from env, but type checkers don't know it.
         # It's validated internally via field_validators. We disable type checking on init kwargs.
-        settings = Settings() # type: ignore
+        settings = Settings()  # type: ignore
 
         repo = InMemoryDocumentRepository()
 
@@ -70,8 +70,8 @@ class AppBuilder:
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
         )
-        entity_extractor = DefaultEntityExtractor()
-        clustering_service = DefaultClusteringService()
+        entity_extractor = DefaultEntityExtractor(settings.spacy_model)
+        clustering_service = DefaultClusteringService(settings.random_seed)
 
         orchestrator = PipelineOrchestrator(
             doc_repo=repo,
@@ -128,9 +128,7 @@ def main() -> None:
 
         # Pass the file path to the pipeline for chunked streaming to prevent OOM
         context = PipelineContext(
-            root_doc_id=app.settings.default_root_doc_id,
-            content=None,
-            file_path=str(file_path)
+            root_doc_id=app.settings.default_root_doc_id, content=None, file_path=str(file_path)
         )
         app.start(context)
     except ValueError:

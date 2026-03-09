@@ -69,7 +69,9 @@ class PipelineOrchestrator:
             process.join(self.pipeline_timeout)
 
             if process.is_alive():
-                logger.error(f"Pipeline execution timed out after {self.pipeline_timeout} seconds. Terminating process.")
+                logger.error(
+                    f"Pipeline execution timed out after {self.pipeline_timeout} seconds. Terminating process."
+                )
                 process.terminate()
                 process.join()
                 msg = f"Pipeline execution timed out after {self.pipeline_timeout} seconds."
@@ -92,8 +94,11 @@ class PipelineOrchestrator:
                 process.join()
             process.close()
 
-    def _get_chunk_iterator_and_content(self, context: PipelineContext) -> tuple[typing.Iterator[str], str]:
+    def _get_chunk_iterator_and_content(
+        self, context: PipelineContext
+    ) -> tuple[typing.Iterator[str], str]:
         import itertools
+
         if context.file_path:
             # We tee the generator into two iterators to avoid exhausting the single stream,
             # allowing sequential stream consumption without forced list materialization.
@@ -103,7 +108,9 @@ class PipelineOrchestrator:
             # We will use re-yielding to avoid loading full streams at once.
 
             # Extract truncated content for summarizer limit bounds
-            preview_chunks = list(itertools.islice(self.text_splitter.split_document(context.file_path), 5))
+            preview_chunks = list(
+                itertools.islice(self.text_splitter.split_document(context.file_path), 5)
+            )
             combined_content = "\n".join(preview_chunks)
 
             return self.text_splitter.split_document(context.file_path), combined_content
@@ -130,9 +137,11 @@ class PipelineOrchestrator:
             if context.file_path:
                 clustering_iterator = self.text_splitter.split_document(context.file_path)
             else:
-                clustering_iterator = iter(self.text_splitter.split_text(context.content)) # type: ignore
+                clustering_iterator = iter(self.text_splitter.split_text(context.content))  # type: ignore
 
-            tree_metadata = self.clustering_service.cluster_chunks(clustering_iterator, self.raptor_max_clusters)
+            tree_metadata = self.clustering_service.cluster_chunks(
+                clustering_iterator, self.raptor_max_clusters
+            )
 
             # 4. Chain of Density (CoD) Summarization
             logger.info("Applying Chain of Density summarization...")

@@ -25,8 +25,8 @@ def _create_orchestrator() -> PipelineOrchestrator:
     text_splitter = DefaultTextSplitter(
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
     )
-    entity_extractor = DefaultEntityExtractor()
-    clustering_service = DefaultClusteringService()
+    entity_extractor = DefaultEntityExtractor(settings.spacy_model)
+    clustering_service = DefaultClusteringService(settings.random_seed)
 
     return PipelineOrchestrator(
         doc_repo=repo,

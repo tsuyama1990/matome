@@ -11,6 +11,7 @@ def test_settings_default() -> None:
 
     try:
         from pydantic import SecretStr
+
         settings = Settings(
             openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
             text_fast_model="google/gemini-2.5-flash",
@@ -34,6 +35,7 @@ def test_app_context_creation() -> None:
 
     try:
         from pydantic import SecretStr
+
         settings = Settings(
             openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
             text_fast_model="google/gemini-2.5-flash",

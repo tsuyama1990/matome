@@ -77,6 +77,9 @@ class DefaultTextSplitter(TextSplitterProtocol):
 
 
 class DefaultEntityExtractor(EntityExtractorProtocol):
+    def __init__(self, spacy_model: str) -> None:
+        self.spacy_model = spacy_model
+
     def extract_entities(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
         logger.debug("Executing SpaCy NER logic (streamed/batched implementation)...")
         entities = {}
@@ -90,12 +93,14 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
             )
             return self._fallback_ner(chunks)
 
-        if not is_package("en_core_web_sm"):
-            logger.warning("SpaCy model 'en_core_web_sm' is missing. Please install it using `python -m spacy download en_core_web_sm`. Falling back to regex entity extraction.")
+        if not is_package(self.spacy_model):
+            logger.warning(
+                f"SpaCy model '{self.spacy_model}' is missing. Please install it using `python -m spacy download {self.spacy_model}`. Falling back to regex entity extraction."
+            )
             return self._fallback_ner(chunks)
 
         try:
-            nlp = spacy.load("en_core_web_sm")
+            nlp = spacy.load(self.spacy_model)
             for i, chunk in enumerate(chunks):
                 doc = nlp(chunk)
                 for ent in doc.ents:
@@ -120,7 +125,12 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
 
 
 class DefaultClusteringService(ClusteringServiceProtocol):
-    def cluster_chunks(self, chunks: typing.Iterator[str] | list[str], max_clusters: int) -> dict[str, str]:
+    def __init__(self, random_seed: int) -> None:
+        self.random_seed = random_seed
+
+    def cluster_chunks(
+        self, chunks: typing.Iterator[str] | list[str], max_clusters: int
+    ) -> dict[str, str]:
         if max_clusters < 1:
             msg = "max_clusters must be at least 1"
             raise ValueError(msg)
@@ -140,7 +150,9 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.mixture import GaussianMixture
         except ImportError as e:
-            logger.warning(f"ML dependency missing: {e}. Please ensure 'umap-learn' and 'scikit-learn' are explicitly installed. Returning basic flat tree.")
+            logger.warning(
+                f"ML dependency missing: {e}. Please ensure 'umap-learn' and 'scikit-learn' are explicitly installed. Returning basic flat tree."
+            )
             return {
                 "level_0": "root",
                 "algorithm": "None (Missing ML modules)",
@@ -155,13 +167,16 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             # Reduce dimensionality
             n_neighbors = min(15, len(chunks_list) - 1)
             reducer = umap.UMAP(
-                n_neighbors=n_neighbors, min_dist=0.1, metric="cosine", random_state=42
+                n_neighbors=n_neighbors,
+                min_dist=0.1,
+                metric="cosine",
+                random_state=self.random_seed,
             )
             reduced_embeddings = reducer.fit_transform(embeddings)
 
             # Cluster
             n_components = min(max_clusters, len(chunks_list))
-            gmm = GaussianMixture(n_components=n_components, random_state=42)
+            gmm = GaussianMixture(n_components=n_components, random_state=self.random_seed)
             clusters = gmm.fit_predict(reduced_embeddings)
 
             return {

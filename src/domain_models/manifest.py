@@ -1,4 +1,3 @@
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from .constants import NODE_ID_PATTERN
@@ -71,6 +70,7 @@ class AIProcessingMetadata(BaseModel):
 
 class DocumentMetadataContainer(BaseModel):
     """Container grouping all metadata classes to follow SRP in DocumentNode."""
+
     model_config = ConfigDict(extra="forbid")
 
     metadata: NodeMetadata = Field(..., description="Metadata tags such as Time Axis, Actor, etc.")

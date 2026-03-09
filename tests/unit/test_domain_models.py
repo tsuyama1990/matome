@@ -56,7 +56,9 @@ def test_document_node_invalid_extra() -> None:
             content=DocumentContent(summary=None, text=None),
             metadata_container=DocumentMetadataContainer(
                 metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None),
-                ai_metadata=AIProcessingMetadata(chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}),
+                ai_metadata=AIProcessingMetadata(
+                    chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
+                ),
             ),
             extra_field="Not allowed",  # type: ignore
         )
