@@ -14,6 +14,7 @@ class MatomeConfig(BaseSettings):
 
 class ModeConfig(MatomeConfig):
     """Application mode configuration."""
+
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
     )

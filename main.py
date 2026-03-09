@@ -22,12 +22,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
-
-
 class Application:
     """Thin application controller responsible only for executing application logic."""
 
-    def __init__(self, settings: Settings, mode_config: ModeConfig, orchestrator: PipelineOrchestrator) -> None:
+    def __init__(
+        self, settings: Settings, mode_config: ModeConfig, orchestrator: PipelineOrchestrator
+    ) -> None:
         self.settings = settings
         self.mode_config = mode_config
         self.orchestrator = orchestrator
