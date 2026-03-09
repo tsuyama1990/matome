@@ -51,8 +51,6 @@ class DummyHandler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(html.encode("utf-8"))
 
 
-
-
 @pytest.fixture(scope="module")
 def local_server() -> Generator[str, None, None]:
     port = 8000
@@ -64,6 +62,7 @@ def local_server() -> Generator[str, None, None]:
     yield f"http://localhost:{port}"
     httpd.shutdown()
     httpd.server_close()
+
 
 def test_simulate_user_journey(page: Page, local_server: str) -> None:
     """

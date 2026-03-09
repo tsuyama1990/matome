@@ -2,13 +2,14 @@ import pytest
 from pydantic import ValidationError
 
 from src.domain_models import (
+    AIProcessingMetadata,
     DocumentContent,
     DocumentNode,
     NodeMetadata,
     NodeStatus,
     PivotAxis,
     PivotBoard,
-    PivotBoardNode,
+    PivotBoardViewNode,
     UserInteractionContext,
 )
 
@@ -19,14 +20,17 @@ def test_document_node_valid() -> None:
         parent_id=None,
         title="Test Node",
         content=DocumentContent(summary=None, text=None),
-
-        chunk_id=None, chunk_index=None, status=NodeStatus.LOCKED,
-        metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None)
+        status=NodeStatus.LOCKED,
+        metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None),
+        ai_metadata=AIProcessingMetadata(
+            chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
+        ),
     )
     assert node.id == "node1"
     assert node.title == "Test Node"
     assert node.status == NodeStatus.LOCKED
     assert node.metadata.author == "test"
+
 
 def test_document_node_invalid_extra() -> None:
     with pytest.raises(ValidationError):
@@ -35,9 +39,10 @@ def test_document_node_invalid_extra() -> None:
             parent_id=None,
             title="Test Node",
             content=DocumentContent(summary=None, text=None),
-
-            extra_field="Not allowed" # type: ignore
+            metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None),
+            extra_field="Not allowed",  # type: ignore
         )
+
 
 def test_user_interaction_context_valid() -> None:
     ctx = UserInteractionContext(
@@ -46,11 +51,12 @@ def test_user_interaction_context_valid() -> None:
         question_asked=None,
         user_answer=None,
         feedback=None,
-        hints_used=0
+        hints_used=0,
     )
     assert ctx.node_id == "node1"
     assert ctx.status == NodeStatus.LOCKED
     assert ctx.hints_used == 0
+
 
 def test_user_interaction_context_invalid_hints() -> None:
     with pytest.raises(ValidationError):
@@ -60,8 +66,9 @@ def test_user_interaction_context_invalid_hints() -> None:
             question_asked=None,
             user_answer=None,
             feedback=None,
-            hints_used=-1
+            hints_used=-1,
         )
+
 
 def test_pivot_board_valid() -> None:
     board = PivotBoard(
@@ -70,7 +77,7 @@ def test_pivot_board_valid() -> None:
         axis=PivotAxis.ACTOR_STATE,
         custom_axis_description=None,
         nodes=[
-            PivotBoardNode(node_id="node1", x_position=0.5, y_position=0.5, cluster_id=None)
+            PivotBoardViewNode(node_id="node1", x_position=0.5, y_position=0.5, cluster_id=None)
         ],
     )
     assert board.id == "board1"
