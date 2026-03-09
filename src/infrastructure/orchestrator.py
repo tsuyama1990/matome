@@ -32,6 +32,7 @@ class PipelineOrchestrator:
         logger.debug("Executing LangChain semantic chunking...")
         try:
             from langchain_text_splitters import RecursiveCharacterTextSplitter
+
             splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
             chunks = splitter.split_text(content)
         except ImportError:
@@ -42,7 +43,7 @@ class PipelineOrchestrator:
             step = chunk_size - overlap
             chunks = []
             for i in range(0, len(content), step):
-                chunks.append(content[i:i + chunk_size])
+                chunks.append(content[i : i + chunk_size])
 
         if not chunks:
             msg = "Semantic chunking returned no content."
@@ -55,15 +56,19 @@ class PipelineOrchestrator:
         entities = {}
         try:
             import spacy
+
             nlp = spacy.load("en_core_web_sm")
             for i, chunk in enumerate(chunks):
                 doc = nlp(chunk)
                 for ent in doc.ents:
                     entities[f"chunk_{i}_{ent.label_}"] = ent.text
         except (ImportError, OSError) as e:
-            logger.warning(f"SpaCy module/model not loaded: {e}. Falling back to regex entity extraction.")
+            logger.warning(
+                f"SpaCy module/model not loaded: {e}. Falling back to regex entity extraction."
+            )
             # Dynamic regex-based mock fallback mimicking extraction over the real input chunks
             import re
+
             for i, chunk in enumerate(chunks):
                 matches = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", chunk)
                 if matches:
@@ -85,7 +90,11 @@ class PipelineOrchestrator:
             from sklearn.mixture import GaussianMixture
         except ImportError as e:
             logger.warning(f"ML dependency missing: {e}. Returning basic flat tree.")
-            return {"level_0": "root", "algorithm": "None (Missing ML modules)", "nodes": str(len(chunks))}
+            return {
+                "level_0": "root",
+                "algorithm": "None (Missing ML modules)",
+                "nodes": str(len(chunks)),
+            }
 
         try:
             # Dummy embedding step (usually this is done with an LLM embedder)
@@ -94,7 +103,9 @@ class PipelineOrchestrator:
 
             # Reduce dimensionality
             n_neighbors = min(15, len(chunks) - 1)
-            reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=0.1, metric='cosine', random_state=42)
+            reducer = umap.UMAP(
+                n_neighbors=n_neighbors, min_dist=0.1, metric="cosine", random_state=42
+            )
             reduced_embeddings = reducer.fit_transform(embeddings)
 
             # Cluster
@@ -105,14 +116,17 @@ class PipelineOrchestrator:
             return {
                 "level_0": "root",
                 "clusters_found": str(len(np.unique(clusters))),
-                "algorithm": "UMAP+GMM"
+                "algorithm": "UMAP+GMM",
             }
         except Exception as e:
-            logger.exception("RAPTOR processing failed during mathematical execution. Falling back.")
+            logger.exception(
+                "RAPTOR processing failed during mathematical execution. Falling back."
+            )
             return {"level_0": "root", "error_fallback": str(e)}
 
     def run_pipeline(self, context: PipelineContext) -> None:
         import threading
+
         logger.info("Starting document ingestion and analysis pipeline...")
 
         def timeout_handler() -> None:

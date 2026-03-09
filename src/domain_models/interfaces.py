@@ -36,7 +36,9 @@ class DocumentQueryService(Protocol):
     def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]: ...
 
 
-class DocumentRepository(DocumentReader, DocumentWriter, Transactional, DocumentQueryService, Protocol):
+class DocumentRepository(
+    DocumentReader, DocumentWriter, Transactional, DocumentQueryService, Protocol
+):
     """Aggregate protocol combining Read, Write, Query, and Transaction operations."""
 
 

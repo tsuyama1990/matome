@@ -19,16 +19,19 @@ class Settings(BaseSettings):
     )
     openrouter_api_url: str = Field(
         default="https://openrouter.ai/api/v1/chat/completions",
-        description="The base URL for the OpenRouter API endpoint"
+        description="The base URL for the OpenRouter API endpoint",
     )
     text_fast_model: str = Field(
-        default="google/gemini-2.5-flash", description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging"
+        default="google/gemini-2.5-flash",
+        description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging",
     )
     text_reasoning_model: str = Field(
-        default="deepseek/deepseek-reasoner", description="Models with advanced logical reasoning capabilities for insight extraction, To-Be generation, web grounding"
+        default="deepseek/deepseek-reasoner",
+        description="Models with advanced logical reasoning capabilities for insight extraction, To-Be generation, web grounding",
     )
     multimodal_model: str = Field(
-        default="openai/gpt-4o", description="Models excelling in visual understanding for complex charts in PDFs, architecture diagrams, UI mockups"
+        default="openai/gpt-4o",
+        description="Models excelling in visual understanding for complex charts in PDFs, architecture diagrams, UI mockups",
     )
 
     default_root_doc_id: str = Field(
@@ -49,6 +52,7 @@ class Settings(BaseSettings):
     @classmethod
     def validate_api_key(cls, value: Any) -> Any:
         from src.utils.validation import validate_api_key_format
+
         if not value:
             return value
 
