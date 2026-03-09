@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     openrouter_api_key: SecretStr | None = Field(
         default=None, description="BYOK API key for OpenRouter"
     )
+    openrouter_api_url: str = Field(
+        default="https://openrouter.ai/api/v1/chat/completions",
+        description="The base URL for the OpenRouter API endpoint"
+    )
     text_fast_model: str = Field(
         default="google/gemini-2.5-flash", description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging"
     )
@@ -29,11 +33,6 @@ class Settings(BaseSettings):
 
     default_root_doc_id: str = Field(
         default=ROOT_DOC_ID, description="Default root document ID used in pipeline initialization"
-    )
-
-    default_sample_content: str = Field(
-        default="This is a very long business manual about strategy. Executive approval is required if the budget > 5000.",
-        description="Sample content used for execution fallback in development mode"
     )
 
     @classmethod

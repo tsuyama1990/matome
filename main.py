@@ -20,11 +20,8 @@ class Application:
         self.settings = settings
         self.orchestrator = orchestrator
 
-    def start(self) -> None:
+    def start(self, context: PipelineContext) -> None:
         logger.info(f"Initializing matome application in {self.settings.mode} mode...")
-        context = PipelineContext(
-            root_doc_id=self.settings.default_root_doc_id, content=self.settings.default_sample_content
-        )
         self.orchestrator.run_pipeline(context)
 
 
@@ -34,18 +31,38 @@ def create_app(mode: str = "cli") -> Application:
     repo = InMemoryDocumentRepository()
 
     api_key_str = (
-        settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
+        settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else ""
     )
-    ai = DefaultAIService(api_key=api_key_str, model=settings.text_fast_model)
+    ai = DefaultAIService(api_key=api_key_str, model=settings.text_fast_model, api_url=settings.openrouter_api_url)
     factory = DocumentFactory()
     orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
     return Application(settings=settings, orchestrator=orchestrator)
 
 
 def main() -> None:
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="matome CLI Application")
+    parser.add_argument("--file", type=str, help="Path to the document to process", required=True)
+    args = parser.parse_args()
+
     try:
         app = create_app(mode="cli")
-        app.start()
+
+        file_path = Path(args.file)
+        if not file_path.exists():
+            logger.error(f"File not found: {file_path}")
+            sys.exit(1)
+
+        content = file_path.read_text(encoding="utf-8")
+
+        context = PipelineContext(
+            root_doc_id=app.settings.default_root_doc_id,
+            content=content
+        )
+
+        app.start(context)
     except Exception:
         logger.exception("Application failed to start")
         sys.exit(1)

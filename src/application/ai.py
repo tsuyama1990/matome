@@ -1,6 +1,6 @@
-import json
-import urllib.request
 from typing import Any
+
+import requests
 
 from src.domain_models import AIServiceProtocol, DocumentNode, PivotBoard, UserInteractionContext
 
@@ -8,16 +8,15 @@ from src.domain_models import AIServiceProtocol, DocumentNode, PivotBoard, UserI
 class DefaultAIService(AIServiceProtocol):
     """Application-level AI orchestrator. Dispatches requests to external infrastructure."""
 
-    def __init__(self, api_key: str | None = None, model: str = "google/gemini-2.5-flash") -> None:
+    def __init__(self, api_key: str, model: str = "google/gemini-2.5-flash", api_url: str = "https://openrouter.ai/api/v1/chat/completions") -> None:
+        if not api_key:
+            msg = "A valid API Key is required to initialize DefaultAIService."
+            raise ValueError(msg)
         self.api_key = api_key
         self.model = model
+        self.api_url = api_url
 
     def _call_api(self, prompt: str) -> str:
-        if not self.api_key:
-            # Fallback to a mock response if no API key is provided
-            return f"Mocked AI Response for prompt: {prompt[:30]}..."
-
-        url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
@@ -26,14 +25,12 @@ class DefaultAIService(AIServiceProtocol):
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
         }
-        req = urllib.request.Request(  # noqa: S310
-            url, data=json.dumps(data).encode("utf-8"), headers=headers, method="POST"
-        )
         try:
-            with urllib.request.urlopen(req) as response:  # noqa: S310
-                result: dict[str, Any] = json.loads(response.read().decode("utf-8"))
-                return str(result["choices"][0]["message"]["content"])
-        except Exception as e:
+            response = requests.post(self.api_url, json=data, headers=headers, timeout=10)
+            response.raise_for_status()
+            result: dict[str, Any] = response.json()
+            return str(result["choices"][0]["message"]["content"])
+        except requests.RequestException as e:
             return f"API Error: {e}"
 
     def generate_summary(self, content: str) -> str:
