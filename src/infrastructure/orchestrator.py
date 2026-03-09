@@ -180,6 +180,7 @@ class OutputOrchestrator:
 
 class PipelineValidator:
     """Handles logic for validating state inside the pipeline."""
+
     def __init__(self, doc_factory: DocumentFactory) -> None:
         self.doc_factory = doc_factory
 
@@ -191,6 +192,7 @@ class PipelineValidator:
 
 class PipelineErrorHandler:
     """Decoupled handler for processing exceptions inside the pipeline executor."""
+
     @staticmethod
     def handle_execution_error(e: Exception) -> typing.NoReturn:
         logger.exception("Pipeline execution failed at an intermediate step.")
@@ -200,6 +202,7 @@ class PipelineErrorHandler:
 
 class PipelineTransactionManager:
     """Handles the transaction lifecycle of pipeline outputs."""
+
     def __init__(self, deps: PipelineDependencies) -> None:
         self.deps = deps
 
@@ -213,6 +216,7 @@ class PipelineTransactionManager:
 
 class CircuitBreaker:
     """A simplistic circuit breaker to halt cascading failures against external resources."""
+
     def __init__(self, threshold: int = 3) -> None:
         self.failures = 0
         self.threshold = threshold

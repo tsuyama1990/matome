@@ -29,7 +29,9 @@ def _create_mock_settings(base_dir: str, api_key: str | None = None) -> Settings
     )
 
 
-def _create_service(base_dir: str, api_key: str | None = None, http_client: object = None) -> DefaultAIService:
+def _create_service(
+    base_dir: str, api_key: str | None = None, http_client: object = None
+) -> DefaultAIService:
     from unittest.mock import MagicMock
 
     from src.config import EnvCredentialProvider
@@ -41,6 +43,7 @@ def _create_service(base_dir: str, api_key: str | None = None, http_client: obje
 
     # We create a dummy retry policy that runs 1 time to bypass Tenacity sleep in tests
     import typing
+
     class DummyRetry:
         def execute(self, func: typing.Any) -> typing.Any:
             return func()
@@ -79,10 +82,15 @@ def test_default_ai_service_invalid_key_format(tmp_path: pytest.TempPathFactory)
 
 def test_default_ai_service_calls_generate_summary_valid(tmp_path: pytest.TempPathFactory) -> None:
     from unittest.mock import MagicMock
+
     mock_http = MagicMock()
     mock_http.post.return_value = {"choices": [{"message": {"content": "mock summary"}}]}
 
-    ai = _create_service(base_dir=str(tmp_path), api_key="sk-or-v1-validkey12345678901234567890", http_client=mock_http)
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
 
     summary = ai.generate_summary("test content")
     assert summary == "mock summary"
@@ -90,10 +98,15 @@ def test_default_ai_service_calls_generate_summary_valid(tmp_path: pytest.TempPa
 
 def test_default_ai_service_calls_generate_question_valid(tmp_path: pytest.TempPathFactory) -> None:
     from unittest.mock import MagicMock
+
     mock_http = MagicMock()
     mock_http.post.return_value = {"choices": [{"message": {"content": "mock question"}}]}
 
-    ai = _create_service(base_dir=str(tmp_path), api_key="sk-or-v1-validkey12345678901234567890", http_client=mock_http)
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
     identity = IdentityNode(
         id="test1",
         parent_id=None,
@@ -108,10 +121,15 @@ def test_default_ai_service_calls_generate_question_valid(tmp_path: pytest.TempP
 
 def test_default_ai_service_calls_generate_mermaid_valid(tmp_path: pytest.TempPathFactory) -> None:
     from unittest.mock import MagicMock
+
     mock_http = MagicMock()
     mock_http.post.return_value = {"choices": [{"message": {"content": "graph TD"}}]}
 
-    ai = _create_service(base_dir=str(tmp_path), api_key="sk-or-v1-validkey12345678901234567890", http_client=mock_http)
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
     board = PivotBoard(
         id="board_1",
         original_root_id="root_1",
@@ -127,10 +145,15 @@ def test_default_ai_service_calls_generate_mermaid_valid(tmp_path: pytest.TempPa
 
 def test_default_ai_service_calls_evaluate_answer_valid(tmp_path: pytest.TempPathFactory) -> None:
     from unittest.mock import MagicMock
+
     mock_http = MagicMock()
     mock_http.post.return_value = {"choices": [{"message": {"content": "YES it is correct"}}]}
 
-    ai = _create_service(base_dir=str(tmp_path), api_key="sk-or-v1-validkey12345678901234567890", http_client=mock_http)
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
     context = UserInteractionContext(
         node_id="test1",
         status=NodeStatus.LOCKED,

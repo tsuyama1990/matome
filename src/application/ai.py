@@ -1,4 +1,3 @@
-
 from src.domain_models import (
     AIServiceProtocol,
     ContentNode,

@@ -44,6 +44,7 @@ class NodeMetadata(BaseModel):
 
 class ContentNode(BaseModel):
     """Encapsulates the content of a node entirely separated from its identity structure."""
+
     model_config = ConfigDict(extra="forbid")
 
     node_id: str = Field(..., description="Link to the identity node this content belongs to")

@@ -89,6 +89,18 @@ class Settings(MatomeConfig):
         default_factory=lambda: str(os.getenv("SPACY_MODEL", "en_core_web_sm")),
         description="SpaCy model used for Entity Extraction",
     )
+    trusted_spacy_models: list[str] = Field(
+        default_factory=lambda: os.getenv(
+            "TRUSTED_SPACY_MODELS", "en_core_web_sm,en_core_web_md"
+        ).split(","),
+        description="List of trusted SpaCy models that are allowed to load",
+    )
+    fallback_ner_regex: str = Field(
+        default_factory=lambda: str(
+            os.getenv("FALLBACK_NER_REGEX", r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b")
+        ),
+        description="Regex pattern used for fallback entity extraction",
+    )
     random_seed: int = Field(
         default_factory=lambda: int(os.getenv("RANDOM_SEED", "42")),
         description="Random seed for clustering ML models (UMAP/GMM)",
@@ -146,6 +158,7 @@ class ConcreteConfigService:
 
 class EnvCredentialProvider:
     """Secure credential provider strictly executing JIT string extraction directly returning values to the HTTP Client without storing them inside AI services."""
+
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 

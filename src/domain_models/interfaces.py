@@ -42,20 +42,15 @@ class TransactionManager(Protocol):
 class DocumentRepository(Protocol):
     """Protocol for data persistence operations regarding decoupled nodes."""
 
-    def get_identity(self, node_id: str) -> IdentityNode | None:
-        ...
+    def get_identity(self, node_id: str) -> IdentityNode | None: ...
 
-    def get_content(self, node_id: str) -> ContentNode | None:
-        ...
+    def get_content(self, node_id: str) -> ContentNode | None: ...
 
-    def get_children(self, parent_id: str) -> list[IdentityNode]:
-        ...
+    def get_children(self, parent_id: str) -> list[IdentityNode]: ...
 
-    def save_identity(self, node: IdentityNode) -> None:
-        ...
+    def save_identity(self, node: IdentityNode) -> None: ...
 
-    def save_content(self, node: ContentNode) -> None:
-        ...
+    def save_content(self, node: ContentNode) -> None: ...
 
 
 class SummaryServiceProtocol(Protocol):
@@ -82,6 +77,12 @@ class AIServiceProtocol(
     Protocol,
 ):
     """Aggregate protocol for backward compatibility or cases where all are needed."""
+
+
+class SplitterStrategyProtocol(Protocol):
+    """Protocol for the underlying strategy used to split text into list of chunks."""
+
+    def split_text(self, text: str, chunk_size: int, chunk_overlap: int) -> list[str]: ...
 
 
 class TextSplitterProtocol(Protocol):

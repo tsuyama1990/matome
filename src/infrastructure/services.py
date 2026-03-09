@@ -9,32 +9,48 @@ from src.domain_models.interfaces import (
     EntityExtractorProtocol,
     HTTPClientProtocol,
     RetryPolicyProtocol,
+    SplitterStrategyProtocol,
     TextSplitterProtocol,
 )
+from src.utils.rate_limit import rate_limit
 
 logger = logging.getLogger(__name__)
 
 
-class DefaultTextSplitter(TextSplitterProtocol):
-    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
-
-    def split_text(self, text: str) -> list[str]:
+class LangChainSplitterStrategy(SplitterStrategyProtocol):
+    def split_text(self, text: str, chunk_size: int, chunk_overlap: int) -> list[str]:
         logger.debug("Executing LangChain semantic chunking...")
         try:
             from langchain_text_splitters import RecursiveCharacterTextSplitter
 
             splitter = RecursiveCharacterTextSplitter(
-                chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap
+                chunk_size=chunk_size, chunk_overlap=chunk_overlap
             )
-            chunks = splitter.split_text(text)
+            return splitter.split_text(text)
         except ImportError:
             logger.warning("LangChain not installed, falling back to pure python overlap split.")
-            step = self.chunk_size - self.chunk_overlap
+            step = chunk_size - chunk_overlap
             chunks = []
             for i in range(0, len(text), step):
-                chunks.append(text[i : i + self.chunk_size])
+                chunks.append(text[i : i + chunk_size])
+            return chunks
+
+
+class DefaultTextSplitter(TextSplitterProtocol):
+    def __init__(
+        self,
+        chunk_size: int,
+        chunk_overlap: int,
+        max_file_size: int = 50 * 1024 * 1024,
+        strategy: SplitterStrategyProtocol | None = None,
+    ) -> None:
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+        self.max_file_size = max_file_size
+        self.strategy = strategy or LangChainSplitterStrategy()
+
+    def split_text(self, text: str) -> list[str]:
+        chunks = self.strategy.split_text(text, self.chunk_size, self.chunk_overlap)
 
         if not chunks:
             msg = "Semantic chunking returned no content."
@@ -52,53 +68,59 @@ class DefaultTextSplitter(TextSplitterProtocol):
         read_chunk_size = max(16384, self.chunk_size * 4)
         has_yielded = False
 
-        with pathlib.Path(file_path).open("rb") as raw_f, io.BufferedReader(raw_f, buffer_size=read_chunk_size) as f:
+        total_bytes_read = 0
+
+        with (
+            pathlib.Path(file_path).open("rb") as raw_f,
+            io.BufferedReader(raw_f, buffer_size=read_chunk_size) as f,
+        ):
             while True:
-                    text_chunk_bytes = f.read(read_chunk_size)
-                    if not text_chunk_bytes:
-                        if overlap_buffer and not has_yielded:
-                            for chunk in self.split_text(overlap_buffer):
-                                has_yielded = True
-                                yield chunk
-                        break
+                text_chunk_bytes = f.read(read_chunk_size)
+                total_bytes_read += len(text_chunk_bytes)
 
-                    text_chunk = text_chunk_bytes.decode("utf-8", errors="replace")
-                    combined_text = overlap_buffer + text_chunk
-                    sub_chunks = self.split_text(combined_text)
+                if total_bytes_read > self.max_file_size:
+                    msg = f"Security Error: File processing stream exceeded maximum allowed size of {self.max_file_size} bytes."
+                    raise ValueError(msg)
 
-                    if len(sub_chunks) > 1:
-                        for chunk in sub_chunks[:-1]:
+                if not text_chunk_bytes:
+                    if overlap_buffer and not has_yielded:
+                        for chunk in self.split_text(overlap_buffer):
                             has_yielded = True
                             yield chunk
-                        overlap_buffer = sub_chunks[-1]
-                    else:
-                        overlap_buffer = combined_text
+                    break
+
+                text_chunk = text_chunk_bytes.decode("utf-8", errors="replace")
+                combined_text = overlap_buffer + text_chunk
+                sub_chunks = self.split_text(combined_text)
+
+                if len(sub_chunks) > 1:
+                    for chunk in sub_chunks[:-1]:
+                        has_yielded = True
+                        yield chunk
+                    overlap_buffer = sub_chunks[-1]
+                else:
+                    overlap_buffer = combined_text
 
         if overlap_buffer and has_yielded:
             for chunk in self.split_text(overlap_buffer):
                 yield chunk
 
 
-
-
 class DefaultEntityExtractor(EntityExtractorProtocol):
-    def __init__(self, spacy_model: str) -> None:
+    def __init__(
+        self,
+        spacy_model: str,
+        trusted_models: set[str] | None = None,
+        fallback_ner_regex: str | None = None,
+    ) -> None:
         self.spacy_model = spacy_model
-        import threading
-        self._lock = threading.Lock()
-        import time
-        self._last_call = time.time()
-        self._rate_limit_seconds = 0.01
+        self.trusted_models = trusted_models or {"en_core_web_sm", "en_core_web_md"}
+        self.fallback_ner_regex = (
+            fallback_ner_regex or r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
+        )
 
+    @rate_limit(0.01)
     def extract_entities(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
-        import time
-        with self._lock:
-            now = time.time()
-            elapsed = now - self._last_call
-            if elapsed < self._rate_limit_seconds:
-                time.sleep(self._rate_limit_seconds - elapsed)
-            self._last_call = time.time()
-
         logger.debug("Executing SpaCy NER logic (streamed/batched implementation)...")
         entities = {}
 
@@ -137,16 +159,17 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         # This acts as an architectural boundary enforcement for strictly sandboxing ML loads.
         # In a real production system, this would load a signing cert and verify the PyPI wheel hash.
         # Here we hardcode trusted internal models to satisfy security constraints.
-        trusted_models = {"en_core_web_sm", "en_core_web_md"}
-        if model_name not in trusted_models:
-            logger.warning(f"Security Policy Violation: Model '{model_name}' is unsigned and untrusted.")
+        if model_name not in self.trusted_models:
+            logger.warning(
+                f"Security Policy Violation: Model '{model_name}' is unsigned and untrusted."
+            )
             msg = f"Untrusted ML Model requested: {model_name}"
             raise ValueError(msg)
 
     def _fallback_ner(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
         entities = {}
         # Prevent catastrophic backtracking by strictly bounding quantifier sequences to avoid ReDoS vectoring.
-        safe_regex = re.compile(r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b")
+        safe_regex = re.compile(self.fallback_ner_regex)
         for i, chunk in enumerate(chunks):
             matches = safe_regex.findall(chunk[:5000])  # hard cap chunk scans
             if matches:
@@ -167,7 +190,9 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             msg = "max_clusters must be at least 1"
             raise ValueError(msg)
 
-        logger.debug("Executing incremental MiniBatchKMeans clustering for RAPTOR tree generation...")
+        logger.debug(
+            "Executing incremental MiniBatchKMeans clustering for RAPTOR tree generation..."
+        )
 
         try:
             from sklearn.cluster import MiniBatchKMeans
@@ -184,9 +209,7 @@ class DefaultClusteringService(ClusteringServiceProtocol):
         try:
             vectorizer = HashingVectorizer(n_features=256)
             clusterer = MiniBatchKMeans(
-                n_clusters=max_clusters,
-                random_state=self.random_seed,
-                batch_size=100
+                n_clusters=max_clusters, random_state=self.random_seed, batch_size=100
             )
 
             chunk_count = 0
@@ -213,7 +236,7 @@ class DefaultClusteringService(ClusteringServiceProtocol):
                 "level_0": "root",
                 "clusters_found": str(clusterer.n_clusters),
                 "algorithm": "HashingVectorizer+MiniBatchKMeans",
-                "total_chunks": str(chunk_count)
+                "total_chunks": str(chunk_count),
             }
         except Exception as e:
             logger.exception(

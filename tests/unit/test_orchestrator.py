@@ -34,8 +34,10 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
     metadata_service = MetadataService()
 
     import typing
+
     mock_text_splitter = MagicMock()
     mock_text_splitter.split_text.return_value = ["test chunk"]
+
     def mock_split_doc(*args: typing.Any, **kwargs: typing.Any) -> typing.Iterator[str]:
         yield "Test file content."
 
@@ -159,7 +161,9 @@ def test_analysis_orchestrator_execute_with_file(tmp_path: pytest.TempPathFactor
     assert isinstance(summary, str)
 
 
-def test_analysis_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
+def test_analysis_orchestrator_ai_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+) -> None:
     import typing
 
     from src.domain_models.exceptions import AIServiceError
@@ -192,7 +196,9 @@ def test_output_orchestrator_execute(tmp_path: pytest.TempPathFactory) -> None:
     assert metadata.ai_metadata.chunk_index == 0
 
 
-def test_output_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory) -> None:
+def test_output_orchestrator_ai_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+) -> None:
     import typing
 
     from src.domain_models.exceptions import AIServiceError
@@ -225,13 +231,12 @@ def test_pipeline_orchestrator_run_pipeline(tmp_path: pytest.TempPathFactory) ->
 
 def test_pipeline_orchestrator_validate_length(tmp_path: pytest.TempPathFactory) -> None:
     import typing
+
     orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     # Mock the text_splitter to return an empty iterator so ingestion works,
     # but the combined_content is somehow extremely long (simulating a bypass or internal logic edge case).
 
-    ctx = PipelineContext(
-        root_doc_id="test_id", content="Short valid context", file_path=None
-    )
+    ctx = PipelineContext(root_doc_id="test_id", content="Short valid context", file_path=None)
 
     # Let's directly mock IngestionOrchestrator to return an invalid combined_content
     def mock_execute(ctx: PipelineContext) -> tuple[typing.Iterator[str], str]:

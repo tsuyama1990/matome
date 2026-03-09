@@ -37,7 +37,9 @@ class Application:
         self.orchestrator.run_pipeline(context)
 
 
-def build_app(settings: Settings, mode_config: ModeConfig, deps: PipelineDependencies, config: PipelineConfig) -> Application:
+def build_app(
+    settings: Settings, mode_config: ModeConfig, deps: PipelineDependencies, config: PipelineConfig
+) -> Application:
     """Factory function for bootstrapping components and dependency injection, detached from state."""
     orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
     return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
@@ -77,8 +79,13 @@ def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, Pipel
     text_splitter = DefaultTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
+        max_file_size=settings.max_file_size,
     )
-    entity_extractor = DefaultEntityExtractor(settings.spacy_model)
+    entity_extractor = DefaultEntityExtractor(
+        spacy_model=settings.spacy_model,
+        trusted_models=set(settings.trusted_spacy_models),
+        fallback_ner_regex=settings.fallback_ner_regex,
+    )
     clustering_service = DefaultClusteringService(settings.random_seed)
 
     deps = PipelineDependencies(
@@ -99,7 +106,6 @@ def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, Pipel
     return deps, config
 
 
-
 def main() -> None:
     import argparse
     from pathlib import Path
@@ -117,7 +123,9 @@ def main() -> None:
                 msg = f"Invalid mode: {mode}. Must be one of 'cli', 'production', 'test'."
                 raise ValueError(msg)
 
-            filtered_env = {k.lower(): v for k, v in os.environ.items() if k.lower() in Settings.model_fields}
+            filtered_env = {
+                k.lower(): v for k, v in os.environ.items() if k.lower() in Settings.model_fields
+            }
             settings = Settings(**filtered_env)  # type: ignore[arg-type]
             mode_config = ModeConfig(mode=mode)
 
