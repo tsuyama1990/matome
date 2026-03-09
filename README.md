@@ -44,14 +44,20 @@ uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 
 Example basic python script usage:
 ```python
-from src.domain_models import DocumentNode, NodeStatus
+from src.domain_models import DocumentNode, NodeStatus, NodeMetadata
+from src.domain_models.manifest import DocumentMetadataContainer
 
 # Initialize a node representing a semantic chunk
 node = DocumentNode(
     id="node-123",
+    parent_id=None,
     title="Chapter 1: The Basics",
+    content={"summary": None, "text": "Some text content here"},
     status=NodeStatus.UNLOCKED,
-    metadata={"Time Axis": "Present"}
+    metadata_container=DocumentMetadataContainer(
+        metadata=NodeMetadata(time_axis="Present"),
+        ai_metadata={"entity_metadata": {}, "hierarchical_tree": {}}
+    )
 )
 
 print(node.model_dump_json(indent=2))

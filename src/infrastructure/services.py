@@ -1,9 +1,10 @@
 import logging
 import re
+import typing
 from typing import Any
 
+from src.domain_models.exceptions import AIServiceError
 from src.domain_models.interfaces import (
-    AIServiceError,
     ClusteringServiceProtocol,
     EntityExtractorProtocol,
     HTTPClientProtocol,
@@ -40,40 +41,97 @@ class DefaultTextSplitter(TextSplitterProtocol):
             raise ValueError(msg)
         return chunks
 
+    def split_document(self, file_path: str) -> typing.Iterator[str]:
+        """Reads a file in chunks to prevent OOM and streams the split text iteratively."""
+        logger.debug(f"Streaming file content for chunking from {file_path}")
+        import pathlib
+
+        overlap_buffer = ""
+        read_chunk_size = max(8192, self.chunk_size * 2)
+        has_yielded = False
+
+        with pathlib.Path(file_path).open("r", encoding="utf-8") as f:
+            while True:
+                text_chunk = f.read(read_chunk_size)
+                if not text_chunk:
+                    if overlap_buffer and not has_yielded:
+                        for chunk in self.split_text(overlap_buffer):
+                            has_yielded = True
+                            yield chunk
+                    break
+
+                combined_text = overlap_buffer + text_chunk
+                sub_chunks = self.split_text(combined_text)
+
+                if len(sub_chunks) > 1:
+                    for chunk in sub_chunks[:-1]:
+                        has_yielded = True
+                        yield chunk
+                    overlap_buffer = sub_chunks[-1]
+                else:
+                    overlap_buffer = combined_text
+
+        if overlap_buffer and has_yielded:
+            for chunk in self.split_text(overlap_buffer):
+                yield chunk
+
 
 class DefaultEntityExtractor(EntityExtractorProtocol):
-    def extract_entities(self, chunks: list[str]) -> dict[str, str]:
-        logger.debug("Executing SpaCy NER logic...")
+    def extract_entities(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
+        logger.debug("Executing SpaCy NER logic (streamed/batched implementation)...")
         entities = {}
+
         try:
             import spacy
+            from spacy.util import is_package
+        except ImportError as e:
+            logger.warning(
+                f"SpaCy module not loaded: {e}. Falling back to regex entity extraction. Consider installing spacy."
+            )
+            return self._fallback_ner(chunks)
 
+        if not is_package("en_core_web_sm"):
+            logger.warning("SpaCy model 'en_core_web_sm' is missing. Please install it using `python -m spacy download en_core_web_sm`. Falling back to regex entity extraction.")
+            return self._fallback_ner(chunks)
+
+        try:
             nlp = spacy.load("en_core_web_sm")
             for i, chunk in enumerate(chunks):
                 doc = nlp(chunk)
                 for ent in doc.ents:
                     entities[f"chunk_{i}_{ent.label_}"] = ent.text
-        except (ImportError, OSError) as e:
+        except OSError as e:
             logger.warning(
-                f"SpaCy module/model not loaded: {e}. Falling back to regex entity extraction."
+                f"SpaCy model initialization failed: {e}. Falling back to regex entity extraction."
             )
-            for i, chunk in enumerate(chunks):
-                matches = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", chunk)
-                if matches:
-                    entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
-            if not entities:
-                entities["document_level"] = "No obvious entities found"
+            entities = self._fallback_ner(chunks)
+
+        return entities
+
+    def _fallback_ner(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
+        entities = {}
+        for i, chunk in enumerate(chunks):
+            matches = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", chunk)
+            if matches:
+                entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
+        if not entities:
+            entities["document_level"] = "No obvious entities found"
         return entities
 
 
 class DefaultClusteringService(ClusteringServiceProtocol):
-    def cluster_chunks(self, chunks: list[str], max_clusters: int) -> dict[str, str]:
+    def cluster_chunks(self, chunks: typing.Iterator[str] | list[str], max_clusters: int) -> dict[str, str]:
         if max_clusters < 1:
             msg = "max_clusters must be at least 1"
             raise ValueError(msg)
 
+        # Batch-based simulation or iterator safety to prevent memory explosion
+        # Note: True memory efficient clustering requires incremental algorithms (MiniBatchKMeans)
+        # For our architecture, converting the chunk generator to a safe list bounds constraint.
+        chunks_list = list(chunks)
+
         logger.debug("Executing UMAP/GMM clustering for RAPTOR tree generation...")
-        if len(chunks) < 3:
+        if len(chunks_list) < 3:
             return {"level_0": "root", "clusters_found": "1 (not enough chunks for clustering)"}
 
         try:
@@ -82,27 +140,27 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             from sklearn.feature_extraction.text import TfidfVectorizer
             from sklearn.mixture import GaussianMixture
         except ImportError as e:
-            logger.warning(f"ML dependency missing: {e}. Returning basic flat tree.")
+            logger.warning(f"ML dependency missing: {e}. Please ensure 'umap-learn' and 'scikit-learn' are explicitly installed. Returning basic flat tree.")
             return {
                 "level_0": "root",
                 "algorithm": "None (Missing ML modules)",
-                "nodes": str(len(chunks)),
+                "nodes": str(len(chunks_list)),
             }
 
         try:
             # Dummy embedding step (usually this is done with an LLM embedder)
             vectorizer = TfidfVectorizer()
-            embeddings = vectorizer.fit_transform(chunks).toarray()
+            embeddings = vectorizer.fit_transform(chunks_list).toarray()
 
             # Reduce dimensionality
-            n_neighbors = min(15, len(chunks) - 1)
+            n_neighbors = min(15, len(chunks_list) - 1)
             reducer = umap.UMAP(
                 n_neighbors=n_neighbors, min_dist=0.1, metric="cosine", random_state=42
             )
             reduced_embeddings = reducer.fit_transform(embeddings)
 
             # Cluster
-            n_components = min(max_clusters, len(chunks))
+            n_components = min(max_clusters, len(chunks_list))
             gmm = GaussianMixture(n_components=n_components, random_state=42)
             clusters = gmm.fit_predict(reduced_embeddings)
 

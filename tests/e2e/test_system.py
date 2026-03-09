@@ -11,6 +11,10 @@ from src.infrastructure.services import (
 from tests.helpers.mocks import MockAIService
 
 
+class IntegrationTestSettings(Settings):
+    """Test-specific configuration class strictly for safe mock validations."""
+
+
 def test_pipeline_orchestrator_integration() -> None:
     """
     Tests the core document ingestion and AI pipeline.
@@ -21,8 +25,15 @@ def test_pipeline_orchestrator_integration() -> None:
     ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
     factory = DocumentFactory()
 
-    settings = Settings(
+    import os
+
+    from pydantic import SecretStr
+
+    mock_key = os.environ.get("OPENROUTER_API_KEY", "sk-or-v1-validkey12345678901234567890")
+
+    settings = IntegrationTestSettings(
         mode="test",
+        openrouter_api_key=SecretStr(mock_key),
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
@@ -48,7 +59,8 @@ def test_pipeline_orchestrator_integration() -> None:
     from src.domain_models.constants import ROOT_DOC_ID
 
     content = "This is a very long business manual about strategy."
-    context = PipelineContext(root_doc_id=ROOT_DOC_ID, content=content)
+    context = PipelineContext(root_doc_id=ROOT_DOC_ID, content=content, file_path=None)
+
     orchestrator.run_pipeline(context)
 
     # Verify the results in the repository
@@ -61,4 +73,4 @@ def test_pipeline_orchestrator_integration() -> None:
     assert root.content.summary is not None
     assert "System Actor" in root.content.summary
     assert "Action" in root.content.summary
-    assert root.metadata.category == "business"
+    assert root.metadata_container.metadata.category == "business"
