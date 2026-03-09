@@ -7,6 +7,11 @@ from src.domain_models.manifest import PipelineContext
 from src.domain_models.services import DocumentFactory
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import PipelineOrchestrator
+from src.infrastructure.services import (
+    DefaultClusteringService,
+    DefaultEntityExtractor,
+    DefaultTextSplitter,
+)
 
 # Setup basic logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -32,8 +37,20 @@ def create_app(mode: str = "cli") -> Application:
 
     ai = DefaultAIService(settings=settings)
     factory = DocumentFactory()
+    text_splitter = DefaultTextSplitter(
+        chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
+    )
+    entity_extractor = DefaultEntityExtractor()
+    clustering_service = DefaultClusteringService()
+
     orchestrator = PipelineOrchestrator(
-        doc_repo=repo, ai_service=ai, doc_factory=factory, settings=settings
+        doc_repo=repo,
+        ai_service=ai,
+        doc_factory=factory,
+        text_splitter=text_splitter,
+        entity_extractor=entity_extractor,
+        clustering_service=clustering_service,
+        settings=settings,
     )
     return Application(settings=settings, orchestrator=orchestrator)
 

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class DefaultTextSplitter(TextSplitterProtocol):
-    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 100) -> None:
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
 
@@ -68,6 +68,10 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
 
 class DefaultClusteringService(ClusteringServiceProtocol):
     def cluster_chunks(self, chunks: list[str], max_clusters: int) -> dict[str, str]:
+        if max_clusters < 1:
+            msg = "max_clusters must be at least 1"
+            raise ValueError(msg)
+
         logger.debug("Executing UMAP/GMM clustering for RAPTOR tree generation...")
         if len(chunks) < 3:
             return {"level_0": "root", "clusters_found": "1 (not enough chunks for clustering)"}
@@ -112,8 +116,6 @@ class DefaultClusteringService(ClusteringServiceProtocol):
                 "RAPTOR processing failed during mathematical execution. Falling back."
             )
             return {"level_0": "root", "error_fallback": str(e)}
-
-
 
 
 class RequestsHTTPClient(HTTPClientProtocol):

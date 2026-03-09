@@ -11,11 +11,6 @@ from src.domain_models import (
     PipelineContext,
     TextSplitterProtocol,
 )
-from src.infrastructure.services import (
-    DefaultClusteringService,
-    DefaultEntityExtractor,
-    DefaultTextSplitter,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -28,21 +23,18 @@ class PipelineOrchestrator:
         doc_repo: DocumentRepository,
         ai_service: AIServiceProtocol,
         doc_factory: DocumentFactory,
+        text_splitter: TextSplitterProtocol,
+        entity_extractor: EntityExtractorProtocol,
+        clustering_service: ClusteringServiceProtocol,
         settings: Settings | None = None,
-        text_splitter: TextSplitterProtocol | None = None,
-        entity_extractor: EntityExtractorProtocol | None = None,
-        clustering_service: ClusteringServiceProtocol | None = None,
     ) -> None:
         self.doc_repo = doc_repo
         self.ai_service = ai_service
         self.doc_factory = doc_factory
+        self.text_splitter = text_splitter
+        self.entity_extractor = entity_extractor
+        self.clustering_service = clustering_service
         self.settings = settings or Settings()
-
-        self.text_splitter = text_splitter or DefaultTextSplitter(
-            chunk_size=self.settings.chunk_size, chunk_overlap=self.settings.chunk_overlap
-        )
-        self.entity_extractor = entity_extractor or DefaultEntityExtractor()
-        self.clustering_service = clustering_service or DefaultClusteringService()
 
     def run_pipeline(self, context: PipelineContext) -> None:
         logger.info("Starting document ingestion and analysis pipeline...")

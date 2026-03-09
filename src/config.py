@@ -3,8 +3,7 @@ from typing import Any
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# Centralized default root document ID for application configuration
-ROOT_DOC_ID = "root_doc_1"
+from src.domain_models.constants import ROOT_DOC_ID
 
 
 class Settings(BaseSettings):

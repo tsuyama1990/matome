@@ -1,7 +1,6 @@
-from typing import Any
-
 from pydantic import SecretStr
 
+from src.config import Settings
 from src.domain_models import (
     AIServiceProtocol,
     DocumentNode,
@@ -17,11 +16,10 @@ class DefaultAIService(AIServiceProtocol):
 
     def __init__(
         self,
-        settings: Any = None,
+        settings: Settings | None = None,
         http_client: HTTPClientProtocol | None = None,
         retry_policy: RetryPolicyProtocol | None = None,
     ) -> None:
-        from src.config import Settings
         from src.infrastructure.services import RequestsHTTPClient, TenacityRetryPolicy
         from src.utils.validation import validate_api_key_format
 
