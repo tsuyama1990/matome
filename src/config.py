@@ -2,6 +2,7 @@ from typing import Any
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from src.domain_models.constants import ROOT_DOC_ID
 
 

@@ -25,10 +25,7 @@ def test_pipeline_orchestrator_integration() -> None:
 
     # Run the pipeline
     content = "This is a very long business manual about strategy."
-    context = PipelineContext(
-        root_doc_id=settings.default_root_doc_id,
-        content=content
-    )
+    context = PipelineContext(root_doc_id=settings.default_root_doc_id, content=content)
     orchestrator.run_pipeline(context)
 
     # Verify the results in the repository

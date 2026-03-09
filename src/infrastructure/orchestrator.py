@@ -33,7 +33,10 @@ class PipelineOrchestrator:
         summary = self.ai_service.generate_summary(context.content)
 
         root_node = self.doc_factory.create_root_node(
-            node_id=context.root_doc_id, title="Business Manual", content_text=context.content, summary=summary
+            node_id=context.root_doc_id,
+            title="Business Manual",
+            content_text=context.content,
+            summary=summary,
         )
         self.doc_repo.save_node(root_node)
 

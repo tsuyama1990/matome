@@ -26,8 +26,7 @@ class Application:
         # Provide sample content directly instead of hardcoding in settings
         sample_content = "This is a very long business manual about strategy."
         context = PipelineContext(
-            root_doc_id=self.settings.default_root_doc_id,
-            content=sample_content
+            root_doc_id=self.settings.default_root_doc_id, content=sample_content
         )
         self.orchestrator.run_pipeline(context)
 
@@ -40,7 +39,9 @@ def create_app(mode: str = "cli") -> Application:
     settings = Settings()
     repo = InMemoryDocumentRepository()
 
-    api_key_str = settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
+    api_key_str = (
+        settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
+    )
     ai = DefaultAIService(api_key=api_key_str, model=settings.default_ai_model)
     factory = DocumentFactory()
     orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
