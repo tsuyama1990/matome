@@ -68,6 +68,14 @@ class AIProcessingMetadata(BaseModel):
     )
 
 
+class DocumentMetadataContainer(BaseModel):
+    """Container grouping all metadata classes to follow SRP in DocumentNode."""
+    model_config = ConfigDict(extra="forbid")
+
+    metadata: NodeMetadata = Field(..., description="Metadata tags such as Time Axis, Actor, etc.")
+    ai_metadata: AIProcessingMetadata = Field(..., description="AI processing metadata")
+
+
 class DocumentNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -88,10 +96,9 @@ class DocumentNode(BaseModel):
     status: NodeStatus = Field(
         NodeStatus.LOCKED, description="Current status of the node in the learning journey"
     )
-    metadata: NodeMetadata = Field(..., description="Metadata tags such as Time Axis, Actor, etc.")
-
-    # Adding fields mandated by auditor in FR-1.2 and FR-1.3 requirements
-    ai_metadata: AIProcessingMetadata = Field(..., description="AI processing metadata")
+    metadata_container: DocumentMetadataContainer = Field(
+        ..., description="Separated metadata components for this node"
+    )
 
 
 class SummaryNode(BaseModel):
@@ -113,7 +120,8 @@ class PipelineContext(BaseModel):
     root_doc_id: str = Field(
         ..., description="Root document ID", max_length=100, pattern=NODE_ID_PATTERN
     )
-    content: str = Field(..., description="Content to process", max_length=100000)
+    content: str | None = Field(None, description="Content to process", max_length=100000)
+    file_path: str | None = Field(None, description="Path to the file to process")
 
 
 class UserInteractionContext(BaseModel):

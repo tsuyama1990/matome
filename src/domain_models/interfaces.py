@@ -63,6 +63,7 @@ class TextSplitterProtocol(Protocol):
     """Protocol for splitting text into smaller chunks."""
 
     def split_text(self, text: str) -> list[str]: ...
+    def split_document(self, file_path: str) -> list[str]: ...
 
 
 class EntityExtractorProtocol(Protocol):

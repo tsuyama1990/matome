@@ -18,17 +18,24 @@ from src.domain_models.interfaces import AIServiceError
 
 
 def _create_mock_settings(api_key: str | None = None) -> Any:
-    from pydantic import SecretStr
+    import os
 
     from src.config import Settings
 
-    key_val = SecretStr(api_key) if api_key is not None else None
-    return Settings(
-        openrouter_api_key=key_val,
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
-    )
+    if api_key is not None:
+        os.environ["OPENROUTER_API_KEY"] = api_key
+    elif "OPENROUTER_API_KEY" in os.environ:
+        del os.environ["OPENROUTER_API_KEY"]
+
+    try:
+        return Settings(
+            text_fast_model="google/gemini-2.5-flash",
+            text_reasoning_model="deepseek/deepseek-reasoner",
+            multimodal_model="openai/gpt-4o",
+        )
+    finally:
+        if "OPENROUTER_API_KEY" in os.environ:
+            del os.environ["OPENROUTER_API_KEY"]
 
 
 def _create_service(api_key: str | None = None) -> DefaultAIService:
@@ -77,6 +84,7 @@ def test_default_ai_service_calls_generate_summary_valid() -> None:
 
 
 def test_default_ai_service_calls_generate_question_valid() -> None:
+    from src.domain_models.manifest import DocumentMetadataContainer
     ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
     node = DocumentNode(
         id="test1",
@@ -84,9 +92,11 @@ def test_default_ai_service_calls_generate_question_valid() -> None:
         title="Test Title",
         content=DocumentContent(summary=None, text=None),
         status=NodeStatus.LOCKED,
-        metadata=NodeMetadata(source=None, author=None, category=None, time_axis=None),
-        ai_metadata=AIProcessingMetadata(
-            chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
+        metadata_container=DocumentMetadataContainer(
+            metadata=NodeMetadata(source=None, author=None, category=None, time_axis=None),
+            ai_metadata=AIProcessingMetadata(
+                chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
+            ),
         ),
     )
     with pytest.raises(AIServiceError):

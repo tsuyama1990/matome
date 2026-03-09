@@ -5,6 +5,7 @@ from src.domain_models import (
     NodeMetadata,
     NodeStatus,
 )
+from src.domain_models.manifest import DocumentMetadataContainer
 from src.infrastructure.repository import InMemoryDocumentRepository
 
 
@@ -17,9 +18,11 @@ def create_mock_node(
         title=node_id,
         content=DocumentContent(summary=None, text=None),
         status=status,
-        metadata=NodeMetadata(source=None, author=None, category=None, time_axis=None),
-        ai_metadata=AIProcessingMetadata(
-            chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
+        metadata_container=DocumentMetadataContainer(
+            metadata=NodeMetadata(source=None, author=None, category=None, time_axis=None),
+            ai_metadata=AIProcessingMetadata(
+                chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
+            ),
         ),
     )
 

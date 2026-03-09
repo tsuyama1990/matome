@@ -48,8 +48,10 @@ def test_pipeline_orchestrator_integration() -> None:
     from src.domain_models.constants import ROOT_DOC_ID
 
     content = "This is a very long business manual about strategy."
-    context = PipelineContext(root_doc_id=ROOT_DOC_ID, content=content)
-    orchestrator.run_pipeline(context)
+    context = PipelineContext(root_doc_id=ROOT_DOC_ID, content=content, file_path=None)
+    # Use _execute_pipeline_logic directly to bypass the multiprocessing fork boundary
+    # so that the InMemoryDocumentRepository state changes are visible in this test thread.
+    orchestrator._execute_pipeline_logic(context)
 
     # Verify the results in the repository
     nodes = [repo.get_node(ROOT_DOC_ID)]  # Since it's saved as root (parent_id=None)
@@ -61,4 +63,4 @@ def test_pipeline_orchestrator_integration() -> None:
     assert root.content.summary is not None
     assert "System Actor" in root.content.summary
     assert "Action" in root.content.summary
-    assert root.metadata.category == "business"
+    assert root.metadata_container.metadata.category == "business"

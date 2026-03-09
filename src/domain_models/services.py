@@ -1,4 +1,11 @@
-from .manifest import AIProcessingMetadata, DocumentContent, DocumentNode, NodeMetadata, NodeStatus
+from .manifest import (
+    AIProcessingMetadata,
+    DocumentContent,
+    DocumentMetadataContainer,
+    DocumentNode,
+    NodeMetadata,
+    NodeStatus,
+)
 
 
 class DocumentFactory:
@@ -17,8 +24,10 @@ class DocumentFactory:
             title=title,
             content=DocumentContent(summary=summary, text=content_text),
             status=NodeStatus.LOCKED,
-            metadata=NodeMetadata(
-                category="business", author="System", source="upload", time_axis=None
+            metadata_container=DocumentMetadataContainer(
+                metadata=NodeMetadata(
+                    category="business", author="System", source="upload", time_axis=None
+                ),
+                ai_metadata=AIProcessingMetadata(chunk_id=None, chunk_index=None),
             ),
-            ai_metadata=AIProcessingMetadata(chunk_id=None, chunk_index=None),
         )

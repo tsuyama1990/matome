@@ -15,6 +15,7 @@ from src.domain_models import (
     UserInteractionContext,
     WisdomData,
 )
+from src.domain_models.manifest import DocumentMetadataContainer
 
 
 def test_document_node_valid() -> None:
@@ -24,24 +25,26 @@ def test_document_node_valid() -> None:
         title="Test Node",
         content=DocumentContent(summary=None, text=None),
         status=NodeStatus.LOCKED,
-        metadata=NodeMetadata(
-            source=None,
-            author="test",
-            category=None,
-            time_axis=None,
-            best_practices=[BestPracticeData(content="Test best practice")],
-            wisdom_data=[WisdomData(content="Test wisdom")],
-        ),
-        ai_metadata=AIProcessingMetadata(
-            chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
+        metadata_container=DocumentMetadataContainer(
+            metadata=NodeMetadata(
+                source=None,
+                author="test",
+                category=None,
+                time_axis=None,
+                best_practices=[BestPracticeData(content="Test best practice")],
+                wisdom_data=[WisdomData(content="Test wisdom")],
+            ),
+            ai_metadata=AIProcessingMetadata(
+                chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
+            ),
         ),
     )
     assert node.id == "node1"
     assert node.title == "Test Node"
     assert node.status == NodeStatus.LOCKED
-    assert node.metadata.author == "test"
-    assert len(node.metadata.best_practices) == 1
-    assert node.metadata.best_practices[0].content == "Test best practice"
+    assert node.metadata_container.metadata.author == "test"
+    assert len(node.metadata_container.metadata.best_practices) == 1
+    assert node.metadata_container.metadata.best_practices[0].content == "Test best practice"
 
 
 def test_document_node_invalid_extra() -> None:
@@ -51,7 +54,10 @@ def test_document_node_invalid_extra() -> None:
             parent_id=None,
             title="Test Node",
             content=DocumentContent(summary=None, text=None),
-            metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None),
+            metadata_container=DocumentMetadataContainer(
+                metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None),
+                ai_metadata=AIProcessingMetadata(chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}),
+            ),
             extra_field="Not allowed",  # type: ignore
         )
 

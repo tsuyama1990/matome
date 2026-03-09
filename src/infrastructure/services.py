@@ -40,6 +40,49 @@ class DefaultTextSplitter(TextSplitterProtocol):
             raise ValueError(msg)
         return chunks
 
+    def split_document(self, file_path: str) -> list[str]:
+        """Reads a file in chunks to prevent OOM and splits the aggregated text."""
+        # For true streaming without OOM, the file must be processed iteratively.
+        # This implementation reads chunks of text, appending a small overlap buffer between reads
+        # to ensure no words/sentences are hard-cut at the 8KB boundary.
+
+        logger.debug(f"Streaming file content for chunking from {file_path}")
+        chunks: list[str] = []
+        import pathlib
+
+        overlap_buffer = ""
+        read_chunk_size = max(8192, self.chunk_size * 2)
+
+        with pathlib.Path(file_path).open("r", encoding="utf-8") as f:
+            while True:
+                text_chunk = f.read(read_chunk_size)
+                if not text_chunk:
+                    if overlap_buffer and not chunks:
+                        chunks.extend(self.split_text(overlap_buffer))
+                    break
+
+                combined_text = overlap_buffer + text_chunk
+
+                # We split the combined text, but keep the last chunk as the overlap buffer
+                # because it might be cut off mid-sentence.
+                sub_chunks = self.split_text(combined_text)
+
+                if len(sub_chunks) > 1:
+                    chunks.extend(sub_chunks[:-1])
+                    overlap_buffer = sub_chunks[-1]
+                else:
+                    overlap_buffer = combined_text
+
+        if overlap_buffer and len(chunks) > 0:
+            # Re-split the final leftover buffer just in case
+            chunks.extend(self.split_text(overlap_buffer))
+
+        if not chunks:
+            msg = f"Semantic chunking returned no content for file {file_path}."
+            raise ValueError(msg)
+
+        return chunks
+
 
 class DefaultEntityExtractor(EntityExtractorProtocol):
     def extract_entities(self, chunks: list[str]) -> dict[str, str]:
