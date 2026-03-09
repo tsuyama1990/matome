@@ -65,6 +65,9 @@ def test_default_entity_extractor_fallback() -> None:
     entities = extractor.extract_entities(chunks)
     assert isinstance(entities, dict)
     assert len(entities) > 0
+    # Verify fallback regex behavior caught capital words
+    assert "chunk_0_Fallback_ORG" in entities
+    assert entities["chunk_0_Fallback_ORG"] == "Test Chunk"
 
 
 def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -77,6 +80,8 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
 
     entities = extractor.extract_entities(chunks)
     assert isinstance(entities, dict)
+    # Verify fallback logic executes correctly when spacy is entirely missing
+    assert "chunk_0_Fallback_ORG" in entities
 
 
 def test_default_clustering_service_not_enough_chunks() -> None:
@@ -107,6 +112,7 @@ def test_default_clustering_service_fallback(monkeypatch: pytest.MonkeyPatch) ->
 
 def test_requests_http_client_post(monkeypatch: pytest.MonkeyPatch) -> None:
     import typing
+
     import requests
 
     class MockResponse:
@@ -132,6 +138,7 @@ def test_requests_http_client_post(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_requests_http_client_post_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     import typing
+
     import requests
 
     from src.domain_models.exceptions import AIServiceError
@@ -149,6 +156,7 @@ def test_requests_http_client_post_timeout(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     import typing
+
     import requests
 
     from src.domain_models.exceptions import AIServiceError

@@ -41,62 +41,55 @@ class AppBuilder:
     """Dedicated factory class for bootstrapping components and dependency injection."""
 
     @staticmethod
-    def build(mode: str = "cli") -> Application:
-        import os
-
-        # Initialize Settings directly; pydantic_settings will auto-load os.environ
-        # We only override defaults where explicitly passed.
-        # Strict validation of OPENROUTER_API_KEY and ALLOWED_BASE_DIR happens inside Settings.
-        os.environ["MODE"] = mode
-
-        # Pydantic BaseSettings natively pulls OPENROUTER_API_KEY from env, but type checkers don't know it.
-        # It's validated internally via field_validators. We disable type checking on init kwargs.
-        settings = Settings()  # type: ignore
-        mode_config = ModeConfig(mode=mode)
-
-        repo = InMemoryDocumentRepository()
-
-        http_client = RequestsHTTPClient()
-        retry_policy = TenacityRetryPolicy(
-            ai_retry_attempts=settings.ai_retry_attempts,
-            ai_retry_min_wait=settings.ai_retry_min_wait,
-            ai_retry_max_wait=settings.ai_retry_max_wait,
-        )
-        ai = DefaultAIService(
-            api_key=settings.openrouter_api_key,
-            api_url=settings.openrouter_api_url,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
-            ai_timeout=settings.ai_timeout,
-            http_client=http_client,
-            retry_policy=retry_policy,
-        )
-        factory = DocumentFactory()
-        metadata_service = MetadataService()
-        text_splitter = ServiceFactory.create_text_splitter(
-            chunk_size=settings.chunk_size,
-            chunk_overlap=settings.chunk_overlap,
-        )
-        entity_extractor = ServiceFactory.create_entity_extractor(settings.spacy_model)
-        clustering_service = ServiceFactory.create_clustering_service(settings.random_seed)
-
-        deps = PipelineDependencies(
-            doc_repo=repo,
-            transaction_manager=repo,
-            summary_service=ai,
-            question_service=ai,
-            doc_factory=factory,
-            metadata_service=metadata_service,
-            text_splitter=text_splitter,
-            entity_extractor=entity_extractor,
-            clustering_service=clustering_service,
-        )
-        config = PipelineConfig(
-            pipeline_timeout=settings.pipeline_timeout,
-            raptor_max_clusters=settings.raptor_max_clusters,
-        )
+    def build(settings: Settings, mode_config: ModeConfig, deps: PipelineDependencies, config: PipelineConfig) -> Application:
         orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
         return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
+
+
+def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, PipelineConfig]:
+    repo = InMemoryDocumentRepository()
+
+    http_client = RequestsHTTPClient()
+    retry_policy = TenacityRetryPolicy(
+        ai_retry_attempts=settings.ai_retry_attempts,
+        ai_retry_min_wait=settings.ai_retry_min_wait,
+        ai_retry_max_wait=settings.ai_retry_max_wait,
+    )
+    ai = DefaultAIService(
+        api_key=settings.openrouter_api_key,
+        api_url=settings.openrouter_api_url,
+        text_fast_model=settings.text_fast_model,
+        text_reasoning_model=settings.text_reasoning_model,
+        ai_timeout=settings.ai_timeout,
+        http_client=http_client,
+        retry_policy=retry_policy,
+    )
+    factory = DocumentFactory()
+    metadata_service = MetadataService()
+    text_splitter = ServiceFactory.create_text_splitter(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+    )
+    entity_extractor = ServiceFactory.create_entity_extractor(settings.spacy_model)
+    clustering_service = ServiceFactory.create_clustering_service(settings.random_seed)
+
+    deps = PipelineDependencies(
+        doc_repo=repo,
+        transaction_manager=repo,
+        summary_service=ai,
+        question_service=ai,
+        doc_factory=factory,
+        metadata_service=metadata_service,
+        text_splitter=text_splitter,
+        entity_extractor=entity_extractor,
+        clustering_service=clustering_service,
+    )
+    config = PipelineConfig(
+        pipeline_timeout=settings.pipeline_timeout,
+        raptor_max_clusters=settings.raptor_max_clusters,
+    )
+    return deps, config
+
 
 
 def main() -> None:
@@ -107,11 +100,23 @@ def main() -> None:
     parser.add_argument("--file", type=str, help="Path to the document to process", required=True)
     args = parser.parse_args()
 
+    import os
+
     try:
         from src.domain_models.exceptions import ConfigurationError
 
         try:
-            app = AppBuilder.build(mode="cli")
+            mode = os.getenv("MODE", "cli")
+            if mode not in ["cli", "production", "test"]:
+                msg = f"Invalid mode: {mode}. Must be one of 'cli', 'production', 'test'."
+                raise ValueError(msg)
+
+            filtered_env = {k.lower(): v for k, v in os.environ.items() if k.lower() in Settings.model_fields}
+            settings = Settings.model_validate(filtered_env)
+            mode_config = ModeConfig(mode=mode)
+
+            deps, config = create_dependencies(settings)
+            app = AppBuilder.build(settings, mode_config, deps, config)
         except ConfigurationError:
             logger.exception("Configuration Error")
             sys.exit(1)
@@ -119,18 +124,16 @@ def main() -> None:
         allowed_dir = Path(app.settings.allowed_base_dir).resolve()
         file_path = Path(args.file).resolve()
 
-        # Prevent directory traversal by checking against configured allowed directory
-        if not file_path.is_relative_to(allowed_dir):
-            logger.error(
-                f"Security Error: File path must be within the allowed base directory -> {file_path}"
-            )
-            sys.exit(1)
-
         if not file_path.exists():
             logger.error(f"Failed to execute pipeline: File not found -> {file_path}")
             sys.exit(1)
         if not file_path.is_file():
             logger.error(f"Failed to execute pipeline: Path is not a valid file -> {file_path}")
+            sys.exit(1)
+
+        # Prevent directory traversal by checking against configured allowed directory
+        if not file_path.resolve().is_relative_to(allowed_dir.resolve()):
+            logger.error("Security Error: Access denied to the requested file.")
             sys.exit(1)
 
         if file_path.stat().st_size > app.settings.max_file_size:
@@ -141,7 +144,7 @@ def main() -> None:
 
         # Pass the file path to the pipeline for chunked streaming to prevent OOM
         context = PipelineContext(
-            root_doc_id=app.settings.default_root_doc_id, content=None, file_path=str(file_path)
+            root_doc_id=app.settings.default_root_doc_id, file_path=str(file_path)
         )
         app.start(context)
     except ValueError:

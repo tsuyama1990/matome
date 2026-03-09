@@ -26,6 +26,7 @@ def _create_mock_settings(api_key: str | None = None) -> Settings:
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
+        allowed_base_dir=".",
     )
 
 
@@ -49,9 +50,9 @@ def _create_service(api_key: str | None = None) -> DefaultAIService:
 
 
 def test_default_ai_service_missing_key_init() -> None:
-    from src.domain_models.exceptions import ConfigurationError
+    from pydantic import ValidationError
 
-    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY is required"):
+    with pytest.raises(ValidationError, match="Input should be a valid string"):
         _create_service(api_key=None)
 
 

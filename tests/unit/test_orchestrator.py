@@ -13,28 +13,38 @@ from src.infrastructure.orchestrator import (
     PipelineOrchestrator,
     ProcessManager,
 )
-from src.infrastructure.services import (
-    ServiceFactory,
-)
 from tests.helpers.mocks import MockAIService
 
 
 def _create_dependencies() -> tuple[PipelineDependencies, PipelineConfig]:
+    from unittest.mock import MagicMock
+
     settings = Settings(
         openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
+        allowed_base_dir=".",
     )
+
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
     factory = DocumentFactory()
     metadata_service = MetadataService()
-    text_splitter = ServiceFactory.create_text_splitter(
-        chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
-    )
-    entity_extractor = ServiceFactory.create_entity_extractor(settings.spacy_model)
-    clustering_service = ServiceFactory.create_clustering_service(settings.random_seed)
+
+    import typing
+    mock_text_splitter = MagicMock()
+    mock_text_splitter.split_text.return_value = ["test chunk"]
+    def mock_split_doc(*args: typing.Any, **kwargs: typing.Any) -> typing.Iterator[str]:
+        yield "Test file content."
+
+    mock_text_splitter.split_document.side_effect = mock_split_doc
+
+    mock_entity_extractor = MagicMock()
+    mock_entity_extractor.extract_entities.return_value = {"entity1": "value1"}
+
+    mock_clustering_service = MagicMock()
+    mock_clustering_service.cluster_chunks.return_value = {"level_0": "root"}
 
     deps = PipelineDependencies(
         doc_repo=repo,
@@ -43,9 +53,9 @@ def _create_dependencies() -> tuple[PipelineDependencies, PipelineConfig]:
         question_service=ai,
         doc_factory=factory,
         metadata_service=metadata_service,
-        text_splitter=text_splitter,
-        entity_extractor=entity_extractor,
-        clustering_service=clustering_service,
+        text_splitter=mock_text_splitter,
+        entity_extractor=mock_entity_extractor,
+        clustering_service=mock_clustering_service,
     )
     config = PipelineConfig(
         pipeline_timeout=settings.pipeline_timeout,
@@ -150,6 +160,7 @@ def test_analysis_orchestrator_execute_with_file(tmp_path: pytest.TempPathFactor
 
 def test_analysis_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch) -> None:
     import typing
+
     from src.domain_models.exceptions import AIServiceError
 
     deps, config = _create_dependencies()
@@ -182,6 +193,7 @@ def test_output_orchestrator_execute() -> None:
 
 def test_output_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch) -> None:
     import typing
+
     from src.domain_models.exceptions import AIServiceError
 
     deps, _ = _create_dependencies()
@@ -224,7 +236,7 @@ def test_pipeline_orchestrator_validate_length() -> None:
     def mock_execute(ctx: PipelineContext) -> tuple[typing.Iterator[str], str]:
         return iter([]), "A" * (orchestrator.deps.doc_factory.max_content_length + 1)
 
-    setattr(orchestrator.ingestion_orchestrator, "execute", mock_execute)
+    orchestrator.ingestion_orchestrator.execute = mock_execute  # type: ignore[method-assign,assignment]
 
     with pytest.raises(RuntimeError):
         orchestrator.run_pipeline(ctx)

@@ -105,6 +105,8 @@ class ProcessManager:
                 process.terminate()
                 process.join()
             process.close()
+            queue.close()
+            queue.join_thread()
 
 
 class IngestionOrchestrator:
@@ -229,7 +231,7 @@ class PipelineOrchestrator:
 
     def _execute_pipeline_logic(
         self, context: PipelineContext
-    ) -> tuple[DocumentNode, Any] | DocumentNode:
+    ) -> tuple[DocumentNode, Any]:
         try:
             # 1. Ingestion and Semantic Chunking Stage
             logger.info("Ingesting document and performing semantic chunking...")

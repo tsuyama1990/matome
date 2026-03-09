@@ -16,19 +16,6 @@ tests/unit/test_orchestrator.py ...............                          [ 67%]
 tests/unit/test_repository.py ...                                        [ 73%]
 tests/unit/test_services.py ..............                               [100%]
 
-=============================== warnings summary ===============================
-tests/unit/test_orchestrator.py::test_orchestrator_raptor_fallback
-  /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
-    warn(
-
-tests/unit/test_orchestrator.py::test_pipeline_orchestrator_run_pipeline
-tests/unit/test_orchestrator.py::test_pipeline_orchestrator_validate_length
-tests/unit/test_orchestrator.py::test_process_manager_timeout
-tests/unit/test_orchestrator.py::test_process_manager_error
-  /home/jules/.pyenv/versions/3.12.12/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=6324) is multi-threaded, use of fork() may lead to deadlocks in the child.
-    self.pid = os.fork()
-
--- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.12-final-0 _______________
 
@@ -37,7 +24,7 @@ Name                                 Stmts   Miss  Cover   Missing
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
 src/application/ai.py                   32      3    91%   50, 71-72
-src/config.py                           61      4    93%   106-107, 137, 140
+src/config.py                           61      6    90%   105-106, 116-117, 137, 140
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           1      0   100%
@@ -48,11 +35,11 @@ src/domain_models/manifest.py           74      0   100%
 src/domain_models/services.py           17      0   100%
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
-src/infrastructure/orchestrator.py     135     27    80%   75-79, 96-97, 105-106, 213-215, 226, 233-258
+src/infrastructure/orchestrator.py     137     27    80%   75-79, 96-97, 105-106, 215-217, 228, 235-260
 src/infrastructure/repository.py        48      8    83%   15-17, 25-29
-src/infrastructure/services.py         157     16    90%   118-130, 203-207, 226-228
+src/infrastructure/services.py         157     33    79%   58-60, 72, 118-130, 139, 166-167, 178-207, 226-228
 src/utils/__init__.py                    0      0   100%
 src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  620     59    90%
-================== 52 passed, 5 warnings in 62.00s (0:01:02) ===================
+TOTAL                                  622     78    87%
+============================= 52 passed in 23.33s ==============================

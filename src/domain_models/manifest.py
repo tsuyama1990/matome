@@ -142,8 +142,8 @@ class PipelineContext(BaseModel):
     root_doc_id: str = Field(
         ..., description="Root document ID", max_length=100, pattern=NODE_ID_PATTERN
     )
-    content: str | None = Field(None, description="Content to process", max_length=100000)
-    file_path: str | None = Field(None, description="Path to the file to process")
+    content: str | None = Field(default=None, description="Content to process", max_length=100000)
+    file_path: str | None = Field(default=None, description="Path to the file to process")
 
 
 class UserInteractionContext(BaseModel):

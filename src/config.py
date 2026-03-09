@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, SecretStr, field_validator
@@ -9,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class MatomeConfig(BaseSettings):
     """Base configuration model class"""
 
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(extra="forbid")
 
 
 class ModeConfig(MatomeConfig):
@@ -53,7 +52,7 @@ class Settings(MatomeConfig):
         description="Maximum allowed file size in bytes (default 10MB)",
     )
     allowed_base_dir: str = Field(
-        default_factory=lambda: str(Path(os.getenv("ALLOWED_BASE_DIR", "."))),
+        ...,
         description="Base directory allowed for file ingestion",
     )
     chunk_size: int = Field(
@@ -107,9 +106,9 @@ class Settings(MatomeConfig):
             raise ConfigurationError(err_msg)
         return value
 
-    @field_validator("openrouter_api_key", mode="before")
+    @field_validator("openrouter_api_key", mode="after")
     @classmethod
-    def validate_api_key(cls, value: Any) -> Any:
+    def validate_api_key(cls, value: SecretStr) -> SecretStr:
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
 
@@ -117,13 +116,14 @@ class Settings(MatomeConfig):
             err_msg = "OPENROUTER_API_KEY is required"
             raise ConfigurationError(err_msg)
 
-        # Unwrap if it's passed as a SecretStr or handle plain strings from env vars
-        val_str = value.get_secret_value() if isinstance(value, SecretStr) else str(value)
+        val_str = value.get_secret_value()
 
         try:
-            return validate_api_key_format(val_str)
+            validate_api_key_format(val_str)
         except ValueError as e:
             raise ConfigurationError(str(e)) from e
+        else:
+            return value
 
 
 class AppContext(BaseModel):

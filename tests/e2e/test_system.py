@@ -39,6 +39,7 @@ def test_pipeline_orchestrator_integration() -> None:
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
+        allowed_base_dir=".",
     )
     text_splitter = ServiceFactory.create_text_splitter(
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
