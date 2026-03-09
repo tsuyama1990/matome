@@ -16,19 +16,14 @@ class DefaultAIService(AIServiceProtocol):
 
     def __init__(
         self,
-        settings: Settings | None = None,
-        http_client: HTTPClientProtocol | None = None,
-        retry_policy: RetryPolicyProtocol | None = None,
+        settings: Settings,
+        http_client: HTTPClientProtocol,
+        retry_policy: RetryPolicyProtocol,
     ) -> None:
-        from src.infrastructure.services import RequestsHTTPClient, TenacityRetryPolicy
         from src.utils.validation import validate_api_key_format
 
-        if settings is None:
-            settings = Settings()
-
-        self.http_client = http_client or RequestsHTTPClient()
-        self.retry_policy = retry_policy or TenacityRetryPolicy(settings=settings)
-
+        self.http_client = http_client
+        self.retry_policy = retry_policy
         self.settings = settings
         api_key = self.settings.openrouter_api_key
 

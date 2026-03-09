@@ -13,7 +13,12 @@ from tests.helpers.mocks import MockAIService
 
 
 def _create_orchestrator() -> PipelineOrchestrator:
-    settings = Settings(openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"))
+    settings = Settings(
+        openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
+        text_fast_model="google/gemini-2.5-flash",
+        text_reasoning_model="deepseek/deepseek-reasoner",
+        multimodal_model="openai/gpt-4o",
+    )
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
     factory = DocumentFactory()

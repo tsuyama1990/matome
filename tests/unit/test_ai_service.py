@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from src.application.ai import DefaultAIService
@@ -15,60 +17,58 @@ from src.domain_models import (
 from src.domain_models.interfaces import AIServiceError
 
 
-def test_default_ai_service_missing_key_init() -> None:
+def _create_mock_settings(api_key: str | None = None) -> Any:
+    from pydantic import SecretStr
+
     from src.config import Settings
 
+    key_val = SecretStr(api_key) if api_key is not None else None
+    return Settings(
+        openrouter_api_key=key_val,
+        text_fast_model="google/gemini-2.5-flash",
+        text_reasoning_model="deepseek/deepseek-reasoner",
+        multimodal_model="openai/gpt-4o",
+    )
+
+
+def _create_service(api_key: str | None = None) -> DefaultAIService:
+    from src.infrastructure.services import RequestsHTTPClient, TenacityRetryPolicy
+    settings = _create_mock_settings(api_key)
+    return DefaultAIService(
+        settings=settings,
+        http_client=RequestsHTTPClient(),
+        retry_policy=TenacityRetryPolicy(settings=settings),
+    )
+
+
+def test_default_ai_service_missing_key_init() -> None:
     with pytest.raises(ValueError, match="A valid API Key is required"):
-        DefaultAIService(settings=Settings(openrouter_api_key=None))
+        _create_service(api_key=None)
 
 
 def test_default_ai_service_invalid_key_length() -> None:
-    from pydantic import SecretStr, ValidationError
-
-    from src.config import Settings
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="API Key must be at least 30 characters long"):
-        DefaultAIService(settings=Settings(openrouter_api_key=SecretStr("123")))
+        _create_service(api_key="123")
 
 
 def test_default_ai_service_invalid_key_format() -> None:
-    from pydantic import SecretStr, ValidationError
-
-    from src.config import Settings
+    from pydantic import ValidationError
 
     with pytest.raises(ValidationError, match="API Key format is invalid"):
-        DefaultAIService(
-            settings=Settings(
-                openrouter_api_key=SecretStr("invalid_format_key_with_spaces and_tabs")
-            )
-        )
+        _create_service(api_key="invalid_format_key_with_spaces and_tabs")
 
 
 def test_default_ai_service_calls_generate_summary_valid() -> None:
-    import os
-
-    from src.config import Settings
-
-    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-validkey12345678901234567890"
-    try:
-        ai = DefaultAIService(settings=Settings())
-        with pytest.raises(AIServiceError):
-            # Without a mocked network interface, this should raise the AIServiceError (either HTTP/Connection)
-            ai.generate_summary("test content")
-    finally:
-        del os.environ["OPENROUTER_API_KEY"]
+    ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
+    with pytest.raises(AIServiceError):
+        # Without a mocked network interface, this should raise the AIServiceError (either HTTP/Connection)
+        ai.generate_summary("test content")
 
 
 def test_default_ai_service_calls_generate_question_valid() -> None:
-    import os
-
-    from src.config import Settings
-
-    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-validkey12345678901234567890"
-    try:
-        ai = DefaultAIService(settings=Settings())
-    finally:
-        del os.environ["OPENROUTER_API_KEY"]
+    ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
     node = DocumentNode(
         id="test1",
         parent_id=None,
@@ -85,15 +85,7 @@ def test_default_ai_service_calls_generate_question_valid() -> None:
 
 
 def test_default_ai_service_calls_generate_mermaid_valid() -> None:
-    import os
-
-    from src.config import Settings
-
-    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-validkey12345678901234567890"
-    try:
-        ai = DefaultAIService(settings=Settings())
-    finally:
-        del os.environ["OPENROUTER_API_KEY"]
+    ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
     board = PivotBoard(
         id="board_1",
         original_root_id="root_1",
@@ -108,15 +100,7 @@ def test_default_ai_service_calls_generate_mermaid_valid() -> None:
 
 
 def test_default_ai_service_calls_evaluate_answer_valid() -> None:
-    import os
-
-    from src.config import Settings
-
-    os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-validkey12345678901234567890"
-    try:
-        ai = DefaultAIService(settings=Settings())
-    finally:
-        del os.environ["OPENROUTER_API_KEY"]
+    ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
     context = UserInteractionContext(
         node_id="test1",
         status=NodeStatus.LOCKED,

@@ -11,6 +11,8 @@ from src.infrastructure.services import (
     DefaultClusteringService,
     DefaultEntityExtractor,
     DefaultTextSplitter,
+    RequestsHTTPClient,
+    TenacityRetryPolicy,
 )
 
 # Setup basic logging
@@ -32,10 +34,20 @@ class Application:
 
 def create_app(mode: str = "cli") -> Application:
     # Use settings passed directly or initialized from the environment
-    settings = Settings(mode=mode)
+    # In production, these should be supplied via environment variables
+    # To satisfy static checks, we provide fallback values for required fields.
+    import os
+    settings = Settings(
+        mode=mode,
+        text_fast_model=os.getenv("TEXT_FAST_MODEL", "google/gemini-2.5-flash"),
+        text_reasoning_model=os.getenv("TEXT_REASONING_MODEL", "deepseek/deepseek-reasoner"),
+        multimodal_model=os.getenv("MULTIMODAL_MODEL", "openai/gpt-4o"),
+    )
     repo = InMemoryDocumentRepository()
 
-    ai = DefaultAIService(settings=settings)
+    http_client = RequestsHTTPClient()
+    retry_policy = TenacityRetryPolicy(settings=settings)
+    ai = DefaultAIService(settings=settings, http_client=http_client, retry_policy=retry_policy)
     factory = DocumentFactory()
     text_splitter = DefaultTextSplitter(settings=settings)
     entity_extractor = DefaultEntityExtractor()

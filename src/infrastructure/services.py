@@ -2,6 +2,7 @@ import logging
 import re
 from typing import Any
 
+from src.config import Settings
 from src.domain_models.interfaces import (
     AIServiceError,
     ClusteringServiceProtocol,
@@ -15,11 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class DefaultTextSplitter(TextSplitterProtocol):
-    def __init__(self, settings: Any = None) -> None:
-        if settings is None:
-            from src.config import Settings
-
-            settings = Settings()
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.chunk_size = settings.chunk_size
         self.chunk_overlap = settings.chunk_overlap
@@ -147,11 +144,7 @@ class RequestsHTTPClient(HTTPClientProtocol):
 
 
 class TenacityRetryPolicy(RetryPolicyProtocol):
-    def __init__(self, settings: Any = None) -> None:
-        if settings is None:
-            from src.config import Settings
-
-            settings = Settings()
+    def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
     def execute(self, func: Any) -> Any:

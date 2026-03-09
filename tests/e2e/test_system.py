@@ -21,7 +21,12 @@ def test_pipeline_orchestrator_integration() -> None:
     ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
     factory = DocumentFactory()
 
-    settings = Settings(mode="test")
+    settings = Settings(
+        mode="test",
+        text_fast_model="google/gemini-2.5-flash",
+        text_reasoning_model="deepseek/deepseek-reasoner",
+        multimodal_model="openai/gpt-4o",
+    )
     text_splitter = DefaultTextSplitter(settings=settings)
     entity_extractor = DefaultEntityExtractor()
     clustering_service = DefaultClusteringService()

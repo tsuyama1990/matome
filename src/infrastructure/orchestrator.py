@@ -27,7 +27,7 @@ class PipelineOrchestrator:
         text_splitter: TextSplitterProtocol,
         entity_extractor: EntityExtractorProtocol,
         clustering_service: ClusteringServiceProtocol,
-        settings: Settings | None = None,
+        settings: Settings,
     ) -> None:
         self.doc_repo = doc_repo
         self.ai_service = ai_service
@@ -35,7 +35,7 @@ class PipelineOrchestrator:
         self.text_splitter = text_splitter
         self.entity_extractor = entity_extractor
         self.clustering_service = clustering_service
-        self.settings = settings or Settings()
+        self.settings = settings
 
     def run_pipeline(self, context: PipelineContext) -> None:
         logger.info("Starting document ingestion and analysis pipeline...")
@@ -73,6 +73,8 @@ class PipelineOrchestrator:
             except AIServiceError as e:
                 logger.warning(f"Summarization failed: {e}. Using fallback summary.")
                 summary = "Fallback Summary: Content processing currently impaired due to AI unavailability."
+
+            self._validate_content_length(context.content)
 
             root_node = self.doc_factory.create_root_node(
                 node_id=context.root_doc_id,
