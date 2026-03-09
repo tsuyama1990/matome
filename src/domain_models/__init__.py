@@ -5,6 +5,7 @@ from .analysis import (
     PivotBoardViewNode,
 )
 from .interfaces import (
+    AIServiceError,
     AIServiceProtocol,
     DocumentQueryService,
     DocumentReader,
@@ -28,6 +29,7 @@ from .services import DocumentFactory
 
 __all__ = [
     "AIProcessingMetadata",
+    "AIServiceError",
     "AIServiceProtocol",
     "DocumentContent",
     "DocumentFactory",

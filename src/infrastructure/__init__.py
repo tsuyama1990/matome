@@ -1,8 +1,7 @@
 from .orchestrator import PipelineOrchestrator
-from .repository import InMemoryDocumentQueryService, InMemoryDocumentRepository
+from .repository import InMemoryDocumentRepository
 
 __all__ = [
-    "InMemoryDocumentQueryService",
     "InMemoryDocumentRepository",
     "PipelineOrchestrator",
 ]

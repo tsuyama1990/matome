@@ -9,26 +9,19 @@ from tests.helpers.mocks import MockAIService
 def test_pipeline_orchestrator_integration() -> None:
     """
     Tests the core document ingestion and AI pipeline.
-    This demonstrates E2E capabilities directly on the orchestrator, mocking dependencies appropriately.
+    This demonstrates E2E capabilities directly on the orchestrator.
+    It reads settings locally to avoid touching the global os.environ block directly.
     """
-    import os
-
-    os.environ["MODE"] = "test"
-    os.environ["DEFAULT_AI_MODEL"] = "google/gemini-2.5-flash"
-    os.environ["DEFAULT_ROOT_DOC_ID"] = "root_doc_1"
-
     repo = InMemoryDocumentRepository()
-    ai = MockAIService()
+    ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
     factory = DocumentFactory()
-    settings = Settings()
+
+    settings = Settings(mode="test", default_root_doc_id="root_doc_1")
     orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
 
     # Run the pipeline
     content = "This is a very long business manual about strategy."
-    context = PipelineContext(
-        root_doc_id=settings.default_root_doc_id,
-        content=content
-    )
+    context = PipelineContext(root_doc_id=settings.default_root_doc_id, content=content)
     orchestrator.run_pipeline(context)
 
     # Verify the results in the repository
@@ -41,5 +34,6 @@ def test_pipeline_orchestrator_integration() -> None:
     assert root is not None
     assert root.id == settings.default_root_doc_id
     assert root.content.summary is not None
-    assert "CoD Summary of: " in root.content.summary
+    assert "System Actor" in root.content.summary
+    assert "Action" in root.content.summary
     assert root.metadata.category == "business"

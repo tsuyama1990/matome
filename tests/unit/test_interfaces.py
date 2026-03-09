@@ -11,6 +11,15 @@ from src.domain_models import (
 
 
 class MockDocumentRepository:
+    def begin(self) -> None:
+        pass
+
+    def commit(self) -> None:
+        pass
+
+    def rollback(self) -> None:
+        pass
+
     def save_node(self, node: DocumentNode) -> None:
         pass
 

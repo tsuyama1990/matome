@@ -1,5 +1,4 @@
 import logging
-import os
 import sys
 
 from src.application.ai import DefaultAIService
@@ -21,38 +20,72 @@ class Application:
         self.settings = settings
         self.orchestrator = orchestrator
 
-    def start(self) -> None:
+    def start(self, context: PipelineContext) -> None:
         logger.info(f"Initializing matome application in {self.settings.mode} mode...")
-        # Provide sample content directly instead of hardcoding in settings
-        sample_content = "This is a very long business manual about strategy."
-        context = PipelineContext(
-            root_doc_id=self.settings.default_root_doc_id,
-            content=sample_content
-        )
         self.orchestrator.run_pipeline(context)
 
 
 def create_app(mode: str = "cli") -> Application:
-    os.environ["MODE"] = mode
-    os.environ["DEFAULT_AI_MODEL"] = "google/gemini-2.5-flash"
-    os.environ["DEFAULT_ROOT_DOC_ID"] = "root_doc_1"
-
-    settings = Settings()
+    # Use settings passed directly or initialized from the environment
+    settings = Settings(mode=mode)
     repo = InMemoryDocumentRepository()
 
-    api_key_str = settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
-    ai = DefaultAIService(api_key=api_key_str, model=settings.default_ai_model)
+    api_key_str = settings.openrouter_api_key if settings.openrouter_api_key else ""
+    ai = DefaultAIService(api_key=api_key_str, model=settings.text_fast_model, api_url=settings.openrouter_api_url)
     factory = DocumentFactory()
-    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
+    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory, settings=settings)
     return Application(settings=settings, orchestrator=orchestrator)
 
 
 def main() -> None:
+    import argparse
+    from pathlib import Path
+
+    parser = argparse.ArgumentParser(description="matome CLI Application")
+    parser.add_argument("--file", type=str, help="Path to the document to process", required=True)
+    args = parser.parse_args()
+
     try:
         app = create_app(mode="cli")
-        app.start()
-    except Exception:
-        logger.exception("Application failed to start")
+
+        file_path = Path(args.file).resolve()
+        cwd = Path.cwd().resolve()
+
+        # Prevent directory traversal
+        if not file_path.is_relative_to(cwd):
+            logger.error(f"Security Error: File path must be within the current working directory -> {file_path}")
+            sys.exit(1)
+
+        if not file_path.exists():
+            logger.error(f"Failed to execute pipeline: File not found -> {file_path}")
+            sys.exit(1)
+        if not file_path.is_file():
+            logger.error(f"Failed to execute pipeline: Path is not a valid file -> {file_path}")
+            sys.exit(1)
+
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit
+        if file_path.stat().st_size > MAX_FILE_SIZE:
+            logger.error(f"Security Error: File exceeds maximum allowed size of 10MB -> {file_path}")
+            sys.exit(1)
+
+        content = file_path.read_text(encoding="utf-8")
+        if not content.strip():
+            logger.error("Failed to execute pipeline: File is empty.")
+            sys.exit(1)
+
+        context = PipelineContext(
+            root_doc_id=app.settings.default_root_doc_id,
+            content=content
+        )
+        app.start(context)
+    except ValueError:
+        logger.exception("Configuration or validation error during startup")
+        sys.exit(1)
+    except RuntimeError:
+        logger.exception("Pipeline execution halted due to a runtime error")
+        sys.exit(1)
+    except Exception as e:
+        logger.critical(f"An unexpected critical failure occurred: {e}", exc_info=True)
         sys.exit(1)
 
 

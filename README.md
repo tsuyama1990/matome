@@ -13,6 +13,7 @@
 *   **Frictionless Active Learning (SQ3R Automation):** The system automatically locks content and prompts you with questions before reading, ensuring active engagement and drastically improving long-term memory retention.
 *   **Semantic Zoom Interface:** Utilises a progressive disclosure UI to prevent cognitive overload. Start with a high-level mind map and zoom smoothly into dense, AI-refined summaries as needed.
 *   **Multi-Dimensional Pivot KJ Analysis:** Dynamically restructure your documents. Instantly transform a rigid, chapter-based legacy manual into an agile, actor-vs-state workflow diagram with a single click.
+*   **AI Metadata Tracking:** Preserves semantic contexts, entity recognition metadata, and GMM hierarchical trees for advanced NLP processing and graph structuring.
 *   **Enterprise-Grade Privacy & BYOK:** Designed with security first. Utilize local inference options or Bring Your Own Key (BYOK) for OpenRouter to ensure your sensitive data is never used for external AI training.
 *   **Strict Typing and Validation:** Provides robust validation using precise, type-safe Domain Schemas (Pydantic Models).
 

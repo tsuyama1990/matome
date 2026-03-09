@@ -8,6 +8,10 @@ class RepositoryError(Exception):
     """Base exception for all repository-related errors."""
 
 
+class AIServiceError(Exception):
+    """Base exception for external AI service failures."""
+
+
 class Transactional(Protocol):
     """Protocol for transaction management."""
 
@@ -26,14 +30,14 @@ class DocumentWriter(Protocol):
     def save_nodes(self, nodes: list[DocumentNode]) -> None: ...
 
 
-class DocumentRepository(DocumentReader, DocumentWriter, Protocol):
-    """Aggregate protocol combining Read and Write CRUD operations."""
-
-
 class DocumentQueryService(Protocol):
     """Protocol for complex query operations over documents."""
 
     def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]: ...
+
+
+class DocumentRepository(DocumentReader, DocumentWriter, Transactional, DocumentQueryService, Protocol):
+    """Aggregate protocol combining Read, Write, Query, and Transaction operations."""
 
 
 class UserInteractionRepository(Protocol):
@@ -49,3 +53,5 @@ class PivotBoardRepository(Protocol):
 class AIServiceProtocol(Protocol):
     def generate_summary(self, content: str) -> str: ...
     def generate_question(self, node: DocumentNode) -> str: ...
+    def generate_mermaid_diagram(self, board: PivotBoard) -> str: ...
+    def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
