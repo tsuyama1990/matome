@@ -33,7 +33,7 @@ def create_app(mode: str = "cli") -> Application:
     api_key_str = settings.openrouter_api_key if settings.openrouter_api_key else ""
     ai = DefaultAIService(api_key=api_key_str, model=settings.text_fast_model, api_url=settings.openrouter_api_url)
     factory = DocumentFactory()
-    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
+    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory, settings=settings)
     return Application(settings=settings, orchestrator=orchestrator)
 
 
@@ -48,7 +48,14 @@ def main() -> None:
     try:
         app = create_app(mode="cli")
 
-        file_path = Path(args.file)
+        file_path = Path(args.file).resolve()
+        cwd = Path.cwd().resolve()
+
+        # Prevent directory traversal
+        if not str(file_path).startswith(str(cwd)):
+            logger.error(f"Security Error: File path must be within the current working directory -> {file_path}")
+            sys.exit(1)
+
         if not file_path.exists():
             logger.error(f"Failed to execute pipeline: File not found -> {file_path}")
             sys.exit(1)

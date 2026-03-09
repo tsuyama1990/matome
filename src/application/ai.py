@@ -15,18 +15,17 @@ class DefaultAIService(AIServiceProtocol):
     """Application-level AI orchestrator. Dispatches requests to external infrastructure."""
 
     def __init__(self, api_key: str, model: str = "google/gemini-2.5-flash", api_url: str = "https://openrouter.ai/api/v1/chat/completions") -> None:
-        import re
+        from src.utils.validation import validate_api_key_format
+
         if not api_key:
             msg = "A valid API Key is required to initialize DefaultAIService."
             raise ValueError(msg)
-        if len(api_key) < 10:
-            msg = "API Key must be at least 10 characters long."
-            raise ValueError(msg)
-        if not re.match(r"^[a-zA-Z0-9_-]+$", api_key):
-            msg = "API Key format is invalid. It must contain only alphanumeric characters, dashes, or underscores."
+
+        validated_key = validate_api_key_format(api_key)
+        if validated_key is None:
             raise ValueError(msg)
 
-        self.api_key = api_key
+        self.api_key = validated_key
         self.model = model
         self.api_url = api_url
 

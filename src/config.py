@@ -35,24 +35,26 @@ class Settings(BaseSettings):
         default=ROOT_DOC_ID, description="Default root document ID used in pipeline initialization"
     )
 
+    chunk_size: int = Field(
+        default=1000, description="Default character length for semantic chunking"
+    )
+    chunk_overlap: int = Field(
+        default=100, description="Default overlap length for semantic chunking"
+    )
+    raptor_max_clusters: int = Field(
+        default=5, description="Maximum number of GMM components in RAPTOR trees"
+    )
+
     @field_validator("openrouter_api_key", mode="before")
     @classmethod
     def validate_api_key(cls, value: Any) -> Any:
+        from src.utils.validation import validate_api_key_format
         if not value:
             return value
 
         # Unwrap if it's passed as a SecretStr or handle plain strings from env vars
         val_str = value.get_secret_value() if isinstance(value, SecretStr) else str(value)
-
-        import re
-        if len(val_str) < 10:
-            msg = "API Key must be at least 10 characters long."
-            raise ValueError(msg)
-        if not re.match(r"^[a-zA-Z0-9_-]+$", val_str):
-            msg = "API Key format is invalid. It must contain only alphanumeric characters, dashes, or underscores."
-            raise ValueError(msg)
-
-        return value
+        return validate_api_key_format(val_str)
 
 
 def create_app_context(settings: Settings) -> dict[str, Any]:

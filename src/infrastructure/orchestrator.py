@@ -1,7 +1,10 @@
 import logging
+import random
 import sys
+import time
 from typing import Any
 
+from src.config import Settings
 from src.domain_models import (
     AIServiceProtocol,
     DocumentFactory,
@@ -20,14 +23,17 @@ class PipelineOrchestrator:
         doc_repo: DocumentRepository,
         ai_service: AIServiceProtocol,
         doc_factory: DocumentFactory,
+        settings: Settings | None = None,
     ) -> None:
         self.doc_repo = doc_repo
         self.ai_service = ai_service
         self.doc_factory = doc_factory
+        self.settings = settings or Settings()
 
     def _execute_with_retry(self, operation: Any, *args: Any, **kwargs: Any) -> Any:
-        """Executes an operation with basic retry logic for AI services."""
+        """Executes an operation with exponential backoff and jitter."""
         retries = 3
+        base_delay = 2.0
         err_msg = "Pipeline operation failed after retries"
         for attempt in range(retries):
             try:
@@ -37,6 +43,11 @@ class PipelineOrchestrator:
                 if attempt == retries - 1:
                     logger.exception("All retries exhausted. Falling back to default/error state.")
                     raise RuntimeError(err_msg) from e
+
+                # Exponential backoff with jitter
+                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)  # noqa: S311
+                logger.info(f"Sleeping for {delay:.2f} seconds before retrying...")
+                time.sleep(delay)
         return None
 
     def _perform_semantic_chunking(self, content: str) -> list[str]:
@@ -110,7 +121,7 @@ class PipelineOrchestrator:
             reduced_embeddings = reducer.fit_transform(embeddings)
 
             # Cluster
-            n_components = min(5, len(chunks))
+            n_components = min(self.settings.raptor_max_clusters, len(chunks))
             gmm = GaussianMixture(n_components=n_components, random_state=42)
             clusters = gmm.fit_predict(reduced_embeddings)
 
@@ -124,7 +135,12 @@ class PipelineOrchestrator:
             return {"level_0": "root", "error_fallback": str(e)}
 
     def run_pipeline(self, context: PipelineContext) -> None:
+        import threading
         logger.info("Starting document ingestion and analysis pipeline...")
+
+        # Ensure pipeline doesn't hang indefinitely using a basic thread timeout implementation for blocking ML tasks
+        timer = threading.Timer(300.0, lambda: sys.exit("Pipeline timed out."))
+        timer.start()
 
         # Initialize the transaction layer natively ensuring atomicity.
         self.doc_repo.begin()
@@ -175,3 +191,5 @@ class PipelineOrchestrator:
             self.doc_repo.rollback()
             msg = f"Pipeline failure: {e}"
             raise RuntimeError(msg) from e
+        finally:
+            timer.cancel()
