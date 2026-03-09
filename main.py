@@ -52,7 +52,7 @@ def main() -> None:
         cwd = Path.cwd().resolve()
 
         # Prevent directory traversal
-        if not str(file_path).startswith(str(cwd)):
+        if not file_path.is_relative_to(cwd):
             logger.error(f"Security Error: File path must be within the current working directory -> {file_path}")
             sys.exit(1)
 
@@ -61,6 +61,11 @@ def main() -> None:
             sys.exit(1)
         if not file_path.is_file():
             logger.error(f"Failed to execute pipeline: Path is not a valid file -> {file_path}")
+            sys.exit(1)
+
+        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB limit
+        if file_path.stat().st_size > MAX_FILE_SIZE:
+            logger.error(f"Security Error: File exceeds maximum allowed size of 10MB -> {file_path}")
             sys.exit(1)
 
         content = file_path.read_text(encoding="utf-8")

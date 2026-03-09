@@ -1,8 +1,5 @@
 import logging
-import random
 import sys
-import time
-from typing import Any
 
 from src.config import Settings
 from src.domain_models import (
@@ -29,26 +26,6 @@ class PipelineOrchestrator:
         self.ai_service = ai_service
         self.doc_factory = doc_factory
         self.settings = settings or Settings()
-
-    def _execute_with_retry(self, operation: Any, *args: Any, **kwargs: Any) -> Any:
-        """Executes an operation with exponential backoff and jitter."""
-        retries = 3
-        base_delay = 2.0
-        err_msg = "Pipeline operation failed after retries"
-        for attempt in range(retries):
-            try:
-                return operation(*args, **kwargs)
-            except Exception as e:
-                logger.warning(f"Operation failed (attempt {attempt + 1}/{retries}): {e}")
-                if attempt == retries - 1:
-                    logger.exception("All retries exhausted. Falling back to default/error state.")
-                    raise RuntimeError(err_msg) from e
-
-                # Exponential backoff with jitter
-                delay = base_delay * (2 ** attempt) + random.uniform(0, 1)  # noqa: S311
-                logger.info(f"Sleeping for {delay:.2f} seconds before retrying...")
-                time.sleep(delay)
-        return None
 
     def _perform_semantic_chunking(self, content: str) -> list[str]:
         """Implements actual LangChain semantic chunking logic with a robust fallback."""
@@ -138,8 +115,12 @@ class PipelineOrchestrator:
         import threading
         logger.info("Starting document ingestion and analysis pipeline...")
 
+        def timeout_handler() -> None:
+            msg = "Pipeline execution timed out."
+            raise TimeoutError(msg)
+
         # Ensure pipeline doesn't hang indefinitely using a basic thread timeout implementation for blocking ML tasks
-        timer = threading.Timer(300.0, lambda: sys.exit("Pipeline timed out."))
+        timer = threading.Timer(300.0, timeout_handler)
         timer.start()
 
         # Initialize the transaction layer natively ensuring atomicity.
@@ -160,7 +141,7 @@ class PipelineOrchestrator:
 
             # 4. Chain of Density (CoD) Summarization
             logger.info("Applying Chain of Density summarization...")
-            summary = self._execute_with_retry(self.ai_service.generate_summary, context.content)
+            summary = self.ai_service.generate_summary(context.content)
 
             root_node = self.doc_factory.create_root_node(
                 node_id=context.root_doc_id,
@@ -179,7 +160,7 @@ class PipelineOrchestrator:
 
             # 5. Question Generation
             logger.info(f"Generating learning loop for node {root_node.id}...")
-            question = self._execute_with_retry(self.ai_service.generate_question, root_node)
+            question = self.ai_service.generate_question(root_node)
             logger.info(f"AI Question: {question}")
 
             self.doc_repo.commit()

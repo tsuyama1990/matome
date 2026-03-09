@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
     )
-    openrouter_api_key: str | None = Field(
+    openrouter_api_key: SecretStr | None = Field(
         default=None, description="BYOK API key for OpenRouter", validate_default=True
     )
     openrouter_api_url: str = Field(

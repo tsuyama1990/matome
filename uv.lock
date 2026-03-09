@@ -800,6 +800,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "langchain-text-splitters" },
+    { name = "numpy" },
     { name = "playwright" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -807,6 +808,7 @@ dependencies = [
     { name = "requests" },
     { name = "scikit-learn" },
     { name = "spacy" },
+    { name = "tenacity" },
     { name = "umap-learn" },
 ]
 
@@ -823,6 +825,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "langchain-text-splitters", specifier = ">=1.1.1" },
+    { name = "numpy", specifier = ">=2.4.2" },
     { name = "playwright", specifier = ">=1.58.0" },
     { name = "pydantic", specifier = ">=2.12.5" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
@@ -830,6 +833,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.5" },
     { name = "scikit-learn", specifier = ">=1.8.0" },
     { name = "spacy", specifier = ">=3.8.11" },
+    { name = "tenacity", specifier = ">=9.1.4" },
     { name = "umap-learn", specifier = ">=0.5.11" },
 ]
 
