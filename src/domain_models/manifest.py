@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from .constants import NODE_ID_PATTERN

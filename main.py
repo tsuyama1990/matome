@@ -41,8 +41,14 @@ class AppBuilder:
 
         from pydantic import SecretStr
 
+        from src.domain_models.interfaces import ConfigurationError
+
         api_key_str = os.getenv("OPENROUTER_API_KEY")
-        api_key = SecretStr(api_key_str) if api_key_str else None
+        if not api_key_str or len(api_key_str) < 30:
+            err_msg = "OPENROUTER_API_KEY is required"
+            raise ConfigurationError(err_msg)
+
+        api_key = SecretStr(api_key_str)
 
         from pathlib import Path
         settings = Settings(
@@ -60,10 +66,6 @@ class AppBuilder:
             max_file_size=int(os.getenv("MAX_FILE_SIZE", str(10 * 1024 * 1024))),
             allowed_base_dir=os.getenv("ALLOWED_BASE_DIR", str(Path.cwd().resolve()))
         )
-
-        if not settings.openrouter_api_key:
-            logger.error("Configuration Error: OPENROUTER_API_KEY is required to start the application.")
-            sys.exit(1)
 
         repo = InMemoryDocumentRepository()
 
@@ -112,7 +114,13 @@ def main() -> None:
     args = parser.parse_args()
 
     try:
-        app = AppBuilder.build(mode="cli")
+        from src.domain_models.interfaces import ConfigurationError
+
+        try:
+            app = AppBuilder.build(mode="cli")
+        except ConfigurationError:
+            logger.exception("Configuration Error")
+            sys.exit(1)
 
         file_path = Path(args.file).resolve()
         if not app.settings.allowed_base_dir:

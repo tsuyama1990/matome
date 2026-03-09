@@ -11,6 +11,10 @@ from src.infrastructure.services import (
 from tests.helpers.mocks import MockAIService
 
 
+class IntegrationTestSettings(Settings):
+    """Test-specific configuration class strictly for safe mock validations."""
+
+
 def test_pipeline_orchestrator_integration() -> None:
     """
     Tests the core document ingestion and AI pipeline.
@@ -21,7 +25,7 @@ def test_pipeline_orchestrator_integration() -> None:
     ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
     factory = DocumentFactory()
 
-    settings = Settings(
+    settings = IntegrationTestSettings(
         mode="test",
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",

@@ -6,6 +6,7 @@ from src.domain_models import (
     AIServiceProtocol,
     ClusteringServiceProtocol,
     DocumentFactory,
+    DocumentNode,
     DocumentRepository,
     EntityExtractorProtocol,
     PipelineContext,
@@ -105,7 +106,7 @@ class PipelineOrchestrator:
         msg = "PipelineContext must provide either content or file_path"
         raise ValueError(msg)
 
-    def _execute_pipeline_logic(self, context: PipelineContext) -> Any:
+    def _execute_pipeline_logic(self, context: PipelineContext) -> DocumentNode:
         try:
             # 1. Ingestion and Semantic Chunking Stage
             logger.info("Ingesting document and performing semantic chunking...")

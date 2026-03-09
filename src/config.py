@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Any
 
 from pydantic import Field, SecretStr, field_validator
@@ -22,7 +24,7 @@ class Settings(MatomeConfig):
         default=None, description="BYOK API key for OpenRouter", validate_default=True
     )
     openrouter_api_url: str = Field(
-        default_factory=lambda: str(__import__("os").getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")),
+        default_factory=lambda: str(os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")),
         description="The base URL for the OpenRouter API endpoint",
     )
     text_fast_model: str = Field(
@@ -39,48 +41,48 @@ class Settings(MatomeConfig):
     )
 
     default_root_doc_id: str = Field(
-        default_factory=lambda: str(__import__("os").getenv("DEFAULT_ROOT_DOC_ID", ROOT_DOC_ID)),
+        default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", ROOT_DOC_ID)),
         description="Default root document ID used in pipeline initialization"
     )
 
     max_file_size: int = Field(
-        default_factory=lambda: int(__import__("os").getenv("MAX_FILE_SIZE", 10 * 1024 * 1024)),
+        default_factory=lambda: int(os.getenv("MAX_FILE_SIZE", "10485760")),
         description="Maximum allowed file size in bytes (default 10MB)"
     )
     allowed_base_dir: str = Field(
-        default_factory=lambda: str(__import__("os").getenv("ALLOWED_BASE_DIR", str(__import__("pathlib").Path.cwd().resolve()))),
+        default_factory=lambda: str(Path(os.getenv("ALLOWED_BASE_DIR", "."))),
         description="Base directory allowed for file ingestion"
     )
     chunk_size: int = Field(
-        default_factory=lambda: int(__import__("os").getenv("CHUNK_SIZE", 1000)),
+        default_factory=lambda: int(os.getenv("CHUNK_SIZE", "1000")),
         description="Default character length for semantic chunking"
     )
     chunk_overlap: int = Field(
-        default_factory=lambda: int(__import__("os").getenv("CHUNK_OVERLAP", 100)),
+        default_factory=lambda: int(os.getenv("CHUNK_OVERLAP", "100")),
         description="Default overlap length for semantic chunking"
     )
     raptor_max_clusters: int = Field(
-        default_factory=lambda: int(__import__("os").getenv("RAPTOR_MAX_CLUSTERS", 5)),
+        default_factory=lambda: int(os.getenv("RAPTOR_MAX_CLUSTERS", "5")),
         description="Maximum number of GMM components in RAPTOR trees"
     )
     pipeline_timeout: float = Field(
-        default_factory=lambda: float(__import__("os").getenv("PIPELINE_TIMEOUT", 300.0)),
+        default_factory=lambda: float(os.getenv("PIPELINE_TIMEOUT", "300.0")),
         description="Pipeline execution timeout in seconds"
     )
     ai_timeout: int = Field(
-        default_factory=lambda: int(__import__("os").getenv("AI_TIMEOUT", 10)),
+        default_factory=lambda: int(os.getenv("AI_TIMEOUT", "10")),
         description="Timeout for external AI API requests in seconds"
     )
     ai_retry_attempts: int = Field(
-        default_factory=lambda: int(__import__("os").getenv("AI_RETRY_ATTEMPTS", 3)),
+        default_factory=lambda: int(os.getenv("AI_RETRY_ATTEMPTS", "3")),
         description="Maximum number of retry attempts for AI requests"
     )
     ai_retry_min_wait: int = Field(
-        default_factory=lambda: int(__import__("os").getenv("AI_RETRY_MIN_WAIT", 1)),
+        default_factory=lambda: int(os.getenv("AI_RETRY_MIN_WAIT", "1")),
         description="Minimum backoff wait time in seconds"
     )
     ai_retry_max_wait: int = Field(
-        default_factory=lambda: int(__import__("os").getenv("AI_RETRY_MAX_WAIT", 10)),
+        default_factory=lambda: int(os.getenv("AI_RETRY_MAX_WAIT", "10")),
         description="Maximum backoff wait time in seconds"
     )
 
