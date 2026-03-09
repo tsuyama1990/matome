@@ -68,11 +68,11 @@ def test_pivot_board_valid() -> None:
         axis=PivotAxis.ACTOR_STATE,
         custom_axis_description=None,
         nodes=[
-            PivotBoardNode(node_id="node1", x_position=10.0, y_position=20.0, cluster_id=None)
+            PivotBoardNode(node_id="node1", x_position=0.5, y_position=0.5, cluster_id=None)
         ],
         mermaid_diagram=None
     )
     assert board.id == "board1"
     assert board.axis == PivotAxis.ACTOR_STATE
     assert len(board.nodes) == 1
-    assert board.nodes[0].x_position == 10.0
+    assert board.nodes[0].x_position == 0.5

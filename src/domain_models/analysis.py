@@ -15,8 +15,8 @@ class PivotBoardNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     node_id: str = Field(..., description="Reference to the original DocumentNode ID")
-    x_position: float = Field(..., description="Calculated X coordinate on the pivot board")
-    y_position: float = Field(..., description="Calculated Y coordinate on the pivot board")
+    x_position: float = Field(..., description="Calculated X coordinate on the pivot board", ge=0.0, le=1.0)
+    y_position: float = Field(..., description="Calculated Y coordinate on the pivot board", ge=0.0, le=1.0)
     cluster_id: str | None = Field(None, description="The cluster this node belongs to on the pivot board")
 
 class PivotBoard(BaseModel):
