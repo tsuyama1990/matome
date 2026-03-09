@@ -3,6 +3,7 @@ from pydantic import ValidationError
 
 from src.domain_models import (
     DocumentNode,
+    NodeMetadata,
     NodeStatus,
     PivotAxis,
     PivotBoard,
@@ -19,12 +20,12 @@ def test_document_node_valid() -> None:
         summary=None,
         content=None,
         status=NodeStatus.LOCKED,
-        metadata={"author": "test"}
+        metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None)
     )
     assert node.id == "node1"
     assert node.title == "Test Node"
     assert node.status == NodeStatus.LOCKED
-    assert node.metadata == {"author": "test"}
+    assert node.metadata.author == "test"
 
 def test_document_node_invalid_extra() -> None:
     with pytest.raises(ValidationError):

@@ -4,10 +4,11 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0
-collected 10 items
+collected 13 items
 
-tests/e2e/test_system.py ..                                              [ 20%]
-tests/unit/test_domain_models.py .....                                   [ 70%]
+tests/e2e/test_system.py ...                                             [ 23%]
+tests/unit/test_app_factory.py ..                                        [ 38%]
+tests/unit/test_domain_models.py .....                                   [ 76%]
 tests/unit/test_interfaces.py ...                                        [100%]
 
 ================================ tests coverage ================================
@@ -15,14 +16,15 @@ _______________ coverage: platform linux, python 3.12.12-final-0 _______________
 
 Name                            Stmts   Miss  Cover   Missing
 -------------------------------------------------------------
-src/__init__.py                     0      0   100%
+src/__init__.py                     9      0   100%
 src/domain_models/__init__.py       3      0   100%
 src/domain_models/analysis.py      23      0   100%
-src/domain_models/manifest.py      25      0   100%
+src/domain_models/manifest.py      32      0   100%
+src/infrastructure.py              26     10    62%   25-34
 src/interfaces/__init__.py          2      0   100%
-src/interfaces/protocols.py         5      0   100%
+src/interfaces/protocols.py        17      0   100%
 -------------------------------------------------------------
-TOTAL                              58      0   100%
-============================== 10 passed in 0.46s ==============================
+TOTAL                             112     10    91%
+============================== 13 passed in 0.47s ==============================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
