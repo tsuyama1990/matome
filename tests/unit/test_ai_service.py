@@ -33,6 +33,7 @@ def _create_mock_settings(api_key: str | None = None) -> Any:
 
 def _create_service(api_key: str | None = None) -> DefaultAIService:
     from src.infrastructure.services import RequestsHTTPClient, TenacityRetryPolicy
+
     settings = _create_mock_settings(api_key)
     return DefaultAIService(
         api_key=settings.openrouter_api_key,

@@ -37,6 +37,7 @@ def create_app(mode: str = "cli") -> Application:
     # In production, these should be supplied via environment variables
     # To satisfy static checks, we provide fallback values for required fields.
     import os
+
     settings = Settings(
         mode=mode,
         text_fast_model=os.getenv("TEXT_FAST_MODEL", "google/gemini-2.5-flash"),

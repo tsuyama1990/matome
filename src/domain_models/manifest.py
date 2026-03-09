@@ -1,18 +1,31 @@
-
 from pydantic import BaseModel, ConfigDict, Field
 
 from .constants import NODE_ID_PATTERN
 from .enums import NodeStatus
+from .types import NodeID
 
 __all__ = [
     "AIProcessingMetadata",
+    "BestPracticeData",
     "DocumentContent",
     "DocumentNode",
     "NodeMetadata",
     "NodeStatus",
     "PipelineContext",
+    "SummaryNode",
     "UserInteractionContext",
+    "WisdomData",
 ]
+
+
+class BestPracticeData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content: str = Field(..., description="Best practice text content", max_length=2000)
+
+
+class WisdomData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    content: str = Field(..., description="Wisdom text content", max_length=2000)
 
 
 class NodeMetadata(BaseModel):
@@ -21,6 +34,12 @@ class NodeMetadata(BaseModel):
     author: str | None = Field(None, max_length=100)
     category: str | None = Field(None, max_length=50)
     time_axis: str | None = Field(None, max_length=50)
+    best_practices: list[BestPracticeData] = Field(
+        default_factory=list, description="Extracted best practices"
+    )
+    wisdom_data: list[WisdomData] = Field(
+        default_factory=list, description="Aggregated wisdom points"
+    )
 
 
 class DocumentContent(BaseModel):
@@ -73,6 +92,20 @@ class DocumentNode(BaseModel):
 
     # Adding fields mandated by auditor in FR-1.2 and FR-1.3 requirements
     ai_metadata: AIProcessingMetadata = Field(..., description="AI processing metadata")
+
+
+class SummaryNode(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: NodeID = Field(
+        ...,
+        description="Unique identifier for the summary node",
+    )
+    title: str = Field(..., description="Title of the summary node", max_length=500)
+    summary: str = Field(..., description="The summary text", max_length=2000)
+    children_indices: list[int | str] = Field(
+        default_factory=list, description="Indices/IDs of the children nodes"
+    )
 
 
 class PipelineContext(BaseModel):

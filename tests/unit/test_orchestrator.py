@@ -58,8 +58,6 @@ def test_orchestrator_raptor_fallback() -> None:
     orchestrator = _create_orchestrator()
     # Pass more than 15 chunks to avoid the UMAP dimensionality error for N <= 15 when using defaults
     chunks = [f"test document chunk number {i}" for i in range(20)]
-    tree = orchestrator.clustering_service.cluster_chunks(
-        chunks, orchestrator.raptor_max_clusters
-    )
+    tree = orchestrator.clustering_service.cluster_chunks(chunks, orchestrator.raptor_max_clusters)
     assert isinstance(tree, dict)
     assert "level_0" in tree

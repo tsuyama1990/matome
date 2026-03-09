@@ -8,6 +8,7 @@ from src.domain_models.constants import ROOT_DOC_ID
 
 class MatomeConfig(BaseSettings):
     """Base configuration model class"""
+
     model_config = SettingsConfigDict(extra="ignore")
 
 

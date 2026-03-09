@@ -68,9 +68,7 @@ class PipelineOrchestrator:
 
             # 3. RAPTOR Clustering and Tree Generation
             logger.info("Generating hierarchical tree via RAPTOR...")
-            tree_metadata = self.clustering_service.cluster_chunks(
-                chunks, self.raptor_max_clusters
-            )
+            tree_metadata = self.clustering_service.cluster_chunks(chunks, self.raptor_max_clusters)
 
             # 4. Chain of Density (CoD) Summarization
             logger.info("Applying Chain of Density summarization...")

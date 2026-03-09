@@ -23,20 +23,27 @@ from .interfaces import (
 )
 from .manifest import (
     AIProcessingMetadata,
+    BestPracticeData,
     DocumentContent,
     DocumentNode,
     NodeMetadata,
     NodeStatus,
     PipelineContext,
+    SummaryNode,
     UserInteractionContext,
+    WisdomData,
 )
 from .services import DocumentFactory
+from .types import CanvasNodeType, DIKWLevel, NodeID
 
 __all__ = [
     "AIProcessingMetadata",
     "AIServiceError",
     "AIServiceProtocol",
+    "BestPracticeData",
+    "CanvasNodeType",
     "ClusteringServiceProtocol",
+    "DIKWLevel",
     "DocumentContent",
     "DocumentFactory",
     "DocumentNode",
@@ -46,6 +53,7 @@ __all__ = [
     "DocumentWriter",
     "EntityExtractorProtocol",
     "HTTPClientProtocol",
+    "NodeID",
     "NodeMetadata",
     "NodeStatus",
     "PipelineContext",
@@ -56,8 +64,10 @@ __all__ = [
     "PivotBoardViewNode",
     "RepositoryError",
     "RetryPolicyProtocol",
+    "SummaryNode",
     "TextSplitterProtocol",
     "Transactional",
     "UserInteractionContext",
     "UserInteractionRepository",
+    "WisdomData",
 ]
