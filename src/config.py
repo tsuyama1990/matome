@@ -6,10 +6,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from src.domain_models.constants import ROOT_DOC_ID
 
 
-class Settings(BaseSettings):
-    """Global application configuration settings utilizing pydantic-settings."""
+class MatomeConfig(BaseSettings):
+    """Base configuration model class"""
+    model_config = SettingsConfigDict(extra="ignore")
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+class Settings(MatomeConfig):
+    """Global application configuration settings utilizing pydantic-settings."""
 
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
@@ -19,16 +22,19 @@ class Settings(BaseSettings):
     )
     openrouter_api_url: str = Field(
         default="https://openrouter.ai/api/v1/chat/completions",
-        description="The base URL for the OpenRouter API endpoint"
+        description="The base URL for the OpenRouter API endpoint",
     )
     text_fast_model: str = Field(
-        default="google/gemini-2.5-flash", description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging"
+        ...,
+        description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging",
     )
     text_reasoning_model: str = Field(
-        default="deepseek/deepseek-reasoner", description="Models with advanced logical reasoning capabilities for insight extraction, To-Be generation, web grounding"
+        ...,
+        description="Models with advanced logical reasoning capabilities for insight extraction, To-Be generation, web grounding",
     )
     multimodal_model: str = Field(
-        default="openai/gpt-4o", description="Models excelling in visual understanding for complex charts in PDFs, architecture diagrams, UI mockups"
+        ...,
+        description="Models excelling in visual understanding for complex charts in PDFs, architecture diagrams, UI mockups",
     )
 
     default_root_doc_id: str = Field(
@@ -44,11 +50,23 @@ class Settings(BaseSettings):
     raptor_max_clusters: int = Field(
         default=5, description="Maximum number of GMM components in RAPTOR trees"
     )
+    pipeline_timeout: float = Field(
+        default=300.0, description="Pipeline execution timeout in seconds"
+    )
+    ai_timeout: int = Field(
+        default=10, description="Timeout for external AI API requests in seconds"
+    )
+    ai_retry_attempts: int = Field(
+        default=3, description="Maximum number of retry attempts for AI requests"
+    )
+    ai_retry_min_wait: int = Field(default=1, description="Minimum backoff wait time in seconds")
+    ai_retry_max_wait: int = Field(default=10, description="Maximum backoff wait time in seconds")
 
     @field_validator("openrouter_api_key", mode="before")
     @classmethod
     def validate_api_key(cls, value: Any) -> Any:
         from src.utils.validation import validate_api_key_format
+
         if not value:
             return value
 

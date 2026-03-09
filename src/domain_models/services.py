@@ -4,6 +4,9 @@ from .manifest import AIProcessingMetadata, DocumentContent, DocumentNode, NodeM
 class DocumentFactory:
     """Domain service responsible for creating DocumentNode entities."""
 
+    def __init__(self, max_content_length: int = 100000) -> None:
+        self.max_content_length = max_content_length
+
     def create_root_node(
         self, node_id: str, title: str, content_text: str, summary: str
     ) -> DocumentNode:

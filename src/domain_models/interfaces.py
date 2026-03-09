@@ -36,7 +36,9 @@ class DocumentQueryService(Protocol):
     def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]: ...
 
 
-class DocumentRepository(DocumentReader, DocumentWriter, Transactional, DocumentQueryService, Protocol):
+class DocumentRepository(
+    DocumentReader, DocumentWriter, Transactional, DocumentQueryService, Protocol
+):
     """Aggregate protocol combining Read, Write, Query, and Transaction operations."""
 
 
@@ -55,3 +57,35 @@ class AIServiceProtocol(Protocol):
     def generate_question(self, node: DocumentNode) -> str: ...
     def generate_mermaid_diagram(self, board: PivotBoard) -> str: ...
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
+
+
+class TextSplitterProtocol(Protocol):
+    """Protocol for splitting text into smaller chunks."""
+
+    def split_text(self, text: str) -> list[str]: ...
+
+
+class EntityExtractorProtocol(Protocol):
+    """Protocol for extracting entities from a list of text chunks."""
+
+    def extract_entities(self, chunks: list[str]) -> dict[str, str]: ...
+
+
+class ClusteringServiceProtocol(Protocol):
+    """Protocol for clustering chunks and returning metadata."""
+
+    def cluster_chunks(self, chunks: list[str], max_clusters: int) -> dict[str, str]: ...
+
+
+class HTTPClientProtocol(Protocol):
+    """Protocol for sending HTTP requests."""
+
+    def post(
+        self, url: str, json: dict[str, Any], headers: dict[str, str], timeout: int
+    ) -> dict[str, Any]: ...
+
+
+class RetryPolicyProtocol(Protocol):
+    """Protocol for defining execution retry policies."""
+
+    def execute(self, func: Any) -> Any: ...
