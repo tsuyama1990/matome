@@ -5,7 +5,7 @@ from src.domain_models import (
     NodeMetadata,
     NodeStatus,
 )
-from src.infrastructure.repository import InMemoryDocumentQueryService, InMemoryDocumentRepository
+from src.infrastructure.repository import InMemoryDocumentRepository
 
 
 def create_mock_node(
@@ -50,12 +50,11 @@ def test_in_memory_repo_get_children() -> None:
 
 def test_in_memory_query_service() -> None:
     repo = InMemoryDocumentRepository()
-    qs = InMemoryDocumentQueryService(repo)
 
     node1 = create_mock_node("n1", status=NodeStatus.LOCKED)
     node2 = create_mock_node("n2", status=NodeStatus.UNLOCKED)
     repo.save_nodes([node1, node2])
 
-    results = qs.query_nodes({"status": NodeStatus.UNLOCKED})
+    results = repo.query_nodes({"status": NodeStatus.UNLOCKED})
     assert len(results) == 1
     assert results[0].id == "n2"

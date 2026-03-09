@@ -6,9 +6,6 @@ app = marimo.App(width="medium")
 
 @app.cell
 def __():
-    import sys
-
-    sys.path.append(".")
     import marimo as mo
 
     from src.application.ai import DefaultAIService

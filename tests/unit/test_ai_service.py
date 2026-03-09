@@ -1,3 +1,5 @@
+import pytest
+
 from src.application.ai import DefaultAIService
 from src.domain_models import (
     AIProcessingMetadata,
@@ -12,13 +14,13 @@ from src.domain_models import (
 )
 
 
-def test_default_ai_service_generate_summary() -> None:
+def test_default_ai_service_generate_summary_missing_key() -> None:
     ai = DefaultAIService()
-    summary = ai.generate_summary("This is a long test content string.")
-    assert summary.startswith("Generated Summary of:")
+    with pytest.raises(NotImplementedError):
+        ai.generate_summary("This is a long test content string.")
 
 
-def test_default_ai_service_generate_question() -> None:
+def test_default_ai_service_generate_question_missing_key() -> None:
     ai = DefaultAIService()
     node = DocumentNode(
         id="test1",
@@ -31,11 +33,10 @@ def test_default_ai_service_generate_question() -> None:
             chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
         ),
     )
-    question = ai.generate_question(node)
-    assert question == "What is the key point of Test Title?"
+    with pytest.raises(NotImplementedError):
+        ai.generate_question(node)
 
-
-def test_default_ai_service_generate_mermaid_diagram() -> None:
+def test_default_ai_service_generate_mermaid_diagram_missing_key() -> None:
     ai = DefaultAIService()
     board = PivotBoard(
         id="board_1",
@@ -46,11 +47,10 @@ def test_default_ai_service_generate_mermaid_diagram() -> None:
             PivotBoardViewNode(node_id="test1", x_position=0.1, y_position=0.2, cluster_id=None)
         ],
     )
-    diagram = ai.generate_mermaid_diagram(board)
-    assert "graph TD" in diagram
+    with pytest.raises(NotImplementedError):
+        ai.generate_mermaid_diagram(board)
 
-
-def test_default_ai_service_evaluate_answer() -> None:
+def test_default_ai_service_evaluate_answer_missing_key() -> None:
     ai = DefaultAIService()
     context = UserInteractionContext(
         node_id="test1",
@@ -60,11 +60,5 @@ def test_default_ai_service_evaluate_answer() -> None:
         feedback=None,
         hints_used=0,
     )
-    success, feedback = ai.evaluate_answer(context)
-    assert success is True
-    assert feedback == "Correct!"
-
-    context.user_answer = "wrong answer"
-    success, feedback = ai.evaluate_answer(context)
-    assert success is False
-    assert feedback == "Incorrect."
+    with pytest.raises(NotImplementedError):
+        ai.evaluate_answer(context)

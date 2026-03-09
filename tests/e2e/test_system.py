@@ -34,5 +34,6 @@ def test_pipeline_orchestrator_integration() -> None:
     assert root is not None
     assert root.id == settings.default_root_doc_id
     assert root.content.summary is not None
-    assert "CoD Summary of: " in root.content.summary
+    assert "System Actor" in root.content.summary
+    assert "Action" in root.content.summary
     assert root.metadata.category == "business"

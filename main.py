@@ -22,10 +22,8 @@ class Application:
 
     def start(self) -> None:
         logger.info(f"Initializing matome application in {self.settings.mode} mode...")
-        # Provide sample content directly instead of hardcoding in settings
-        sample_content = "This is a very long business manual about strategy."
         context = PipelineContext(
-            root_doc_id=self.settings.default_root_doc_id, content=sample_content
+            root_doc_id=self.settings.default_root_doc_id, content=self.settings.default_sample_content
         )
         self.orchestrator.run_pipeline(context)
 

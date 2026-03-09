@@ -1,6 +1,6 @@
 from typing import Any
 
-from src.domain_models import DocumentNode, DocumentQueryService, DocumentRepository
+from src.domain_models import DocumentNode, DocumentRepository
 
 
 class InMemoryDocumentRepository(DocumentRepository):
@@ -39,23 +39,6 @@ class InMemoryDocumentRepository(DocumentRepository):
     def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]:
         results = []
         for node in self._store.values():
-            match = True
-            for k, v in filters.items():
-                if getattr(node, k, None) != v:
-                    match = False
-                    break
-            if match:
-                results.append(node)
-        return results
-
-
-class InMemoryDocumentQueryService(DocumentQueryService):
-    def __init__(self, repository: InMemoryDocumentRepository) -> None:
-        self.repository = repository
-
-    def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]:
-        results = []
-        for node in self.repository._store.values():
             match = True
             for k, v in filters.items():
                 if getattr(node, k, None) != v:

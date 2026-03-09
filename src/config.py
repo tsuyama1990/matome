@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import ROOT_DOC_ID
@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     default_root_doc_id: str = Field(
         default=ROOT_DOC_ID, description="Default root document ID used in pipeline initialization"
     )
+
+    default_sample_content: str = Field(
+        default="This is a very long business manual about strategy. Executive approval is required if the budget > 5000.",
+        description="Sample content used for execution fallback in development mode"
+    )
+
+    @classmethod
+    @field_validator("openrouter_api_key", mode="before")
+    def validate_api_key(cls, value: str | None) -> str | None:
+        if value is not None and len(value) < 10:
+            msg = "API Key must be at least 10 characters long if provided."
+            raise ValueError(msg)
+        return value
 
 
 def create_app_context(settings: Settings) -> dict[str, Any]:
