@@ -1,13 +1,11 @@
-
 import pytest
 
 from src.application.ai import DefaultAIService
 from src.config import Settings
 from src.domain_models import (
-    AIProcessingMetadata,
     DocumentContent,
     DocumentNode,
-    NodeMetadata,
+    NodeIdentity,
     NodeStatus,
     PivotAxis,
     PivotBoard,
@@ -24,7 +22,7 @@ def _create_mock_settings(api_key: str | None = None) -> Settings:
     # Pass dynamically resolved secret or mock parameter directly to Settings constructor
     # Since pydantic validator catches invalid secrets, we can test validation behaviors here.
     return Settings(
-        openrouter_api_key=SecretStr(api_key) if api_key is not None else None, # type: ignore
+        openrouter_api_key=SecretStr(api_key) if api_key is not None else None,  # type: ignore
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
@@ -52,6 +50,7 @@ def _create_service(api_key: str | None = None) -> DefaultAIService:
 
 def test_default_ai_service_missing_key_init() -> None:
     from src.domain_models.exceptions import ConfigurationError
+
     with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY is required"):
         _create_service(api_key=None)
 
@@ -78,20 +77,16 @@ def test_default_ai_service_calls_generate_summary_valid() -> None:
 
 
 def test_default_ai_service_calls_generate_question_valid() -> None:
-    from src.domain_models.manifest import DocumentMetadataContainer
+
     ai = _create_service(api_key="sk-or-v1-validkey12345678901234567890")
     node = DocumentNode(
-        id="test1",
-        parent_id=None,
-        title="Test Title",
-        content=DocumentContent(summary=None, text=None),
-        status=NodeStatus.LOCKED,
-        metadata_container=DocumentMetadataContainer(
-            metadata=NodeMetadata(source=None, author=None, category=None, time_axis=None),
-            ai_metadata=AIProcessingMetadata(
-                chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
-            ),
+        identity=NodeIdentity(
+            id="test1",
+            parent_id=None,
+            title="Test Title",
+            status=NodeStatus.LOCKED,
         ),
+        content=DocumentContent(summary=None, text=None),
     )
     with pytest.raises(AIServiceError):
         ai.generate_question(node)

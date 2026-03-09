@@ -1,12 +1,14 @@
 from src.config import Settings
 from src.domain_models.manifest import PipelineContext
-from src.domain_models.services import DocumentFactory
+from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
-from src.infrastructure.orchestrator import PipelineOrchestrator
+from src.infrastructure.orchestrator import (
+    PipelineConfig,
+    PipelineDependencies,
+    PipelineOrchestrator,
+)
 from src.infrastructure.services import (
-    DefaultClusteringService,
-    DefaultEntityExtractor,
-    DefaultTextSplitter,
+    ServiceFactory,
 )
 from tests.helpers.mocks import MockAIService
 
@@ -24,6 +26,7 @@ def test_pipeline_orchestrator_integration() -> None:
     repo = InMemoryDocumentRepository()
     ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
     factory = DocumentFactory()
+    metadata_service = MetadataService()
 
     import os
 
@@ -32,45 +35,53 @@ def test_pipeline_orchestrator_integration() -> None:
     mock_key = os.environ.get("OPENROUTER_API_KEY", "sk-or-v1-validkey12345678901234567890")
 
     settings = IntegrationTestSettings(
-        mode="test",
         openrouter_api_key=SecretStr(mock_key),
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
     )
-    text_splitter = DefaultTextSplitter(
+    text_splitter = ServiceFactory.create_text_splitter(
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
     )
-    entity_extractor = DefaultEntityExtractor()
-    clustering_service = DefaultClusteringService()
+    entity_extractor = ServiceFactory.create_entity_extractor(settings.spacy_model)
+    clustering_service = ServiceFactory.create_clustering_service(settings.random_seed)
 
-    orchestrator = PipelineOrchestrator(
+    deps = PipelineDependencies(
         doc_repo=repo,
-        ai_service=ai,
+        transaction_manager=repo,
+        summary_service=ai,
+        question_service=ai,
         doc_factory=factory,
+        metadata_service=metadata_service,
         text_splitter=text_splitter,
         entity_extractor=entity_extractor,
         clustering_service=clustering_service,
+    )
+    config = PipelineConfig(
         pipeline_timeout=settings.pipeline_timeout,
         raptor_max_clusters=settings.raptor_max_clusters,
     )
+    orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
 
     # Run the pipeline
-    from src.domain_models.constants import ROOT_DOC_ID
+    root_doc_id = settings.default_root_doc_id
 
     content = "This is a very long business manual about strategy."
-    context = PipelineContext(root_doc_id=ROOT_DOC_ID, content=content, file_path=None)
+    context = PipelineContext(root_doc_id=root_doc_id, content=content, file_path=None)
 
     orchestrator.run_pipeline(context)
 
     # Verify the results in the repository
-    nodes = [repo.get_node(ROOT_DOC_ID)]  # Since it's saved as root (parent_id=None)
+    nodes = [repo.get_node(root_doc_id)]  # Since it's saved as root (parent_id=None)
     assert len(nodes) == 1
     root = nodes[0]
 
     assert root is not None
-    assert root.id == ROOT_DOC_ID
+    assert root.id == root_doc_id
     assert root.content.summary is not None
     assert "System Actor" in root.content.summary
     assert "Action" in root.content.summary
-    assert root.metadata_container.metadata.category == "business"
+
+    metadata = metadata_service.get_metadata(root.id)
+    assert metadata is not None
+    assert metadata.metadata.category == "business"

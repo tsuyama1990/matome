@@ -5,8 +5,6 @@ from typing import Any
 from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.domain_models.constants import ROOT_DOC_ID
-
 
 class MatomeConfig(BaseSettings):
     """Base configuration model class"""
@@ -14,17 +12,21 @@ class MatomeConfig(BaseSettings):
     model_config = SettingsConfigDict(extra="ignore")
 
 
-class Settings(MatomeConfig):
-    """Global application configuration settings utilizing pydantic-settings."""
-
+class ModeConfig(MatomeConfig):
+    """Application mode configuration."""
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
     )
-    openrouter_api_key: SecretStr = Field(
-        ..., description="BYOK API key for OpenRouter"
-    )
+
+
+class Settings(MatomeConfig):
+    """Global application configuration settings utilizing pydantic-settings."""
+
+    openrouter_api_key: SecretStr = Field(..., description="BYOK API key for OpenRouter")
     openrouter_api_url: str = Field(
-        default_factory=lambda: str(os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")),
+        default_factory=lambda: str(
+            os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
+        ),
         description="The base URL for the OpenRouter API endpoint",
     )
     text_fast_model: str = Field(
@@ -41,55 +43,64 @@ class Settings(MatomeConfig):
     )
 
     default_root_doc_id: str = Field(
-        default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", ROOT_DOC_ID)),
-        description="Default root document ID used in pipeline initialization"
+        default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", "root_doc_1")),
+        description="Default root document ID used in pipeline initialization",
     )
 
     max_file_size: int = Field(
         default_factory=lambda: int(os.getenv("MAX_FILE_SIZE", "10485760")),
-        description="Maximum allowed file size in bytes (default 10MB)"
+        description="Maximum allowed file size in bytes (default 10MB)",
     )
     allowed_base_dir: str = Field(
         default_factory=lambda: str(Path(os.getenv("ALLOWED_BASE_DIR", "."))),
-        description="Base directory allowed for file ingestion"
+        description="Base directory allowed for file ingestion",
     )
     chunk_size: int = Field(
         default_factory=lambda: int(os.getenv("CHUNK_SIZE", "1000")),
-        description="Default character length for semantic chunking"
+        description="Default character length for semantic chunking",
     )
     chunk_overlap: int = Field(
         default_factory=lambda: int(os.getenv("CHUNK_OVERLAP", "100")),
-        description="Default overlap length for semantic chunking"
+        description="Default overlap length for semantic chunking",
     )
     raptor_max_clusters: int = Field(
         default_factory=lambda: int(os.getenv("RAPTOR_MAX_CLUSTERS", "5")),
-        description="Maximum number of GMM components in RAPTOR trees"
+        description="Maximum number of GMM components in RAPTOR trees",
     )
     pipeline_timeout: float = Field(
         default_factory=lambda: float(os.getenv("PIPELINE_TIMEOUT", "300.0")),
-        description="Pipeline execution timeout in seconds"
+        description="Pipeline execution timeout in seconds",
     )
     ai_timeout: int = Field(
         default_factory=lambda: int(os.getenv("AI_TIMEOUT", "10")),
-        description="Timeout for external AI API requests in seconds"
+        description="Timeout for external AI API requests in seconds",
     )
     ai_retry_attempts: int = Field(
         default_factory=lambda: int(os.getenv("AI_RETRY_ATTEMPTS", "3")),
-        description="Maximum number of retry attempts for AI requests"
+        description="Maximum number of retry attempts for AI requests",
     )
     ai_retry_min_wait: int = Field(
         default_factory=lambda: int(os.getenv("AI_RETRY_MIN_WAIT", "1")),
-        description="Minimum backoff wait time in seconds"
+        description="Minimum backoff wait time in seconds",
     )
     ai_retry_max_wait: int = Field(
         default_factory=lambda: int(os.getenv("AI_RETRY_MAX_WAIT", "10")),
-        description="Maximum backoff wait time in seconds"
+        description="Maximum backoff wait time in seconds",
+    )
+    spacy_model: str = Field(
+        default_factory=lambda: str(os.getenv("SPACY_MODEL", "en_core_web_sm")),
+        description="SpaCy model used for Entity Extraction",
+    )
+    random_seed: int = Field(
+        default_factory=lambda: int(os.getenv("RANDOM_SEED", "42")),
+        description="Random seed for clustering ML models (UMAP/GMM)",
     )
 
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
     def validate_allowed_base_dir(cls, value: str) -> str:
         from src.domain_models.exceptions import ConfigurationError
+
         if not value:
             err_msg = "ALLOWED_BASE_DIR must be configured in settings."
             raise ConfigurationError(err_msg)
@@ -114,21 +125,27 @@ class Settings(MatomeConfig):
             raise ConfigurationError(str(e)) from e
 
 
-
-
 class AppContext(BaseModel):
     settings: Settings
-    mode: str
+    mode_config: ModeConfig
     db: Any | None = None
 
 
-def create_app_context(settings: Settings) -> AppContext:
+class ConcreteConfigService:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def get(self, key: str) -> Any:
+        return getattr(self._settings, key)
+
+
+def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
     """Application factory pattern for injecting global settings."""
     return AppContext(
         settings=settings,
-        mode=settings.mode,
+        mode_config=mode_config,
         db=None,  # Placeholder for a DB connection dependency
     )
 
 
-__all__ = ["Settings", "create_app_context"]
+__all__ = ["ConcreteConfigService", "ModeConfig", "Settings", "create_app_context"]

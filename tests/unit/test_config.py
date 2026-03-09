@@ -30,6 +30,7 @@ def test_settings_api_key_valid() -> None:
 
 def test_settings_api_key_invalid_length() -> None:
     from src.domain_models.exceptions import ConfigurationError
+
     with pytest.raises(ConfigurationError, match="API Key must be at least 30 characters long"):
         Settings(
             openrouter_api_key=SecretStr("short"),
@@ -41,6 +42,7 @@ def test_settings_api_key_invalid_length() -> None:
 
 def test_settings_api_key_invalid_format() -> None:
     from src.domain_models.exceptions import ConfigurationError
+
     with pytest.raises(ConfigurationError, match="API Key format is invalid"):
         Settings(
             openrouter_api_key=SecretStr("invalid_key_with_spaces_too_long_to_pass_length_check"),

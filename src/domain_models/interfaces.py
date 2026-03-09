@@ -5,53 +5,76 @@ from .analysis import PivotBoard
 from .manifest import DocumentNode, UserInteractionContext
 
 
-class Transactional(Protocol):
-    """Protocol for transaction management."""
-
-    def begin(self) -> None: ...
-    def commit(self) -> None: ...
-    def rollback(self) -> None: ...
+class ConfigService(Protocol):
+    """Protocol for fetching application configuration."""
+    def get(self, key: str) -> Any: ...
 
 
-class DocumentReader(Protocol):
-    def get_node(self, node_id: str) -> DocumentNode | None: ...
-    def get_children(self, parent_id: str) -> list[DocumentNode]: ...
+class SecurityService(Protocol):
+    """Protocol for security operations such as API key validation."""
+    def validate_api_key(self, api_key: str) -> str: ...
 
 
-class DocumentWriter(Protocol):
-    def save_node(self, node: DocumentNode) -> None: ...
-    def save_nodes(self, nodes: list[DocumentNode]) -> None: ...
+class TransactionManager(Protocol):
+    """Protocol for handling transaction lifecycle operations."""
+
+    def begin(self) -> None:
+        """Starts a new transaction. Should raise RepositoryError on failure."""
+        ...
+
+    def commit(self) -> None:
+        """Commits the active transaction. Should raise RepositoryError on failure."""
+        ...
+
+    def rollback(self) -> None:
+        """Rolls back the active transaction. Should raise RepositoryError on failure."""
+        ...
 
 
-class DocumentQueryService(Protocol):
-    """Protocol for complex query operations over documents."""
+class DocumentRepository(Protocol):
+    """Protocol for data persistence operations regarding DocumentNodes."""
 
-    def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]: ...
+    def get_node(self, node_id: str) -> DocumentNode | None:
+        """Retrieves a node by its ID. Raises RepositoryError on DB failure."""
+        ...
+
+    def get_children(self, parent_id: str) -> list[DocumentNode]:
+        """Retrieves all children of a given parent node ID. Raises RepositoryError on DB failure."""
+        ...
+
+    def save_node(self, node: DocumentNode) -> None:
+        """Saves or updates a single node. Raises RepositoryError on failure."""
+        ...
+
+    def save_nodes(self, nodes: list[DocumentNode]) -> None:
+        """Saves or updates multiple nodes. Raises RepositoryError on failure."""
+        ...
+
+    def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]:
+        """Queries nodes based on provided filters. Raises RepositoryError on failure."""
+        ...
 
 
-class DocumentRepository(
-    DocumentReader, DocumentWriter, Transactional, DocumentQueryService, Protocol
-):
-    """Aggregate protocol combining Read, Write, Query, and Transaction operations."""
-
-
-class UserInteractionRepository(Protocol):
-    def save_context(self, context: UserInteractionContext) -> None: ...
-    def get_context(self, node_id: str) -> UserInteractionContext | None: ...
-
-
-class PivotBoardRepository(Protocol):
-    def save_board(self, board: PivotBoard) -> None: ...
-    def get_board(self, board_id: str) -> PivotBoard | None: ...
-
-
-class AIServiceProtocol(Protocol):
+class SummaryServiceProtocol(Protocol):
     def generate_summary(self, content: str) -> str: ...
+
+class QuestionServiceProtocol(Protocol):
     def generate_question(self, node: DocumentNode) -> str: ...
+
+class DiagramServiceProtocol(Protocol):
     def generate_mermaid_diagram(self, board: PivotBoard) -> str: ...
+
+class EvaluationServiceProtocol(Protocol):
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
 
-
+class AIServiceProtocol(
+    SummaryServiceProtocol,
+    QuestionServiceProtocol,
+    DiagramServiceProtocol,
+    EvaluationServiceProtocol,
+    Protocol
+):
+    """Aggregate protocol for backward compatibility or cases where all are needed."""
 
 
 class TextSplitterProtocol(Protocol):
@@ -70,7 +93,9 @@ class EntityExtractorProtocol(Protocol):
 class ClusteringServiceProtocol(Protocol):
     """Protocol for clustering chunks and returning metadata."""
 
-    def cluster_chunks(self, chunks: Iterator[str] | list[str], max_clusters: int) -> dict[str, str]: ...
+    def cluster_chunks(
+        self, chunks: Iterator[str] | list[str], max_clusters: int
+    ) -> dict[str, str]: ...
 
 
 class HTTPClientProtocol(Protocol):

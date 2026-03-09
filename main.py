@@ -2,16 +2,18 @@ import logging
 import sys
 
 from src.application.ai import DefaultAIService
-from src.config import Settings
+from src.config import ModeConfig, Settings
 from src.domain_models.manifest import PipelineContext
-from src.domain_models.services import DocumentFactory
+from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
-from src.infrastructure.orchestrator import PipelineOrchestrator
+from src.infrastructure.orchestrator import (
+    PipelineConfig,
+    PipelineDependencies,
+    PipelineOrchestrator,
+)
 from src.infrastructure.services import (
-    DefaultClusteringService,
-    DefaultEntityExtractor,
-    DefaultTextSplitter,
     RequestsHTTPClient,
+    ServiceFactory,
     TenacityRetryPolicy,
 )
 
@@ -20,15 +22,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 
+
+
 class Application:
     """Thin application controller responsible only for executing application logic."""
 
-    def __init__(self, settings: Settings, orchestrator: PipelineOrchestrator) -> None:
+    def __init__(self, settings: Settings, mode_config: ModeConfig, orchestrator: PipelineOrchestrator) -> None:
         self.settings = settings
+        self.mode_config = mode_config
         self.orchestrator = orchestrator
 
     def start(self, context: PipelineContext) -> None:
-        logger.info(f"Initializing matome application in {self.settings.mode} mode...")
+        logger.info(f"Initializing matome application in {self.mode_config.mode} mode...")
         self.orchestrator.run_pipeline(context)
 
 
@@ -46,7 +51,8 @@ class AppBuilder:
 
         # Pydantic BaseSettings natively pulls OPENROUTER_API_KEY from env, but type checkers don't know it.
         # It's validated internally via field_validators. We disable type checking on init kwargs.
-        settings = Settings() # type: ignore
+        settings = Settings()  # type: ignore
+        mode_config = ModeConfig(mode=mode)
 
         repo = InMemoryDocumentRepository()
 
@@ -66,24 +72,31 @@ class AppBuilder:
             retry_policy=retry_policy,
         )
         factory = DocumentFactory()
-        text_splitter = DefaultTextSplitter(
+        metadata_service = MetadataService()
+        text_splitter = ServiceFactory.create_text_splitter(
             chunk_size=settings.chunk_size,
             chunk_overlap=settings.chunk_overlap,
         )
-        entity_extractor = DefaultEntityExtractor()
-        clustering_service = DefaultClusteringService()
+        entity_extractor = ServiceFactory.create_entity_extractor(settings.spacy_model)
+        clustering_service = ServiceFactory.create_clustering_service(settings.random_seed)
 
-        orchestrator = PipelineOrchestrator(
+        deps = PipelineDependencies(
             doc_repo=repo,
-            ai_service=ai,
+            transaction_manager=repo,
+            summary_service=ai,
+            question_service=ai,
             doc_factory=factory,
+            metadata_service=metadata_service,
             text_splitter=text_splitter,
             entity_extractor=entity_extractor,
             clustering_service=clustering_service,
+        )
+        config = PipelineConfig(
             pipeline_timeout=settings.pipeline_timeout,
             raptor_max_clusters=settings.raptor_max_clusters,
         )
-        return Application(settings=settings, orchestrator=orchestrator)
+        orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
+        return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
 
 
 def main() -> None:
@@ -128,9 +141,7 @@ def main() -> None:
 
         # Pass the file path to the pipeline for chunked streaming to prevent OOM
         context = PipelineContext(
-            root_doc_id=app.settings.default_root_doc_id,
-            content=None,
-            file_path=str(file_path)
+            root_doc_id=app.settings.default_root_doc_id, content=None, file_path=str(file_path)
         )
         app.start(context)
     except ValueError:

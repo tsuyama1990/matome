@@ -1,10 +1,10 @@
 import threading
 from typing import Any
 
-from src.domain_models import DocumentNode, DocumentRepository
+from src.domain_models import DocumentNode, DocumentRepository, TransactionManager
 
 
-class InMemoryDocumentRepository(DocumentRepository):
+class InMemoryDocumentRepository(DocumentRepository, TransactionManager):
     def __init__(self) -> None:
         self._store: dict[str, DocumentNode] = {}
         self._transaction_active = False
