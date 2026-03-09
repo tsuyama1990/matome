@@ -22,10 +22,6 @@ class Settings(BaseSettings):
     default_root_doc_id: str = Field(
         default="root_doc_1", description="Default root document ID used in pipeline initialization"
     )
-    default_content: str = Field(
-        default="This is a very long business manual about strategy.",
-        description="Default document content",
-    )
 
 
 def create_app_context(settings: Settings) -> dict[str, Any]:

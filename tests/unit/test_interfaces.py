@@ -2,10 +2,12 @@ from typing import Any
 
 from src.domain_models import (
     DocumentNode,
+    DocumentRepository,
     PivotBoard,
+    PivotBoardRepository,
     UserInteractionContext,
+    UserInteractionRepository,
 )
-from src.interfaces import DocumentRepository, PivotBoardRepository, UserInteractionRepository
 
 
 class MockDocumentRepository:

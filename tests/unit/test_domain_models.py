@@ -39,6 +39,7 @@ def test_document_node_invalid_extra() -> None:
             parent_id=None,
             title="Test Node",
             content=DocumentContent(summary=None, text=None),
+            metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None),
             extra_field="Not allowed",  # type: ignore
         )
 

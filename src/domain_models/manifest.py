@@ -17,10 +17,6 @@ class NodeMetadata(BaseModel):
     time_axis: str | None = Field(None, max_length=50)
 
 
-def default_metadata() -> NodeMetadata:
-    return NodeMetadata(source=None, author=None, category=None, time_axis=None)
-
-
 class DocumentContent(BaseModel):
     model_config = ConfigDict(extra="forbid")
     summary: str | None = Field(
@@ -29,10 +25,6 @@ class DocumentContent(BaseModel):
     text: str | None = Field(
         None, description="Full text content of the node if it is a leaf node", max_length=100000
     )
-
-
-def default_content() -> DocumentContent:
-    return DocumentContent(summary=None, text=None)
 
 
 class AIProcessingMetadata(BaseModel):
@@ -65,18 +57,14 @@ class DocumentNode(BaseModel):
         pattern=r"^[a-zA-Z0-9_-]+$",
     )
     title: str = Field(..., description="Title of the node", max_length=500)
-    content: DocumentContent = Field(
-        default_factory=default_content, description="The content components of the node"
-    )
+    content: DocumentContent = Field(..., description="The content components of the node")
     status: NodeStatus = Field(
         NodeStatus.LOCKED, description="Current status of the node in the learning journey"
     )
     children_ids: list[str] = Field(
         default_factory=list, description="List of child node identifiers"
     )
-    metadata: NodeMetadata = Field(
-        default_factory=default_metadata, description="Metadata tags such as Time Axis, Actor, etc."
-    )
+    metadata: NodeMetadata = Field(..., description="Metadata tags such as Time Axis, Actor, etc.")
 
     # Adding fields mandated by auditor in FR-1.2 and FR-1.3 requirements
     ai_metadata: AIProcessingMetadata | None = Field(

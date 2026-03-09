@@ -1,5 +1,10 @@
-from .ai_service import MockAIService
+from .ai_service import DefaultAIService
 from .orchestrator import PipelineOrchestrator
-from .repository import InMemoryDocumentRepository
+from .repository import InMemoryDocumentQueryService, InMemoryDocumentRepository
 
-__all__ = ["InMemoryDocumentRepository", "MockAIService", "PipelineOrchestrator"]
+__all__ = [
+    "DefaultAIService",
+    "InMemoryDocumentQueryService",
+    "InMemoryDocumentRepository",
+    "PipelineOrchestrator",
+]

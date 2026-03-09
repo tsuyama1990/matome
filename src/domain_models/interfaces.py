@@ -1,6 +1,7 @@
 from typing import Any, Protocol
 
-from src.domain_models import DocumentNode, PivotBoard, UserInteractionContext
+from .analysis import PivotBoard
+from .manifest import DocumentNode, UserInteractionContext
 
 
 class RepositoryError(Exception):
@@ -18,7 +19,6 @@ class Transactional(Protocol):
 class DocumentReader(Protocol):
     def get_node(self, node_id: str) -> DocumentNode | None: ...
     def get_children(self, parent_id: str) -> list[DocumentNode]: ...
-    def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]: ...
 
 
 class DocumentWriter(Protocol):
@@ -27,7 +27,13 @@ class DocumentWriter(Protocol):
 
 
 class DocumentRepository(DocumentReader, DocumentWriter, Protocol):
-    """Aggregate protocol combining Read and Write operations."""
+    """Aggregate protocol combining Read and Write CRUD operations."""
+
+
+class DocumentQueryService(Protocol):
+    """Protocol for complex query operations over documents."""
+
+    def query_nodes(self, filters: dict[str, Any]) -> list[DocumentNode]: ...
 
 
 class UserInteractionRepository(Protocol):

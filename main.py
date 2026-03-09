@@ -2,7 +2,9 @@ import logging
 import sys
 
 from src.config import Settings
-from src.infrastructure import InMemoryDocumentRepository, MockAIService
+from src.domain_models.services import DocumentFactory
+from src.infrastructure import InMemoryDocumentRepository
+from src.infrastructure.ai_service import DefaultAIService
 from src.infrastructure.orchestrator import PipelineOrchestrator
 
 # Setup basic logging
@@ -19,14 +21,19 @@ class Application:
 
     def start(self) -> None:
         logger.info(f"Initializing matome application in {self.settings.mode} mode...")
-        self.orchestrator.run_pipeline()
+        # Provide sample content directly instead of hardcoding in settings
+        sample_content = "This is a very long business manual about strategy."
+        self.orchestrator.run_pipeline(sample_content)
 
 
 def create_app(mode: str = "cli") -> Application:
     settings = Settings(mode=mode)
     repo = InMemoryDocumentRepository()
-    ai = MockAIService()
-    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, settings=settings)
+    ai = DefaultAIService()
+    factory = DocumentFactory(ai_service=ai)
+    orchestrator = PipelineOrchestrator(
+        doc_repo=repo, ai_service=ai, settings=settings, doc_factory=factory
+    )
     return Application(settings=settings, orchestrator=orchestrator)
 
 

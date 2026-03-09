@@ -4,6 +4,17 @@ from .analysis import (
     PivotBoardView,
     PivotBoardViewNode,
 )
+from .interfaces import (
+    AIServiceProtocol,
+    DocumentQueryService,
+    DocumentReader,
+    DocumentRepository,
+    DocumentWriter,
+    PivotBoardRepository,
+    RepositoryError,
+    Transactional,
+    UserInteractionRepository,
+)
 from .manifest import (
     AIProcessingMetadata,
     DocumentContent,
@@ -12,16 +23,27 @@ from .manifest import (
     NodeStatus,
     UserInteractionContext,
 )
+from .services import DocumentFactory
 
 __all__ = [
     "AIProcessingMetadata",
+    "AIServiceProtocol",
     "DocumentContent",
+    "DocumentFactory",
     "DocumentNode",
+    "DocumentQueryService",
+    "DocumentReader",
+    "DocumentRepository",
+    "DocumentWriter",
     "NodeMetadata",
     "NodeStatus",
     "PivotAxis",
     "PivotBoard",
+    "PivotBoardRepository",
     "PivotBoardView",
     "PivotBoardViewNode",
+    "RepositoryError",
+    "Transactional",
     "UserInteractionContext",
+    "UserInteractionRepository",
 ]

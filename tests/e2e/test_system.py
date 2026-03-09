@@ -1,6 +1,8 @@
 from src.config import Settings
-from src.infrastructure import InMemoryDocumentRepository, MockAIService
+from src.domain_models.services import DocumentFactory
+from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import PipelineOrchestrator
+from tests.helpers.mocks import MockAIService
 
 
 def test_pipeline_orchestrator_integration() -> None:
@@ -10,11 +12,15 @@ def test_pipeline_orchestrator_integration() -> None:
     """
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
+    factory = DocumentFactory(ai_service=ai)
     settings = Settings(mode="test")
-    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, settings=settings)
+    orchestrator = PipelineOrchestrator(
+        doc_repo=repo, ai_service=ai, settings=settings, doc_factory=factory
+    )
 
     # Run the pipeline
-    orchestrator.run_pipeline()
+    content = "This is a very long business manual about strategy."
+    orchestrator.run_pipeline(content)
 
     # Verify the results in the repository
     nodes = [

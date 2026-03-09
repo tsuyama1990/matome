@@ -3,13 +3,10 @@ import sys
 
 from src.config import Settings
 from src.domain_models import (
-    AIProcessingMetadata,
-    DocumentContent,
-    DocumentNode,
-    NodeMetadata,
-    NodeStatus,
+    AIServiceProtocol,
+    DocumentFactory,
+    DocumentRepository,
 )
-from src.interfaces.protocols import AIServiceProtocol, DocumentRepository
 
 logger = logging.getLogger(__name__)
 
@@ -18,31 +15,25 @@ class PipelineOrchestrator:
     """Handles the heavy lifting of orchestrating document ingestion and AI operations."""
 
     def __init__(
-        self, doc_repo: DocumentRepository, ai_service: AIServiceProtocol, settings: Settings
+        self,
+        doc_repo: DocumentRepository,
+        ai_service: AIServiceProtocol,
+        settings: Settings,
+        doc_factory: DocumentFactory,
     ) -> None:
         self.doc_repo = doc_repo
         self.ai_service = ai_service
         self.settings = settings
+        self.doc_factory = doc_factory
 
-    def run_pipeline(self) -> None:
+    def run_pipeline(self, content: str) -> None:
         logger.info("Starting document ingestion and analysis pipeline...")
 
         # 1. Ingestion Stage
-        content = self.settings.default_content
         logger.info("Ingesting document...")
 
-        root_node = DocumentNode(
-            id=self.settings.default_root_doc_id,
-            parent_id=None,
-            title="Business Manual",
-            content=DocumentContent(
-                summary=self.ai_service.generate_summary(content), text=content
-            ),
-            status=NodeStatus.LOCKED,
-            metadata=NodeMetadata(
-                category="business", author="System", source="upload", time_axis=None
-            ),
-            ai_metadata=AIProcessingMetadata(chunk_id=None, chunk_index=None),
+        root_node = self.doc_factory.create_root_node(
+            node_id=self.settings.default_root_doc_id, title="Business Manual", content_text=content
         )
         self.doc_repo.save_node(root_node)
 
