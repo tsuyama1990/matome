@@ -1,12 +1,20 @@
 import logging
-import sys
+import threading
 
 from src.config import Settings
 from src.domain_models import (
     AIServiceProtocol,
+    ClusteringServiceProtocol,
     DocumentFactory,
     DocumentRepository,
+    EntityExtractorProtocol,
     PipelineContext,
+    TextSplitterProtocol,
+)
+from src.infrastructure.services import (
+    DefaultClusteringService,
+    DefaultEntityExtractor,
+    DefaultTextSplitter,
 )
 
 logger = logging.getLogger(__name__)
@@ -21,112 +29,22 @@ class PipelineOrchestrator:
         ai_service: AIServiceProtocol,
         doc_factory: DocumentFactory,
         settings: Settings | None = None,
+        text_splitter: TextSplitterProtocol | None = None,
+        entity_extractor: EntityExtractorProtocol | None = None,
+        clustering_service: ClusteringServiceProtocol | None = None,
     ) -> None:
         self.doc_repo = doc_repo
         self.ai_service = ai_service
         self.doc_factory = doc_factory
         self.settings = settings or Settings()
 
-    def _perform_semantic_chunking(self, content: str) -> list[str]:
-        """Implements actual LangChain semantic chunking logic with a robust fallback."""
-        logger.debug("Executing LangChain semantic chunking...")
-        try:
-            from langchain_text_splitters import RecursiveCharacterTextSplitter
-
-            splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-            chunks = splitter.split_text(content)
-        except ImportError:
-            logger.warning("LangChain not installed, falling back to pure python overlap split.")
-            # Robust pure python fallback mimicking the overlap behavior
-            chunk_size = 1000
-            overlap = 100
-            step = chunk_size - overlap
-            chunks = []
-            for i in range(0, len(content), step):
-                chunks.append(content[i : i + chunk_size])
-
-        if not chunks:
-            msg = "Semantic chunking returned no content."
-            raise ValueError(msg)
-        return chunks
-
-    def _extract_entities(self, chunks: list[str]) -> dict[str, str]:
-        """Implements actual SpaCy NER logic with a dynamic mock fallback."""
-        logger.debug("Executing SpaCy NER logic...")
-        entities = {}
-        try:
-            import spacy
-
-            nlp = spacy.load("en_core_web_sm")
-            for i, chunk in enumerate(chunks):
-                doc = nlp(chunk)
-                for ent in doc.ents:
-                    entities[f"chunk_{i}_{ent.label_}"] = ent.text
-        except (ImportError, OSError) as e:
-            logger.warning(
-                f"SpaCy module/model not loaded: {e}. Falling back to regex entity extraction."
-            )
-            # Dynamic regex-based mock fallback mimicking extraction over the real input chunks
-            import re
-
-            for i, chunk in enumerate(chunks):
-                matches = re.findall(r"\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b", chunk)
-                if matches:
-                    entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
-            if not entities:
-                entities["document_level"] = "No obvious entities found"
-        return entities
-
-    def _generate_raptor_tree(self, chunks: list[str]) -> dict[str, str]:
-        """Implements actual RAPTOR clustering using UMAP and GMM with individual exception guards."""
-        logger.debug("Executing UMAP/GMM clustering for RAPTOR tree generation...")
-        if len(chunks) < 3:
-            return {"level_0": "root", "clusters_found": "1 (not enough chunks for clustering)"}
-
-        try:
-            import numpy as np
-            import umap
-            from sklearn.feature_extraction.text import TfidfVectorizer
-            from sklearn.mixture import GaussianMixture
-        except ImportError as e:
-            logger.warning(f"ML dependency missing: {e}. Returning basic flat tree.")
-            return {
-                "level_0": "root",
-                "algorithm": "None (Missing ML modules)",
-                "nodes": str(len(chunks)),
-            }
-
-        try:
-            # Dummy embedding step (usually this is done with an LLM embedder)
-            vectorizer = TfidfVectorizer()
-            embeddings = vectorizer.fit_transform(chunks).toarray()
-
-            # Reduce dimensionality
-            n_neighbors = min(15, len(chunks) - 1)
-            reducer = umap.UMAP(
-                n_neighbors=n_neighbors, min_dist=0.1, metric="cosine", random_state=42
-            )
-            reduced_embeddings = reducer.fit_transform(embeddings)
-
-            # Cluster
-            n_components = min(self.settings.raptor_max_clusters, len(chunks))
-            gmm = GaussianMixture(n_components=n_components, random_state=42)
-            clusters = gmm.fit_predict(reduced_embeddings)
-
-            return {
-                "level_0": "root",
-                "clusters_found": str(len(np.unique(clusters))),
-                "algorithm": "UMAP+GMM",
-            }
-        except Exception as e:
-            logger.exception(
-                "RAPTOR processing failed during mathematical execution. Falling back."
-            )
-            return {"level_0": "root", "error_fallback": str(e)}
+        self.text_splitter = text_splitter or DefaultTextSplitter(
+            chunk_size=self.settings.chunk_size, chunk_overlap=self.settings.chunk_overlap
+        )
+        self.entity_extractor = entity_extractor or DefaultEntityExtractor()
+        self.clustering_service = clustering_service or DefaultClusteringService()
 
     def run_pipeline(self, context: PipelineContext) -> None:
-        import threading
-
         logger.info("Starting document ingestion and analysis pipeline...")
 
         def timeout_handler() -> None:
@@ -134,7 +52,7 @@ class PipelineOrchestrator:
             raise TimeoutError(msg)
 
         # Ensure pipeline doesn't hang indefinitely using a basic thread timeout implementation for blocking ML tasks
-        timer = threading.Timer(300.0, timeout_handler)
+        timer = threading.Timer(self.settings.pipeline_timeout, timeout_handler)
         timer.start()
 
         # Initialize the transaction layer natively ensuring atomicity.
@@ -143,15 +61,17 @@ class PipelineOrchestrator:
         try:
             # 1. Ingestion and Semantic Chunking Stage
             logger.info("Ingesting document and performing semantic chunking...")
-            chunks = self._perform_semantic_chunking(context.content)
+            chunks = self.text_splitter.split_text(context.content)
 
             # 2. Entity Extraction Stage
             logger.info("Extracting entities...")
-            entities = self._extract_entities(chunks)
+            entities = self.entity_extractor.extract_entities(chunks)
 
             # 3. RAPTOR Clustering and Tree Generation
             logger.info("Generating hierarchical tree via RAPTOR...")
-            tree_metadata = self._generate_raptor_tree(chunks)
+            tree_metadata = self.clustering_service.cluster_chunks(
+                chunks, self.settings.raptor_max_clusters
+            )
 
             # 4. Chain of Density (CoD) Summarization
             logger.info("Applying Chain of Density summarization...")
@@ -178,8 +98,7 @@ class PipelineOrchestrator:
             logger.info(f"AI Question: {question}")
 
             self.doc_repo.commit()
-            logger.info("UI initialized. Awaiting user interaction...")
-            sys.stdout.write("Pipeline execution completed successfully.\n")
+            logger.info("Pipeline execution completed successfully.")
 
         except Exception as e:
             logger.exception("Pipeline execution failed at an intermediate step. Rolling back...")

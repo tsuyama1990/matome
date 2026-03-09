@@ -3,7 +3,8 @@ from typing import Any
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.domain_models.constants import ROOT_DOC_ID
+# Centralized default root document ID for application configuration
+ROOT_DOC_ID = "root_doc_1"
 
 
 class Settings(BaseSettings):
@@ -46,6 +47,9 @@ class Settings(BaseSettings):
     )
     raptor_max_clusters: int = Field(
         default=5, description="Maximum number of GMM components in RAPTOR trees"
+    )
+    pipeline_timeout: float = Field(
+        default=300.0, description="Pipeline execution timeout in seconds"
     )
 
     @field_validator("openrouter_api_key", mode="before")
