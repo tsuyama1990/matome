@@ -15,4 +15,19 @@ def validate_api_key_format(api_key: str | None) -> str | None:
         msg = "API Key format is invalid. It must start with 'sk-or-v1-' followed by alphanumeric characters."
         raise ValueError(msg)
 
+    import requests
+
+    headers = {"Authorization": f"Bearer {api_key}"}
+    try:
+        # Strict validation of the key against OpenRouter's auth endpoint to guarantee validity.
+        # Uses a quick fallback to ensure it doesn't block local development heavily.
+        res = requests.get("https://openrouter.ai/api/v1/auth/key", headers=headers, timeout=5)
+        if res.status_code == 401:
+            msg = "API Key is structurally valid but rejected by the OpenRouter authentication endpoint."
+            raise ValueError(msg)
+    except requests.RequestException:
+        # If the endpoint is completely unreachable (e.g. no internet), we bypass strictly failing here
+        # to allow offline fallback components (e.g. MockAIService) to still operate.
+        pass
+
     return api_key

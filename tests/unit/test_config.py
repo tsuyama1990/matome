@@ -18,7 +18,7 @@ def test_settings_api_key_valid() -> None:
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
-            allowed_base_dir=".",
+            allowed_base_dir="/tmp",  # noqa: S108
         )
         assert s.openrouter_api_key is not None
         assert s.openrouter_api_key.get_secret_value() == valid_key
@@ -38,7 +38,7 @@ def test_settings_api_key_invalid_length() -> None:
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
-            allowed_base_dir=".",
+            allowed_base_dir="/tmp",  # noqa: S108
         )
 
 
@@ -51,5 +51,5 @@ def test_settings_api_key_invalid_format() -> None:
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
-            allowed_base_dir=".",
+            allowed_base_dir="/tmp",  # noqa: S108
         )

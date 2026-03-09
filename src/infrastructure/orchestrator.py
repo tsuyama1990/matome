@@ -59,7 +59,7 @@ class PipelineDependencies:
 
 
 class ProcessManager:
-    """Handles multiprocessing process lifecycle management."""
+    """Handles concurrent thread timeout lifecycle management without fork-related container issues."""
 
     def __init__(self, timeout: float) -> None:
         self.timeout = timeout
@@ -67,46 +67,17 @@ class ProcessManager:
     def run_with_timeout(
         self, target_func: typing.Callable[[PipelineContext], Any], context: PipelineContext
     ) -> Any:
-        import multiprocessing
+        import concurrent.futures
 
-        queue: multiprocessing.Queue[Any] = multiprocessing.Queue()
-
-        def process_target(ctx: PipelineContext, q: Any) -> None:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(target_func, context)
             try:
-                result = target_func(ctx)
-                q.put(result)
-            except Exception as e:
-                q.put(e)
-
-        process = multiprocessing.Process(target=process_target, args=(context, queue))
-        try:
-            process.start()
-            process.join(self.timeout)
-
-            if process.is_alive():
-                logger.error(
-                    f"Process execution timed out after {self.timeout} seconds. Terminating process."
-                )
-                process.terminate()
-                process.join()
-                msg = f"Process execution timed out after {self.timeout} seconds."
-                raise TimeoutError(msg)
-
-            if process.exitcode != 0:
-                msg = f"Process failed with exit code {process.exitcode}"
-                raise RuntimeError(msg)
-
-            result = queue.get()
-            if isinstance(result, Exception):
-                raise result
-            return result
-        finally:
-            if process.is_alive():
-                process.terminate()
-                process.join()
-            process.close()
-            queue.close()
-            queue.join_thread()
+                return future.result(timeout=self.timeout)
+            except concurrent.futures.TimeoutError as e:
+                logger.exception(f"Execution timed out after {self.timeout} seconds. Cancelling task.")
+                future.cancel()
+                msg = f"Execution timed out after {self.timeout} seconds."
+                raise TimeoutError(msg) from e
 
 
 class IngestionOrchestrator:
@@ -196,6 +167,26 @@ class OutputOrchestrator:
         return root_node, metadata_container
 
 
+class PipelineValidator:
+    """Handles logic for validating state inside the pipeline."""
+    def __init__(self, doc_factory: DocumentFactory) -> None:
+        self.doc_factory = doc_factory
+
+    def validate_content_length(self, content: str) -> None:
+        if len(content) > self.doc_factory.max_content_length:
+            msg = f"Root document content exceeds allowed length of {self.doc_factory.max_content_length} characters."
+            raise ValueError(msg)
+
+
+class PipelineErrorHandler:
+    """Decoupled handler for processing exceptions inside the pipeline executor."""
+    @staticmethod
+    def handle_execution_error(e: Exception) -> typing.NoReturn:
+        logger.exception("Pipeline execution failed at an intermediate step.")
+        msg = f"Pipeline failure: {e}"
+        raise RuntimeError(msg) from e
+
+
 class PipelineOrchestrator:
     """Handles the high-level orchestration of ingestion, analysis, and output workflows."""
 
@@ -207,14 +198,11 @@ class PipelineOrchestrator:
         self.deps = dependencies
         self.config = config
         self.process_manager = ProcessManager(timeout=config.pipeline_timeout)
+        self.validator = PipelineValidator(doc_factory=dependencies.doc_factory)
+        self.error_handler = PipelineErrorHandler()
         self.ingestion_orchestrator = IngestionOrchestrator(dependencies)
         self.analysis_orchestrator = AnalysisOrchestrator(dependencies, config)
         self.output_orchestrator = OutputOrchestrator(dependencies)
-
-    def _validate_content_length(self, content: str) -> None:
-        if len(content) > self.deps.doc_factory.max_content_length:
-            msg = f"Root document content exceeds allowed length of {self.deps.doc_factory.max_content_length} characters."
-            raise ValueError(msg)
 
     def run_pipeline(self, context: PipelineContext) -> None:
         logger.info("Starting document ingestion and analysis pipeline...")
@@ -238,7 +226,7 @@ class PipelineOrchestrator:
             chunks_iterator, combined_content = self.ingestion_orchestrator.execute(context)
 
             # Validate length before ML processing
-            self._validate_content_length(combined_content)
+            self.validator.validate_content_length(combined_content)
 
             # 2, 3, 4. Analysis Stage
             logger.info("Performing analysis...")
@@ -252,9 +240,7 @@ class PipelineOrchestrator:
                 context, combined_content, summary, entities, tree_metadata
             )
         except Exception as e:
-            logger.exception("Pipeline execution failed at an intermediate step.")
-            msg = f"Pipeline failure: {e}"
-            raise RuntimeError(msg) from e
+            self.error_handler.handle_execution_error(e)
         else:
             logger.info("Pipeline ML logic completed successfully.")
             return root_node, metadata_container

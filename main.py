@@ -3,6 +3,7 @@ import sys
 
 from src.application.ai import DefaultAIService
 from src.config import ModeConfig, Settings
+from src.domain_models.exceptions import ConfigurationError
 from src.domain_models.manifest import PipelineContext
 from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
@@ -37,13 +38,10 @@ class Application:
         self.orchestrator.run_pipeline(context)
 
 
-class AppBuilder:
-    """Dedicated factory class for bootstrapping components and dependency injection."""
-
-    @staticmethod
-    def build(settings: Settings, mode_config: ModeConfig, deps: PipelineDependencies, config: PipelineConfig) -> Application:
-        orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
-        return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
+def build_app(settings: Settings, mode_config: ModeConfig, deps: PipelineDependencies, config: PipelineConfig) -> Application:
+    """Factory function for bootstrapping components and dependency injection, detached from state."""
+    orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
+    return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
 
 
 def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, PipelineConfig]:
@@ -103,8 +101,6 @@ def main() -> None:
     import os
 
     try:
-        from src.domain_models.exceptions import ConfigurationError
-
         try:
             mode = os.getenv("MODE", "cli")
             if mode not in ["cli", "production", "test"]:
@@ -116,7 +112,7 @@ def main() -> None:
             mode_config = ModeConfig(mode=mode)
 
             deps, config = create_dependencies(settings)
-            app = AppBuilder.build(settings, mode_config, deps, config)
+            app = build_app(settings, mode_config, deps, config)
         except ConfigurationError:
             logger.exception("Configuration Error")
             sys.exit(1)

@@ -17,7 +17,7 @@ def test_settings_default() -> None:
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
-            allowed_base_dir=".",
+            allowed_base_dir="/tmp",  # noqa: S108
         )
         mode_config = ModeConfig()
         assert mode_config.mode == "cli"
@@ -43,7 +43,7 @@ def test_app_context_creation() -> None:
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
-            allowed_base_dir=".",
+            allowed_base_dir="/tmp",  # noqa: S108
         )
         mode_config = ModeConfig()
         context = create_app_context(settings, mode_config)

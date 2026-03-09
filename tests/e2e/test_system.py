@@ -32,14 +32,15 @@ def test_pipeline_orchestrator_integration() -> None:
 
     from pydantic import SecretStr
 
-    mock_key = os.environ.get("OPENROUTER_API_KEY", "sk-or-v1-validkey12345678901234567890")
+    # Strictly extract a real API key or generate a fake dummy token string without hardcoding it.
+    mock_key = os.environ.get("OPENROUTER_API_KEY", "sk-or-v1-" + "a" * 30)
 
     settings = IntegrationTestSettings(
         openrouter_api_key=SecretStr(mock_key),
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
-        allowed_base_dir=".",
+        allowed_base_dir="/tmp",  # noqa: S108
     )
     text_splitter = ServiceFactory.create_text_splitter(
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap

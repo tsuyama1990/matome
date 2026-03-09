@@ -99,10 +99,16 @@ class Settings(MatomeConfig):
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
     def validate_allowed_base_dir(cls, value: str) -> str:
+        from pathlib import Path
+
         from src.domain_models.exceptions import ConfigurationError
 
         if not value:
             err_msg = "ALLOWED_BASE_DIR must be configured in settings."
+            raise ConfigurationError(err_msg)
+
+        if not Path(value).is_absolute():
+            err_msg = "ALLOWED_BASE_DIR must be an absolute path."
             raise ConfigurationError(err_msg)
         return value
 
