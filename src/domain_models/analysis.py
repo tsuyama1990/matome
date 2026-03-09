@@ -3,8 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .constants import NODE_ID_PATTERN
 from .enums import PivotAxis
 
-
-__all__ = ["PivotAxis", "PivotBoardViewNode", "PivotBoard", "PivotBoardView"]
+__all__ = ["PivotAxis", "PivotBoard", "PivotBoardView", "PivotBoardViewNode"]
 
 class PivotBoardViewNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -57,7 +56,7 @@ class PivotBoardView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     board_id: str = Field(
-        ..., description="The ID of the PivotBoard this view renders", max_length=100
+        ..., description="The ID of the PivotBoard this view renders", max_length=100, pattern=NODE_ID_PATTERN
     )
     mermaid_diagram: str = Field(
         ..., description="Generated Mermaid.js snippet for this board", max_length=50000

@@ -4,6 +4,7 @@ import sys
 
 from src.application.ai import DefaultAIService
 from src.config import Settings
+from src.domain_models.manifest import PipelineContext
 from src.domain_models.services import DocumentFactory
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import PipelineOrchestrator
@@ -24,9 +25,11 @@ class Application:
         logger.info(f"Initializing matome application in {self.settings.mode} mode...")
         # Provide sample content directly instead of hardcoding in settings
         sample_content = "This is a very long business manual about strategy."
-        self.orchestrator.run_pipeline(
-            root_doc_id=self.settings.default_root_doc_id, content=sample_content
+        context = PipelineContext(
+            root_doc_id=self.settings.default_root_doc_id,
+            content=sample_content
         )
+        self.orchestrator.run_pipeline(context)
 
 
 def create_app(mode: str = "cli") -> Application:
@@ -36,7 +39,9 @@ def create_app(mode: str = "cli") -> Application:
 
     settings = Settings()
     repo = InMemoryDocumentRepository()
-    ai = DefaultAIService()
+
+    api_key_str = settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
+    ai = DefaultAIService(api_key=api_key_str, model=settings.default_ai_model)
     factory = DocumentFactory()
     orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
     return Application(settings=settings, orchestrator=orchestrator)

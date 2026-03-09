@@ -2,6 +2,7 @@ from typing import Any
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from src.domain_models.constants import ROOT_DOC_ID
 
 
 class Settings(BaseSettings):
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     )
 
     default_root_doc_id: str = Field(
-        default="root_doc_1", description="Default root document ID used in pipeline initialization"
+        default=ROOT_DOC_ID, description="Default root document ID used in pipeline initialization"
     )
 
 

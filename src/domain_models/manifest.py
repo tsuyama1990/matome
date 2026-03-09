@@ -3,8 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .constants import NODE_ID_PATTERN
 from .enums import NodeStatus
 
-
-__all__ = ["NodeStatus", "NodeMetadata", "DocumentContent", "AIProcessingMetadata", "DocumentNode", "UserInteractionContext"]
+__all__ = ["AIProcessingMetadata", "DocumentContent", "DocumentNode", "NodeMetadata", "NodeStatus", "PipelineContext", "UserInteractionContext"]
 
 class NodeMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -26,7 +25,7 @@ class DocumentContent(BaseModel):
 
 class AIProcessingMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    chunk_id: str | None = Field(None, description="Semantic chunk identifier", max_length=100)
+    chunk_id: str | None = Field(None, description="Semantic chunk identifier", max_length=100, pattern=NODE_ID_PATTERN)
     chunk_index: int | None = Field(
         None, description="Index of semantic chunk in document flow", ge=0
     )
@@ -61,10 +60,15 @@ class DocumentNode(BaseModel):
     metadata: NodeMetadata = Field(..., description="Metadata tags such as Time Axis, Actor, etc.")
 
     # Adding fields mandated by auditor in FR-1.2 and FR-1.3 requirements
-    ai_metadata: AIProcessingMetadata | None = Field(
-        default=None, description="AI processing metadata"
+    ai_metadata: AIProcessingMetadata = Field(
+        ..., description="AI processing metadata"
     )
 
+
+class PipelineContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    root_doc_id: str = Field(..., description="Root document ID", max_length=100, pattern=NODE_ID_PATTERN)
+    content: str = Field(..., description="Content to process", max_length=100000)
 
 class UserInteractionContext(BaseModel):
     model_config = ConfigDict(extra="forbid")

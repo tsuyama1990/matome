@@ -1,4 +1,5 @@
 from src.config import Settings
+from src.domain_models.manifest import PipelineContext
 from src.domain_models.services import DocumentFactory
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import PipelineOrchestrator
@@ -24,7 +25,11 @@ def test_pipeline_orchestrator_integration() -> None:
 
     # Run the pipeline
     content = "This is a very long business manual about strategy."
-    orchestrator.run_pipeline(root_doc_id=settings.default_root_doc_id, content=content)
+    context = PipelineContext(
+        root_doc_id=settings.default_root_doc_id,
+        content=content
+    )
+    orchestrator.run_pipeline(context)
 
     # Verify the results in the repository
     nodes = [

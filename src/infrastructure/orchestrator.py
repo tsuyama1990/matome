@@ -5,6 +5,7 @@ from src.domain_models import (
     AIServiceProtocol,
     DocumentFactory,
     DocumentRepository,
+    PipelineContext,
 )
 
 logger = logging.getLogger(__name__)
@@ -23,16 +24,16 @@ class PipelineOrchestrator:
         self.ai_service = ai_service
         self.doc_factory = doc_factory
 
-    def run_pipeline(self, root_doc_id: str, content: str) -> None:
+    def run_pipeline(self, context: PipelineContext) -> None:
         logger.info("Starting document ingestion and analysis pipeline...")
 
         # 1. Ingestion Stage
         logger.info("Ingesting document...")
 
-        summary = self.ai_service.generate_summary(content)
+        summary = self.ai_service.generate_summary(context.content)
 
         root_node = self.doc_factory.create_root_node(
-            node_id=root_doc_id, title="Business Manual", content_text=content, summary=summary
+            node_id=context.root_doc_id, title="Business Manual", content_text=context.content, summary=summary
         )
         self.doc_repo.save_node(root_node)
 

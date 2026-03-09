@@ -21,6 +21,7 @@ from .manifest import (
     DocumentNode,
     NodeMetadata,
     NodeStatus,
+    PipelineContext,
     UserInteractionContext,
 )
 from .services import DocumentFactory
@@ -37,6 +38,7 @@ __all__ = [
     "DocumentWriter",
     "NodeMetadata",
     "NodeStatus",
+    "PipelineContext",
     "PivotAxis",
     "PivotBoard",
     "PivotBoardRepository",
