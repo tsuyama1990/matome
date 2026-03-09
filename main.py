@@ -46,10 +46,25 @@ def create_app(mode: str = "cli") -> Application:
     repo = InMemoryDocumentRepository()
 
     http_client = RequestsHTTPClient()
-    retry_policy = TenacityRetryPolicy(settings=settings)
-    ai = DefaultAIService(settings=settings, http_client=http_client, retry_policy=retry_policy)
+    retry_policy = TenacityRetryPolicy(
+        ai_retry_attempts=settings.ai_retry_attempts,
+        ai_retry_min_wait=settings.ai_retry_min_wait,
+        ai_retry_max_wait=settings.ai_retry_max_wait,
+    )
+    ai = DefaultAIService(
+        api_key=settings.openrouter_api_key,
+        api_url=settings.openrouter_api_url,
+        text_fast_model=settings.text_fast_model,
+        text_reasoning_model=settings.text_reasoning_model,
+        ai_timeout=settings.ai_timeout,
+        http_client=http_client,
+        retry_policy=retry_policy,
+    )
     factory = DocumentFactory()
-    text_splitter = DefaultTextSplitter(settings=settings)
+    text_splitter = DefaultTextSplitter(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+    )
     entity_extractor = DefaultEntityExtractor()
     clustering_service = DefaultClusteringService()
 
@@ -60,7 +75,8 @@ def create_app(mode: str = "cli") -> Application:
         text_splitter=text_splitter,
         entity_extractor=entity_extractor,
         clustering_service=clustering_service,
-        settings=settings,
+        pipeline_timeout=settings.pipeline_timeout,
+        raptor_max_clusters=settings.raptor_max_clusters,
     )
     return Application(settings=settings, orchestrator=orchestrator)
 

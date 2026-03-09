@@ -2,7 +2,6 @@ import logging
 import re
 from typing import Any
 
-from src.config import Settings
 from src.domain_models.interfaces import (
     AIServiceError,
     ClusteringServiceProtocol,
@@ -16,10 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 class DefaultTextSplitter(TextSplitterProtocol):
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
-        self.chunk_size = settings.chunk_size
-        self.chunk_overlap = settings.chunk_overlap
+    def __init__(self, chunk_size: int, chunk_overlap: int) -> None:
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
 
     def split_text(self, text: str) -> list[str]:
         logger.debug("Executing LangChain semantic chunking...")
@@ -144,16 +142,20 @@ class RequestsHTTPClient(HTTPClientProtocol):
 
 
 class TenacityRetryPolicy(RetryPolicyProtocol):
-    def __init__(self, settings: Settings) -> None:
-        self.settings = settings
+    def __init__(
+        self, ai_retry_attempts: int, ai_retry_min_wait: int, ai_retry_max_wait: int
+    ) -> None:
+        self.ai_retry_attempts = ai_retry_attempts
+        self.ai_retry_min_wait = ai_retry_min_wait
+        self.ai_retry_max_wait = ai_retry_max_wait
 
     def execute(self, func: Any) -> Any:
         from tenacity import Retrying, stop_after_attempt, wait_exponential_jitter
 
         retryer = Retrying(
-            stop=stop_after_attempt(self.settings.ai_retry_attempts),
+            stop=stop_after_attempt(self.ai_retry_attempts),
             wait=wait_exponential_jitter(
-                initial=self.settings.ai_retry_min_wait, max=self.settings.ai_retry_max_wait
+                initial=self.ai_retry_min_wait, max=self.ai_retry_max_wait
             ),
             reraise=True,
         )

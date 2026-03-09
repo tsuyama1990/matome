@@ -35,9 +35,17 @@ def _create_service(api_key: str | None = None) -> DefaultAIService:
     from src.infrastructure.services import RequestsHTTPClient, TenacityRetryPolicy
     settings = _create_mock_settings(api_key)
     return DefaultAIService(
-        settings=settings,
+        api_key=settings.openrouter_api_key,
+        api_url=settings.openrouter_api_url,
+        text_fast_model=settings.text_fast_model,
+        text_reasoning_model=settings.text_reasoning_model,
+        ai_timeout=settings.ai_timeout,
         http_client=RequestsHTTPClient(),
-        retry_policy=TenacityRetryPolicy(settings=settings),
+        retry_policy=TenacityRetryPolicy(
+            ai_retry_attempts=settings.ai_retry_attempts,
+            ai_retry_min_wait=settings.ai_retry_min_wait,
+            ai_retry_max_wait=settings.ai_retry_max_wait,
+        ),
     )
 
 

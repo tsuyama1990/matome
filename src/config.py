@@ -6,10 +6,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from src.domain_models.constants import ROOT_DOC_ID
 
 
-class Settings(BaseSettings):
-    """Global application configuration settings utilizing pydantic-settings."""
+class MatomeConfig(BaseSettings):
+    """Base configuration model class"""
+    model_config = SettingsConfigDict(extra="ignore")
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+class Settings(MatomeConfig):
+    """Global application configuration settings utilizing pydantic-settings."""
 
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"

@@ -1,7 +1,6 @@
 import logging
 import threading
 
-from src.config import Settings
 from src.domain_models import (
     AIServiceError,
     AIServiceProtocol,
@@ -27,7 +26,8 @@ class PipelineOrchestrator:
         text_splitter: TextSplitterProtocol,
         entity_extractor: EntityExtractorProtocol,
         clustering_service: ClusteringServiceProtocol,
-        settings: Settings,
+        pipeline_timeout: float,
+        raptor_max_clusters: int,
     ) -> None:
         self.doc_repo = doc_repo
         self.ai_service = ai_service
@@ -35,7 +35,13 @@ class PipelineOrchestrator:
         self.text_splitter = text_splitter
         self.entity_extractor = entity_extractor
         self.clustering_service = clustering_service
-        self.settings = settings
+        self.pipeline_timeout = pipeline_timeout
+        self.raptor_max_clusters = raptor_max_clusters
+
+    def _validate_content_length(self, content: str) -> None:
+        if len(content) > self.doc_factory.max_content_length:
+            msg = f"Root document content exceeds allowed length of {self.doc_factory.max_content_length} characters."
+            raise ValueError(msg)
 
     def run_pipeline(self, context: PipelineContext) -> None:
         logger.info("Starting document ingestion and analysis pipeline...")
@@ -45,7 +51,7 @@ class PipelineOrchestrator:
             raise TimeoutError(msg)
 
         # Ensure pipeline doesn't hang indefinitely using a basic thread timeout implementation for blocking ML tasks
-        timer = threading.Timer(self.settings.pipeline_timeout, timeout_handler)
+        timer = threading.Timer(self.pipeline_timeout, timeout_handler)
         timer.start()
 
         # Initialize the transaction layer natively ensuring atomicity.
@@ -63,7 +69,7 @@ class PipelineOrchestrator:
             # 3. RAPTOR Clustering and Tree Generation
             logger.info("Generating hierarchical tree via RAPTOR...")
             tree_metadata = self.clustering_service.cluster_chunks(
-                chunks, self.settings.raptor_max_clusters
+                chunks, self.raptor_max_clusters
             )
 
             # 4. Chain of Density (CoD) Summarization

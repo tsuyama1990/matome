@@ -22,7 +22,9 @@ def _create_orchestrator() -> PipelineOrchestrator:
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
     factory = DocumentFactory()
-    text_splitter = DefaultTextSplitter(settings=settings)
+    text_splitter = DefaultTextSplitter(
+        chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
+    )
     entity_extractor = DefaultEntityExtractor()
     clustering_service = DefaultClusteringService()
 
@@ -33,7 +35,8 @@ def _create_orchestrator() -> PipelineOrchestrator:
         text_splitter=text_splitter,
         entity_extractor=entity_extractor,
         clustering_service=clustering_service,
-        settings=settings,
+        pipeline_timeout=settings.pipeline_timeout,
+        raptor_max_clusters=settings.raptor_max_clusters,
     )
 
 
@@ -56,7 +59,7 @@ def test_orchestrator_raptor_fallback() -> None:
     # Pass more than 15 chunks to avoid the UMAP dimensionality error for N <= 15 when using defaults
     chunks = [f"test document chunk number {i}" for i in range(20)]
     tree = orchestrator.clustering_service.cluster_chunks(
-        chunks, orchestrator.settings.raptor_max_clusters
+        chunks, orchestrator.raptor_max_clusters
     )
     assert isinstance(tree, dict)
     assert "level_0" in tree

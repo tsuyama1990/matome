@@ -27,7 +27,9 @@ def test_pipeline_orchestrator_integration() -> None:
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",
     )
-    text_splitter = DefaultTextSplitter(settings=settings)
+    text_splitter = DefaultTextSplitter(
+        chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
+    )
     entity_extractor = DefaultEntityExtractor()
     clustering_service = DefaultClusteringService()
 
@@ -38,7 +40,8 @@ def test_pipeline_orchestrator_integration() -> None:
         text_splitter=text_splitter,
         entity_extractor=entity_extractor,
         clustering_service=clustering_service,
-        settings=settings,
+        pipeline_timeout=settings.pipeline_timeout,
+        raptor_max_clusters=settings.raptor_max_clusters,
     )
 
     # Run the pipeline

@@ -1,6 +1,5 @@
 from pydantic import SecretStr
 
-from src.config import Settings
 from src.domain_models import (
     AIServiceProtocol,
     DocumentNode,
@@ -16,7 +15,11 @@ class DefaultAIService(AIServiceProtocol):
 
     def __init__(
         self,
-        settings: Settings,
+        api_key: SecretStr | None,
+        api_url: str,
+        text_fast_model: str,
+        text_reasoning_model: str,
+        ai_timeout: int,
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
     ) -> None:
@@ -24,8 +27,10 @@ class DefaultAIService(AIServiceProtocol):
 
         self.http_client = http_client
         self.retry_policy = retry_policy
-        self.settings = settings
-        api_key = self.settings.openrouter_api_key
+        self.api_url = api_url
+        self.text_fast_model = text_fast_model
+        self.text_reasoning_model = text_reasoning_model
+        self.ai_timeout = ai_timeout
 
         if not api_key:
             msg = "A valid API Key is required to initialize DefaultAIService."
@@ -45,14 +50,14 @@ class DefaultAIService(AIServiceProtocol):
                 "Content-Type": "application/json",
             }
             data = {
-                "model": model or self.settings.text_fast_model,
+                "model": model or self.text_fast_model,
                 "messages": [{"role": "user", "content": prompt}],
             }
             result = self.http_client.post(
-                self.settings.openrouter_api_url,
+                self.api_url,
                 json=data,
                 headers=headers,
-                timeout=self.settings.ai_timeout,
+                timeout=self.ai_timeout,
             )
             return str(result["choices"][0]["message"]["content"])
 
@@ -62,18 +67,18 @@ class DefaultAIService(AIServiceProtocol):
         prompt = (
             f"Summarize the following content comprehensively using Chain of Density:\n\n{content}"
         )
-        return self._call_api(prompt, model=self.settings.text_fast_model)
+        return self._call_api(prompt, model=self.text_fast_model)
 
     def generate_question(self, node: DocumentNode) -> str:
         prompt = f"Generate an engaging SQ3R question for the following content node:\n\n{node.title}\n{node.content.summary}"
-        return self._call_api(prompt, model=self.settings.text_fast_model)
+        return self._call_api(prompt, model=self.text_fast_model)
 
     def generate_mermaid_diagram(self, board: PivotBoard) -> str:
         prompt = f"Generate a Mermaid.js diagram based on this structure: {board.id} with axis {board.axis}"
-        return self._call_api(prompt, model=self.settings.text_reasoning_model)
+        return self._call_api(prompt, model=self.text_reasoning_model)
 
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]:
         prompt = f"Evaluate this user answer: '{context.user_answer}' for the question: '{context.question_asked}'. Is it basically correct? Start with YES or NO."
-        response = self._call_api(prompt, model=self.settings.text_reasoning_model)
+        response = self._call_api(prompt, model=self.text_reasoning_model)
         is_correct = response.strip().upper().startswith("YES")
         return is_correct, response
