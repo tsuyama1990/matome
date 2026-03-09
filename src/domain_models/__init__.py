@@ -2,8 +2,10 @@ from .analysis import (
     PivotAxis,
     PivotBoard,
     PivotBoardNode,
+    PivotBoardView,
 )
 from .manifest import (
+    DocumentContent,
     DocumentNode,
     NodeMetadata,
     NodeStatus,
@@ -11,11 +13,13 @@ from .manifest import (
 )
 
 __all__ = [
+    "DocumentContent",
     "DocumentNode",
     "NodeMetadata",
     "NodeStatus",
     "PivotAxis",
     "PivotBoard",
     "PivotBoardNode",
+    "PivotBoardView",
     "UserInteractionContext",
 ]

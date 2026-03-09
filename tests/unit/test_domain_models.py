@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.domain_models import (
+    DocumentContent,
     DocumentNode,
     NodeMetadata,
     NodeStatus,
@@ -17,9 +18,9 @@ def test_document_node_valid() -> None:
         id="node1",
         parent_id=None,
         title="Test Node",
-        summary=None,
-        content=None,
-        status=NodeStatus.LOCKED,
+        content=DocumentContent(summary=None, text=None),
+
+        chunk_id=None, chunk_index=None, status=NodeStatus.LOCKED,
         metadata=NodeMetadata(source=None, author="test", category=None, time_axis=None)
     )
     assert node.id == "node1"
@@ -33,8 +34,8 @@ def test_document_node_invalid_extra() -> None:
             id="node1",
             parent_id=None,
             title="Test Node",
-            summary=None,
-            content=None,
+            content=DocumentContent(summary=None, text=None),
+
             extra_field="Not allowed" # type: ignore
         )
 
@@ -71,7 +72,6 @@ def test_pivot_board_valid() -> None:
         nodes=[
             PivotBoardNode(node_id="node1", x_position=0.5, y_position=0.5, cluster_id=None)
         ],
-        mermaid_diagram=None
     )
     assert board.id == "board1"
     assert board.axis == PivotAxis.ACTOR_STATE

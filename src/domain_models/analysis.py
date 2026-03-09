@@ -27,4 +27,9 @@ class PivotBoard(BaseModel):
     axis: PivotAxis = Field(..., description="The multidimensional axis used for this pivot")
     custom_axis_description: str | None = Field(None, description="Description if axis is CUSTOM", max_length=500)
     nodes: list[PivotBoardNode] = Field(default_factory=list, description="List of nodes positioned on this board")
-    mermaid_diagram: str | None = Field(None, description="Generated Mermaid.js snippet for this board", max_length=10000)
+
+class PivotBoardView(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    board_id: str = Field(..., description="The ID of the PivotBoard this view renders", max_length=100)
+    mermaid_diagram: str = Field(..., description="Generated Mermaid.js snippet for this board", max_length=50000)

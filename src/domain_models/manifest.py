@@ -18,17 +18,30 @@ class NodeMetadata(BaseModel):
 def default_metadata() -> NodeMetadata:
     return NodeMetadata(source=None, author=None, category=None, time_axis=None)
 
+class DocumentContent(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    summary: str | None = Field(None, description="CoD summary of the node content", max_length=2000)
+    text: str | None = Field(None, description="Full text content of the node if it is a leaf node", max_length=100000)
+
+def default_content() -> DocumentContent:
+    return DocumentContent(summary=None, text=None)
+
 class DocumentNode(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str = Field(..., description="Unique identifier for the node", max_length=100, pattern=r'^[a-zA-Z0-9_-]+$')
     parent_id: str | None = Field(None, description="Identifier of the parent node", max_length=100, pattern=r'^[a-zA-Z0-9_-]+$')
     title: str = Field(..., description="Title of the node", max_length=500)
-    summary: str | None = Field(None, description="CoD summary of the node content", max_length=2000)
-    content: str | None = Field(None, description="Full text content of the node if it is a leaf node", max_length=100000)
+    content: DocumentContent = Field(default_factory=default_content, description="The content components of the node")
     status: NodeStatus = Field(NodeStatus.LOCKED, description="Current status of the node in the learning journey")
     children_ids: list[str] = Field(default_factory=list, description="List of child node identifiers")
     metadata: NodeMetadata = Field(default_factory=default_metadata, description="Metadata tags such as Time Axis, Actor, etc.")
+
+    # Adding fields mandated by auditor in FR-1.2 and FR-1.3 requirements
+    chunk_id: str | None = Field(None, description="Semantic chunk identifier", max_length=100)
+    chunk_index: int | None = Field(None, description="Index of semantic chunk in document flow", ge=0)
+    entity_metadata: dict[str, str] = Field(default_factory=dict, description="Named Entity Recognition metadata")
+    hierarchical_tree: dict[str, str] = Field(default_factory=dict, description="UMAP/GMM clustering results tree")
 
 class UserInteractionContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
