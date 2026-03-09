@@ -1,8 +1,8 @@
-from pydantic import SecretStr
 
 from src.domain_models import (
     AIServiceProtocol,
     ContentNode,
+    CredentialProviderProtocol,
     HTTPClientProtocol,
     IdentityNode,
     PivotBoard,
@@ -16,7 +16,7 @@ class DefaultAIService(AIServiceProtocol):
 
     def __init__(
         self,
-        api_key: SecretStr,
+        credential_provider: "CredentialProviderProtocol",
         api_url: str,
         text_fast_model: str,
         text_reasoning_model: str,
@@ -30,12 +30,12 @@ class DefaultAIService(AIServiceProtocol):
         self.text_fast_model = text_fast_model
         self.text_reasoning_model = text_reasoning_model
         self.ai_timeout = ai_timeout
-        self.api_key = api_key
+        self.credential_provider = credential_provider
 
     def _call_api(self, prompt: str, model: str | None = None) -> str:
         def _execute() -> str:
             headers = {
-                "Authorization": f"Bearer {self.api_key.get_secret_value()}",
+                "Authorization": f"Bearer {self.credential_provider.get_api_key()}",
                 "Content-Type": "application/json",
             }
             data = {

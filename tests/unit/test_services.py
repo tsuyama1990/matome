@@ -89,7 +89,7 @@ def test_default_clustering_service_invalid_max_clusters() -> None:
 def test_default_clustering_service_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
-    monkeypatch.setitem(sys.modules, "umap", None)
+    monkeypatch.setitem(sys.modules, "sklearn.cluster", None)
 
     clustering_service = DefaultClusteringService(random_seed=42)
     chunks = iter([f"chunk {i}" for i in range(20)])

@@ -17,6 +17,12 @@ class SecurityService(Protocol):
     def validate_api_key(self, api_key: str) -> str: ...
 
 
+class CredentialProviderProtocol(Protocol):
+    """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
+
+    def get_api_key(self) -> str: ...
+
+
 class TransactionManager(Protocol):
     """Protocol for handling transaction lifecycle operations."""
 

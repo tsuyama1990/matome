@@ -23,23 +23,23 @@ Name                                 Stmts   Miss  Cover   Missing
 ------------------------------------------------------------------
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
-src/application/ai.py                   32      0   100%
-src/config.py                           65      8    88%   105-106, 109-110, 120-121, 141, 144
+src/application/ai.py                   31      0   100%
+src/config.py                           70      8    89%   105-106, 109-110, 120-121, 141, 144
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           1      0   100%
 src/domain_models/enums.py              12      0   100%
 src/domain_models/exceptions.py          3      0   100%
-src/domain_models/interfaces.py         21      0   100%
+src/domain_models/interfaces.py         22      0   100%
 src/domain_models/manifest.py           59      0   100%
 src/domain_models/services.py           19      0   100%
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
-src/infrastructure/orchestrator.py     157     32    80%   76-80, 95-96, 101-102, 110-114, 213-215, 222-224, 268-291
+src/infrastructure/orchestrator.py     155      3    98%   224, 252-253
 src/infrastructure/repository.py        43      7    84%   28-34
-src/infrastructure/services.py         147     33    78%   58-60, 72, 104-116, 125, 152-153, 164-193, 212-214
+src/infrastructure/services.py         172     34    80%   60-62, 75, 120-133, 140-144, 155, 201-203, 208-222, 241-243
 src/utils/__init__.py                    0      0   100%
 src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  613     81    87%
-============================== 51 passed in 6.18s ==============================
+TOTAL                                  641     53    92%
+============================== 51 passed in 9.11s ==============================

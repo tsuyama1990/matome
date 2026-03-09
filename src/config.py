@@ -144,6 +144,15 @@ class ConcreteConfigService:
         return getattr(self._settings, key)
 
 
+class EnvCredentialProvider:
+    """Secure credential provider strictly executing JIT string extraction directly returning values to the HTTP Client without storing them inside AI services."""
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def get_api_key(self) -> str:
+        return self._settings.openrouter_api_key.get_secret_value()
+
+
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
     """Application factory pattern for injecting global settings."""
     return AppContext(

@@ -60,7 +60,7 @@ class PipelineDependencies:
 
 
 class ProcessManager:
-    """Handles multiprocessing process lifecycle management ensuring strict termination and zero resource leaks."""
+    """Handles async-based timeout lifecycle management ensuring resource cleanup without heavy multiprocessing."""
 
     def __init__(self, timeout: float) -> None:
         self.timeout = timeout
@@ -68,53 +68,27 @@ class ProcessManager:
     def run_with_timeout(
         self, target_func: typing.Callable[[PipelineContext], Any], context: PipelineContext
     ) -> Any:
-        import multiprocessing
+        import asyncio
+        import concurrent.futures
 
-        queue: multiprocessing.Queue[Any] = multiprocessing.Queue()
-
-        def process_target(ctx: PipelineContext, q: Any) -> None:
+        async def _run() -> Any:
+            loop = asyncio.get_running_loop()
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             try:
-                result = target_func(ctx)
-                q.put(result)
-            except Exception as e:
-                q.put(e)
-
-        process = multiprocessing.Process(target=process_target, args=(context, queue))
-        try:
-            process.start()
-            process.join(self.timeout)
-
-            if process.is_alive():
-                logger.error(
-                    f"Process execution timed out after {self.timeout} seconds. Terminating process."
+                # Use wait_for on the coroutine directly, ensuring graceful dropout upon timeout.
+                # shutdown(wait=False, cancel_futures=True) natively prevents the executor from blocking on exit.
+                return await asyncio.wait_for(
+                    loop.run_in_executor(executor, target_func, context), timeout=self.timeout
                 )
-                process.terminate()
-                process.join()
-                if process.is_alive():
-                    # Fallback to kill if terminate fails to avoid zombie processes entirely
-                    process.kill()
-                    process.join()
-                msg = f"Process execution timed out after {self.timeout} seconds."
-                raise TimeoutError(msg)
+            finally:
+                executor.shutdown(wait=False, cancel_futures=True)
 
-            if process.exitcode != 0:
-                msg = f"Process failed with exit code {process.exitcode}"
-                raise RuntimeError(msg)
-
-            result = queue.get()
-            if isinstance(result, Exception):
-                raise result
-            return result
-        finally:
-            if process.is_alive():
-                process.terminate()
-                process.join()
-                if process.is_alive():
-                    process.kill()
-                    process.join()
-            process.close()
-            queue.close()
-            queue.join_thread()
+        try:
+            return asyncio.run(_run())
+        except TimeoutError as e:
+            logger.exception(f"Execution timed out after {self.timeout} seconds.")
+            msg = f"Execution timed out after {self.timeout} seconds."
+            raise TimeoutError(msg) from e
 
 
 class IngestionOrchestrator:
@@ -237,6 +211,23 @@ class PipelineTransactionManager:
         self.deps.transaction_manager.commit()
 
 
+class CircuitBreaker:
+    """A simplistic circuit breaker to halt cascading failures against external resources."""
+    def __init__(self, threshold: int = 3) -> None:
+        self.failures = 0
+        self.threshold = threshold
+        self.open = False
+
+    def record_failure(self) -> None:
+        self.failures += 1
+        if self.failures >= self.threshold:
+            self.open = True
+
+    def reset(self) -> None:
+        self.failures = 0
+        self.open = False
+
+
 class PipelineOrchestrator:
     """Handles the high-level orchestration of ingestion, analysis, and output workflows."""
 
@@ -254,13 +245,22 @@ class PipelineOrchestrator:
         self.ingestion_orchestrator = IngestionOrchestrator(dependencies)
         self.analysis_orchestrator = AnalysisOrchestrator(dependencies, config)
         self.output_orchestrator = OutputOrchestrator(dependencies)
+        self.circuit_breaker = CircuitBreaker()
 
     def run_pipeline(self, context: PipelineContext) -> None:
-        logger.info("Starting document ingestion and analysis pipeline...")
-        result = self.process_manager.run_with_timeout(self._execute_pipeline_logic, context)
+        if self.circuit_breaker.open:
+            msg = "Circuit breaker is OPEN. Failing fast to prevent cascading system collapse."
+            raise RuntimeError(msg)
 
-        if result is not None:
-            self.transaction_handler.save_and_commit(result)
+        logger.info("Starting document ingestion and analysis pipeline...")
+        try:
+            result = self.process_manager.run_with_timeout(self._execute_pipeline_logic, context)
+            self.circuit_breaker.reset()
+            if result is not None:
+                self.transaction_handler.save_and_commit(result)
+        except Exception:
+            self.circuit_breaker.record_failure()
+            raise
 
     def _execute_pipeline_logic(
         self, context: PipelineContext

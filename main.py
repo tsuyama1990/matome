@@ -52,8 +52,12 @@ def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, Pipel
         ai_retry_min_wait=settings.ai_retry_min_wait,
         ai_retry_max_wait=settings.ai_retry_max_wait,
     )
+    from src.config import EnvCredentialProvider
+
+    provider = EnvCredentialProvider(settings)
+
     ai = DefaultAIService(
-        api_key=settings.openrouter_api_key,
+        credential_provider=provider,
         api_url=settings.openrouter_api_url,
         text_fast_model=settings.text_fast_model,
         text_reasoning_model=settings.text_reasoning_model,

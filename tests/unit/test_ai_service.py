@@ -32,7 +32,10 @@ def _create_mock_settings(base_dir: str, api_key: str | None = None) -> Settings
 def _create_service(base_dir: str, api_key: str | None = None, http_client: object = None) -> DefaultAIService:
     from unittest.mock import MagicMock
 
+    from src.config import EnvCredentialProvider
+
     settings = _create_mock_settings(base_dir=base_dir, api_key=api_key)
+    provider = EnvCredentialProvider(settings)
 
     mock_http_client = http_client or MagicMock()
 
@@ -43,7 +46,7 @@ def _create_service(base_dir: str, api_key: str | None = None, http_client: obje
             return func()
 
     return DefaultAIService(
-        api_key=settings.openrouter_api_key,
+        credential_provider=provider,
         api_url=settings.openrouter_api_url,
         text_fast_model=settings.text_fast_model,
         text_reasoning_model=settings.text_reasoning_model,
