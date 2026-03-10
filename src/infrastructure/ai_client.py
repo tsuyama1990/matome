@@ -29,6 +29,7 @@ class AIClientConfig:
 
 class AIClientFactory:
     """Factory to construct DefaultAICommunicationClient ensuring configuration inversion mapping."""
+
     @staticmethod
     def create(
         api_url: str,

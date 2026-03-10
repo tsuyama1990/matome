@@ -28,6 +28,7 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     metadata_service = MetadataService()
 
     from pydantic import SecretStr
+
     settings = IntegrationTestSettings(
         openrouter_api_url=SecretStr("https://mock.api.url"),
         text_fast_model="google/gemini-2.5-flash",
@@ -49,6 +50,7 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
         strategy=LangChainSplitterStrategy(),
     )
     from src.infrastructure.services import EntityExtractorBuilder
+
     entity_extractor = EntityExtractorBuilder.build(
         settings.spacy_model, settings.trusted_spacy_models, settings.trusted_model_hashes
     )

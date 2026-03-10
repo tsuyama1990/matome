@@ -20,7 +20,7 @@ class MockAIService(
     DiagramServiceProtocol,
     DocumentGenerationServiceProtocol,
     WebGroundingServiceProtocol,
-    EvaluationServiceProtocol
+    EvaluationServiceProtocol,
 ):
     """Mock implementation for testing and isolated pipelines."""
 

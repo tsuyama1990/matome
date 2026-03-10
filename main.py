@@ -39,8 +39,6 @@ def build_app(
     return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
 
 
-
-
 def get_di_container(settings: Settings) -> DIContainerProtocol:
     from src.application.ai import (
         DefaultQuestionService,
@@ -70,6 +68,7 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     security_scanner = PromptInjectionScanner()
 
     from src.infrastructure.ai_client import AIClientFactory
+
     communication_client = AIClientFactory.create(
         api_url=settings.openrouter_api_url.get_secret_value(),
         default_model=settings.text_fast_model,
@@ -148,6 +147,7 @@ def setup_config() -> tuple[Settings, ModeConfig]:
     mode_config = ModeConfig(mode=mode)
     return settings, mode_config
 
+
 def validate_security(settings: Settings, target_file: str) -> str:
     import os
     from pathlib import Path
@@ -177,6 +177,7 @@ def validate_security(settings: Settings, target_file: str) -> str:
         sys.exit(1)
 
     return str(file_path)
+
 
 def main() -> None:
     import argparse

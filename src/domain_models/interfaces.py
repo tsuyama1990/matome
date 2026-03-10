@@ -6,6 +6,7 @@ from .manifest import ContentNode, IdentityNode, UserInteractionContext
 
 T = TypeVar("T")
 
+
 class ConfigService(Protocol):
     """Protocol for fetching application configuration using type-safe properties."""
 
@@ -52,6 +53,7 @@ class CredentialProviderProtocol(Protocol):
 @runtime_checkable
 class DatabaseProtocol(Protocol):
     """Protocol representing a database connection or session."""
+
     def execute(self, query: str) -> Any: ...
     def close(self) -> None: ...
 
@@ -131,10 +133,12 @@ class NLPServiceProtocol(Protocol):
 
 class EntityExtractorConfigProtocol(Protocol):
     """Protocol for holding EntityExtractor configuration."""
+
     @property
     def spacy_model(self) -> str: ...
     @property
     def fallback_ner_regex(self) -> str: ...
+
 
 class EntityExtractorProtocol(Protocol):
     """Protocol for extracting entities from an iterator of text chunks."""
@@ -185,12 +189,14 @@ class AISecurityScannerProtocol(Protocol):
 
 class AIClientConfigProtocol(Protocol):
     """Protocol holding AI client configuration strings."""
+
     @property
     def api_url(self) -> str: ...
     @property
     def default_model(self) -> str: ...
     @property
     def ai_timeout(self) -> int: ...
+
 
 class AICommunicationClientProtocol(Protocol):
     """Protocol for communicating with AI models."""

@@ -202,9 +202,6 @@ class DefaultModelVerifier(ModelVerifierProtocol):
             raise ValueError(msg) from e
 
 
-
-
-
 class EntityExtractorConfig:
     def __init__(self, spacy_model: str, fallback_ner_regex: str) -> None:
         self._spacy_model = spacy_model
@@ -221,6 +218,7 @@ class EntityExtractorConfig:
 
 class EntityExtractorBuilder:
     """Builder pattern ensuring backwards compatibility for container parameters and separating config from DI mappings."""
+
     @staticmethod
     def build(
         spacy_model: str,
@@ -239,6 +237,7 @@ class EntityExtractorBuilder:
         config = EntityExtractorConfig(spacy_model=spacy_model, fallback_ner_regex=fallback)
 
         from src.utils.rate_limit import RateLimiter
+
         rate_limiter_inst = rate_limiter or RateLimiter(0.01)
 
         max_sig_size = (

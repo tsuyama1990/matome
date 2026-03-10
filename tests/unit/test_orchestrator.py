@@ -19,6 +19,7 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
     from unittest.mock import MagicMock
 
     from pydantic import SecretStr
+
     settings = Settings(
         openrouter_api_url=SecretStr("https://mock.api.url"),
         text_fast_model="google/gemini-2.5-flash",

@@ -22,15 +22,30 @@ class ModeConfig(MatomeConfig):
     )
 
 
+class CredentialConfig(MatomeConfig):
+    """Dedicated configuration class for externalizing and securely holding credentials."""
+
+    openrouter_api_key: SecretStr | None = Field(
+        None, description="The OpenRouter API Key. Accessed securely via EnvCredentialProvider."
+    )
+
+
 class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""
+
+    credentials: CredentialConfig | None = Field(
+        default_factory=lambda: CredentialConfig(openrouter_api_key=None),
+        description="Security credentials nested configuration.",
+    )
 
     openrouter_api_url: SecretStr = Field(
         ...,
         description="The base URL for the OpenRouter API endpoint",
     )
     ssl_cert_path: SecretStr | None = Field(
-        default_factory=lambda: SecretStr(cert_path) if (cert_path := os.getenv("SSL_CERT_PATH", None)) else None,
+        default_factory=lambda: (
+            SecretStr(cert_path) if (cert_path := os.getenv("SSL_CERT_PATH", None)) else None
+        ),
         description="Path to a pinned CA bundle for explicit SSL verification",
     )
     text_fast_model: str = Field(
@@ -130,7 +145,7 @@ class Settings(MatomeConfig):
 
     @field_validator("trusted_spacy_models", mode="after")
     @classmethod
-    def validate_trusted_models(cls, values: list[str]) -> list[str]:
+    def validate_spacy_models(cls, values: list[str]) -> list[str]:
         from src.domain_models.exceptions import ConfigurationError
 
         allowed_whitelist = {"en_core_web_sm", "en_core_web_md"}
@@ -152,12 +167,14 @@ class Settings(MatomeConfig):
 
         # Security validation ensuring hashes conform to sha256 specs
         import re
+
         sha_pattern = re.compile(r"^[a-fA-F0-9]{64}$")
 
         if sm_hash:
             if sm_hash.startswith("dummy") or not sha_pattern.match(sm_hash):
                 msg = f"Invalid hash format for en_core_web_sm: {sm_hash}. Dummy hashes are strictly prohibited."
                 from src.domain_models.exceptions import ConfigurationError
+
                 raise ConfigurationError(msg)
             hashes["en_core_web_sm"] = sm_hash
 
@@ -165,6 +182,7 @@ class Settings(MatomeConfig):
             if md_hash.startswith("dummy") or not sha_pattern.match(md_hash):
                 msg = f"Invalid hash format for en_core_web_md: {md_hash}. Dummy hashes are strictly prohibited."
                 from src.domain_models.exceptions import ConfigurationError
+
                 raise ConfigurationError(msg)
             hashes["en_core_web_md"] = md_hash
 
@@ -306,22 +324,23 @@ class SecureString:
 
     def _zeroize(self) -> None:
         import ctypes
+
         if hasattr(self, "_value") and self._value is not None:
             buffer_size = len(self._value)
             try:
                 # Use ctypes for guaranteed memory zeroization, requested by audit
-                ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
+                ctypes.memset(
+                    (ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size
+                )
             except (ValueError, AttributeError, TypeError):
                 # Ensure graceful failure if the memory is already freed or moved
                 pass
             finally:
                 # Explicitly remove the reference completely blocking later access attempts
-                self._value = None # type: ignore
+                self._value = None  # type: ignore
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._zeroize()
-
-
 
 
 class CredentialErrorHandler:
@@ -352,11 +371,11 @@ class CredentialErrorHandler:
         import logging
 
         from src.domain_models.exceptions import ConfigurationError
-        from src.utils.validation import validate_api_key_format
+        from src.infrastructure.security import DefaultSecurityService
 
         logger = logging.getLogger(__name__)
         try:
-            validate_api_key_format(key)
+            DefaultSecurityService().validate_api_key(key)
         except ValueError as err:
             logger.error("System configuration validation executed: Format rejection.")  # noqa: TRY400
             msg = "Authentication configuration error."
@@ -368,6 +387,7 @@ class EnvCredentialProvider:
 
     def __init__(self) -> None:
         import threading
+
         self._error_handler = CredentialErrorHandler()
         self._lock = threading.Lock()
 

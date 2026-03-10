@@ -4,6 +4,27 @@ from llm_guard.input_scanners import PromptInjection
 from llm_guard.input_scanners.prompt_injection import MatchType
 
 
+class DefaultSecurityService:
+    def validate_api_key(self, api_key: str) -> str:
+        """Validates the structure and constraints of the BYOK API Key."""
+        import re
+
+        if not api_key:
+            msg = "API Key cannot be empty."
+            raise ValueError(msg)
+
+        if len(api_key) < 30:
+            msg = "API Key must be at least 30 characters long."
+            raise ValueError(msg)
+
+        # Typical OpenRouter keys start with sk-or-v1- and contain mixed alphanumerics
+        if not re.match(r"^sk-or-v1-[a-zA-Z0-9_-]+$", api_key):
+            msg = "API Key format is invalid. It must start with 'sk-or-v1-' followed by alphanumeric characters."
+            raise ValueError(msg)
+
+        return api_key
+
+
 class PromptInjectionScanner:
     def __init__(self, threshold: float | None = None) -> None:
         import os
@@ -14,6 +35,7 @@ class PromptInjectionScanner:
         if not (0.8 <= final_threshold <= 1.0):
             msg = f"Prompt injection threshold must be between 0.8 and 1.0. Got: {final_threshold}"
             from src.domain_models.exceptions import ConfigurationError
+
             raise ConfigurationError(msg)
 
         self._scanner = PromptInjection(threshold=final_threshold, match_type=MatchType.FULL)

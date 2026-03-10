@@ -81,6 +81,7 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_default_entity_extractor_fallback() -> None:
     from src.infrastructure.services import EntityExtractorBuilder
+
     extractor = EntityExtractorBuilder.build(
         spacy_model="invalid_model_name", trusted_models=["invalid_model_name"]
     )
@@ -100,6 +101,7 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setitem(sys.modules, "spacy", None)
 
     from src.infrastructure.services import EntityExtractorBuilder
+
     extractor = EntityExtractorBuilder.build(
         spacy_model="en_core_web_sm", trusted_models=["en_core_web_sm"]
     )
@@ -119,6 +121,7 @@ def test_default_entity_extractor_valid_spacy(monkeypatch: pytest.MonkeyPatch) -
             return [("ORG", "MockCompany")]
 
     from src.infrastructure.services import EntityExtractorBuilder
+
     extractor = EntityExtractorBuilder.build(
         spacy_model="test_model",
         trusted_models=["test_model"],
