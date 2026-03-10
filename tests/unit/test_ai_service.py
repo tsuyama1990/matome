@@ -20,13 +20,18 @@ def _create_mock_settings(
     text_reasoning_model: str = "deepseek/deepseek-reasoner",
     multimodal_model: str = "openai/gpt-4o",
 ) -> Settings:
-    from pydantic import SecretStr
 
     # Completely isolate tests from os.environ side-effects and avoid hardcoded secrets where unnecessary
     # Pass dynamically resolved secret or mock parameter directly to Settings constructor
     # Since pydantic validator catches invalid secrets, we can test validation behaviors here.
+    import os
+
+    if api_key:
+        os.environ["OPENROUTER_API_KEY"] = api_key
+    from src.config import CredentialConfig
+
     return Settings(
-        credentials={"openrouter_api_key": SecretStr(api_key) if api_key is not None else None},  # type: ignore
+        credentials=CredentialConfig(),
         openrouter_api_url="https://mock.api.url",
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
@@ -45,7 +50,6 @@ def _create_service(
     from unittest.mock import MagicMock
 
     from src.config import EnvCredentialProvider
-    from src.infrastructure.ai_client import DefaultAICommunicationClient
     from src.infrastructure.security import PromptInjectionScanner
 
     settings = _create_mock_settings(
@@ -65,8 +69,11 @@ def _create_service(
         def execute(self, func: typing.Any) -> typing.Any:
             return func()
 
-    communication_client = DefaultAICommunicationClient(
-        credential_provider=provider,
+    # Pass provider directly into http client securely instead of through the communication client
+    mock_http_client.credential_provider = provider  # type: ignore[attr-defined]
+
+    from src.infrastructure.ai_client import AIClientFactory
+    communication_client = AIClientFactory.create(
         api_url=settings.openrouter_api_url,
         default_model=settings.text_fast_model,
         ai_timeout=settings.ai_timeout,
@@ -83,25 +90,37 @@ def _create_service(
     )
 
 
-def test_default_ai_service_missing_key_init(tmp_path: pytest.TempPathFactory) -> None:
-    from pydantic import ValidationError
-
-    with pytest.raises(ValidationError, match="Input should be a valid string"):
-        _create_service(base_dir=str(tmp_path), api_key=None)
-
-
-def test_default_ai_service_invalid_key_length(tmp_path: pytest.TempPathFactory) -> None:
+def test_default_ai_service_missing_key_init(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    with pytest.raises(ConfigurationError):
+        EnvCredentialProvider().get_api_key()
+
+
+def test_default_ai_service_invalid_key_length(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from src.config import EnvCredentialProvider
+    from src.domain_models.exceptions import ConfigurationError
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "123")
     with pytest.raises(ConfigurationError, match="API Key must be at least 30 characters long"):
-        _create_service(base_dir=str(tmp_path), api_key="123")
+        EnvCredentialProvider().get_api_key()
 
 
-def test_default_ai_service_invalid_key_format(tmp_path: pytest.TempPathFactory) -> None:
+def test_default_ai_service_invalid_key_format(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
+    monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
     with pytest.raises(ConfigurationError, match="API Key format is invalid"):
-        _create_service(base_dir=str(tmp_path), api_key="invalid_format_key_with_spaces and_tabs")
+        EnvCredentialProvider().get_api_key()
 
 
 def test_default_ai_service_calls_generate_summary_valid(

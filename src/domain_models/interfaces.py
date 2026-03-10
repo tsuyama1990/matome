@@ -17,10 +17,25 @@ class SecurityService(Protocol):
     def validate_api_key(self, api_key: str) -> str: ...
 
 
+class SecureStringProtocol(Protocol):
+    """Protocol representing a secure string."""
+
+    _value: bytearray
+
+    def __enter__(self) -> "SecureStringProtocol": ...
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None: ...
+
+
 class CredentialProviderProtocol(Protocol):
     """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
 
-    def get_api_key(self) -> Any: ...
+    def get_api_key(self) -> SecureStringProtocol: ...
+
+
+class CredentialFetcherProtocol(Protocol):
+    """Protocol for abstract fetchers retrieving tokens from Env, Vault, etc."""
+
+    def __call__(self) -> str | None: ...
 
 
 class TransactionManager(Protocol):
@@ -108,6 +123,13 @@ class NLPServiceProtocol(Protocol):
     def extract_entities(self, text: str) -> list[tuple[str, str]]: ...
 
 
+class EntityExtractorConfigProtocol(Protocol):
+    """Protocol for holding EntityExtractor configuration."""
+    @property
+    def spacy_model(self) -> str: ...
+    @property
+    def fallback_ner_regex(self) -> str: ...
+
 class EntityExtractorProtocol(Protocol):
     """Protocol for extracting entities from an iterator of text chunks."""
 
@@ -122,6 +144,19 @@ class ClusteringServiceProtocol(Protocol):
     ) -> dict[str, str]: ...
 
 
+class MLClusteringProviderProtocol(Protocol):
+    """Protocol for providing ML clustering models, abstracting away the concrete library."""
+
+    def get_vectorizer(self) -> Any: ...
+    def get_clusterer(self, max_clusters: int, random_seed: int) -> Any: ...
+
+
+class ModelVerifierProtocol(Protocol):
+    """Protocol for cryptographic signature validation of ML models."""
+
+    def verify_model_signature(self, model_name: str) -> None: ...
+
+
 class HTTPClientProtocol(Protocol):
     """Protocol for sending HTTP requests."""
 
@@ -131,7 +166,7 @@ class HTTPClientProtocol(Protocol):
         json: dict[str, Any],
         headers: dict[str, str],
         timeout: int,
-        verify: bool | str = True,
+        verify: str | None = None,
         auth_token: Any | None = None,
     ) -> dict[str, Any]: ...
 
@@ -141,6 +176,15 @@ class AISecurityScannerProtocol(Protocol):
 
     def sanitize(self, text: str | None) -> str: ...
 
+
+class AIClientConfigProtocol(Protocol):
+    """Protocol holding AI client configuration strings."""
+    @property
+    def api_url(self) -> str: ...
+    @property
+    def default_model(self) -> str: ...
+    @property
+    def ai_timeout(self) -> int: ...
 
 class AICommunicationClientProtocol(Protocol):
     """Protocol for communicating with AI models."""
@@ -152,3 +196,9 @@ class RetryPolicyProtocol(Protocol):
     """Protocol for defining execution retry policies."""
 
     def execute(self, func: Callable[..., Any]) -> Any: ...
+
+
+class RateLimiterProtocol(Protocol):
+    """Protocol for rate limiting functionality."""
+
+    def acquire(self) -> None: ...

@@ -1,3 +1,4 @@
+import enum
 import logging
 import typing
 from typing import Any
@@ -214,22 +215,32 @@ class PipelineTransactionManager:
         self.deps.transaction_manager.commit()
 
 
+class CircuitBreakerState(enum.Enum):
+    CLOSED = "CLOSED"
+    OPEN = "OPEN"
+    HALF_OPEN = "HALF_OPEN"
+
+
 class CircuitBreaker:
-    """A simplistic circuit breaker to halt cascading failures against external resources."""
+    """A state-managed circuit breaker pattern to properly halt cascading external failures."""
 
     def __init__(self, threshold: int = 3) -> None:
         self.failures = 0
         self.threshold = threshold
-        self.open = False
+        self.state = CircuitBreakerState.CLOSED
+
+    @property
+    def open(self) -> bool:
+        return self.state == CircuitBreakerState.OPEN
 
     def record_failure(self) -> None:
         self.failures += 1
         if self.failures >= self.threshold:
-            self.open = True
+            self.state = CircuitBreakerState.OPEN
 
     def reset(self) -> None:
         self.failures = 0
-        self.open = False
+        self.state = CircuitBreakerState.CLOSED
 
 
 class PipelineOrchestrator:
@@ -239,17 +250,31 @@ class PipelineOrchestrator:
         self,
         dependencies: PipelineDependencies,
         config: PipelineConfig,
+        **kwargs: Any,
     ) -> None:
+        # Dependency Inverted Constructor
         self.deps = dependencies
         self.config = config
-        self.process_manager = ProcessManager(timeout=config.pipeline_timeout)
-        self.validator = PipelineValidator(doc_factory=dependencies.doc_factory)
-        self.error_handler = PipelineErrorHandler()
-        self.transaction_handler = PipelineTransactionManager(dependencies)
-        self.ingestion_orchestrator = IngestionOrchestrator(dependencies)
-        self.analysis_orchestrator = AnalysisOrchestrator(dependencies, config)
-        self.output_orchestrator = OutputOrchestrator(dependencies)
-        self.circuit_breaker = CircuitBreaker()
+        self.process_manager = kwargs.get(
+            "process_manager", ProcessManager(timeout=config.pipeline_timeout)
+        )
+        self.validator = kwargs.get(
+            "validator", PipelineValidator(doc_factory=dependencies.doc_factory)
+        )
+        self.error_handler = kwargs.get("error_handler", PipelineErrorHandler())
+        self.transaction_handler = kwargs.get(
+            "transaction_handler", PipelineTransactionManager(dependencies)
+        )
+        self.ingestion_orchestrator = kwargs.get(
+            "ingestion_orchestrator", IngestionOrchestrator(dependencies)
+        )
+        self.analysis_orchestrator = kwargs.get(
+            "analysis_orchestrator", AnalysisOrchestrator(dependencies, config)
+        )
+        self.output_orchestrator = kwargs.get(
+            "output_orchestrator", OutputOrchestrator(dependencies)
+        )
+        self.circuit_breaker = kwargs.get("circuit_breaker", CircuitBreaker())
 
     def run_pipeline(self, context: PipelineContext) -> None:
         if self.circuit_breaker.open:
@@ -290,6 +315,7 @@ class PipelineOrchestrator:
             )
         except Exception as e:
             self.error_handler.handle_execution_error(e)
+            raise
         else:
             logger.info("Pipeline ML logic completed successfully.")
             return identity, content, metadata_container

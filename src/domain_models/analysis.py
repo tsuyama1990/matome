@@ -11,7 +11,7 @@ class PivotBoardViewNode(BaseModel):
 
     node_id: str = Field(
         ...,
-        description="Reference to the original DocumentNode ID",
+        description="Reference to the original IdentityNode ID",
         max_length=100,
         pattern=NODE_ID_PATTERN,
     )
@@ -40,7 +40,7 @@ class PivotBoard(BaseModel):
     )
     original_root_id: str = Field(
         ...,
-        description="The root DocumentNode ID this board is based on",
+        description="The root IdentityNode ID this board is based on",
         max_length=100,
         pattern=NODE_ID_PATTERN,
     )

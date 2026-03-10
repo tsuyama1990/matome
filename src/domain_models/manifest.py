@@ -73,7 +73,7 @@ class AIProcessingMetadata(BaseModel):
 
 
 class MetadataContainer(BaseModel):
-    """Container grouping all metadata classes to follow SRP strictly outside of DocumentNode."""
+    """Container grouping all metadata classes to follow SRP strictly outside of IdentityNode."""
 
     model_config = ConfigDict(extra="forbid")
 

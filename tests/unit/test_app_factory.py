@@ -12,14 +12,10 @@ def test_settings_default(tmp_path: pytest.TempPathFactory) -> None:
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
 
     try:
-        from pydantic import SecretStr
-
         from src.config import CredentialConfig
 
         settings = Settings(
-            credentials=CredentialConfig(
-                openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890")
-            ),
+            credentials=CredentialConfig(),
             openrouter_api_url="https://mock.api.url",
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
@@ -43,14 +39,10 @@ def test_app_context_creation(tmp_path: pytest.TempPathFactory) -> None:
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
 
     try:
-        from pydantic import SecretStr
-
         from src.config import CredentialConfig
 
         settings = Settings(
-            credentials=CredentialConfig(
-                openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890")
-            ),
+            credentials=CredentialConfig(),
             openrouter_api_url="https://mock.api.url",
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",

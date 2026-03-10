@@ -2,7 +2,6 @@ import pytest
 
 from src.infrastructure.services import (
     DefaultClusteringService,
-    DefaultEntityExtractor,
     DefaultTextSplitter,
     RequestsHTTPClient,
     TenacityRetryPolicy,
@@ -44,6 +43,24 @@ def test_default_text_splitter_split_document(tmp_path: pytest.TempPathFactory) 
     assert len(chunks) > 0
 
 
+def test_default_text_splitter_split_document_exceeds_max_size(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    from src.infrastructure.services import LangChainSplitterStrategy
+
+    splitter = DefaultTextSplitter(
+        chunk_size=10, chunk_overlap=2, max_file_size=50, strategy=LangChainSplitterStrategy()
+    )
+    file_path = tmp_path / "test_exceed.txt"  # type: ignore[operator]
+    file_path.write_text("01234567890123456789" * 10)
+
+    iterator = splitter.split_document(str(file_path))
+    with pytest.raises(
+        ValueError, match="Security Error: File processing stream exceeded maximum allowed size"
+    ):
+        list(iterator)
+
+
 def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
@@ -63,7 +80,8 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_default_entity_extractor_fallback() -> None:
-    extractor = DefaultEntityExtractor(
+    from src.infrastructure.services import EntityExtractorBuilder
+    extractor = EntityExtractorBuilder.build(
         spacy_model="invalid_model_name", trusted_models=["invalid_model_name"]
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
@@ -81,7 +99,8 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setitem(sys.modules, "spacy", None)
 
-    extractor = DefaultEntityExtractor(
+    from src.infrastructure.services import EntityExtractorBuilder
+    extractor = EntityExtractorBuilder.build(
         spacy_model="en_core_web_sm", trusted_models=["en_core_web_sm"]
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
@@ -90,6 +109,33 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
     assert isinstance(entities, dict)
     # Verify fallback logic executes correctly when spacy is entirely missing
     assert "chunk_0_Fallback_ORG" in entities
+
+
+def test_default_entity_extractor_valid_spacy(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Need to bypass actual cryptographic signature check while validating spacy execution
+
+    class MockSpacyNLPService:
+        def extract_entities(self, text: str) -> list[tuple[str, str]]:
+            return [("ORG", "MockCompany")]
+
+    from src.infrastructure.services import EntityExtractorBuilder
+    extractor = EntityExtractorBuilder.build(
+        spacy_model="test_model",
+        trusted_models=["test_model"],
+        nlp_service=MockSpacyNLPService(),
+    )
+
+    # Monkeypatch the signature check so it doesn't fail trying to read test_model
+    def mock_verify(*args: object, **kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(extractor.model_verifier, "verify_model_signature", mock_verify)
+
+    chunks = iter(["Test Chunk", "Another Chunk with Entities"])
+    entities = extractor.extract_entities(chunks)
+    assert isinstance(entities, dict)
+    assert "chunk_0_ORG" in entities
+    assert entities["chunk_0_ORG"] == "MockCompany"
 
 
 def test_default_clustering_service_not_enough_chunks() -> None:
@@ -140,7 +186,15 @@ def test_requests_http_client_post(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(requests, "post", mock_post)
 
     client = RequestsHTTPClient()
-    result = client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10)
+
+    # Needs valid ca_bundle mock or file, bypass by monkeypatching Path.is_file
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "is_file", lambda self: True)
+
+    result = client.post(
+        "http://test.com", {"key": "value"}, {"Authorization": "token"}, 10, verify="mock_cert.pem"
+    )
     assert result == {"test": "data"}
 
 
@@ -158,8 +212,19 @@ def test_requests_http_client_post_timeout(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(requests, "post", mock_post)
 
     client = RequestsHTTPClient()
+
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "is_file", lambda self: True)
+
     with pytest.raises(AIServiceError, match="timed out"):
-        client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10)
+        client.post(
+            "http://test.com",
+            {"key": "value"},
+            {"Authorization": "token"},
+            10,
+            verify="mock_cert.pem",
+        )
 
 
 def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -176,8 +241,19 @@ def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(requests, "post", mock_post)
 
     client = RequestsHTTPClient()
+
+    from pathlib import Path
+
+    monkeypatch.setattr(Path, "is_file", lambda self: True)
+
     with pytest.raises(AIServiceError, match="HTTP error"):
-        client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10)
+        client.post(
+            "http://test.com",
+            {"key": "value"},
+            {"Authorization": "token"},
+            10,
+            verify="mock_cert.pem",
+        )
 
 
 def test_tenacity_retry_policy() -> None:

@@ -5,8 +5,18 @@ from llm_guard.input_scanners.prompt_injection import MatchType
 
 
 class PromptInjectionScanner:
-    def __init__(self) -> None:
-        self._scanner = PromptInjection(threshold=0.5, match_type=MatchType.FULL)
+    def __init__(self, threshold: float | None = None) -> None:
+        import os
+
+        env_threshold = os.getenv("PROMPT_INJECTION_THRESHOLD", "0.9")
+        final_threshold = threshold if threshold is not None else float(env_threshold)
+
+        if not (0.8 <= final_threshold <= 1.0):
+            msg = f"Prompt injection threshold must be between 0.8 and 1.0. Got: {final_threshold}"
+            from src.domain_models.exceptions import ConfigurationError
+            raise ConfigurationError(msg)
+
+        self._scanner = PromptInjection(threshold=final_threshold, match_type=MatchType.FULL)
 
     def sanitize(self, text: str | None) -> str:
         if not text:

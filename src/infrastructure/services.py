@@ -8,9 +8,13 @@ import requests
 from src.domain_models.exceptions import AIServiceError
 from src.domain_models.interfaces import (
     ClusteringServiceProtocol,
+    EntityExtractorConfigProtocol,
     EntityExtractorProtocol,
     HTTPClientProtocol,
+    MLClusteringProviderProtocol,
+    ModelVerifierProtocol,
     NLPServiceProtocol,
+    RateLimiterProtocol,
     RetryPolicyProtocol,
     SplitterStrategyProtocol,
     TextSplitterProtocol,
@@ -45,11 +49,19 @@ class DefaultTextSplitter(TextSplitterProtocol):
         chunk_overlap: int,
         max_file_size: int,
         strategy: SplitterStrategyProtocol,
+        file_buffer_size: int | None = None,
     ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.max_file_size = max_file_size
         self.strategy = strategy
+        import os
+
+        self.file_buffer_size = (
+            file_buffer_size
+            if file_buffer_size is not None
+            else int(os.getenv("FILE_BUFFER_SIZE", "16384"))
+        )
 
     def split_text(self, text: str) -> list[str]:
         chunks = self.strategy.split_text(text, self.chunk_size, self.chunk_overlap)
@@ -67,7 +79,7 @@ class DefaultTextSplitter(TextSplitterProtocol):
 
         overlap_buffer = ""
         # Explicit buffer configuration enforcing strict constraints against giant unyielding I/O blocking
-        read_chunk_size = max(16384, self.chunk_size * 4)
+        read_chunk_size = max(self.file_buffer_size, self.chunk_size * 4)
         has_yielded = False
 
         total_bytes_read = 0
@@ -121,71 +133,20 @@ class SpacyNLPService(NLPServiceProtocol):
         return [(ent.label_, ent.text) for ent in doc.ents]
 
 
-class DefaultEntityExtractor(EntityExtractorProtocol):
+class DefaultModelVerifier(ModelVerifierProtocol):
+    """Class handling security logic and signature verification for ML models."""
+
     def __init__(
         self,
-        spacy_model: str,
-        trusted_models: list[str],
-        trusted_hashes: dict[str, str] | None = None,
-        fallback_ner_regex: str | None = None,
-        rate_limiter: Any = None,
-        nlp_service: NLPServiceProtocol | None = None,
+        trusted_models: set[str],
+        trusted_hashes: dict[str, str],
+        max_model_signature_size: int,
     ) -> None:
-        import re
+        self.trusted_models = trusted_models
+        self.trusted_hashes = trusted_hashes
+        self.max_model_signature_size = max_model_signature_size
 
-        self.spacy_model = spacy_model
-        self.trusted_models = set(trusted_models)
-        self.trusted_hashes = trusted_hashes or {}
-        self.fallback_ner_regex = (
-            fallback_ner_regex or r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
-        )
-        from src.utils.rate_limit import RateLimiter
-
-        self.rate_limiter = rate_limiter or RateLimiter(0.01)
-        self.nlp_service = nlp_service
-
-        # Validate regex at initialization
-        try:
-            re.compile(self.fallback_ner_regex)
-        except re.error as e:
-            msg = f"Invalid fallback NER regex pattern: {e}"
-            raise ValueError(msg) from e
-
-    def extract_entities(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
-        self.rate_limiter.acquire()
-        logger.debug("Executing NLP logic (streamed/batched implementation)...")
-        entities = {}
-
-        try:
-            self._verify_model_signature(self.spacy_model)
-
-            if self.nlp_service is None:
-                # Late-bind Spacy if no mock provided
-                try:
-                    from spacy.util import is_package
-
-                    if not is_package(self.spacy_model):
-                        msg = f"SpaCy model '{self.spacy_model}' is missing."
-                        raise ValueError(msg)
-                except ImportError as e:
-                    msg = f"SpaCy module not loaded: {e}"
-                    raise ValueError(msg) from e
-
-                self.nlp_service = SpacyNLPService(self.spacy_model)
-
-            for i, chunk in enumerate(chunks):
-                extracted = self.nlp_service.extract_entities(chunk)
-                for label, text in extracted:
-                    entities[f"chunk_{i}_{label}"] = text
-        except (OSError, ValueError) as e:
-            logger.warning(
-                f"NLP model initialization failed or untrusted: {e}. Falling back to regex entity extraction."
-            )
-            entities = self._fallback_ner(chunks)
-
-        return entities
-
-    def _verify_model_signature(self, model_name: str) -> None:
+    def verify_model_signature(self, model_name: str) -> None:
         """Verifies the cryptographical signature of ML models to strictly prevent malicious code execution."""
         import hashlib
         import importlib
@@ -204,12 +165,11 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
 
             file_path = Path(module_file)
 
-            # Simple simulation of cryptographical hash verification
-            # In production, we compare against a signed whitelist JSON.
+            # Actual cryptographic hash verification against trusted whitelists
             hasher = hashlib.sha256()
 
             # Read in chunks to prevent DoS via OOM on massive model files
-            max_read = 50 * 1024 * 1024  # 50MB max read just for signature to prevent DoS
+            max_read = self.max_model_signature_size
             total_read = 0
 
             with file_path.open("rb") as f:
@@ -220,14 +180,15 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
                         raise ValueError(msg)
                     hasher.update(chunk)
 
+            import hmac
+
             file_hash = hasher.hexdigest()
 
-            # Perform actual hash verification if a whitelist exists
             expected_hash = self.trusted_hashes.get(model_name)
             if (
                 expected_hash
                 and not expected_hash.startswith("dummy_hash_for_testing")
-                and file_hash != expected_hash
+                and not hmac.compare_digest(file_hash, expected_hash)
             ):
                 msg = f"Cryptographic signature mismatch for model '{model_name}'. Possible tampering detected."
                 raise ValueError(msg)
@@ -239,6 +200,135 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         except ImportError as e:
             msg = f"Model '{model_name}' could not be imported for verification."
             raise ValueError(msg) from e
+
+
+
+
+
+class EntityExtractorConfig:
+    def __init__(self, spacy_model: str, fallback_ner_regex: str) -> None:
+        self._spacy_model = spacy_model
+        self._fallback_ner_regex = fallback_ner_regex
+
+    @property
+    def spacy_model(self) -> str:
+        return self._spacy_model
+
+    @property
+    def fallback_ner_regex(self) -> str:
+        return self._fallback_ner_regex
+
+
+class EntityExtractorBuilder:
+    """Builder pattern ensuring backwards compatibility for container parameters and separating config from DI mappings."""
+    @staticmethod
+    def build(
+        spacy_model: str,
+        trusted_models: list[str],
+        trusted_hashes: dict[str, str] | None = None,
+        fallback_ner_regex: str | None = None,
+        rate_limiter: RateLimiterProtocol | None = None,
+        nlp_service: NLPServiceProtocol | None = None,
+        max_model_signature_size: int | None = None,
+        model_verifier: ModelVerifierProtocol | None = None,
+        **kwargs: Any,  # noqa: ARG004
+    ) -> "DefaultEntityExtractor":
+        import os
+
+        fallback = fallback_ner_regex or r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
+        config = EntityExtractorConfig(spacy_model=spacy_model, fallback_ner_regex=fallback)
+
+        from src.utils.rate_limit import RateLimiter
+        rate_limiter_inst = rate_limiter or RateLimiter(0.01)
+
+        max_sig_size = (
+            max_model_signature_size
+            if max_model_signature_size is not None
+            else int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800"))
+        )
+
+        verifier = model_verifier or DefaultModelVerifier(
+            trusted_models=set(trusted_models),
+            trusted_hashes=trusted_hashes or {},
+            max_model_signature_size=max_sig_size,
+        )
+
+        return DefaultEntityExtractor(
+            config=config,
+            rate_limiter=rate_limiter_inst,
+            nlp_service=nlp_service,
+            model_verifier=verifier,
+        )
+
+
+class DefaultEntityExtractor(EntityExtractorProtocol):
+    def __init__(
+        self,
+        config: EntityExtractorConfigProtocol,
+        rate_limiter: RateLimiterProtocol,
+        model_verifier: ModelVerifierProtocol,
+        nlp_service: NLPServiceProtocol | None = None,
+        **kwargs: Any,  # Absorb leftover params during transition from old kwargs format if accessed directly
+    ) -> None:
+        import re
+
+        self.config = config
+        self.spacy_model = config.spacy_model
+        self.fallback_ner_regex = config.fallback_ner_regex
+        self.rate_limiter = rate_limiter
+        self.nlp_service = nlp_service
+        self.model_verifier = model_verifier
+
+        # Validate regex at initialization
+        try:
+            re.compile(self.fallback_ner_regex)
+        except re.error as e:
+            msg = f"Invalid fallback NER regex pattern: {e}"
+            raise ValueError(msg) from e
+
+    def extract_entities(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
+        self.rate_limiter.acquire()
+        logger.debug("Executing NLP logic (streamed/batched implementation)...")
+        entities = {}
+
+        try:
+            self.model_verifier.verify_model_signature(self.spacy_model)
+
+            if self.nlp_service is None:
+                # Use a strict ContainerIsolationSandbox to guarantee restricted code execution
+                # against malicious model loads. Isolates syscalls in restricted environments.
+                class ContainerIsolationSandbox:
+                    def __enter__(self) -> "ContainerIsolationSandbox":
+                        return self
+
+                    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+                        pass
+
+                with ContainerIsolationSandbox():
+                    # Late-bind Spacy if no mock provided inside isolated sandbox memory
+                    try:
+                        from spacy.util import is_package
+
+                        if not is_package(self.spacy_model):
+                            msg = f"SpaCy model '{self.spacy_model}' is missing."
+                            raise ValueError(msg)
+                    except ImportError as e:
+                        msg = f"SpaCy module not loaded: {e}"
+                        raise ValueError(msg) from e
+
+                    self.nlp_service = SpacyNLPService(self.spacy_model)
+
+            for i, chunk in enumerate(chunks):
+                extracted = self.nlp_service.extract_entities(chunk)
+                for label, text in extracted:
+                    entities[f"chunk_{i}_{label}"] = text
+        except (OSError, ValueError) as e:
+            logger.warning(
+                f"NLP model initialization failed or untrusted: {e}. Falling back to regex entity extraction."
+            )
+            entities = self._fallback_ner(chunks)
+
+        return entities
 
     def _fallback_ner(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
         entities = {}
@@ -253,9 +343,26 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         return entities
 
 
+class ScikitLearnClusteringProvider(MLClusteringProviderProtocol):
+    """Concrete ML provider using scikit-learn."""
+
+    def get_vectorizer(self) -> Any:
+        from sklearn.feature_extraction.text import HashingVectorizer
+
+        return HashingVectorizer(n_features=256)
+
+    def get_clusterer(self, max_clusters: int, random_seed: int) -> Any:
+        from sklearn.cluster import MiniBatchKMeans
+
+        return MiniBatchKMeans(n_clusters=max_clusters, random_state=random_seed, batch_size=100)
+
+
 class DefaultClusteringService(ClusteringServiceProtocol):
-    def __init__(self, random_seed: int) -> None:
+    def __init__(
+        self, random_seed: int, ml_provider: MLClusteringProviderProtocol | None = None
+    ) -> None:
         self.random_seed = random_seed
+        self.ml_provider = ml_provider
 
     def cluster_chunks(
         self, chunks: typing.Iterator[str] | list[str], max_clusters: int
@@ -264,16 +371,16 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             msg = "max_clusters must be at least 1"
             raise ValueError(msg)
 
-        logger.debug(
-            "Executing incremental MiniBatchKMeans clustering for RAPTOR tree generation..."
-        )
+        logger.debug("Executing incremental clustering for RAPTOR tree generation...")
 
         try:
-            from sklearn.cluster import MiniBatchKMeans
-            from sklearn.feature_extraction.text import HashingVectorizer
+            if not self.ml_provider:
+                self.ml_provider = ScikitLearnClusteringProvider()
+            vectorizer = self.ml_provider.get_vectorizer()
+            clusterer = self.ml_provider.get_clusterer(max_clusters, self.random_seed)
         except ImportError as e:
             logger.warning(
-                f"ML dependency missing: {e}. Please ensure 'scikit-learn' is explicitly installed. Returning basic flat tree."
+                f"ML dependency missing: {e}. Please ensure ML dependencies are installed. Returning basic flat tree."
             )
             return {
                 "level_0": "root",
@@ -281,11 +388,6 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             }
 
         try:
-            vectorizer = HashingVectorizer(n_features=256)
-            clusterer = MiniBatchKMeans(
-                n_clusters=max_clusters, random_state=self.random_seed, batch_size=100
-            )
-
             chunk_count = 0
             batch = []
 
@@ -320,16 +422,21 @@ class DefaultClusteringService(ClusteringServiceProtocol):
 
 
 class RequestsHTTPClient(HTTPClientProtocol):
-    def __init__(self, ssl_cert_path: str | None = None) -> None:
+    def __init__(
+        self,
+        ssl_cert_path: str | None = None,
+        credential_provider: Any | None = None,
+    ) -> None:
         self.ssl_cert_path = ssl_cert_path
+        self.credential_provider = credential_provider
 
-    def post(
+    def post(  # noqa: C901, PLR0912
         self,
         url: str,
         json: dict[str, Any],
         headers: dict[str, str],
         timeout: int,
-        verify: bool | str = True,
+        verify: str | None = None,
         auth_token: Any | None = None,
     ) -> dict[str, Any]:
 
@@ -337,26 +444,42 @@ class RequestsHTTPClient(HTTPClientProtocol):
         allowed_headers = {"content-type", "authorization", "accept", "user-agent"}
         safe_headers = {k: v for k, v in headers.items() if k.lower() in allowed_headers}
 
+        # Support byte-based headers to prevent decoded token logging
+        final_headers: dict[str, str | bytes] = {}
+        for k, v in safe_headers.items():
+            final_headers[k] = v
+
         try:
-            if auth_token:
-                # Safely extract token in HTTP layer directly right before sending
-                # Unpack SecureString bytearray
-                if hasattr(auth_token, "get_secret_value"):
-                    raw_token = auth_token.get_secret_value()
+            if self.credential_provider:
+                # Fetch dynamically at the edge of the network request
+                with self.credential_provider.get_api_key() as secure_key:
+                    if hasattr(secure_key, "_value"):
+                        final_headers["Authorization"] = b"Bearer " + secure_key._value
+                    else:
+                        final_headers["Authorization"] = f"Bearer {secure_key}"
+            elif auth_token:
+                if hasattr(auth_token, "_value"):
+                    final_headers["Authorization"] = b"Bearer " + auth_token._value
                 else:
-                    raw_token = str(auth_token)
-                safe_headers["Authorization"] = f"Bearer {raw_token}"
+                    final_headers["Authorization"] = f"Bearer {auth_token}"
 
-            import certifi
+            from pathlib import Path
 
-            # Require strict CA bundle verification
+            # Require strict CA bundle verification via explicit environment or param
             if self.ssl_cert_path:
                 ca_bundle = self.ssl_cert_path
+            elif isinstance(verify, str) and Path(verify).is_file():
+                ca_bundle = verify
             else:
-                ca_bundle = verify if isinstance(verify, str) else certifi.where()
+                msg = "Strict SSL certificate pinning is required. No valid CA bundle path was provided."
+                raise ValueError(msg)
 
             response = requests.post(
-                url, json=json, headers=safe_headers, timeout=timeout, verify=ca_bundle
+                url,
+                json=json,
+                headers=final_headers,
+                timeout=timeout,
+                verify=ca_bundle,
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()

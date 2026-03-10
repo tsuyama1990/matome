@@ -1,8 +1,11 @@
 import os
+import typing
 from typing import Any
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.domain_models.interfaces import CredentialFetcherProtocol
 
 
 class MatomeConfig(BaseSettings):
@@ -22,32 +25,11 @@ class ModeConfig(MatomeConfig):
 class CredentialConfig(MatomeConfig):
     """Dedicated configuration for handling security credentials separately from app settings."""
 
-    openrouter_api_key: SecretStr = Field(..., description="BYOK API key for OpenRouter")
-
-    @field_validator("openrouter_api_key", mode="after")
-    @classmethod
-    def validate_api_key(cls, value: SecretStr) -> SecretStr:
-        from src.domain_models.exceptions import ConfigurationError
-        from src.utils.validation import validate_api_key_format
-
-        if not value:
-            err_msg = "OPENROUTER_API_KEY is required"
-            raise ConfigurationError(err_msg)
-
-        val_str = value.get_secret_value()
-
-        try:
-            validate_api_key_format(val_str)
-        except ValueError as e:
-            raise ConfigurationError(str(e)) from e
-        else:
-            return value
-
 
 class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""
 
-    credentials: CredentialConfig = Field(default_factory=CredentialConfig)  # type: ignore[arg-type]
+    credentials: CredentialConfig = Field(default_factory=CredentialConfig)
 
     openrouter_api_url: str = Field(
         ...,
@@ -75,6 +57,10 @@ class Settings(MatomeConfig):
         description="Default root document ID used in pipeline initialization",
     )
 
+    file_buffer_size: int = Field(
+        default_factory=lambda: int(os.getenv("FILE_BUFFER_SIZE", "16384")),
+        description="Buffer size used for reading streaming files",
+    )
     max_file_size: int = Field(
         default_factory=lambda: int(os.getenv("MAX_FILE_SIZE", "10485760")),
         description="Maximum allowed file size in bytes (default 10MB)",
@@ -131,6 +117,10 @@ class Settings(MatomeConfig):
             "en_core_web_md": os.getenv("HASH_EN_CORE_WEB_MD", "dummy_hash_for_testing_md"),
         },
         description="Map of allowed models to their expected SHA256 hashes",
+    )
+    max_model_signature_size: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800")),
+        description="Max bytes read when verifying a model signature",
     )
     fallback_ner_regex: str = Field(
         default_factory=lambda: str(
@@ -202,14 +192,13 @@ class SecureString:
         # Store as mutable bytearray to allow explicit zeroization
         self._value = bytearray(value.encode("utf-8"))
 
-    def get_secret_value(self) -> str:
-        return self._value.decode("utf-8")
-
     def __str__(self) -> str:
-        return "********"
+        msg = "SecureString value cannot be represented as string."
+        raise ValueError(msg)
 
     def __repr__(self) -> str:
-        return "SecureString('********')"
+        msg = "SecureString value cannot be represented as string."
+        raise ValueError(msg)
 
     def __enter__(self) -> "SecureString":
         return self
@@ -218,7 +207,7 @@ class SecureString:
         import ctypes
 
         if hasattr(self, "_value") and self._value:
-            # Overwrite memory buffer backing the bytearray directly via ctypes
+            # Secure platform memory zeroization
             buffer_size = len(self._value)
             ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
             self._value = bytearray()
@@ -230,23 +219,71 @@ class SecureString:
         self._zeroize()
 
 
-class EnvCredentialProvider:
-    """Secure credential provider strictly executing JIT string extraction directly returning values to the HTTP Client without storing them inside AI services."""
 
-    def __init__(self, credential_config: CredentialConfig) -> None:
-        self._config = credential_config
 
-    def get_api_key(self) -> SecureString:
+class CredentialErrorHandler:
+    """Handles parsing errors and format validation specifically for credentials."""
+
+    def handle_missing_key(self) -> typing.NoReturn:
+        from src.domain_models.exceptions import ConfigurationError
+        msg = "API Key could not be resolved from any configured credential source (e.g., Vault, Env)."
+        raise ConfigurationError(msg)
+
+    def handle_invalid_type(self, key_type: type) -> typing.NoReturn:
+        from src.domain_models.exceptions import ConfigurationError
+        msg = f"Fetcher returned invalid type: {key_type}. Expected str or None."
+        raise ConfigurationError(msg)
+
+    def validate_and_format(self, key: str) -> None:
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
-
-        key = self._config.openrouter_api_key.get_secret_value()
         try:
             validate_api_key_format(key)
         except ValueError as e:
             msg = f"Secure Credential Provider intercepted invalid API key during retrieval: {e}"
             raise ConfigurationError(msg) from e
+
+
+class CompositeCredentialProvider:
+    """Abstract secure credential provider resolving credentials sequentially across vaults or environment variables."""
+
+    def __init__(self, fetchers: list[CredentialFetcherProtocol], error_handler: CredentialErrorHandler | None = None) -> None:
+        self._fetchers = fetchers
+        self._error_handler = error_handler or CredentialErrorHandler()
+
+    def get_api_key(self) -> SecureString:
+        key = None
+        for fetcher in self._fetchers:
+            key = fetcher()
+            if key is not None and not isinstance(key, str):
+                self._error_handler.handle_invalid_type(type(key))
+            if key:
+                break
+
+        if not key:
+            self._error_handler.handle_missing_key()
+
+        self._error_handler.validate_and_format(key)
         return SecureString(key)
+
+
+class VaultCredentialProvider:
+    """Mock secure vault integration handling credentials strictly."""
+
+    def get_api_key_from_vault(self) -> str | None:
+        return None
+
+
+class EnvCredentialProvider(CompositeCredentialProvider):
+    """Concrete instantiation injecting Vault and Env fallback configuration sources."""
+
+    def __init__(self, credential_config: CredentialConfig | None = None) -> None:
+        import os
+
+        vault = VaultCredentialProvider()
+        super().__init__(
+            fetchers=[vault.get_api_key_from_vault, lambda: os.getenv("OPENROUTER_API_KEY")]
+        )
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
