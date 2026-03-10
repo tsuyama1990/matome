@@ -40,11 +40,10 @@ def build_app(
 
 
 def get_di_container(settings: Settings) -> Any:
-    from src.infrastructure.container import ProductionDIContainer
     from src.application.ai import DefaultAIService
-    from src.config import EnvCredentialProvider
     from src.domain_models.services import DocumentFactory, MetadataService
     from src.infrastructure import InMemoryDocumentRepository
+    from src.infrastructure.container import ProductionDIContainer
     from src.infrastructure.orchestrator import PipelineConfig, PipelineDependencies
     from src.infrastructure.security import PromptInjectionScanner
     from src.infrastructure.services import (
@@ -63,7 +62,6 @@ def get_di_container(settings: Settings) -> Any:
         ai_retry_min_wait=settings.ai_retry_min_wait,
         ai_retry_max_wait=settings.ai_retry_max_wait,
     )
-    credential_provider = EnvCredentialProvider()
     security_scanner = PromptInjectionScanner()
 
     from src.infrastructure.ai_client import AIClientFactory
@@ -166,7 +164,8 @@ def main() -> None:
         # Prevent directory traversal by checking against configured allowed directory
         real_file_path = str(Path(os.path.realpath(file_path)).resolve())
         real_allowed_dir = str(Path(os.path.realpath(allowed_dir)).resolve())
-        if not real_file_path.startswith(real_allowed_dir):
+        import os
+        if os.path.commonpath([real_file_path, real_allowed_dir]) != real_allowed_dir:
             logger.error("Security Error: Access denied to the requested file.")
             sys.exit(1)
 

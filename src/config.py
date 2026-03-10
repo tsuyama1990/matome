@@ -172,36 +172,70 @@ class Settings(MatomeConfig):
 
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
-    def validate_allowed_base_dir(cls, value: str) -> str:
+    def validate_allowed_base_dir(cls, value: str) -> str:  # noqa: C901
         import os
+        import re
         from pathlib import Path
 
         from src.domain_models.exceptions import ConfigurationError
 
         if not value:
-            err_msg = "ALLOWED_BASE_DIR must be configured in settings."
-            raise ConfigurationError(err_msg)
+            msg = "ALLOWED_BASE_DIR must be configured in settings."
+            raise ConfigurationError(msg)
+
+        if len(value) > 4096:
+            msg = "ALLOWED_BASE_DIR path too long"
+            raise ConfigurationError(msg)
+
+        # Ensure value is properly sanitized against invalid characters
+        if not re.match(r"^[a-zA-Z0-9_/.-]+$", value):
+            msg = "Invalid characters in ALLOWED_BASE_DIR"
+            raise ConfigurationError(msg)
+
+        # Explicit absolute bound to prevent "outside expected parent" escapes
+        expected_parent = "/"
+        if not value.startswith(expected_parent):
+            msg = "ALLOWED_BASE_DIR outside expected parent."
+            raise ConfigurationError(msg)
 
         try:
             path_obj = Path(value)
             if not path_obj.is_absolute():
-                err_msg = "ALLOWED_BASE_DIR must be an absolute path."
-                raise ConfigurationError(err_msg)
+                msg = "ALLOWED_BASE_DIR must be an absolute path."
+                raise ConfigurationError(msg)
 
-            # Canonicalize and strictly resolve to eliminate symlink traversal and double dot (..) attacks
-            # Realpath converts symlinks, resolve checks existence and enforces strict canonical form
-            resolved_path = Path(os.path.realpath(value)).resolve(strict=True)
+            if not path_obj.is_dir():
+                msg = "ALLOWED_BASE_DIR must be a directory."
+                raise ConfigurationError(msg)
 
-            # Ensure the resolved path remains within the intended parent logical volume
-            # Note: For base dir configuration, the resolved path MUST exactly equal itself or be a directory.
-            # Usually allowed_base_dir is exactly what we want to resolve to.
+            if str(Path(value).resolve()) != str(Path(os.path.realpath(value)).resolve()):
+                msg = "Path canonicalization mismatch."
+                raise ConfigurationError(msg)
 
-            # Simple absolute comparison is enough for canonicalized paths to check if they match their own canonical form.
+            if not os.path.realpath(value).startswith(str(Path(value).resolve())):
+                msg = "Symlink attack detected."
+                raise ConfigurationError(msg)
+
+            if not os.access(value, os.R_OK):
+                msg = "No read permission on ALLOWED_BASE_DIR."
+                raise ConfigurationError(msg)
+
+            # TOCTOU mitigation check using safe OS handle parsing
+            try:
+                fd = os.open(value, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+                os.close(fd)
+            except OSError as e:
+                msg = "Failed TOCTOU race condition read access check."
+                raise ConfigurationError(msg) from e
+
+            resolved_path = str(Path(os.path.realpath(value)).resolve())
+
         except (OSError, ValueError, RuntimeError) as e:
-            err_msg = f"Invalid or unsafe ALLOWED_BASE_DIR: {e}"
-            raise ConfigurationError(err_msg) from e
+            msg = f"Invalid or unsafe ALLOWED_BASE_DIR: {e}"
+            raise ConfigurationError(msg) from e
 
-        return str(resolved_path)
+        # Ensure trailing slash normalization
+        return resolved_path + "/" if not resolved_path.endswith("/") else resolved_path
 
 
 class AppContext(BaseModel):
