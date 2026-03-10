@@ -20,6 +20,7 @@ from tests.helpers.mocks import MockAIService
 
 def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineConfig]:
     from unittest.mock import MagicMock
+
     dummy_cert = Path(base_dir) / "dummy.pem"
     dummy_cert.write_text("cert")
     os.environ["MATOME_BASE_DATA_DIR"] = base_dir
@@ -174,9 +175,7 @@ def test_analysis_orchestrator_execute_with_file(tmp_path: Path) -> None:
     assert isinstance(summary, str)
 
 
-def test_analysis_orchestrator_ai_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_analysis_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import typing
 
     from src.domain_models.exceptions import AIServiceError
@@ -209,9 +208,7 @@ def test_output_orchestrator_execute(tmp_path: Path) -> None:
     assert metadata.ai_metadata.chunk_index == 0
 
 
-def test_output_orchestrator_ai_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_output_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import typing
 
     from src.domain_models.exceptions import AIServiceError

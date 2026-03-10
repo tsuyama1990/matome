@@ -29,9 +29,11 @@ class PipelineConfig:
         self,
         pipeline_timeout: float,
         raptor_max_clusters: int,
+        circuit_breaker_threshold: int = 3,
     ) -> None:
         self.pipeline_timeout = pipeline_timeout
         self.raptor_max_clusters = raptor_max_clusters
+        self.circuit_breaker_threshold = circuit_breaker_threshold
 
 
 class PipelineDependencies:
@@ -274,7 +276,9 @@ class PipelineOrchestrator:
         self.output_orchestrator = kwargs.get(
             "output_orchestrator", OutputOrchestrator(dependencies)
         )
-        self.circuit_breaker = kwargs.get("circuit_breaker", CircuitBreaker())
+        self.circuit_breaker = kwargs.get(
+            "circuit_breaker", CircuitBreaker(threshold=config.circuit_breaker_threshold)
+        )
 
     def run_pipeline(self, context: PipelineContext) -> None:
         if self.circuit_breaker.open:

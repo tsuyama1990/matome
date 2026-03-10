@@ -1,3 +1,4 @@
+from .constants import MAX_CONTENT_LENGTH
 from .manifest import (
     AIProcessingMetadata,
     ContentNode,
@@ -11,7 +12,7 @@ from .manifest import (
 class DocumentFactory:
     """Domain service responsible for creating decoupled Identity and Content entities."""
 
-    def __init__(self, max_content_length: int = 100000) -> None:
+    def __init__(self, max_content_length: int = MAX_CONTENT_LENGTH) -> None:
         self.max_content_length = max_content_length
 
     def create_root_node(

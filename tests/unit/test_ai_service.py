@@ -33,6 +33,7 @@ def _create_mock_settings(
         if api_key:
             monkeypatch.setenv("OPENROUTER_API_KEY", api_key)
         from pathlib import Path
+
         dummy_cert = Path(base_dir) / "dummy.pem"
         dummy_cert.write_text("cert")
         monkeypatch.setenv("MATOME_BASE_DATA_DIR", base_dir)
@@ -49,6 +50,7 @@ def _create_mock_settings(
         if api_key:
             os.environ["OPENROUTER_API_KEY"] = api_key
         from pathlib import Path
+
         dummy_cert = Path(base_dir) / "dummy.pem"
         dummy_cert.write_text("cert")
         os.environ["MATOME_BASE_DATA_DIR"] = base_dir

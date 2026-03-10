@@ -17,6 +17,7 @@ class DefaultSecurityService(SecurityService):
             raise ValueError(msg)
         return valid
 
+
 class PromptInjectionScanner:
     def __init__(self, threshold: float | None = None, max_input_length: int = 50000) -> None:
         self.max_input_length = max_input_length

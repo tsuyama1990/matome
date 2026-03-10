@@ -1,8 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from .constants import NODE_ID_PATTERN
+from .constants import MAX_CONTENT_LENGTH, NODE_ID_PATTERN
 from .enums import NodeStatus
-from .types import NodeID
 
 __all__ = [
     "AIProcessingMetadata",
@@ -12,7 +11,6 @@ __all__ = [
     "NodeMetadata",
     "NodeStatus",
     "PipelineContext",
-    "SummaryNode",
     "UserInteractionContext",
     "WisdomData",
 ]
@@ -52,7 +50,9 @@ class ContentNode(BaseModel):
         None, description="CoD summary of the node content", max_length=2000
     )
     text: str | None = Field(
-        None, description="Full text content of the node if it is a leaf node", max_length=100000
+        None,
+        description="Full text content of the node if it is a leaf node",
+        max_length=MAX_CONTENT_LENGTH,
     )
 
 
@@ -104,26 +104,14 @@ class IdentityNode(BaseModel):
     )
 
 
-class SummaryNode(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: NodeID = Field(
-        ...,
-        description="Unique identifier for the summary node",
-    )
-    title: str = Field(..., description="Title of the summary node", max_length=500)
-    summary: str = Field(..., description="The summary text", max_length=2000)
-    children_indices: list[str] = Field(
-        default_factory=list, description="Indices/IDs of the children nodes"
-    )
-
-
 class PipelineContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
     root_doc_id: str = Field(
         ..., description="Root document ID", max_length=100, pattern=NODE_ID_PATTERN
     )
-    content: str | None = Field(default=None, description="Content to process", max_length=100000)
+    content: str | None = Field(
+        default=None, description="Content to process", max_length=MAX_CONTENT_LENGTH
+    )
     file_path: str | None = Field(default=None, description="Path to the file to process")
 
 

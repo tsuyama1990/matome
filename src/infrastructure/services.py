@@ -281,6 +281,7 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         self.model_verifier = model_verifier
 
         import os
+
         self.max_chunk_scan_size = int(os.getenv("MAX_REGEX_CHUNK_SIZE", "5000"))
 
         if not self._is_safe_regex(self.fallback_ner_regex):
@@ -337,7 +338,9 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         entities: dict[str, str] = {}
         # Use precompiled regex to avoid compilation overhead and ensure validation holds.
         for i, chunk in enumerate(chunks):
-            matches = self._compiled_fallback_regex.findall(chunk[:self.max_chunk_scan_size])  # configurable bound ReDoS scan limit
+            matches = self._compiled_fallback_regex.findall(
+                chunk[: self.max_chunk_scan_size]
+            )  # configurable bound ReDoS scan limit
             if matches:
                 entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
         if not entities:
@@ -432,7 +435,9 @@ class RequestsHTTPClient(HTTPClientProtocol):
         self.ssl_cert_path = ssl_cert_path
         self.credential_provider = credential_provider
 
-    def _prepare_headers(self, headers: dict[str, str], auth_token: Any | None = None) -> dict[str, str | bytes]:
+    def _prepare_headers(
+        self, headers: dict[str, str], auth_token: Any | None = None
+    ) -> dict[str, str | bytes]:
         allowed_headers = {"content-type", "authorization", "accept", "user-agent"}
         final_headers: dict[str, str | bytes] = {}
 
@@ -449,8 +454,8 @@ class RequestsHTTPClient(HTTPClientProtocol):
             pass
         elif auth_token:
             if isinstance(auth_token, str) and ("\r" in auth_token or "\n" in auth_token):
-                 msg = "Security Error: Invalid characters (CRLF) detected in auth token"
-                 raise ValueError(msg)
+                msg = "Security Error: Invalid characters (CRLF) detected in auth token"
+                raise ValueError(msg)
             final_headers["Authorization"] = f"Bearer {auth_token}"
 
         return final_headers
@@ -458,12 +463,15 @@ class RequestsHTTPClient(HTTPClientProtocol):
     def _resolve_ca_bundle(self, verify: str | None = None) -> str:
         import os
         from pathlib import Path
+
         if self.ssl_cert_path:
             ca_bundle = os.path.realpath(self.ssl_cert_path)
         elif isinstance(verify, str):
             ca_bundle = os.path.realpath(verify)
         else:
-            msg = "Strict SSL certificate pinning is required. No valid CA bundle path was provided."
+            msg = (
+                "Strict SSL certificate pinning is required. No valid CA bundle path was provided."
+            )
             raise ValueError(msg)
 
         if not Path(ca_bundle).is_file():
@@ -471,10 +479,20 @@ class RequestsHTTPClient(HTTPClientProtocol):
             raise ValueError(msg)
         return ca_bundle
 
-    def _execute_request(self, url: str, json: dict[str, Any], headers: dict[str, str | bytes], timeout: int, ca_bundle: str) -> dict[str, Any]:
+    def _execute_request(
+        self,
+        url: str,
+        json: dict[str, Any],
+        headers: dict[str, str | bytes],
+        timeout: int,
+        ca_bundle: str,
+    ) -> dict[str, Any]:
         try:
-            response = requests.post(url, json=json, headers=headers, timeout=timeout, verify=ca_bundle)
+            response = requests.post(
+                url, json=json, headers=headers, timeout=timeout, verify=ca_bundle
+            )
             import logging
+
             logger = logging.getLogger(__name__)
             logger.debug("Dispatching secure outbound HTTP API request.")
             response.raise_for_status()
@@ -500,7 +518,9 @@ class RequestsHTTPClient(HTTPClientProtocol):
             msg = "Strict HTTPS enforcement failed. Non-HTTPS URLs are prohibited."
             raise ValueError(msg)
 
-        allowed_domains_env = os.getenv("ALLOWED_API_DOMAINS", "openrouter.ai,api.openai.com,api.anthropic.com")
+        allowed_domains_env = os.getenv(
+            "ALLOWED_API_DOMAINS", "openrouter.ai,api.openai.com,api.anthropic.com"
+        )
         allowed_domains = {d.strip() for d in allowed_domains_env.split(",") if d.strip()}
 
         if parsed_url.netloc not in allowed_domains:

@@ -40,6 +40,7 @@ class CredentialConfig(MatomeConfig):
         except ValueError as err:
             raise ConfigurationError(str(err)) from err
         return v
+
     openrouter_api_url: SecretStr = Field(
         ...,
         description="The base URL for the OpenRouter API endpoint",
@@ -86,6 +87,7 @@ class CredentialConfig(MatomeConfig):
             raise ConfigurationError(msg)
 
         import os
+
         if not os.access(path, os.R_OK):
             msg = f"ssl_cert_path file must be readable: {val}"
             raise ConfigurationError(msg)
@@ -113,6 +115,7 @@ class Settings(MatomeConfig):
     @classmethod
     def validate_ai_models(cls, value: str) -> str:
         from src.utils.validation import validate_ai_model
+
         return validate_ai_model(value)
 
     default_root_doc_id: str = Field(
@@ -229,10 +232,11 @@ class Settings(MatomeConfig):
     @classmethod
     def populate_and_validate_hashes(cls, _v: dict[str, str]) -> dict[str, str]:
         import os
+
         # Only populate hashes, strict cryptographic validation must be done securely at runtime by ModelVerifier.
         return {
             "en_core_web_sm": os.getenv("HASH_EN_CORE_WEB_SM", ""),
-            "en_core_web_md": os.getenv("HASH_EN_CORE_WEB_MD", "")
+            "en_core_web_md": os.getenv("HASH_EN_CORE_WEB_MD", ""),
         }
 
     @field_validator("allowed_base_dir", mode="after")
@@ -254,6 +258,7 @@ class Settings(MatomeConfig):
 
         try:
             from pathlib import Path
+
             path_obj = Path(value)
 
             # Explicitly reject symlinks before canonicalization to prevent symlink traversal attacks
@@ -306,6 +311,7 @@ class EnvCredentialProvider:
 
     def __init__(self) -> None:
         from src.utils.errors import CredentialErrorHandler
+
         self._error_handler = CredentialErrorHandler()
 
     @contextlib.contextmanager
@@ -324,14 +330,16 @@ class EnvCredentialProvider:
         self._error_handler.validate_and_format(key)
 
         key_bytes = bytearray(key.encode("utf-8"))
-        del key # Delete python string reference
+        del key  # Delete python string reference
 
         try:
             yield key_bytes.decode("utf-8")
         finally:
             if key_bytes:
                 # Strictly zeroize memory buffer to prevent cold-boot and memory leak attacks natively
-                ctypes.memset((ctypes.c_char * len(key_bytes)).from_buffer(key_bytes), 0, len(key_bytes))
+                ctypes.memset(
+                    (ctypes.c_char * len(key_bytes)).from_buffer(key_bytes), 0, len(key_bytes)
+                )
             del key_bytes
 
 

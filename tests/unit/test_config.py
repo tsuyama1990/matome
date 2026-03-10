@@ -3,7 +3,9 @@ import typing
 import pytest
 
 
-def test_credential_config_validation(tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_credential_config_validation(
+    tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from pydantic import SecretStr
 
     from src.config import CredentialConfig
@@ -61,13 +63,15 @@ def test_credential_config_validation(tmp_path: typing.Any, monkeypatch: pytest.
 
 def test_settings_ssl_cert_path(tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import os
-    os.environ["HASH_EN_CORE_WEB_SM"] = "a"*64
-    os.environ["HASH_EN_CORE_WEB_MD"] = "b"*64
+
+    os.environ["HASH_EN_CORE_WEB_SM"] = "a" * 64
+    os.environ["HASH_EN_CORE_WEB_MD"] = "b" * 64
     os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
     from pydantic_core._pydantic_core import ValidationError
 
     from src.config import Settings
     from src.domain_models.exceptions import ConfigurationError
+
     with pytest.raises((ValidationError, ConfigurationError)):
         Settings(
             allowed_base_dir=str(tmp_path) + "/invalid_because_of_extra",
@@ -85,23 +89,26 @@ def test_settings_ssl_cert_path(tmp_path: typing.Any, monkeypatch: pytest.Monkey
     from pydantic import SecretStr
 
     from src.config import CredentialConfig
+
     creds = CredentialConfig(
         openrouter_api_url=SecretStr("https://mock"),
         openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
-        ssl_cert_path=SecretStr(str(dummy_cert))
+        ssl_cert_path=SecretStr(str(dummy_cert)),
     )
 
     assert creds.ssl_cert_path.get_secret_value() == str(dummy_cert)
 
 
-def test_settings_advanced_validation(tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_settings_advanced_validation(
+    tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import os
 
     from src.config import Settings
     from src.domain_models.exceptions import ConfigurationError
 
-    os.environ["HASH_EN_CORE_WEB_SM"] = "a"*64
-    os.environ["HASH_EN_CORE_WEB_MD"] = "b"*64
+    os.environ["HASH_EN_CORE_WEB_SM"] = "a" * 64
+    os.environ["HASH_EN_CORE_WEB_MD"] = "b" * 64
     monkeypatch.setenv("MATOME_BASE_DATA_DIR", str(tmp_path))
 
     # Test invalid spacy model
@@ -214,9 +221,7 @@ def test_settings_advanced_validation(tmp_path: typing.Any, monkeypatch: pytest.
         )
 
 
-def test_settings_api_key_valid(
-    tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_settings_api_key_valid(tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch) -> None:
     valid_key = "sk-or-v1-validkey12345678901234567890"
     monkeypatch.setenv("OPENROUTER_API_KEY", valid_key)
     monkeypatch.setenv("SKIP_ACTIVE_KEY_VALIDATION", "true")

@@ -33,7 +33,6 @@ from .manifest import (
     NodeMetadata,
     NodeStatus,
     PipelineContext,
-    SummaryNode,
     UserInteractionContext,
     WisdomData,
 )
@@ -73,8 +72,6 @@ __all__ = [
     "RepositoryError",
     "RetryPolicyProtocol",
     "SecurityService",
-    "SummaryNode",
-    "SummaryServiceProtocol",
     "SummaryServiceProtocol",
     "TextSplitterProtocol",
     "TransactionManager",

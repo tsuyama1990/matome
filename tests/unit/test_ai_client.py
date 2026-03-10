@@ -9,7 +9,15 @@ from src.infrastructure.ai_client import (
 
 
 class DummyHTTPClient:
-    def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
+    def post(
+        self,
+        url: str,
+        json: dict[str, typing.Any],
+        headers: dict[str, str],
+        timeout: int,
+        verify: str | None = None,
+        auth_token: typing.Any | None = None,
+    ) -> dict[str, typing.Any]:
         return {"choices": [{"message": {"content": "mocked response"}}]}
 
 
@@ -20,21 +28,20 @@ class DummyRetryPolicy:
 
 class DummyScanner:
     def sanitize(self, text: str | None) -> str:
-        return text or ''
-
-
-
-
-
-
-
-
-
+        return text or ""
 
 
 def test_default_ai_communication_client_unexpected_response_format() -> None:
     class BadHTTPClient:
-        def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
+        def post(
+            self,
+            url: str,
+            json: dict[str, typing.Any],
+            headers: dict[str, str],
+            timeout: int,
+            verify: str | None = None,
+            auth_token: typing.Any | None = None,
+        ) -> dict[str, typing.Any]:
             return {"wrong_key": "data"}
 
     config = AIClientConfig(api_url="https://test", default_model="openai/gpt-4o", ai_timeout=10)
@@ -48,7 +55,15 @@ def test_default_ai_communication_client_unexpected_response_format() -> None:
 
 def test_default_ai_communication_client_empty_choices() -> None:
     class BadHTTPClient:
-        def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
+        def post(
+            self,
+            url: str,
+            json: dict[str, typing.Any],
+            headers: dict[str, str],
+            timeout: int,
+            verify: str | None = None,
+            auth_token: typing.Any | None = None,
+        ) -> dict[str, typing.Any]:
             return {"choices": []}
 
     config = AIClientConfig(api_url="https://test", default_model="openai/gpt-4o", ai_timeout=10)
@@ -64,7 +79,15 @@ def test_default_ai_communication_client_empty_choices() -> None:
 
 def test_default_ai_communication_client_missing_content() -> None:
     class BadHTTPClient:
-        def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
+        def post(
+            self,
+            url: str,
+            json: dict[str, typing.Any],
+            headers: dict[str, str],
+            timeout: int,
+            verify: str | None = None,
+            auth_token: typing.Any | None = None,
+        ) -> dict[str, typing.Any]:
             return {"choices": [{"message": {}}]}
 
     config = AIClientConfig(api_url="https://test", default_model="openai/gpt-4o", ai_timeout=10)
@@ -82,7 +105,16 @@ def test_rotate_credentials() -> None:
 
         def flush_credentials_cache(self) -> None:
             self.flushed = True
-        def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
+
+        def post(
+            self,
+            url: str,
+            json: dict[str, typing.Any],
+            headers: dict[str, str],
+            timeout: int,
+            verify: str | None = None,
+            auth_token: typing.Any | None = None,
+        ) -> dict[str, typing.Any]:
             return {}
 
     client_mock = FlushingHTTPClient()
