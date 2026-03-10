@@ -1,3 +1,4 @@
+import os
 import re
 
 from llm_guard.input_scanners import PromptInjection
@@ -7,7 +8,6 @@ from llm_guard.input_scanners.prompt_injection import MatchType
 class DefaultSecurityService:
     def validate_api_key(self, api_key: str) -> str:
         """Validates the structure and constraints of the BYOK API Key."""
-        import re
 
         if not api_key:
             msg = "API Key cannot be empty."
@@ -28,8 +28,8 @@ class DefaultSecurityService:
 
 
 class PromptInjectionScanner:
-    def __init__(self, threshold: float | None = None) -> None:
-        import os
+    def __init__(self, threshold: float | None = None, max_input_length: int = 50000) -> None:
+        self.max_input_length = max_input_length
 
         env_threshold = os.getenv("PROMPT_INJECTION_THRESHOLD", "0.9")
         final_threshold = threshold if threshold is not None else float(env_threshold)
@@ -46,8 +46,12 @@ class PromptInjectionScanner:
         if not text:
             return ""
 
+        if not isinstance(text, str):
+            msg = "Input must be a string."
+            raise TypeError(msg)
+
         # Basic length bound
-        if len(text) > 50000:
+        if len(text) > self.max_input_length:
             msg = "Input rejected due to excessive length."
             raise ValueError(msg)
 
@@ -64,12 +68,22 @@ class PromptInjectionScanner:
             raise ValueError(msg)
 
         # Use llm-guard scanner to detect prompt injection
-        sanitized, is_valid, risk_score = self._scanner.scan(sanitized)
-        if not is_valid:
-            msg = (
-                f"Input rejected due to suspected prompt injection semantics (risk: {risk_score})."
-            )
-            raise ValueError(msg)
+        def _scan_and_validate(text_to_scan: str) -> str:
+            scanned_text, is_valid, risk_score = self._scanner.scan(text_to_scan)
+            if not is_valid:
+                err_msg = f"Input rejected due to suspected prompt injection semantics (risk: {risk_score})."
+                raise ValueError(err_msg)
+            return str(scanned_text)
+
+        try:
+            sanitized = _scan_and_validate(sanitized)
+        except Exception as e:
+            if isinstance(e, ValueError) and "semantics" in str(e):
+                raise
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.warning(f"llm-guard scanner failed: {e}. Falling back to regex scanning.")
 
         # Fallback layer just in case, catch any remaining raw commands
         injection_pattern = r"(?i)\b(ignore previous instructions|system prompt|you are a|disregard previous|forget what i said|ignore all|bypassing|developer mode|dan mode)\b"

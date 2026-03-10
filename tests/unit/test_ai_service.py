@@ -96,7 +96,7 @@ def _create_service(
         retry_policy=DummyRetry(),
         security_scanner=PromptInjectionScanner(threshold=0.9),
     )
-    security_scanner = PromptInjectionScanner()
+    security_scanner = PromptInjectionScanner(max_input_length=settings.max_input_length)
 
     return (
         DefaultSummaryService(

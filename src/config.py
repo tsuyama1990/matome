@@ -87,6 +87,10 @@ class Settings(MatomeConfig):
         default_factory=lambda: int(os.getenv("MAX_FILE_SIZE", "10485760")),
         description="Maximum allowed file size in bytes (default 10MB)",
     )
+    max_input_length: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_INPUT_LENGTH", "50000")),
+        description="Maximum allowed input string length for security sanitization",
+    )
     allowed_base_dir: str = Field(
         ...,
         description="Base directory allowed for file ingestion",
