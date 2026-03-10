@@ -286,6 +286,8 @@ def test_requests_http_client_exceptions(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
     client = RequestsHTTPClient(str(cert_path))
 
+    monkeypatch.setenv("ALLOWED_API_DOMAINS", "mock")
+
     # Test Timeout
     def mock_post_timeout(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
         msg = "timed out"
@@ -293,7 +295,7 @@ def test_requests_http_client_exceptions(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
     monkeypatch.setattr(requests, "post", mock_post_timeout)
     with pytest.raises(AIServiceError, match="timed out"):
-        client.post("http://mock", {}, {}, 10)
+        client.post("https://mock", {}, {}, 10)
 
     # Test HTTPError
     def mock_post_http_error(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
@@ -302,7 +304,7 @@ def test_requests_http_client_exceptions(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
     monkeypatch.setattr(requests, "post", mock_post_http_error)
     with pytest.raises(AIServiceError, match="http error"):
-        client.post("http://mock", {}, {}, 10)
+        client.post("https://mock", {}, {}, 10)
 
     # Test RequestException
     def mock_post_request_error(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
@@ -311,15 +313,15 @@ def test_requests_http_client_exceptions(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
     monkeypatch.setattr(requests, "post", mock_post_request_error)
     with pytest.raises(AIServiceError, match="connection error"):
-        client.post("http://mock", {}, {}, 10)
+        client.post("https://mock", {}, {}, 10)
 
     # Test invalid cert path resolution
     client_invalid = RequestsHTTPClient()
-    with pytest.raises(ValueError, match="CA bundle path was provided"):
-        client_invalid.post("http://mock", {}, {}, 10)
+    with pytest.raises(ValueError, match="Strict SSL certificate pinning is required."):
+        client_invalid.post("https://mock", {}, {}, 10)
 
     with pytest.raises(ValueError, match="CA bundle path is invalid"):
-        client_invalid.post("http://mock", {}, {}, 10, verify="/does/not/exist.pem")
+        client_invalid.post("https://mock", {}, {}, 10, verify="/does/not/exist.pem")
 
 
 def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -499,9 +501,10 @@ def test_requests_http_client_post(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(Path, "is_file", lambda self: True)
     monkeypatch.setattr(os.path, "realpath", lambda x: x)
+    monkeypatch.setenv("ALLOWED_API_DOMAINS", "test.com")
 
     result = client.post(
-        "http://test.com",
+        "https://test.com",
         {"key": "value"},
         {"Authorization": "token"},
         10,
@@ -529,15 +532,41 @@ def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -
     from pathlib import Path
     monkeypatch.setattr(Path, "is_file", lambda self: True)
     monkeypatch.setattr(os.path, "realpath", lambda x: x)
+    monkeypatch.setenv("ALLOWED_API_DOMAINS", "test.com")
 
     with pytest.raises(AIServiceError, match="HTTP error"):
         client.post(
-            "http://test.com",
+            "https://test.com",
             {"key": "value"},
             {"Authorization": "token"},
             10,
             verify="mock_cert.pem",
         )
+
+
+def test_requests_http_client_url_validation() -> None:
+    import os
+
+    from src.infrastructure.services import RequestsHTTPClient
+
+    client = RequestsHTTPClient()
+    os.environ["ALLOWED_API_DOMAINS"] = "api.openai.com,api.anthropic.com"
+
+    # Test scheme validation
+    with pytest.raises(ValueError, match="Strict HTTPS enforcement failed"):
+        client._validate_url("http://api.openai.com")
+
+    # Test domain whitelist
+    with pytest.raises(ValueError, match="not in the trusted whitelist"):
+        client._validate_url("https://malicious-domain.com")
+
+
+def test_requests_http_client_header_validation() -> None:
+    from src.infrastructure.services import RequestsHTTPClient
+    client = RequestsHTTPClient()
+
+    with pytest.raises(ValueError, match="Invalid characters"):
+        client._prepare_headers({"Authorization": "Bearer token\r\nInjected: True"})
 
 
 def test_tenacity_retry_policy() -> None:

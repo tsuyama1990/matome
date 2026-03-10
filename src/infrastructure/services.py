@@ -143,10 +143,12 @@ class DefaultModelVerifier(ModelVerifierProtocol):
         trusted_models: set[str],
         trusted_hashes: dict[str, str],
         max_model_signature_size: int,
+        hash_algorithm: str = "sha256",
     ) -> None:
         self.trusted_models = trusted_models
         self.trusted_hashes = trusted_hashes
         self.max_model_signature_size = max_model_signature_size
+        self.hash_algorithm = hash_algorithm
 
     def verify_model_signature(self, model_name: str) -> None:
         """Verifies the cryptographical signature of ML models to strictly prevent malicious code execution."""
@@ -168,7 +170,10 @@ class DefaultModelVerifier(ModelVerifierProtocol):
             file_path = Path(module_file)
 
             # Actual cryptographic hash verification against trusted whitelists
-            hasher = hashlib.sha256()
+            if self.hash_algorithm not in hashlib.algorithms_available:
+                msg = f"Hash algorithm {self.hash_algorithm} not available."
+                raise ValueError(msg)
+            hasher = hashlib.new(self.hash_algorithm)
 
             # Read in chunks to prevent DoS via OOM on massive model files
             max_read = self.max_model_signature_size
@@ -251,6 +256,14 @@ class EntityExtractorBuilder:
 
 
 class DefaultEntityExtractor(EntityExtractorProtocol):
+    def _is_safe_regex(self, pattern: str) -> bool:
+        """Validates regex pattern against known ReDoS vulnerabilities and complexity limits."""
+        if len(pattern) > 200:
+            return False
+
+        # Reject highly complex nested quantifiers known to cause ReDoS
+        return not bool(re.search(r"(\([^\)]+\)\+|\([^\)]+\)\*|\([^\)]+\)\{[0-9]+,\})", pattern))
+
     def __init__(
         self,
         config: EntityExtractorConfigProtocol,
@@ -266,6 +279,13 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         self.rate_limiter = rate_limiter
         self.nlp_service = nlp_service
         self.model_verifier = model_verifier
+
+        import os
+        self.max_chunk_scan_size = int(os.getenv("MAX_REGEX_CHUNK_SIZE", "5000"))
+
+        if not self._is_safe_regex(self.fallback_ner_regex):
+            msg = "Unsafe regex pattern detected. Rejecting to prevent ReDoS."
+            raise ValueError(msg)
 
         # Validate and precompile regex at initialization
         try:
@@ -317,7 +337,7 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         entities: dict[str, str] = {}
         # Use precompiled regex to avoid compilation overhead and ensure validation holds.
         for i, chunk in enumerate(chunks):
-            matches = self._compiled_fallback_regex.findall(chunk[:5000])  # hard cap chunk scans to bound ReDoS
+            matches = self._compiled_fallback_regex.findall(chunk[:self.max_chunk_scan_size])  # configurable bound ReDoS scan limit
             if matches:
                 entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
         if not entities:
@@ -414,12 +434,23 @@ class RequestsHTTPClient(HTTPClientProtocol):
 
     def _prepare_headers(self, headers: dict[str, str], auth_token: Any | None = None) -> dict[str, str | bytes]:
         allowed_headers = {"content-type", "authorization", "accept", "user-agent"}
-        final_headers: dict[str, str | bytes] = {k: v for k, v in headers.items() if k.lower() in allowed_headers}
+        final_headers: dict[str, str | bytes] = {}
+
+        for k, v in headers.items():
+            if k.lower() in allowed_headers:
+                # Prevent HTTP Header Injection (CRLF injection)
+                if "\r" in v or "\n" in v:
+                    msg = f"Security Error: Invalid characters (CRLF) detected in header {k}"
+                    raise ValueError(msg)
+                final_headers[k] = v
 
         if self.credential_provider:
             # Note: _prepare_headers is not used directly for credential provider due to the context manager requirement
             pass
         elif auth_token:
+            if isinstance(auth_token, str) and ("\r" in auth_token or "\n" in auth_token):
+                 msg = "Security Error: Invalid characters (CRLF) detected in auth token"
+                 raise ValueError(msg)
             final_headers["Authorization"] = f"Bearer {auth_token}"
 
         return final_headers
@@ -460,6 +491,22 @@ class RequestsHTTPClient(HTTPClientProtocol):
         else:
             return data
 
+    def _validate_url(self, url: str) -> None:
+        import os
+        from urllib.parse import urlparse
+
+        parsed_url = urlparse(url)
+        if parsed_url.scheme != "https":
+            msg = "Strict HTTPS enforcement failed. Non-HTTPS URLs are prohibited."
+            raise ValueError(msg)
+
+        allowed_domains_env = os.getenv("ALLOWED_API_DOMAINS", "openrouter.ai,api.openai.com,api.anthropic.com")
+        allowed_domains = {d.strip() for d in allowed_domains_env.split(",") if d.strip()}
+
+        if parsed_url.netloc not in allowed_domains:
+            msg = f"SSRF Prevention: Domain '{parsed_url.netloc}' is not in the trusted whitelist."
+            raise ValueError(msg)
+
     def post(
         self,
         url: str,
@@ -469,14 +516,26 @@ class RequestsHTTPClient(HTTPClientProtocol):
         verify: str | None = None,
         auth_token: Any | None = None,
     ) -> dict[str, Any]:
+        self._validate_url(url)
         final_headers = self._prepare_headers(headers, auth_token)
+
+        if timeout <= 0 or timeout > 300:
+            msg = "Timeout must be explicitly set between 1 and 300 seconds to prevent DoS attacks."
+            raise ValueError(msg)
+
         if self.credential_provider:
             with self.credential_provider.get_api_key() as secure_key:
                 final_headers["Authorization"] = f"Bearer {secure_key}"
                 ca_bundle = self._resolve_ca_bundle(verify)
+                if not ca_bundle:
+                    msg = "Invalid CA bundle path"
+                    raise ValueError(msg)
                 return self._execute_request(url, json, final_headers, timeout, ca_bundle)
         else:
             ca_bundle = self._resolve_ca_bundle(verify)
+            if not ca_bundle:
+                msg = "Invalid CA bundle path"
+                raise ValueError(msg)
             return self._execute_request(url, json, final_headers, timeout, ca_bundle)
 
 
