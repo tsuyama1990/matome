@@ -35,19 +35,10 @@ class SecurityService(Protocol):
     def validate_api_key(self, api_key: str) -> str: ...
 
 
-class SecureStringProtocol(Protocol):
-    """Protocol representing a secure string."""
-
-    _value: bytearray
-
-    def __enter__(self) -> "SecureStringProtocol": ...
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None: ...
-
-
 class CredentialProviderProtocol(Protocol):
     """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
 
-    def get_api_key(self) -> SecureStringProtocol: ...
+    def get_api_key(self) -> Any: ...
 
 
 @runtime_checkable

@@ -143,8 +143,8 @@ def test_default_ai_service_missing_key_init(
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(ConfigurationError):
-        EnvCredentialProvider().get_api_key()
+    with pytest.raises(ConfigurationError), EnvCredentialProvider().get_api_key():
+        pass
 
 
 def test_default_ai_service_invalid_key_length(
@@ -155,10 +155,11 @@ def test_default_ai_service_invalid_key_length(
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "123")
 
-    with pytest.raises(
-        ConfigurationError, match="API Key format is invalid or insufficient length."
+    with (
+        pytest.raises(ConfigurationError, match="Invalid configuration state."),
+        EnvCredentialProvider().get_api_key(),
     ):
-        EnvCredentialProvider().get_api_key()
+        pass
 
 
 def test_default_ai_service_invalid_key_format(
@@ -169,10 +170,11 @@ def test_default_ai_service_invalid_key_format(
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
 
-    with pytest.raises(
-        ConfigurationError, match="API Key format is invalid or insufficient length."
+    with (
+        pytest.raises(ConfigurationError, match="Invalid configuration state."),
+        EnvCredentialProvider().get_api_key(),
     ):
-        EnvCredentialProvider().get_api_key()
+        pass
 
 
 def test_default_ai_service_calls_generate_summary_valid(

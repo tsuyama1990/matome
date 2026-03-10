@@ -418,7 +418,7 @@ class RequestsHTTPClient(HTTPClientProtocol):
         self.ssl_cert_path = ssl_cert_path
         self.credential_provider = credential_provider
 
-    def post(  # noqa: C901, PLR0912
+    def post(
         self,
         url: str,
         json: dict[str, Any],
@@ -441,15 +441,9 @@ class RequestsHTTPClient(HTTPClientProtocol):
             if self.credential_provider:
                 # Fetch dynamically at the edge of the network request
                 with self.credential_provider.get_api_key() as secure_key:
-                    if hasattr(secure_key, "value"):
-                        final_headers["Authorization"] = f"Bearer {secure_key.value}"
-                    else:
-                        final_headers["Authorization"] = f"Bearer {secure_key}"
+                    final_headers["Authorization"] = f"Bearer {secure_key}"
             elif auth_token:
-                if hasattr(auth_token, "_value"):
-                    final_headers["Authorization"] = b"Bearer " + auth_token._value
-                else:
-                    final_headers["Authorization"] = f"Bearer {auth_token}"
+                final_headers["Authorization"] = f"Bearer {auth_token}"
 
             from pathlib import Path
 
