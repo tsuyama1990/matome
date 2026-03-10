@@ -1,4 +1,5 @@
 import os
+import typing
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -188,17 +189,16 @@ class SecureString:
     """A secure wrapper utilizing bytearray for explicit memory zeroization of sensitive credentials."""
 
     def __init__(self, value: str) -> None:
-        import weakref
-
         # Store as mutable bytearray to allow explicit zeroization
         self._value = bytearray(value.encode("utf-8"))
-        self._finalizer = weakref.finalize(self, self._zeroize)
 
     def __str__(self) -> str:
-        return "********"
+        msg = "SecureString value cannot be represented as string."
+        raise ValueError(msg)
 
     def __repr__(self) -> str:
-        return "SecureString('********')"
+        msg = "SecureString value cannot be represented as string."
+        raise ValueError(msg)
 
     def __enter__(self) -> "SecureString":
         return self
@@ -219,34 +219,51 @@ class SecureString:
         self._zeroize()
 
 
-class CompositeCredentialProvider:
-    """Abstract secure credential provider resolving credentials sequentially across vaults or environment variables."""
 
-    def __init__(self, fetchers: list[CredentialFetcherProtocol]) -> None:
-        self._fetchers = fetchers
 
-    def get_api_key(self) -> SecureString:
+class CredentialErrorHandler:
+    """Handles parsing errors and format validation specifically for credentials."""
+
+    def handle_missing_key(self) -> typing.NoReturn:
+        from src.domain_models.exceptions import ConfigurationError
+        msg = "API Key could not be resolved from any configured credential source (e.g., Vault, Env)."
+        raise ConfigurationError(msg)
+
+    def handle_invalid_type(self, key_type: type) -> typing.NoReturn:
+        from src.domain_models.exceptions import ConfigurationError
+        msg = f"Fetcher returned invalid type: {key_type}. Expected str or None."
+        raise ConfigurationError(msg)
+
+    def validate_and_format(self, key: str) -> None:
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
-
-        key = None
-        for fetcher in self._fetchers:
-            key = fetcher()
-            if key is not None and not isinstance(key, str):
-                msg = f"Fetcher returned invalid type: {type(key)}. Expected str or None."
-                raise ConfigurationError(msg)
-            if key:
-                break
-
-        if not key:
-            msg = "API Key could not be resolved from any configured credential source (e.g., Vault, Env)."
-            raise ConfigurationError(msg)
-
         try:
             validate_api_key_format(key)
         except ValueError as e:
             msg = f"Secure Credential Provider intercepted invalid API key during retrieval: {e}"
             raise ConfigurationError(msg) from e
+
+
+class CompositeCredentialProvider:
+    """Abstract secure credential provider resolving credentials sequentially across vaults or environment variables."""
+
+    def __init__(self, fetchers: list[CredentialFetcherProtocol], error_handler: CredentialErrorHandler | None = None) -> None:
+        self._fetchers = fetchers
+        self._error_handler = error_handler or CredentialErrorHandler()
+
+    def get_api_key(self) -> SecureString:
+        key = None
+        for fetcher in self._fetchers:
+            key = fetcher()
+            if key is not None and not isinstance(key, str):
+                self._error_handler.handle_invalid_type(type(key))
+            if key:
+                break
+
+        if not key:
+            self._error_handler.handle_missing_key()
+
+        self._error_handler.validate_and_format(key)
         return SecureString(key)
 
 

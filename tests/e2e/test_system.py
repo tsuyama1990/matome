@@ -40,7 +40,6 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
 
     from src.infrastructure.services import (
         DefaultClusteringService,
-        DefaultEntityExtractor,
         DefaultTextSplitter,
         LangChainSplitterStrategy,
     )
@@ -51,7 +50,8 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
         max_file_size=settings.max_file_size,
         strategy=LangChainSplitterStrategy(),
     )
-    entity_extractor = DefaultEntityExtractor(
+    from src.infrastructure.services import EntityExtractorBuilder
+    entity_extractor = EntityExtractorBuilder.build(
         settings.spacy_model, settings.trusted_spacy_models, settings.trusted_model_hashes
     )
     clustering_service = DefaultClusteringService(settings.random_seed)

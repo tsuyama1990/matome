@@ -5,12 +5,10 @@ from src.config import EnvCredentialProvider, Settings
 from src.domain_models.interfaces import DocumentRepository
 from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
-from src.infrastructure.ai_client import DefaultAICommunicationClient
 from src.infrastructure.orchestrator import PipelineConfig, PipelineDependencies
 from src.infrastructure.security import PromptInjectionScanner
 from src.infrastructure.services import (
     DefaultClusteringService,
-    DefaultEntityExtractor,
     DefaultTextSplitter,
     LangChainSplitterStrategy,
     RequestsHTTPClient,
@@ -36,11 +34,11 @@ class ProductionDIContainer(DIContainerProtocol):
             ai_retry_min_wait=self.settings.ai_retry_min_wait,
             ai_retry_max_wait=self.settings.ai_retry_max_wait,
         )
-        provider = EnvCredentialProvider(self.settings.credentials)
+        EnvCredentialProvider(self.settings.credentials)
 
         security_scanner = PromptInjectionScanner()
-        communication_client = DefaultAICommunicationClient(
-            credential_provider=provider,
+        from src.infrastructure.ai_client import AIClientFactory
+        communication_client = AIClientFactory.create(
             api_url=self.settings.openrouter_api_url,
             default_model=self.settings.text_fast_model,
             ai_timeout=self.settings.ai_timeout,
@@ -63,9 +61,10 @@ class ProductionDIContainer(DIContainerProtocol):
             max_file_size=self.settings.max_file_size,
             strategy=LangChainSplitterStrategy(),
         )
+        from src.infrastructure.services import EntityExtractorBuilder
         from src.utils.rate_limit import RateLimiter
 
-        entity_extractor = DefaultEntityExtractor(
+        entity_extractor = EntityExtractorBuilder.build(
             spacy_model=self.settings.spacy_model,
             trusted_models=self.settings.trusted_spacy_models,
             trusted_hashes=self.settings.trusted_model_hashes,

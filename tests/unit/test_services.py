@@ -2,7 +2,6 @@ import pytest
 
 from src.infrastructure.services import (
     DefaultClusteringService,
-    DefaultEntityExtractor,
     DefaultTextSplitter,
     RequestsHTTPClient,
     TenacityRetryPolicy,
@@ -81,7 +80,8 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_default_entity_extractor_fallback() -> None:
-    extractor = DefaultEntityExtractor(
+    from src.infrastructure.services import EntityExtractorBuilder
+    extractor = EntityExtractorBuilder.build(
         spacy_model="invalid_model_name", trusted_models=["invalid_model_name"]
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
@@ -99,7 +99,8 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setitem(sys.modules, "spacy", None)
 
-    extractor = DefaultEntityExtractor(
+    from src.infrastructure.services import EntityExtractorBuilder
+    extractor = EntityExtractorBuilder.build(
         spacy_model="en_core_web_sm", trusted_models=["en_core_web_sm"]
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
@@ -117,7 +118,8 @@ def test_default_entity_extractor_valid_spacy(monkeypatch: pytest.MonkeyPatch) -
         def extract_entities(self, text: str) -> list[tuple[str, str]]:
             return [("ORG", "MockCompany")]
 
-    extractor = DefaultEntityExtractor(
+    from src.infrastructure.services import EntityExtractorBuilder
+    extractor = EntityExtractorBuilder.build(
         spacy_model="test_model",
         trusted_models=["test_model"],
         nlp_service=MockSpacyNLPService(),

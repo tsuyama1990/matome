@@ -50,7 +50,6 @@ def _create_service(
     from unittest.mock import MagicMock
 
     from src.config import EnvCredentialProvider
-    from src.infrastructure.ai_client import DefaultAICommunicationClient
     from src.infrastructure.security import PromptInjectionScanner
 
     settings = _create_mock_settings(
@@ -73,8 +72,8 @@ def _create_service(
     # Pass provider directly into http client securely instead of through the communication client
     mock_http_client.credential_provider = provider  # type: ignore[attr-defined]
 
-    communication_client = DefaultAICommunicationClient(
-        credential_provider=provider,
+    from src.infrastructure.ai_client import AIClientFactory
+    communication_client = AIClientFactory.create(
         api_url=settings.openrouter_api_url,
         default_model=settings.text_fast_model,
         ai_timeout=settings.ai_timeout,

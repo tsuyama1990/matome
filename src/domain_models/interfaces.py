@@ -123,6 +123,13 @@ class NLPServiceProtocol(Protocol):
     def extract_entities(self, text: str) -> list[tuple[str, str]]: ...
 
 
+class EntityExtractorConfigProtocol(Protocol):
+    """Protocol for holding EntityExtractor configuration."""
+    @property
+    def spacy_model(self) -> str: ...
+    @property
+    def fallback_ner_regex(self) -> str: ...
+
 class EntityExtractorProtocol(Protocol):
     """Protocol for extracting entities from an iterator of text chunks."""
 
@@ -169,6 +176,15 @@ class AISecurityScannerProtocol(Protocol):
 
     def sanitize(self, text: str | None) -> str: ...
 
+
+class AIClientConfigProtocol(Protocol):
+    """Protocol holding AI client configuration strings."""
+    @property
+    def api_url(self) -> str: ...
+    @property
+    def default_model(self) -> str: ...
+    @property
+    def ai_timeout(self) -> int: ...
 
 class AICommunicationClientProtocol(Protocol):
     """Protocol for communicating with AI models."""

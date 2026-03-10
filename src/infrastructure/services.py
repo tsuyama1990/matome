@@ -8,6 +8,7 @@ import requests
 from src.domain_models.exceptions import AIServiceError
 from src.domain_models.interfaces import (
     ClusteringServiceProtocol,
+    EntityExtractorConfigProtocol,
     EntityExtractorProtocol,
     HTTPClientProtocol,
     MLClusteringProviderProtocol,
@@ -201,9 +202,27 @@ class DefaultModelVerifier(ModelVerifierProtocol):
             raise ValueError(msg) from e
 
 
-class DefaultEntityExtractor(EntityExtractorProtocol):
-    def __init__(
-        self,
+
+
+
+class EntityExtractorConfig:
+    def __init__(self, spacy_model: str, fallback_ner_regex: str) -> None:
+        self._spacy_model = spacy_model
+        self._fallback_ner_regex = fallback_ner_regex
+
+    @property
+    def spacy_model(self) -> str:
+        return self._spacy_model
+
+    @property
+    def fallback_ner_regex(self) -> str:
+        return self._fallback_ner_regex
+
+
+class EntityExtractorBuilder:
+    """Builder pattern ensuring backwards compatibility for container parameters and separating config from DI mappings."""
+    @staticmethod
+    def build(
         spacy_model: str,
         trusted_models: list[str],
         trusted_hashes: dict[str, str] | None = None,
@@ -212,30 +231,53 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         nlp_service: NLPServiceProtocol | None = None,
         max_model_signature_size: int | None = None,
         model_verifier: ModelVerifierProtocol | None = None,
-    ) -> None:
+        **kwargs: Any,  # noqa: ARG004
+    ) -> "DefaultEntityExtractor":
         import os
-        import re
 
-        self.spacy_model = spacy_model
+        fallback = fallback_ner_regex or r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
+        config = EntityExtractorConfig(spacy_model=spacy_model, fallback_ner_regex=fallback)
 
-        self.fallback_ner_regex = (
-            fallback_ner_regex or r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
-        )
         from src.utils.rate_limit import RateLimiter
-
-        self.rate_limiter = rate_limiter or RateLimiter(0.01)
-        self.nlp_service = nlp_service
+        rate_limiter_inst = rate_limiter or RateLimiter(0.01)
 
         max_sig_size = (
             max_model_signature_size
             if max_model_signature_size is not None
             else int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800"))
         )
-        self.model_verifier = model_verifier or DefaultModelVerifier(
+
+        verifier = model_verifier or DefaultModelVerifier(
             trusted_models=set(trusted_models),
             trusted_hashes=trusted_hashes or {},
             max_model_signature_size=max_sig_size,
         )
+
+        return DefaultEntityExtractor(
+            config=config,
+            rate_limiter=rate_limiter_inst,
+            nlp_service=nlp_service,
+            model_verifier=verifier,
+        )
+
+
+class DefaultEntityExtractor(EntityExtractorProtocol):
+    def __init__(
+        self,
+        config: EntityExtractorConfigProtocol,
+        rate_limiter: RateLimiterProtocol,
+        model_verifier: ModelVerifierProtocol,
+        nlp_service: NLPServiceProtocol | None = None,
+        **kwargs: Any,  # Absorb leftover params during transition from old kwargs format if accessed directly
+    ) -> None:
+        import re
+
+        self.config = config
+        self.spacy_model = config.spacy_model
+        self.fallback_ner_regex = config.fallback_ner_regex
+        self.rate_limiter = rate_limiter
+        self.nlp_service = nlp_service
+        self.model_verifier = model_verifier
 
         # Validate regex at initialization
         try:

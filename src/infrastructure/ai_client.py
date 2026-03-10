@@ -1,10 +1,49 @@
 from typing import Any
 
 from src.domain_models.interfaces import (
+    AIClientConfigProtocol,
     AICommunicationClientProtocol,
     HTTPClientProtocol,
     RetryPolicyProtocol,
 )
+
+
+class AIClientConfig:
+    def __init__(self, api_url: str, default_model: str, ai_timeout: int) -> None:
+        self._api_url = api_url
+        self._default_model = default_model
+        self._ai_timeout = ai_timeout
+
+    @property
+    def api_url(self) -> str:
+        return self._api_url
+
+    @property
+    def default_model(self) -> str:
+        return self._default_model
+
+    @property
+    def ai_timeout(self) -> int:
+        return self._ai_timeout
+
+
+class AIClientFactory:
+    """Factory to construct DefaultAICommunicationClient ensuring configuration inversion mapping."""
+    @staticmethod
+    def create(
+        api_url: str,
+        default_model: str,
+        ai_timeout: int,
+        http_client: HTTPClientProtocol,
+        retry_policy: RetryPolicyProtocol,
+        **kwargs: Any,  # noqa: ARG004
+    ) -> "DefaultAICommunicationClient":
+        config = AIClientConfig(api_url=api_url, default_model=default_model, ai_timeout=ai_timeout)
+        return DefaultAICommunicationClient(
+            config=config,
+            http_client=http_client,
+            retry_policy=retry_policy,
+        )
 
 
 class DefaultAICommunicationClient(AICommunicationClientProtocol):
@@ -12,21 +51,16 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
 
     def __init__(
         self,
-        api_url: str,
-        default_model: str,
-        ai_timeout: int,
+        config: AIClientConfigProtocol,
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
-        **kwargs: Any,
     ) -> None:
         """
         Security context: Credentials are strictly maintained externally within the `http_client`
         secure JIT extraction loop. The AI client itself explicitly guarantees no key materials are
         persisted or logged in memory.
         """
-        self.api_url = api_url
-        self.default_model = default_model
-        self.ai_timeout = ai_timeout
+        self.config = config
         self.http_client = http_client
         self.retry_policy = retry_policy
 
@@ -49,15 +83,15 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
                 "Accept": "application/json",
             }
             data = {
-                "model": model or self.default_model,
+                "model": model or self.config.default_model,
                 "messages": [{"role": "user", "content": prompt}],
             }
 
             result = self.http_client.post(
-                self.api_url,
+                self.config.api_url,
                 json=data,
                 headers=headers,
-                timeout=self.ai_timeout,
+                timeout=self.config.ai_timeout,
             )
 
             # Response validation
