@@ -1,3 +1,6 @@
+import os
+
+os.environ["ALLOWED_AI_MODELS"] = "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
 import pytest
 
 from src.application.ai import (
@@ -8,7 +11,7 @@ from src.application.ai import (
     DefaultSummaryService,
     DefaultWebGroundingService,
 )
-from src.config import Settings
+from src.config import ModelConfig, Settings
 from src.domain_models import (
     ContentNode,
     IdentityNode,
@@ -63,9 +66,11 @@ def _create_mock_settings(
         os.environ["MULTIMODAL_MODEL"] = multimodal_model
 
     return Settings(
-        text_fast_model=text_fast_model,
-        text_reasoning_model=text_reasoning_model,
-        multimodal_model=multimodal_model,
+        models=ModelConfig(
+            text_fast_model=text_fast_model,
+            text_reasoning_model=text_reasoning_model,
+            multimodal_model=multimodal_model,
+        ),
         allowed_base_dir=base_dir,
         spacy_model="en_core_web_sm",
         trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
@@ -117,7 +122,7 @@ def _create_service(
 
     communication_client = AIClientFactory.create(
         api_url="https://mock.api.url",
-        default_model=settings.text_fast_model,
+        default_model=settings.models.text_fast_model,
         ai_timeout=settings.ai_timeout,
         http_client=mock_http_client,  # type: ignore
         retry_policy=DummyRetry(),
@@ -129,38 +134,38 @@ def _create_service(
         DefaultSummaryService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.models.text_fast_model,
+            text_reasoning_model=settings.models.text_reasoning_model,
         ),
         DefaultQuestionService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.models.text_fast_model,
+            text_reasoning_model=settings.models.text_reasoning_model,
         ),
         DefaultDiagramService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.models.text_fast_model,
+            text_reasoning_model=settings.models.text_reasoning_model,
         ),
         DefaultDocumentGenerationService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.models.text_fast_model,
+            text_reasoning_model=settings.models.text_reasoning_model,
         ),
         DefaultWebGroundingService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.models.text_fast_model,
+            text_reasoning_model=settings.models.text_reasoning_model,
         ),
         DefaultEvaluationService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.models.text_fast_model,
+            text_reasoning_model=settings.models.text_reasoning_model,
         ),
     )
 

@@ -92,7 +92,7 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
 
     communication_client = AIClientFactory.create(
         api_url=credential_config.openrouter_api_url.get_secret_value(),
-        default_model=settings.text_fast_model,
+        default_model=settings.models.text_fast_model,
         ai_timeout=settings.ai_timeout,
         http_client=http_client,
         retry_policy=retry_policy,
@@ -102,14 +102,14 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     summary_service = DefaultSummaryService(
         security_scanner=security_scanner,
         communication_client=communication_client,
-        text_fast_model=settings.text_fast_model,
-        text_reasoning_model=settings.text_reasoning_model,
+        text_fast_model=settings.models.text_fast_model,
+        text_reasoning_model=settings.models.text_reasoning_model,
     )
     question_service = DefaultQuestionService(
         security_scanner=security_scanner,
         communication_client=communication_client,
-        text_fast_model=settings.text_fast_model,
-        text_reasoning_model=settings.text_reasoning_model,
+        text_fast_model=settings.models.text_fast_model,
+        text_reasoning_model=settings.models.text_reasoning_model,
     )
     # the rest are not strictly required for PipelineDependencies currently, but keeping pattern
 

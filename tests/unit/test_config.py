@@ -69,15 +69,17 @@ def test_settings_ssl_cert_path(tmp_path: typing.Any, monkeypatch: pytest.Monkey
     os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
     from pydantic_core._pydantic_core import ValidationError
 
-    from src.config import Settings
+    from src.config import ModelConfig, Settings
     from src.domain_models.exceptions import ConfigurationError
 
     with pytest.raises((ValidationError, ConfigurationError)):
         Settings(
             allowed_base_dir=str(tmp_path) + "/invalid_because_of_extra",
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
+            models=ModelConfig(
+                text_fast_model="google/gemini-2.5-flash",
+                text_reasoning_model="deepseek/deepseek-reasoner",
+                multimodal_model="openai/gpt-4o",
+            ),
             chunk_size=1000,
             spacy_model="en_core_web_sm",
             trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
@@ -104,20 +106,24 @@ def test_settings_advanced_validation(
 ) -> None:
     import os
 
-    from src.config import Settings
+    from src.config import ModelConfig, Settings
     from src.domain_models.exceptions import ConfigurationError
 
     os.environ["HASH_EN_CORE_WEB_SM"] = "a" * 64
     os.environ["HASH_EN_CORE_WEB_MD"] = "b" * 64
     monkeypatch.setenv("MATOME_BASE_DATA_DIR", str(tmp_path))
 
+    models = ModelConfig(
+        text_fast_model="google/gemini-2.5-flash",
+        text_reasoning_model="deepseek/deepseek-reasoner",
+        multimodal_model="openai/gpt-4o",
+    )
+
     # Test invalid spacy model
     with pytest.raises(ConfigurationError):
         Settings(
             allowed_base_dir=str(tmp_path),
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
+            models=models,
             chunk_size=1000,
             spacy_model="invalid_model",
             trusted_spacy_models=["invalid_model"],
@@ -127,9 +133,7 @@ def test_settings_advanced_validation(
     with pytest.raises(ConfigurationError):
         Settings(
             allowed_base_dir=str(tmp_path),
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
+            models=models,
             chunk_size=1000,
             spacy_model="en_core_web_sm",
             trusted_spacy_models=typing.cast(list[str], ""),
@@ -139,9 +143,7 @@ def test_settings_advanced_validation(
     with pytest.raises(ConfigurationError):
         Settings(
             allowed_base_dir="",
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
+            models=models,
             chunk_size=1000,
             spacy_model="en_core_web_sm",
             trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
@@ -156,9 +158,7 @@ def test_settings_advanced_validation(
     with pytest.raises(ConfigurationError):
         Settings(
             allowed_base_dir=str(symlink_dir),
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
+            models=models,
             chunk_size=1000,
             spacy_model="en_core_web_sm",
             trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
@@ -168,9 +168,7 @@ def test_settings_advanced_validation(
     with pytest.raises(ConfigurationError):
         Settings(
             allowed_base_dir="relative/path",
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
+            models=models,
             chunk_size=1000,
             spacy_model="en_core_web_sm",
             trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
@@ -182,9 +180,7 @@ def test_settings_advanced_validation(
     with pytest.raises(ConfigurationError):
         Settings(
             allowed_base_dir=str(file_path),
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
+            models=models,
             chunk_size=1000,
             spacy_model="en_core_web_sm",
             trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
@@ -198,9 +194,7 @@ def test_settings_advanced_validation(
         with pytest.raises(ConfigurationError):
             Settings(
                 allowed_base_dir=str(no_read_dir),
-                text_fast_model="google/gemini-2.5-flash",
-                text_reasoning_model="deepseek/deepseek-reasoner",
-                multimodal_model="openai/gpt-4o",
+                models=models,
                 chunk_size=1000,
                 spacy_model="en_core_web_sm",
                 trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
@@ -212,9 +206,7 @@ def test_settings_advanced_validation(
     with pytest.raises(ConfigurationError):
         Settings(
             allowed_base_dir="a" * 4097,
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
+            models=models,
             chunk_size=1000,
             spacy_model="en_core_web_sm",
             trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
@@ -259,9 +251,8 @@ def test_settings_api_key_invalid_format(
     from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
-    monkeypatch.setenv(
-        "OPENROUTER_API_KEY", "invalid_key_with_spaces_too_long_to_pass_length_check"
-    )
+    # Length is 33 chars, format allows generic key but entropy will be < 3.5 for this repeated string
+    monkeypatch.setenv("OPENROUTER_API_KEY", "aaabbbcccdddeeefffggghhhiiijjjkkk")
     try:
         provider = EnvCredentialProvider()
         with (

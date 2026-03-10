@@ -1,6 +1,6 @@
 import pytest
 
-from src.config import Settings
+from src.config import ModelConfig, Settings
 from src.domain_models.manifest import PipelineContext
 from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
@@ -43,9 +43,11 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
         allowed_base_dir=str(tmp_path),
         spacy_model="en_core_web_sm",
         trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
+        models=ModelConfig(
+            text_fast_model="google/gemini-2.5-flash",
+            text_reasoning_model="deepseek/deepseek-reasoner",
+            multimodal_model="openai/gpt-4o",
+        ),
         chunk_size=1000,
     )
 

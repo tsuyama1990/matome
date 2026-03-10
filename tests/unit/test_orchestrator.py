@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config import Settings
+from src.config import ModelConfig, Settings
 from src.domain_models import DocumentFactory, MetadataService, PipelineContext
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import (
@@ -31,12 +31,17 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
     os.environ["TEXT_REASONING_MODEL"] = "deepseek/deepseek-reasoner"
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
     os.environ["CHUNK_SIZE"] = "1000"
+    os.environ["ALLOWED_AI_MODELS"] = (
+        "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
+    )
 
     settings = Settings(
         allowed_base_dir=base_dir,
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
+        models=ModelConfig(
+            text_fast_model="google/gemini-2.5-flash",
+            text_reasoning_model="deepseek/deepseek-reasoner",
+            multimodal_model="openai/gpt-4o",
+        ),
         chunk_size=1000,
         spacy_model="en_core_web_sm",
         trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],

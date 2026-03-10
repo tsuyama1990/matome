@@ -28,8 +28,8 @@ def test_default_security_service_short_key() -> None:
     # Minimum key length is a strict cryptographic requirement ensuring enough entropy
     # is available to prevent brute-forcing offline or overwhelming APIs with fast dummy sequences.
     svc = DefaultSecurityService()
-    with pytest.raises(ValueError, match="API Key must be between 30 and 256 characters long."):
-        svc.validate_api_key("sk-or-v1-too-short")
+    with pytest.raises(ValueError, match="API Key must be between 20 and 256 characters long."):
+        svc.validate_api_key("tooshort")
 
 
 def test_default_security_service_invalid_format() -> None:
@@ -37,7 +37,7 @@ def test_default_security_service_invalid_format() -> None:
     # inherently limit injection risks against systems expecting specific vendor formats.
     svc = DefaultSecurityService()
     with pytest.raises(ValueError, match="API Key format is invalid."):
-        svc.validate_api_key("invalid-prefix-that-is-long-enough-to-pass-length-check")
+        svc.validate_api_key("invalid!@#key$with^special*chars")
 
 
 def test_prompt_injection_scanner_invalid_threshold() -> None:

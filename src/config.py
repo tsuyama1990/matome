@@ -95,8 +95,8 @@ class CredentialConfig(MatomeConfig):
         return v
 
 
-class Settings(MatomeConfig):
-    """Global application configuration settings utilizing pydantic-settings."""
+class ModelConfig(MatomeConfig):
+    """Dedicated configuration class for AI model routing and selection."""
 
     text_fast_model: str = Field(
         ...,
@@ -117,6 +117,15 @@ class Settings(MatomeConfig):
         from src.utils.validation import validate_ai_model
 
         return validate_ai_model(value)
+
+
+class Settings(MatomeConfig):
+    """Global application configuration settings utilizing pydantic-settings."""
+
+    models: ModelConfig = Field(
+        default_factory=lambda: ModelConfig(),  # type: ignore[call-arg] # noqa: PLW0108
+        description="Configuration and routing for AI models",
+    )
 
     default_root_doc_id: str = Field(
         default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", "root_doc_1")),
@@ -254,10 +263,10 @@ class Settings(MatomeConfig):
             msg = "ALLOWED_BASE_DIR path too long"
             raise ConfigurationError(msg)
 
-        expected_parent = os.getenv("MATOME_BASE_DATA_DIR", "/app")
-
         try:
             from pathlib import Path
+
+            expected_parent = os.getenv("MATOME_BASE_DATA_DIR", str(Path.cwd()))
 
             path_obj = Path(value)
 
@@ -309,17 +318,18 @@ class DatabaseContext(BaseModel):
 class EnvCredentialProvider:
     """Secure JIT credential provider fetching directly from OS environment variables strictly at runtime. Uses context manager for immediate explicit memory deletion."""
 
-    def __init__(self) -> None:
+    def __init__(self, env_var_name: str = "OPENROUTER_API_KEY") -> None:
         from src.utils.errors import CredentialErrorHandler
 
         self._error_handler = CredentialErrorHandler()
+        self._env_var_name = env_var_name
 
     @contextlib.contextmanager
     def get_api_key(self) -> Iterator[str]:
         import ctypes
         import os
 
-        key: str | None = os.getenv("OPENROUTER_API_KEY")
+        key: str | None = os.getenv(self._env_var_name)
 
         if not key:
             self._error_handler.handle_missing_key()
