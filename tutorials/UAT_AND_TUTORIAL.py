@@ -27,8 +27,8 @@ def __():
     from src.infrastructure.orchestrator import PipelineConfig, PipelineDependencies
     from src.infrastructure.services import (
         DefaultClusteringService,
-        DefaultEntityExtractor,
         DefaultTextSplitter,
+        EntityExtractorBuilder,
         LangChainSplitterStrategy,
         RequestsHTTPClient,
         TenacityRetryPolicy,
@@ -55,7 +55,7 @@ def __():
         TenacityRetryPolicy,
         DefaultTextSplitter,
         LangChainSplitterStrategy,
-        DefaultEntityExtractor,
+        EntityExtractorBuilder,
         DefaultClusteringService,
         MetadataService,
         ValidationError,
@@ -79,7 +79,7 @@ def __(
     TenacityRetryPolicy,
     DefaultTextSplitter,
     LangChainSplitterStrategy,
-    DefaultEntityExtractor,
+    EntityExtractorBuilder,
     DefaultClusteringService,
     MetadataService,
     ValidationError,
@@ -102,23 +102,21 @@ def __(
 
     try:
         settings = Settings()
-        api_key = (
-            settings.credentials.openrouter_api_key.get_secret_value()
-            if settings.credentials.openrouter_api_key
-            else None
-        )
-        has_real_key = True
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        has_real_key = bool(api_key)
     except ValidationError:
-        # Fallback for completely isolated test environments
-        os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-mock-key-for-tutorial-purposes-123"
+        # Avoid providing fallback dummy keys altogether based on security audit request.
+        # Fallback to pure mock service if environment doesn't supply anything valid.
+        for k, v in tutorial_env.items():
+            os.environ[k] = v
         settings = Settings()
         api_key = None
         has_real_key = False
 
     repo = InMemoryDocumentRepository()
 
-    if has_real_key and api_key and not api_key.startswith("sk-or-v1-mock-key"):
-        provider = EnvCredentialProvider(settings.credentials)
+    if has_real_key and api_key:
+        provider = EnvCredentialProvider()
         http_client = RequestsHTTPClient()
         retry_policy = TenacityRetryPolicy()
         ai = DefaultAIService(
@@ -144,8 +142,12 @@ def __(
         max_file_size=settings.max_file_size,
         strategy=LangChainSplitterStrategy(),
     )
-    entity_extractor = DefaultEntityExtractor(
-        settings.spacy_model, settings.trusted_spacy_models, settings.trusted_model_hashes
+    entity_extractor = EntityExtractorBuilder.build(
+        spacy_model=settings.spacy_model,
+        trusted_models=settings.trusted_spacy_models,
+        trusted_hashes=settings.trusted_model_hashes,
+        fallback_ner_regex=settings.fallback_ner_regex,
+        max_model_signature_size=settings.max_model_signature_size,
     )
     clustering_service = DefaultClusteringService(settings.random_seed)
 

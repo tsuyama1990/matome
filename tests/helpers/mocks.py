@@ -1,14 +1,28 @@
 from src.domain_models import (
-    AIServiceProtocol,
     ContentNode,
     IdentityNode,
     PivotBoard,
     UserInteractionContext,
 )
+from src.domain_models.interfaces import (
+    DiagramServiceProtocol,
+    DocumentGenerationServiceProtocol,
+    EvaluationServiceProtocol,
+    QuestionServiceProtocol,
+    SummaryServiceProtocol,
+    WebGroundingServiceProtocol,
+)
 
 
-class MockAIService(AIServiceProtocol):
-    """Mock implementation of the AIServiceProtocol for testing and isolated pipelines."""
+class MockAIService(
+    SummaryServiceProtocol,
+    QuestionServiceProtocol,
+    DiagramServiceProtocol,
+    DocumentGenerationServiceProtocol,
+    WebGroundingServiceProtocol,
+    EvaluationServiceProtocol
+):
+    """Mock implementation for testing and isolated pipelines."""
 
     def __init__(
         self,

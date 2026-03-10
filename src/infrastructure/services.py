@@ -453,8 +453,8 @@ class RequestsHTTPClient(HTTPClientProtocol):
             if self.credential_provider:
                 # Fetch dynamically at the edge of the network request
                 with self.credential_provider.get_api_key() as secure_key:
-                    if hasattr(secure_key, "_value"):
-                        final_headers["Authorization"] = b"Bearer " + secure_key._value
+                    if hasattr(secure_key, "value"):
+                        final_headers["Authorization"] = f"Bearer {secure_key.value}"
                     else:
                         final_headers["Authorization"] = f"Bearer {secure_key}"
             elif auth_token:

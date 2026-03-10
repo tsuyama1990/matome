@@ -1,6 +1,13 @@
 import pytest
 
-from src.application.ai import DefaultAIService
+from src.application.ai import (
+    DefaultDiagramService,
+    DefaultDocumentGenerationService,
+    DefaultEvaluationService,
+    DefaultQuestionService,
+    DefaultSummaryService,
+    DefaultWebGroundingService,
+)
 from src.config import Settings
 from src.domain_models import (
     ContentNode,
@@ -28,11 +35,10 @@ def _create_mock_settings(
 
     if api_key:
         os.environ["OPENROUTER_API_KEY"] = api_key
-    from src.config import CredentialConfig
+    from pydantic import SecretStr
 
     return Settings(
-        credentials=CredentialConfig(),
-        openrouter_api_url="https://mock.api.url",
+        openrouter_api_url=SecretStr("https://mock.api.url"),
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
         multimodal_model=multimodal_model,
@@ -46,7 +52,7 @@ def _create_service(
     http_client: object = None,
     text_fast_model: str = "google/gemini-2.5-flash",
     text_reasoning_model: str = "deepseek/deepseek-reasoner",
-) -> DefaultAIService:
+) -> tuple[DefaultSummaryService, DefaultQuestionService, DefaultDiagramService, DefaultDocumentGenerationService, DefaultWebGroundingService, DefaultEvaluationService]:
     from unittest.mock import MagicMock
 
     from src.config import EnvCredentialProvider
@@ -58,7 +64,7 @@ def _create_service(
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
     )
-    provider = EnvCredentialProvider(settings.credentials)
+    provider = EnvCredentialProvider()
 
     mock_http_client = http_client or MagicMock()
 
@@ -74,7 +80,7 @@ def _create_service(
 
     from src.infrastructure.ai_client import AIClientFactory
     communication_client = AIClientFactory.create(
-        api_url=settings.openrouter_api_url,
+        api_url=settings.openrouter_api_url.get_secret_value(),
         default_model=settings.text_fast_model,
         ai_timeout=settings.ai_timeout,
         http_client=mock_http_client,  # type: ignore
@@ -82,11 +88,43 @@ def _create_service(
     )
     security_scanner = PromptInjectionScanner()
 
-    return DefaultAIService(
-        security_scanner=security_scanner,
-        communication_client=communication_client,
-        text_fast_model=settings.text_fast_model,
-        text_reasoning_model=settings.text_reasoning_model,
+    return (
+        DefaultSummaryService(
+            security_scanner=security_scanner,
+            communication_client=communication_client,
+            text_fast_model=settings.text_fast_model,
+            text_reasoning_model=settings.text_reasoning_model,
+        ),
+        DefaultQuestionService(
+            security_scanner=security_scanner,
+            communication_client=communication_client,
+            text_fast_model=settings.text_fast_model,
+            text_reasoning_model=settings.text_reasoning_model,
+        ),
+        DefaultDiagramService(
+            security_scanner=security_scanner,
+            communication_client=communication_client,
+            text_fast_model=settings.text_fast_model,
+            text_reasoning_model=settings.text_reasoning_model,
+        ),
+        DefaultDocumentGenerationService(
+            security_scanner=security_scanner,
+            communication_client=communication_client,
+            text_fast_model=settings.text_fast_model,
+            text_reasoning_model=settings.text_reasoning_model,
+        ),
+        DefaultWebGroundingService(
+            security_scanner=security_scanner,
+            communication_client=communication_client,
+            text_fast_model=settings.text_fast_model,
+            text_reasoning_model=settings.text_reasoning_model,
+        ),
+        DefaultEvaluationService(
+            security_scanner=security_scanner,
+            communication_client=communication_client,
+            text_fast_model=settings.text_fast_model,
+            text_reasoning_model=settings.text_reasoning_model,
+        ),
     )
 
 
@@ -108,7 +146,8 @@ def test_default_ai_service_invalid_key_length(
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "123")
-    with pytest.raises(ConfigurationError, match="API Key must be at least 30 characters long"):
+
+    with pytest.raises(ConfigurationError, match="Authentication configuration error."):
         EnvCredentialProvider().get_api_key()
 
 
@@ -119,7 +158,8 @@ def test_default_ai_service_invalid_key_format(
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
-    with pytest.raises(ConfigurationError, match="API Key format is invalid"):
+
+    with pytest.raises(ConfigurationError, match="Authentication configuration error."):
         EnvCredentialProvider().get_api_key()
 
 
@@ -136,13 +176,13 @@ def test_default_ai_service_calls_generate_summary_valid(
         "src.infrastructure.security.PromptInjectionScanner.sanitize", lambda self, text: text
     )
 
-    ai = _create_service(
+    services = _create_service(
         base_dir=str(tmp_path),
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
     )
 
-    summary = ai.generate_summary("test content")
+    summary = services[0].generate_summary("test content")
     assert summary == "mock summary"
 
 
@@ -158,7 +198,7 @@ def test_default_ai_service_calls_generate_question_valid(
         "src.infrastructure.security.PromptInjectionScanner.sanitize", lambda self, text: text
     )
 
-    ai = _create_service(
+    services = _create_service(
         base_dir=str(tmp_path),
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
@@ -171,7 +211,7 @@ def test_default_ai_service_calls_generate_question_valid(
     )
     content = ContentNode(node_id="test1", summary=None, text=None)
 
-    question = ai.generate_question(identity, content)
+    question = services[1].generate_question(identity, content)
     assert question == "mock question"
 
 
@@ -187,7 +227,7 @@ def test_default_ai_service_calls_generate_mermaid_valid(
         "src.infrastructure.security.PromptInjectionScanner.sanitize", lambda self, text: text
     )
 
-    ai = _create_service(
+    services = _create_service(
         base_dir=str(tmp_path),
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
@@ -201,7 +241,7 @@ def test_default_ai_service_calls_generate_mermaid_valid(
             PivotBoardViewNode(node_id="test1", x_position=0.1, y_position=0.2, cluster_id=None)
         ],
     )
-    diagram = ai.generate_mermaid_diagram(board)
+    diagram = services[2].generate_mermaid_diagram(board)
     assert diagram == "graph TD"
 
 
@@ -217,7 +257,7 @@ def test_default_ai_service_calls_generate_markdown_valid(
         "src.infrastructure.security.PromptInjectionScanner.sanitize", lambda self, text: text
     )
 
-    ai = _create_service(
+    services = _create_service(
         base_dir=str(tmp_path),
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
@@ -231,7 +271,7 @@ def test_default_ai_service_calls_generate_markdown_valid(
             PivotBoardViewNode(node_id="test1", x_position=0.1, y_position=0.2, cluster_id=None)
         ],
     )
-    diagram = ai.generate_markdown_requirements(board)
+    diagram = services[3].generate_markdown_requirements(board)
     assert diagram == "# PRD"
 
 
@@ -243,12 +283,12 @@ def test_default_ai_service_calls_verify_web_grounding_valid(
     mock_http = MagicMock()
     mock_http.post.return_value = {"choices": [{"message": {"content": "No bias found"}}]}
 
-    ai = _create_service(
+    services = _create_service(
         base_dir=str(tmp_path),
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
     )
-    result = ai.verify_web_grounding("Some content")
+    result = services[4].verify_web_grounding("Some content")
     assert result == "No bias found"
 
 
@@ -264,7 +304,7 @@ def test_default_ai_service_calls_evaluate_answer_valid(
         "src.infrastructure.security.PromptInjectionScanner.sanitize", lambda self, text: text
     )
 
-    ai = _create_service(
+    services = _create_service(
         base_dir=str(tmp_path),
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
@@ -277,6 +317,6 @@ def test_default_ai_service_calls_evaluate_answer_valid(
         feedback=None,
         hints_used=0,
     )
-    success, response = ai.evaluate_answer(context)
+    success, response = services[5].evaluate_answer(context)
     assert success is True
     assert "YES" in response

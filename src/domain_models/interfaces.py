@@ -1,14 +1,31 @@
 from collections.abc import Callable, Iterator
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from .analysis import PivotBoard
 from .manifest import ContentNode, IdentityNode, UserInteractionContext
 
+T = TypeVar("T")
 
 class ConfigService(Protocol):
-    """Protocol for fetching application configuration."""
+    """Protocol for fetching application configuration using type-safe properties."""
 
-    def get(self, key: str) -> Any: ...
+    @property
+    def openrouter_api_url(self) -> str: ...
+
+    @property
+    def ssl_cert_path(self) -> str | None: ...
+
+    @property
+    def chunk_size(self) -> int: ...
+
+    @property
+    def chunk_overlap(self) -> int: ...
+
+    @property
+    def spacy_model(self) -> str: ...
+
+    @property
+    def random_seed(self) -> int: ...
 
 
 class SecurityService(Protocol):
@@ -32,10 +49,11 @@ class CredentialProviderProtocol(Protocol):
     def get_api_key(self) -> SecureStringProtocol: ...
 
 
-class CredentialFetcherProtocol(Protocol):
-    """Protocol for abstract fetchers retrieving tokens from Env, Vault, etc."""
-
-    def __call__(self) -> str | None: ...
+@runtime_checkable
+class DatabaseProtocol(Protocol):
+    """Protocol representing a database connection or session."""
+    def execute(self, query: str) -> Any: ...
+    def close(self) -> None: ...
 
 
 class TransactionManager(Protocol):
@@ -90,18 +108,6 @@ class WebGroundingServiceProtocol(Protocol):
 
 class EvaluationServiceProtocol(Protocol):
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
-
-
-class AIServiceProtocol(
-    SummaryServiceProtocol,
-    QuestionServiceProtocol,
-    DiagramServiceProtocol,
-    DocumentGenerationServiceProtocol,
-    WebGroundingServiceProtocol,
-    EvaluationServiceProtocol,
-    Protocol,
-):
-    """Aggregate protocol for backward compatibility or cases where all are needed."""
 
 
 class SplitterStrategyProtocol(Protocol):

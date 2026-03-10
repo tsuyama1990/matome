@@ -1,10 +1,10 @@
 import logging
 import sys
-from typing import Any
 
 from src.config import ModeConfig, Settings
 from src.domain_models.exceptions import ConfigurationError
 from src.domain_models.manifest import PipelineContext
+from src.infrastructure.container import DIContainerProtocol
 from src.infrastructure.orchestrator import (
     PipelineConfig,
     PipelineDependencies,
@@ -39,35 +39,155 @@ def build_app(
     return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
 
 
-def get_di_container(settings: Settings) -> Any:
+
+
+def get_di_container(settings: Settings) -> DIContainerProtocol:
+    from src.application.ai import (
+        DefaultQuestionService,
+        DefaultSummaryService,
+    )
+    from src.domain_models.services import DocumentFactory, MetadataService
+    from src.infrastructure import InMemoryDocumentRepository
     from src.infrastructure.container import ProductionDIContainer
+    from src.infrastructure.orchestrator import PipelineConfig, PipelineDependencies
+    from src.infrastructure.security import PromptInjectionScanner
+    from src.infrastructure.services import (
+        DefaultClusteringService,
+        DefaultTextSplitter,
+        LangChainSplitterStrategy,
+        RequestsHTTPClient,
+        TenacityRetryPolicy,
+    )
 
-    return ProductionDIContainer(settings)
+    repo = InMemoryDocumentRepository()
+    ssl_path = settings.ssl_cert_path.get_secret_value() if settings.ssl_cert_path else None
+    http_client = RequestsHTTPClient(ssl_cert_path=ssl_path)
+    retry_policy = TenacityRetryPolicy(
+        ai_retry_attempts=settings.ai_retry_attempts,
+        ai_retry_min_wait=settings.ai_retry_min_wait,
+        ai_retry_max_wait=settings.ai_retry_max_wait,
+    )
+    security_scanner = PromptInjectionScanner()
 
+    from src.infrastructure.ai_client import AIClientFactory
+    communication_client = AIClientFactory.create(
+        api_url=settings.openrouter_api_url.get_secret_value(),
+        default_model=settings.text_fast_model,
+        ai_timeout=settings.ai_timeout,
+        http_client=http_client,
+        retry_policy=retry_policy,
+    )
+
+    summary_service = DefaultSummaryService(
+        security_scanner=security_scanner,
+        communication_client=communication_client,
+        text_fast_model=settings.text_fast_model,
+        text_reasoning_model=settings.text_reasoning_model,
+    )
+    question_service = DefaultQuestionService(
+        security_scanner=security_scanner,
+        communication_client=communication_client,
+        text_fast_model=settings.text_fast_model,
+        text_reasoning_model=settings.text_reasoning_model,
+    )
+    # the rest are not strictly required for PipelineDependencies currently, but keeping pattern
+
+    factory = DocumentFactory()
+    metadata_service = MetadataService()
+
+    text_splitter = DefaultTextSplitter(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+        max_file_size=settings.max_file_size,
+        strategy=LangChainSplitterStrategy(),
+    )
+
+    from src.infrastructure.services import EntityExtractorBuilder
+    from src.utils.rate_limit import RateLimiter
+
+    entity_extractor = EntityExtractorBuilder.build(
+        spacy_model=settings.spacy_model,
+        trusted_models=settings.trusted_spacy_models,
+        trusted_hashes=settings.trusted_model_hashes,
+        fallback_ner_regex=settings.fallback_ner_regex,
+        rate_limiter=RateLimiter(settings.entity_extraction_rate_limit),
+    )
+    clustering_service = DefaultClusteringService(settings.random_seed)
+
+    deps = PipelineDependencies(
+        doc_repo=repo,
+        transaction_manager=repo,
+        summary_service=summary_service,
+        question_service=question_service,
+        doc_factory=factory,
+        metadata_service=metadata_service,
+        text_splitter=text_splitter,
+        entity_extractor=entity_extractor,
+        clustering_service=clustering_service,
+    )
+    config = PipelineConfig(
+        pipeline_timeout=settings.pipeline_timeout,
+        raptor_max_clusters=settings.raptor_max_clusters,
+    )
+
+    return ProductionDIContainer(dependencies=deps, config=config)
+
+
+def setup_config() -> tuple[Settings, ModeConfig]:
+    import os
+
+    mode = os.getenv("MODE", "cli")
+    if mode not in ["cli", "production", "test"]:
+        msg = f"Invalid mode: {mode}. Must be one of 'cli', 'production', 'test'."
+        raise ValueError(msg)
+
+    filtered_env = {
+        k.lower(): v for k, v in os.environ.items() if k.lower() in Settings.model_fields
+    }
+    settings = Settings(**filtered_env)  # type: ignore[arg-type]
+    mode_config = ModeConfig(mode=mode)
+    return settings, mode_config
+
+def validate_security(settings: Settings, target_file: str) -> str:
+    import os
+    from pathlib import Path
+
+    allowed_dir = Path(settings.allowed_base_dir).resolve()
+    file_path = Path(target_file).resolve()
+
+    if not file_path.exists():
+        logger.error(f"Failed to execute pipeline: File not found -> {file_path}")
+        sys.exit(1)
+    if not file_path.is_file():
+        logger.error(f"Failed to execute pipeline: Path is not a valid file -> {file_path}")
+        sys.exit(1)
+
+    # Prevent directory traversal by checking against configured allowed directory
+    real_file_path = Path(os.path.realpath(file_path)).resolve()
+    real_allowed_dir = Path(os.path.realpath(allowed_dir)).resolve()
+
+    if not real_file_path.is_relative_to(real_allowed_dir):
+        logger.error("Security Error: Access denied to the requested file.")
+        sys.exit(1)
+
+    if file_path.stat().st_size > settings.max_file_size:
+        logger.error(
+            f"Security Error: File exceeds maximum allowed size of {settings.max_file_size} bytes -> {file_path}"
+        )
+        sys.exit(1)
+
+    return str(file_path)
 
 def main() -> None:
     import argparse
-    from pathlib import Path
 
     parser = argparse.ArgumentParser(description="matome CLI Application")
     parser.add_argument("--file", type=str, help="Path to the document to process", required=True)
     args = parser.parse_args()
 
-    import os
-
     try:
         try:
-            mode = os.getenv("MODE", "cli")
-            if mode not in ["cli", "production", "test"]:
-                msg = f"Invalid mode: {mode}. Must be one of 'cli', 'production', 'test'."
-                raise ValueError(msg)
-
-            filtered_env = {
-                k.lower(): v for k, v in os.environ.items() if k.lower() in Settings.model_fields
-            }
-            settings = Settings(**filtered_env)  # type: ignore[arg-type]
-            mode_config = ModeConfig(mode=mode)
-
+            settings, mode_config = setup_config()
             container = get_di_container(settings)
             deps, config = container.get_dependencies()
             app = build_app(settings, mode_config, deps, config)
@@ -75,32 +195,11 @@ def main() -> None:
             logger.exception("Configuration Error")
             sys.exit(1)
 
-        allowed_dir = Path(app.settings.allowed_base_dir).resolve()
-        file_path = Path(args.file).resolve()
-
-        if not file_path.exists():
-            logger.error(f"Failed to execute pipeline: File not found -> {file_path}")
-            sys.exit(1)
-        if not file_path.is_file():
-            logger.error(f"Failed to execute pipeline: Path is not a valid file -> {file_path}")
-            sys.exit(1)
-
-        # Prevent directory traversal by checking against configured allowed directory
-        real_file_path = str(Path(os.path.realpath(file_path)).resolve())
-        real_allowed_dir = str(Path(os.path.realpath(allowed_dir)).resolve())
-        if not real_file_path.startswith(real_allowed_dir):
-            logger.error("Security Error: Access denied to the requested file.")
-            sys.exit(1)
-
-        if file_path.stat().st_size > app.settings.max_file_size:
-            logger.error(
-                f"Security Error: File exceeds maximum allowed size of {app.settings.max_file_size} bytes -> {file_path}"
-            )
-            sys.exit(1)
+        safe_file_path = validate_security(app.settings, args.file)
 
         # Pass the file path to the pipeline for chunked streaming to prevent OOM
         context = PipelineContext(
-            root_doc_id=app.settings.default_root_doc_id, file_path=str(file_path)
+            root_doc_id=app.settings.default_root_doc_id, file_path=safe_file_path
         )
         app.start(context)
     except ValueError:
