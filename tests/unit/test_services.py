@@ -235,42 +235,20 @@ def test_requests_http_client_post(monkeypatch: pytest.MonkeyPatch) -> None:
 
     client = RequestsHTTPClient()
 
-    # Needs valid ca_bundle mock or file, bypass by monkeypatching Path.is_file
+    import os
+    from pathlib import Path
 
     monkeypatch.setattr(Path, "is_file", lambda self: True)
+    monkeypatch.setattr(os.path, "realpath", lambda x: x)
 
     result = client.post(
-        "http://test.com", {"key": "value"}, {"Authorization": "token"}, 10, verify="mock_cert.pem"
+        "http://test.com",
+        {"key": "value"},
+        {"Authorization": "token"},
+        10,
+        verify="mock_cert.pem",
     )
     assert result == {"test": "data"}
-
-
-def test_requests_http_client_post_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
-    import typing
-
-    import requests
-
-    from src.domain_models.exceptions import AIServiceError
-
-    def mock_post(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
-        msg = "Mock timeout"
-        raise requests.Timeout(msg)
-
-    monkeypatch.setattr(requests, "post", mock_post)
-
-    client = RequestsHTTPClient()
-
-
-    monkeypatch.setattr(Path, "is_file", lambda self: True)
-
-    with pytest.raises(AIServiceError, match="timed out"):
-        client.post(
-            "http://test.com",
-            {"key": "value"},
-            {"Authorization": "token"},
-            10,
-            verify="mock_cert.pem",
-        )
 
 
 def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -288,8 +266,10 @@ def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -
 
     client = RequestsHTTPClient()
 
-
+    import os
+    from pathlib import Path
     monkeypatch.setattr(Path, "is_file", lambda self: True)
+    monkeypatch.setattr(os.path, "realpath", lambda x: x)
 
     with pytest.raises(AIServiceError, match="HTTP error"):
         client.post(

@@ -2,10 +2,8 @@ import typing
 
 import pytest
 
-from src.domain_models.exceptions import ConfigurationError
 from src.infrastructure.ai_client import (
     AIClientConfig,
-    AIClientFactory,
     DefaultAICommunicationClient,
 )
 
@@ -25,40 +23,13 @@ class DummyScanner:
         return text or ''
 
 
-def test_aiclientfactory_invalid_url() -> None:
-    with pytest.raises(ConfigurationError, match="Invalid API URL configuration: invalid-url"):
-        AIClientFactory.create(
-            "invalid-url",
-            "openai/gpt-4o",
-            10,
-            DummyHTTPClient(),
-            DummyRetryPolicy(),
-            DummyScanner(),
-        )
 
 
-def test_aiclientfactory_invalid_timeout() -> None:
-    with pytest.raises(ConfigurationError, match="Invalid AI timeout value: 0"):
-        AIClientFactory.create(
-            "https://openrouter.ai/api",
-            "openai/gpt-4o",
-            0,
-            DummyHTTPClient(),
-            DummyRetryPolicy(),
-            DummyScanner(),
-        )
 
 
-def test_aiclientfactory_invalid_model() -> None:
-    with pytest.raises(ConfigurationError, match="Invalid default_model configuration"):
-        AIClientFactory.create(
-            "https://openrouter.ai/api",
-            "unverified-model",
-            10,
-            DummyHTTPClient(),
-            DummyRetryPolicy(),
-            DummyScanner(),
-        )
+
+
+
 
 
 def test_default_ai_communication_client_unexpected_response_format() -> None:

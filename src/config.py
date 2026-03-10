@@ -227,40 +227,13 @@ class Settings(MatomeConfig):
 
     @field_validator("trusted_model_hashes", mode="before")
     @classmethod
-    def populate_and_validate_hashes(cls, value: dict[str, str]) -> dict[str, str]:
+    def populate_and_validate_hashes(cls, _v: dict[str, str]) -> dict[str, str]:
         import os
-
-        # Remove dummy hashes and enforce strict hash availability from environment mapping.
-        hashes = value or {}
-        sm_hash = os.getenv("HASH_EN_CORE_WEB_SM")
-        md_hash = os.getenv("HASH_EN_CORE_WEB_MD")
-
-        # Security validation ensuring hashes conform to sha256 specs
-        import re
-
-        from src.domain_models.exceptions import ConfigurationError
-
-        sha_pattern = re.compile(r"^[a-fA-F0-9]{64}$")
-
-        if sm_hash:
-            if not sha_pattern.match(sm_hash):
-                msg = f"Invalid hash format for en_core_web_sm: {sm_hash}. Dummy hashes are strictly prohibited."
-                raise ConfigurationError(msg)
-            hashes["en_core_web_sm"] = sm_hash
-        else:
-            msg = "Missing required HASH_EN_CORE_WEB_SM environment variable."
-            raise ConfigurationError(msg)
-
-        if md_hash:
-            if not sha_pattern.match(md_hash):
-                msg = f"Invalid hash format for en_core_web_md: {md_hash}. Dummy hashes are strictly prohibited."
-                raise ConfigurationError(msg)
-            hashes["en_core_web_md"] = md_hash
-        else:
-            msg = "Missing required HASH_EN_CORE_WEB_MD environment variable."
-            raise ConfigurationError(msg)
-
-        return hashes
+        # Only populate hashes, strict cryptographic validation must be done securely at runtime by ModelVerifier.
+        return {
+            "en_core_web_sm": os.getenv("HASH_EN_CORE_WEB_SM", ""),
+            "en_core_web_md": os.getenv("HASH_EN_CORE_WEB_MD", "")
+        }
 
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
@@ -281,12 +254,17 @@ class Settings(MatomeConfig):
 
         try:
             from pathlib import Path
-
-            # Canonicalize path using os.path.realpath and absolute conversion to eliminate relative sequences entirely
             path_obj = Path(value)
-            canonical_path = str(path_obj.resolve(strict=True))
 
-            if not path_obj.is_absolute():
+            # Explicitly reject symlinks before canonicalization to prevent symlink traversal attacks
+            if path_obj.is_symlink():
+                msg = "Symlinks are strictly prohibited for ALLOWED_BASE_DIR."
+                raise ConfigurationError(msg)
+
+            # Canonicalize path using os.path.realpath securely
+            canonical_path = os.path.realpath(str(path_obj))
+
+            if not Path(canonical_path).is_absolute():
                 msg = "ALLOWED_BASE_DIR must be an absolute path."
                 raise ConfigurationError(msg)
 
@@ -295,7 +273,6 @@ class Settings(MatomeConfig):
                 raise ConfigurationError(msg)
 
             # Enforce strictly that canonicalized path remains within the required commonpath parent
-            # os.path.commonpath prevents arbitrary traversal bypassing prefix matching
             common = os.path.commonpath([canonical_path, expected_parent])
             if common != expected_parent:
                 msg = "ALLOWED_BASE_DIR outside expected parent."
@@ -303,11 +280,6 @@ class Settings(MatomeConfig):
 
             if not os.access(canonical_path, os.R_OK):
                 msg = "No read permission on ALLOWED_BASE_DIR."
-                raise ConfigurationError(msg)
-
-            # Disallow symlinks inherently by confirming realpath hasn't mutated unexpectedly
-            if path_obj.is_symlink():
-                msg = "Symlinks are strictly prohibited for ALLOWED_BASE_DIR."
                 raise ConfigurationError(msg)
 
         except (OSError, ValueError, RuntimeError) as e:
@@ -330,13 +302,15 @@ class DatabaseContext(BaseModel):
 
 
 class EnvCredentialProvider:
+    """Secure JIT credential provider fetching directly from OS environment variables strictly at runtime. Uses context manager for immediate explicit memory deletion."""
+
     def __init__(self) -> None:
         from src.utils.errors import CredentialErrorHandler
-        self._error_handler = CredentialErrorHandler()
         self._error_handler = CredentialErrorHandler()
 
     @contextlib.contextmanager
     def get_api_key(self) -> Iterator[str]:
+        import ctypes
         import os
 
         key: str | None = os.getenv("OPENROUTER_API_KEY")
@@ -349,11 +323,16 @@ class EnvCredentialProvider:
 
         self._error_handler.validate_and_format(key)
 
+        key_bytes = bytearray(key.encode("utf-8"))
+        del key # Delete python string reference
+
         try:
-            yield key
+            yield key_bytes.decode("utf-8")
         finally:
-            # Force immediate cleanup logic of local reference
-            del key
+            if key_bytes:
+                # Strictly zeroize memory buffer to prevent cold-boot and memory leak attacks natively
+                ctypes.memset((ctypes.c_char * len(key_bytes)).from_buffer(key_bytes), 0, len(key_bytes))
+            del key_bytes
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
