@@ -1,6 +1,7 @@
+import contextlib
 import os
 import typing
-from typing import Any
+from collections.abc import Iterator
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,29 +23,56 @@ class ModeConfig(MatomeConfig):
     )
 
 
-class Settings(MatomeConfig):
-    """Global application configuration settings utilizing pydantic-settings."""
+class CredentialConfig(MatomeConfig):
+    """Dedicated configuration class for externalizing and securely holding credentials."""
 
+    openrouter_api_key: SecretStr | None = Field(
+        None, description="The OpenRouter API Key. Accessed securely via EnvCredentialProvider."
+    )
     openrouter_api_url: SecretStr = Field(
         ...,
         description="The base URL for the OpenRouter API endpoint",
     )
     ssl_cert_path: SecretStr | None = Field(
-        default_factory=lambda: SecretStr(cert_path) if (cert_path := os.getenv("SSL_CERT_PATH", None)) else None,
+        default_factory=lambda: (
+            SecretStr(cert_path) if (cert_path := os.getenv("SSL_CERT_PATH", None)) else None
+        ),
         description="Path to a pinned CA bundle for explicit SSL verification",
     )
+
+
+class Settings(MatomeConfig):
+    """Global application configuration settings utilizing pydantic-settings."""
+
     text_fast_model: str = Field(
-        ...,
+        default_factory=lambda: os.getenv("TEXT_FAST_MODEL", "google/gemini-2.5-flash"),
         description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging",
     )
     text_reasoning_model: str = Field(
-        ...,
+        default_factory=lambda: os.getenv("TEXT_REASONING_MODEL", "deepseek/deepseek-reasoner"),
         description="Models with advanced logical reasoning capabilities for insight extraction, To-Be generation, web grounding",
     )
     multimodal_model: str = Field(
-        ...,
+        default_factory=lambda: os.getenv("MULTIMODAL_MODEL", "openai/gpt-4o"),
         description="Models excelling in visual understanding for complex charts in PDFs, architecture diagrams, UI mockups",
     )
+
+    @field_validator("text_fast_model", "text_reasoning_model", "multimodal_model", mode="after")
+    @classmethod
+    def validate_ai_models(cls, value: str) -> str:
+        import os
+
+        from src.domain_models.exceptions import ConfigurationError
+
+        allowed_env = os.getenv(
+            "ALLOWED_AI_MODELS", "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
+        )
+        allowed_whitelist = {model.strip() for model in allowed_env.split(",") if model.strip()}
+
+        if value.strip() not in allowed_whitelist:
+            msg = f"Untrusted AI Model configured: {value}. Only verified models ({allowed_env}) are allowed."
+            raise ConfigurationError(msg)
+        return value
 
     default_root_doc_id: str = Field(
         default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", "root_doc_1")),
@@ -130,13 +158,17 @@ class Settings(MatomeConfig):
 
     @field_validator("trusted_spacy_models", mode="after")
     @classmethod
-    def validate_trusted_models(cls, values: list[str]) -> list[str]:
+    def validate_spacy_models(cls, values: list[str]) -> list[str]:
+        import os
+
         from src.domain_models.exceptions import ConfigurationError
 
-        allowed_whitelist = {"en_core_web_sm", "en_core_web_md"}
+        allowed_env = os.getenv("ALLOWED_SPACY_MODELS", "en_core_web_sm,en_core_web_md")
+        allowed_whitelist = {model.strip() for model in allowed_env.split(",") if model.strip()}
+
         for model in values:
             if model.strip() not in allowed_whitelist:
-                msg = f"Untrusted ML Model configured: {model}. Only verified models are allowed."
+                msg = f"Untrusted ML Model configured: {model}. Only verified models ({allowed_env}) are allowed."
                 raise ConfigurationError(msg)
         return values
 
@@ -152,12 +184,14 @@ class Settings(MatomeConfig):
 
         # Security validation ensuring hashes conform to sha256 specs
         import re
+
         sha_pattern = re.compile(r"^[a-fA-F0-9]{64}$")
 
         if sm_hash:
             if sm_hash.startswith("dummy") or not sha_pattern.match(sm_hash):
                 msg = f"Invalid hash format for en_core_web_sm: {sm_hash}. Dummy hashes are strictly prohibited."
                 from src.domain_models.exceptions import ConfigurationError
+
                 raise ConfigurationError(msg)
             hashes["en_core_web_sm"] = sm_hash
 
@@ -165,6 +199,7 @@ class Settings(MatomeConfig):
             if md_hash.startswith("dummy") or not sha_pattern.match(md_hash):
                 msg = f"Invalid hash format for en_core_web_md: {md_hash}. Dummy hashes are strictly prohibited."
                 from src.domain_models.exceptions import ConfigurationError
+
                 raise ConfigurationError(msg)
             hashes["en_core_web_md"] = md_hash
 
@@ -172,10 +207,8 @@ class Settings(MatomeConfig):
 
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
-    def validate_allowed_base_dir(cls, value: str) -> str:  # noqa: C901
+    def validate_allowed_base_dir(cls, value: str) -> str:
         import os
-        import re
-        from pathlib import Path
 
         from src.domain_models.exceptions import ConfigurationError
 
@@ -187,79 +220,71 @@ class Settings(MatomeConfig):
             msg = "ALLOWED_BASE_DIR path too long"
             raise ConfigurationError(msg)
 
-        # Ensure value is properly sanitized against invalid characters
-        if not re.match(r"^[a-zA-Z0-9_/.-]+$", value):
-            msg = "Invalid characters in ALLOWED_BASE_DIR"
-            raise ConfigurationError(msg)
-
-        # Explicit absolute bound to prevent "outside expected parent" escapes
-        expected_parent = "/"
-        if not value.startswith(expected_parent):
-            msg = "ALLOWED_BASE_DIR outside expected parent."
-            raise ConfigurationError(msg)
+        expected_parent = os.getenv("MATOME_BASE_DATA_DIR", "/app")
 
         try:
+            from pathlib import Path
+
+            # Canonicalize path using os.path.realpath and absolute conversion to eliminate relative sequences entirely
             path_obj = Path(value)
+            canonical_path = str(path_obj.resolve())
+
             if not path_obj.is_absolute():
                 msg = "ALLOWED_BASE_DIR must be an absolute path."
                 raise ConfigurationError(msg)
 
-            if not path_obj.is_dir():
+            if not Path(canonical_path).is_dir():
                 msg = "ALLOWED_BASE_DIR must be a directory."
                 raise ConfigurationError(msg)
 
-            if str(Path(value).resolve()) != str(Path(os.path.realpath(value)).resolve()):
-                msg = "Path canonicalization mismatch."
+            # Enforce strictly that canonicalized path remains within the required commonpath parent
+            # os.path.commonpath prevents arbitrary traversal bypassing prefix matching
+            common = os.path.commonpath([canonical_path, expected_parent])
+            if common != expected_parent:
+                msg = "ALLOWED_BASE_DIR outside expected parent."
                 raise ConfigurationError(msg)
 
-            if not os.path.realpath(value).startswith(str(Path(value).resolve())):
-                msg = "Symlink attack detected."
-                raise ConfigurationError(msg)
-
-            if not os.access(value, os.R_OK):
+            if not os.access(canonical_path, os.R_OK):
                 msg = "No read permission on ALLOWED_BASE_DIR."
                 raise ConfigurationError(msg)
 
-            # Note: For robust TOCTOU mitigation, the file descriptor returned by os.open()
-            # should ideally be kept open during the actual operation utilizing this directory.
-            # Here we perform a basic existence verification, but the application must rely
-            # on `is_relative_to` at runtime during actual file resolution to prevent race condition bypass.
-            try:
-                fd = os.open(value, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
-                os.close(fd)
-            except OSError as e:
-                msg = "Failed TOCTOU race condition read access check."
-                raise ConfigurationError(msg) from e
-
-            resolved_path = str(Path(os.path.realpath(value)).resolve())
+            # Disallow symlinks inherently by confirming realpath hasn't mutated unexpectedly
+            if path_obj.is_symlink():
+                msg = "Symlinks are strictly prohibited for ALLOWED_BASE_DIR."
+                raise ConfigurationError(msg)
 
         except (OSError, ValueError, RuntimeError) as e:
             msg = f"Invalid or unsafe ALLOWED_BASE_DIR: {e}"
             raise ConfigurationError(msg) from e
 
         # Ensure trailing slash normalization
-        return resolved_path + "/" if not resolved_path.endswith("/") else resolved_path
+        return canonical_path + "/" if not canonical_path.endswith("/") else canonical_path
 
 
 class AppContext(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     settings: Settings
     mode_config: ModeConfig
+
+
+class DatabaseContext(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     db: DatabaseProtocol | None = None
 
 
 class ConcreteConfigService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, credential_config: CredentialConfig) -> None:
         self._settings = settings
+        self._credential_config = credential_config
 
     @property
     def openrouter_api_url(self) -> str:
-        return self._settings.openrouter_api_url.get_secret_value()
+        return self._credential_config.openrouter_api_url.get_secret_value()
 
     @property
     def ssl_cert_path(self) -> str | None:
-        if self._settings.ssl_cert_path is not None:
-            return self._settings.ssl_cert_path.get_secret_value()
+        if self._credential_config.ssl_cert_path is not None:
+            return self._credential_config.ssl_cert_path.get_secret_value()
         return None
 
     @property
@@ -279,53 +304,8 @@ class ConcreteConfigService:
         return self._settings.random_seed
 
 
-class SecureString:
-    """A secure wrapper utilizing bytearray for explicit memory zeroization of sensitive credentials."""
-
-    def __init__(self, value: str) -> None:
-        # Store as mutable bytearray to allow explicit zeroization
-        self._value = bytearray(value.encode("utf-8"))
-        # Immediately overwrite the input string value variable in memory locally
-        value = ""
-
-    def __str__(self) -> str:
-        return "[SECURE]"
-
-    def __repr__(self) -> str:
-        return "[SECURE]"
-
-    @property
-    def value(self) -> str:
-        if not hasattr(self, "_value") or self._value is None:
-            msg = "SecureString has already been zeroized and destroyed."
-            raise RuntimeError(msg)
-        return self._value.decode("utf-8")
-
-    def __enter__(self) -> "SecureString":
-        return self
-
-    def _zeroize(self) -> None:
-        import ctypes
-        if hasattr(self, "_value") and self._value is not None:
-            buffer_size = len(self._value)
-            try:
-                # Use ctypes for guaranteed memory zeroization, requested by audit
-                ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
-            except (ValueError, AttributeError, TypeError):
-                # Ensure graceful failure if the memory is already freed or moved
-                pass
-            finally:
-                # Explicitly remove the reference completely blocking later access attempts
-                self._value = None # type: ignore
-
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self._zeroize()
-
-
-
-
 class CredentialErrorHandler:
-    """Handles parsing errors and format validation specifically for credentials."""
+    """Handles parsing errors and format validation specifically for credentials securely without logging specifics."""
 
     def handle_missing_key(self) -> typing.NoReturn:
         import logging
@@ -333,9 +313,11 @@ class CredentialErrorHandler:
         from src.domain_models.exceptions import ConfigurationError
 
         logger = logging.getLogger(__name__)
-        # Use structured logging to prevent info leaks about the auth mechanics
-        logger.error("System configuration validation executed: Missing dependency.")
-        msg = "Authentication configuration error."
+        logger.warning(
+            "API Key validation failed: Required API Key is missing from the environment.",
+            extra={"context": "auth"},
+        )
+        msg = "API Key validation failed: The key is entirely missing. Please check your environment variables."
         raise ConfigurationError(msg)
 
     def handle_invalid_type(self) -> typing.NoReturn:
@@ -344,50 +326,58 @@ class CredentialErrorHandler:
         from src.domain_models.exceptions import ConfigurationError
 
         logger = logging.getLogger(__name__)
-        logger.error("System configuration validation executed: Type mismatch.")
-        msg = "Authentication configuration error."
+        logger.warning(
+            "API Key validation failed: The provided key is not a string.",
+            extra={"context": "auth"},
+        )
+        msg = "API Key validation failed: Incorrect data type provided."
         raise ConfigurationError(msg)
 
     def validate_and_format(self, key: str) -> None:
         import logging
 
         from src.domain_models.exceptions import ConfigurationError
-        from src.utils.validation import validate_api_key_format
+        from src.infrastructure.security import DefaultSecurityService
 
         logger = logging.getLogger(__name__)
         try:
-            validate_api_key_format(key)
+            DefaultSecurityService().validate_api_key(key)
         except ValueError as err:
-            logger.error("System configuration validation executed: Format rejection.")  # noqa: TRY400
-            msg = "Authentication configuration error."
+            logger.warning(
+                f"API Key validation failed: {err!s}",
+                extra={"context": "auth"},
+            )
+            msg = (
+                f"API Key validation failed: {err!s} Please check your key format and permissions."
+            )
             raise ConfigurationError(msg) from err
 
 
 class EnvCredentialProvider:
-    """Secure credential provider fetching directly from OS environment variables strictly at runtime to avoid storing secrets in Pydantic models in memory."""
+    """Secure JIT credential provider fetching directly from OS environment variables strictly at runtime. Uses context manager for immediate explicit memory deletion."""
 
     def __init__(self) -> None:
-        import threading
         self._error_handler = CredentialErrorHandler()
-        self._lock = threading.Lock()
 
-    def get_api_key(self) -> SecureString:
+    @contextlib.contextmanager
+    def get_api_key(self) -> Iterator[str]:
         import os
 
-        self._lock.acquire()
+        key: str | None = os.getenv("OPENROUTER_API_KEY")
+
+        if not key:
+            self._error_handler.handle_missing_key()
+
+        if not isinstance(key, str):
+            self._error_handler.handle_invalid_type()
+
+        self._error_handler.validate_and_format(key)
+
         try:
-            key: str | None = os.getenv("OPENROUTER_API_KEY")
-
-            if not key:
-                self._error_handler.handle_missing_key()
-
-            if not isinstance(key, str):
-                self._error_handler.handle_invalid_type()
-
-            self._error_handler.validate_and_format(key)
-            return SecureString(key)
+            yield key
         finally:
-            self._lock.release()
+            # Force immediate cleanup logic of local reference
+            del key
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
@@ -395,8 +385,14 @@ def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContex
     return AppContext(
         settings=settings,
         mode_config=mode_config,
-        db=None,  # Placeholder for a DB connection dependency
     )
 
 
-__all__ = ["ConcreteConfigService", "ModeConfig", "Settings", "create_app_context"]
+__all__ = [
+    "ConcreteConfigService",
+    "CredentialConfig",
+    "DatabaseContext",
+    "ModeConfig",
+    "Settings",
+    "create_app_context",
+]

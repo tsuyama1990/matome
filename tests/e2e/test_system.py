@@ -27,12 +27,11 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     factory = DocumentFactory()
     metadata_service = MetadataService()
 
-    from pydantic import SecretStr
+    import os
+
+    os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
+
     settings = IntegrationTestSettings(
-        openrouter_api_url=SecretStr("https://mock.api.url"),
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
         allowed_base_dir=str(tmp_path),
     )
 
@@ -48,9 +47,28 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
         max_file_size=settings.max_file_size,
         strategy=LangChainSplitterStrategy(),
     )
-    from src.infrastructure.services import EntityExtractorBuilder
+    from src.infrastructure.services import (
+        DefaultModelVerifier,
+        EntityExtractorBuilder,
+        EntityExtractorBuilderConfig,
+    )
+    from src.utils.rate_limit import RateLimiter
+
+    builder_config = EntityExtractorBuilderConfig(
+        spacy_model=settings.spacy_model,
+        trusted_models=settings.trusted_spacy_models,
+        trusted_hashes=settings.trusted_model_hashes,
+        fallback_ner_regex=settings.fallback_ner_regex,
+        max_model_signature_size=settings.max_model_signature_size,
+    )
     entity_extractor = EntityExtractorBuilder.build(
-        settings.spacy_model, settings.trusted_spacy_models, settings.trusted_model_hashes
+        builder_config=builder_config,
+        rate_limiter=RateLimiter(0.01),
+        model_verifier=DefaultModelVerifier(
+            set(settings.trusted_spacy_models),
+            settings.trusted_model_hashes,
+            settings.max_model_signature_size,
+        ),
     )
     clustering_service = DefaultClusteringService(settings.random_seed)
 

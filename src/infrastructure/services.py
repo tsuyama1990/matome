@@ -1,6 +1,7 @@
 import logging
 import re
 import typing
+from dataclasses import dataclass
 from typing import Any
 
 import requests
@@ -202,9 +203,6 @@ class DefaultModelVerifier(ModelVerifierProtocol):
             raise ValueError(msg) from e
 
 
-
-
-
 class EntityExtractorConfig:
     def __init__(self, spacy_model: str, fallback_ner_regex: str) -> None:
         self._spacy_model = spacy_model
@@ -219,45 +217,35 @@ class EntityExtractorConfig:
         return self._fallback_ner_regex
 
 
+@dataclass
+class EntityExtractorBuilderConfig:
+    spacy_model: str
+    trusted_models: list[str]
+    trusted_hashes: dict[str, str]
+    fallback_ner_regex: str
+    max_model_signature_size: int
+
+
 class EntityExtractorBuilder:
-    """Builder pattern ensuring backwards compatibility for container parameters and separating config from DI mappings."""
+    """Builder pattern separating config from DI mappings."""
+
     @staticmethod
     def build(
-        spacy_model: str,
-        trusted_models: list[str],
-        trusted_hashes: dict[str, str] | None = None,
-        fallback_ner_regex: str | None = None,
-        rate_limiter: RateLimiterProtocol | None = None,
+        builder_config: EntityExtractorBuilderConfig,
+        rate_limiter: RateLimiterProtocol,
+        model_verifier: ModelVerifierProtocol,
         nlp_service: NLPServiceProtocol | None = None,
-        max_model_signature_size: int | None = None,
-        model_verifier: ModelVerifierProtocol | None = None,
-        **kwargs: Any,  # noqa: ARG004
     ) -> "DefaultEntityExtractor":
-        import os
-
-        fallback = fallback_ner_regex or r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
-        config = EntityExtractorConfig(spacy_model=spacy_model, fallback_ner_regex=fallback)
-
-        from src.utils.rate_limit import RateLimiter
-        rate_limiter_inst = rate_limiter or RateLimiter(0.01)
-
-        max_sig_size = (
-            max_model_signature_size
-            if max_model_signature_size is not None
-            else int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800"))
-        )
-
-        verifier = model_verifier or DefaultModelVerifier(
-            trusted_models=set(trusted_models),
-            trusted_hashes=trusted_hashes or {},
-            max_model_signature_size=max_sig_size,
+        config = EntityExtractorConfig(
+            spacy_model=builder_config.spacy_model,
+            fallback_ner_regex=builder_config.fallback_ner_regex,
         )
 
         return DefaultEntityExtractor(
             config=config,
-            rate_limiter=rate_limiter_inst,
+            rate_limiter=rate_limiter,
             nlp_service=nlp_service,
-            model_verifier=verifier,
+            model_verifier=model_verifier,
         )
 
 
@@ -430,7 +418,7 @@ class RequestsHTTPClient(HTTPClientProtocol):
         self.ssl_cert_path = ssl_cert_path
         self.credential_provider = credential_provider
 
-    def post(  # noqa: C901, PLR0912
+    def post(
         self,
         url: str,
         json: dict[str, Any],
@@ -453,15 +441,9 @@ class RequestsHTTPClient(HTTPClientProtocol):
             if self.credential_provider:
                 # Fetch dynamically at the edge of the network request
                 with self.credential_provider.get_api_key() as secure_key:
-                    if hasattr(secure_key, "value"):
-                        final_headers["Authorization"] = f"Bearer {secure_key.value}"
-                    else:
-                        final_headers["Authorization"] = f"Bearer {secure_key}"
+                    final_headers["Authorization"] = f"Bearer {secure_key}"
             elif auth_token:
-                if hasattr(auth_token, "_value"):
-                    final_headers["Authorization"] = b"Bearer " + auth_token._value
-                else:
-                    final_headers["Authorization"] = f"Bearer {auth_token}"
+                final_headers["Authorization"] = f"Bearer {auth_token}"
 
             from pathlib import Path
 

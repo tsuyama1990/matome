@@ -3,6 +3,7 @@ from typing import Any
 from src.domain_models.interfaces import (
     AIClientConfigProtocol,
     AICommunicationClientProtocol,
+    AISecurityScannerProtocol,
     HTTPClientProtocol,
     RetryPolicyProtocol,
 )
@@ -29,6 +30,7 @@ class AIClientConfig:
 
 class AIClientFactory:
     """Factory to construct DefaultAICommunicationClient ensuring configuration inversion mapping."""
+
     @staticmethod
     def create(
         api_url: str,
@@ -36,13 +38,38 @@ class AIClientFactory:
         ai_timeout: int,
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
+        security_scanner: AISecurityScannerProtocol,
         **kwargs: Any,  # noqa: ARG004
     ) -> "DefaultAICommunicationClient":
+        import re
+
+        from src.domain_models.exceptions import ConfigurationError
+
+        if not api_url or not re.match(r"^https?://[\w.-]+", api_url):
+            msg = f"Invalid API URL configuration: {api_url}"
+            raise ConfigurationError(msg)
+
+        if ai_timeout <= 0 or ai_timeout > 300:
+            msg = f"Invalid AI timeout value: {ai_timeout}. Must be between 1 and 300 seconds."
+            raise ConfigurationError(msg)
+
+        import os
+
+        allowed_env = os.getenv(
+            "ALLOWED_AI_MODELS", "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
+        )
+        allowed_whitelist = {m.strip() for m in allowed_env.split(",") if m.strip()}
+
+        if not default_model or default_model.strip() not in allowed_whitelist:
+            msg = f"Invalid default_model configuration: {default_model}. Must be within verified allowlist."
+            raise ConfigurationError(msg)
+
         config = AIClientConfig(api_url=api_url, default_model=default_model, ai_timeout=ai_timeout)
         return DefaultAICommunicationClient(
             config=config,
             http_client=http_client,
             retry_policy=retry_policy,
+            security_scanner=security_scanner,
         )
 
 
@@ -54,6 +81,7 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         config: AIClientConfigProtocol,
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
+        security_scanner: AISecurityScannerProtocol,
     ) -> None:
         """
         Security context: Credentials are strictly maintained externally within the `http_client`
@@ -63,6 +91,7 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         self.config = config
         self.http_client = http_client
         self.retry_policy = retry_policy
+        self.security_scanner = security_scanner
 
     def rotate_credentials(self) -> None:
         """
@@ -76,6 +105,8 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         """Stub representing secure enclave handling of memory APIs."""
 
     def call_api(self, prompt: str, model: str | None = None) -> str:
+        safe_prompt = self.security_scanner.sanitize(prompt)
+
         def _execute() -> str:
             headers = {
                 "Content-Type": "application/json",
@@ -84,7 +115,7 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
             }
             data = {
                 "model": model or self.config.default_model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [{"role": "user", "content": safe_prompt}],
             }
 
             result = self.http_client.post(

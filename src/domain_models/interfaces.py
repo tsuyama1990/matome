@@ -6,6 +6,7 @@ from .manifest import ContentNode, IdentityNode, UserInteractionContext
 
 T = TypeVar("T")
 
+
 class ConfigService(Protocol):
     """Protocol for fetching application configuration using type-safe properties."""
 
@@ -34,24 +35,16 @@ class SecurityService(Protocol):
     def validate_api_key(self, api_key: str) -> str: ...
 
 
-class SecureStringProtocol(Protocol):
-    """Protocol representing a secure string."""
-
-    _value: bytearray
-
-    def __enter__(self) -> "SecureStringProtocol": ...
-    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None: ...
-
-
 class CredentialProviderProtocol(Protocol):
     """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
 
-    def get_api_key(self) -> SecureStringProtocol: ...
+    def get_api_key(self) -> Any: ...
 
 
 @runtime_checkable
 class DatabaseProtocol(Protocol):
     """Protocol representing a database connection or session."""
+
     def execute(self, query: str) -> Any: ...
     def close(self) -> None: ...
 
@@ -131,10 +124,12 @@ class NLPServiceProtocol(Protocol):
 
 class EntityExtractorConfigProtocol(Protocol):
     """Protocol for holding EntityExtractor configuration."""
+
     @property
     def spacy_model(self) -> str: ...
     @property
     def fallback_ner_regex(self) -> str: ...
+
 
 class EntityExtractorProtocol(Protocol):
     """Protocol for extracting entities from an iterator of text chunks."""
@@ -185,12 +180,14 @@ class AISecurityScannerProtocol(Protocol):
 
 class AIClientConfigProtocol(Protocol):
     """Protocol holding AI client configuration strings."""
+
     @property
     def api_url(self) -> str: ...
     @property
     def default_model(self) -> str: ...
     @property
     def ai_timeout(self) -> int: ...
+
 
 class AICommunicationClientProtocol(Protocol):
     """Protocol for communicating with AI models."""

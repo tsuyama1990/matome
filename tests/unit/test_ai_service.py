@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from src.application.ai import (
@@ -31,14 +33,13 @@ def _create_mock_settings(
     # Completely isolate tests from os.environ side-effects and avoid hardcoded secrets where unnecessary
     # Pass dynamically resolved secret or mock parameter directly to Settings constructor
     # Since pydantic validator catches invalid secrets, we can test validation behaviors here.
-    import os
 
     if api_key:
         os.environ["OPENROUTER_API_KEY"] = api_key
-    from pydantic import SecretStr
+
+    os.environ["MATOME_BASE_DATA_DIR"] = base_dir
 
     return Settings(
-        openrouter_api_url=SecretStr("https://mock.api.url"),
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
         multimodal_model=multimodal_model,
@@ -52,7 +53,14 @@ def _create_service(
     http_client: object = None,
     text_fast_model: str = "google/gemini-2.5-flash",
     text_reasoning_model: str = "deepseek/deepseek-reasoner",
-) -> tuple[DefaultSummaryService, DefaultQuestionService, DefaultDiagramService, DefaultDocumentGenerationService, DefaultWebGroundingService, DefaultEvaluationService]:
+) -> tuple[
+    DefaultSummaryService,
+    DefaultQuestionService,
+    DefaultDiagramService,
+    DefaultDocumentGenerationService,
+    DefaultWebGroundingService,
+    DefaultEvaluationService,
+]:
     from unittest.mock import MagicMock
 
     from src.config import EnvCredentialProvider
@@ -79,12 +87,14 @@ def _create_service(
     mock_http_client.credential_provider = provider  # type: ignore[attr-defined]
 
     from src.infrastructure.ai_client import AIClientFactory
+
     communication_client = AIClientFactory.create(
-        api_url=settings.openrouter_api_url.get_secret_value(),
+        api_url="https://mock.api.url",
         default_model=settings.text_fast_model,
         ai_timeout=settings.ai_timeout,
         http_client=mock_http_client,  # type: ignore
         retry_policy=DummyRetry(),
+        security_scanner=PromptInjectionScanner(threshold=0.9),
     )
     security_scanner = PromptInjectionScanner()
 
@@ -135,8 +145,8 @@ def test_default_ai_service_missing_key_init(
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(ConfigurationError):
-        EnvCredentialProvider().get_api_key()
+    with pytest.raises(ConfigurationError), EnvCredentialProvider().get_api_key():
+        pass
 
 
 def test_default_ai_service_invalid_key_length(
@@ -147,8 +157,11 @@ def test_default_ai_service_invalid_key_length(
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "123")
 
-    with pytest.raises(ConfigurationError, match="Authentication configuration error."):
-        EnvCredentialProvider().get_api_key()
+    with (
+        pytest.raises(ConfigurationError, match="API Key validation failed"),
+        EnvCredentialProvider().get_api_key(),
+    ):
+        pass
 
 
 def test_default_ai_service_invalid_key_format(
@@ -159,8 +172,11 @@ def test_default_ai_service_invalid_key_format(
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
 
-    with pytest.raises(ConfigurationError, match="Authentication configuration error."):
-        EnvCredentialProvider().get_api_key()
+    with (
+        pytest.raises(ConfigurationError, match="API Key validation failed"),
+        EnvCredentialProvider().get_api_key(),
+    ):
+        pass
 
 
 def test_default_ai_service_calls_generate_summary_valid(
