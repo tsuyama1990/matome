@@ -2,7 +2,7 @@ import os
 import typing
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.interfaces import CredentialFetcherProtocol
@@ -24,7 +24,9 @@ class ModeConfig(MatomeConfig):
 
 class CredentialConfig(MatomeConfig):
     """Dedicated configuration for handling security credentials separately from app settings."""
-
+    openrouter_api_key: SecretStr | None = Field(
+        default=None, description="OpenRouter API Key used for accessing AI Models"
+    )
 
 class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""

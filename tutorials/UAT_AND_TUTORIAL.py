@@ -27,7 +27,7 @@ def __():
     from src.infrastructure.orchestrator import PipelineConfig, PipelineDependencies
     from src.infrastructure.services import (
         DefaultClusteringService,
-        DefaultEntityExtractor,
+        EntityExtractorBuilder,
         DefaultTextSplitter,
         LangChainSplitterStrategy,
         RequestsHTTPClient,
@@ -55,7 +55,7 @@ def __():
         TenacityRetryPolicy,
         DefaultTextSplitter,
         LangChainSplitterStrategy,
-        DefaultEntityExtractor,
+        EntityExtractorBuilder,
         DefaultClusteringService,
         MetadataService,
         ValidationError,
@@ -79,7 +79,7 @@ def __(
     TenacityRetryPolicy,
     DefaultTextSplitter,
     LangChainSplitterStrategy,
-    DefaultEntityExtractor,
+    EntityExtractorBuilder,
     DefaultClusteringService,
     MetadataService,
     ValidationError,
@@ -144,8 +144,12 @@ def __(
         max_file_size=settings.max_file_size,
         strategy=LangChainSplitterStrategy(),
     )
-    entity_extractor = DefaultEntityExtractor(
-        settings.spacy_model, settings.trusted_spacy_models, settings.trusted_model_hashes
+    entity_extractor = EntityExtractorBuilder.build(
+        spacy_model=settings.spacy_model,
+        trusted_models=settings.trusted_spacy_models,
+        trusted_hashes=settings.trusted_model_hashes,
+        fallback_ner_regex=settings.fallback_ner_regex,
+        max_model_signature_size=settings.max_model_signature_size,
     )
     clustering_service = DefaultClusteringService(settings.random_seed)
 
