@@ -20,7 +20,7 @@ class SecurityService(Protocol):
 class CredentialProviderProtocol(Protocol):
     """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
 
-    def get_api_key(self) -> str: ...
+    def get_api_key(self) -> Any: ...
 
 
 class TransactionManager(Protocol):
@@ -65,6 +65,14 @@ class DiagramServiceProtocol(Protocol):
     def generate_mermaid_diagram(self, board: PivotBoard) -> str: ...
 
 
+class DocumentGenerationServiceProtocol(Protocol):
+    def generate_markdown_requirements(self, board: PivotBoard) -> str: ...
+
+
+class WebGroundingServiceProtocol(Protocol):
+    def verify_web_grounding(self, content: str) -> str: ...
+
+
 class EvaluationServiceProtocol(Protocol):
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
 
@@ -73,6 +81,8 @@ class AIServiceProtocol(
     SummaryServiceProtocol,
     QuestionServiceProtocol,
     DiagramServiceProtocol,
+    DocumentGenerationServiceProtocol,
+    WebGroundingServiceProtocol,
     EvaluationServiceProtocol,
     Protocol,
 ):
@@ -90,6 +100,12 @@ class TextSplitterProtocol(Protocol):
 
     def split_text(self, text: str) -> list[str]: ...
     def split_document(self, file_path: str) -> Iterator[str]: ...
+
+
+class NLPServiceProtocol(Protocol):
+    """Protocol for abstracting NLP operations."""
+
+    def extract_entities(self, text: str) -> list[tuple[str, str]]: ...
 
 
 class EntityExtractorProtocol(Protocol):
@@ -110,8 +126,26 @@ class HTTPClientProtocol(Protocol):
     """Protocol for sending HTTP requests."""
 
     def post(
-        self, url: str, json: dict[str, Any], headers: dict[str, str], timeout: int
+        self,
+        url: str,
+        json: dict[str, Any],
+        headers: dict[str, str],
+        timeout: int,
+        verify: bool | str = True,
+        auth_token: Any | None = None,
     ) -> dict[str, Any]: ...
+
+
+class AISecurityScannerProtocol(Protocol):
+    """Protocol for securing AI inputs against prompt injection."""
+
+    def sanitize(self, text: str | None) -> str: ...
+
+
+class AICommunicationClientProtocol(Protocol):
+    """Protocol for communicating with AI models."""
+
+    def call_api(self, prompt: str, model: str | None = None) -> str: ...
 
 
 class RetryPolicyProtocol(Protocol):

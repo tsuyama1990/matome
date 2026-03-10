@@ -6,10 +6,13 @@ app = marimo.App(width="medium")
 
 @app.cell
 def __():
+    import os
+
     import marimo as mo
+    from pydantic import ValidationError
 
     from src.application.ai import DefaultAIService
-    from src.config import Settings
+    from src.config import EnvCredentialProvider, Settings
     from src.domain_models import (
         DocumentFactory,
         NodeStatus,
@@ -19,7 +22,17 @@ def __():
         PivotBoardViewNode,
         UserInteractionContext,
     )
+    from src.domain_models.services import MetadataService
     from src.infrastructure import InMemoryDocumentRepository, PipelineOrchestrator
+    from src.infrastructure.orchestrator import PipelineConfig, PipelineDependencies
+    from src.infrastructure.services import (
+        DefaultClusteringService,
+        DefaultEntityExtractor,
+        DefaultTextSplitter,
+        LangChainSplitterStrategy,
+        RequestsHTTPClient,
+        TenacityRetryPolicy,
+    )
     from tests.helpers.mocks import MockAIService
 
     return (
@@ -35,7 +48,19 @@ def __():
         PivotBoardViewNode,
         Settings,
         UserInteractionContext,
+        EnvCredentialProvider,
+        PipelineDependencies,
+        PipelineConfig,
+        RequestsHTTPClient,
+        TenacityRetryPolicy,
+        DefaultTextSplitter,
+        LangChainSplitterStrategy,
+        DefaultEntityExtractor,
+        DefaultClusteringService,
+        MetadataService,
+        ValidationError,
         mo,
+        os,
     )
 
 
@@ -47,25 +72,99 @@ def __(
     MockAIService,
     PipelineOrchestrator,
     Settings,
+    EnvCredentialProvider,
+    PipelineDependencies,
+    PipelineConfig,
+    RequestsHTTPClient,
+    TenacityRetryPolicy,
+    DefaultTextSplitter,
+    LangChainSplitterStrategy,
+    DefaultEntityExtractor,
+    DefaultClusteringService,
+    MetadataService,
+    ValidationError,
     mo,
+    os,
 ):
     mo.md("# matome: Frictionless Active Learning Tutorial")
 
-    settings = Settings()
+    # Mock environment configuration for tutorial purposes
+    tutorial_env = {
+        "OPENROUTER_API_URL": "https://openrouter.ai/api/v1/chat/completions",
+        "TEXT_FAST_MODEL": "google/gemini-2.5-flash",
+        "TEXT_REASONING_MODEL": "deepseek/deepseek-reasoner",
+        "MULTIMODAL_MODEL": "openai/gpt-4o",
+        "ALLOWED_BASE_DIR": os.environ.get("ALLOWED_BASE_DIR", str(os.path.abspath(os.getcwd()))),
+    }
+    for k, v in tutorial_env.items():
+        if k not in os.environ:
+            os.environ[k] = v
+
+    try:
+        settings = Settings()
+        api_key = (
+            settings.credentials.openrouter_api_key.get_secret_value()
+            if settings.credentials.openrouter_api_key
+            else None
+        )
+        has_real_key = True
+    except ValidationError:
+        # Fallback for completely isolated test environments
+        os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-mock-key-for-tutorial-purposes-123"
+        settings = Settings()
+        api_key = None
+        has_real_key = False
+
     repo = InMemoryDocumentRepository()
 
-    # Conditional AI service initialization based on environment config
-    api_key = settings.openrouter_api_key if settings.openrouter_api_key else None
-
-    if api_key:
-        ai = DefaultAIService(api_key=api_key, model=settings.text_fast_model)
+    if has_real_key and api_key and not api_key.startswith("sk-or-v1-mock-key"):
+        provider = EnvCredentialProvider(settings.credentials)
+        http_client = RequestsHTTPClient()
+        retry_policy = TenacityRetryPolicy()
+        ai = DefaultAIService(
+            credential_provider=provider,
+            api_url=settings.openrouter_api_url,
+            text_fast_model=settings.text_fast_model,
+            text_reasoning_model=settings.text_reasoning_model,
+            ai_timeout=settings.ai_timeout,
+            http_client=http_client,
+            retry_policy=retry_policy,
+        )
         mode_text = "Real AI Integration Mode (OpenRouter active)."
     else:
         ai = MockAIService()
         mode_text = "Mock Mode (No OpenRouter key found. Running with mock AI logic)."
 
     factory = DocumentFactory()
-    orchestrator = PipelineOrchestrator(doc_repo=repo, ai_service=ai, doc_factory=factory)
+    metadata_service = MetadataService()
+
+    text_splitter = DefaultTextSplitter(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+        max_file_size=settings.max_file_size,
+        strategy=LangChainSplitterStrategy(),
+    )
+    entity_extractor = DefaultEntityExtractor(
+        settings.spacy_model, settings.trusted_spacy_models, settings.trusted_model_hashes
+    )
+    clustering_service = DefaultClusteringService(settings.random_seed)
+
+    deps = PipelineDependencies(
+        doc_repo=repo,
+        transaction_manager=repo,
+        summary_service=ai,
+        question_service=ai,
+        doc_factory=factory,
+        metadata_service=metadata_service,
+        text_splitter=text_splitter,
+        entity_extractor=entity_extractor,
+        clustering_service=clustering_service,
+    )
+    config = PipelineConfig(
+        pipeline_timeout=settings.pipeline_timeout, raptor_max_clusters=settings.raptor_max_clusters
+    )
+
+    orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
 
     mo.md(f"System initialized successfully in: **{mode_text}**")
     return ai, factory, orchestrator, repo, settings
@@ -78,26 +177,27 @@ def __(PipelineContext, orchestrator, repo, settings, mo):
     context = PipelineContext(root_doc_id=settings.default_root_doc_id, content=content)
     orchestrator.run_pipeline(context)
 
-    root_node = repo.get_node(settings.default_root_doc_id)
-    mo.md(f"Document Ingested! Root Node Title: **{root_node.title}**")
-    return content, context, root_node
+    identity_node = repo.get_identity(settings.default_root_doc_id)
+    content_node = repo.get_content(settings.default_root_doc_id)
+    mo.md(f"Document Ingested! Root Node Title: **{identity_node.title}**")
+    return content, context, identity_node, content_node
 
 
 @app.cell
-def __(ai, root_node, mo):
+def __(ai, identity_node, content_node, mo):
     mo.md("## Step 2: Interaction (SQ3R)")
-    question = ai.generate_question(root_node)
+    question = ai.generate_question(identity_node, content_node)
     mo.md(f"**AI Tutor asks:** {question}")
     return (question,)
 
 
 @app.cell
-def __(NodeStatus, UserInteractionContext, ai, root_node, mo):
+def __(NodeStatus, UserInteractionContext, ai, identity_node, content_node, mo):
     mo.md("### User attempts to answer")
     user_answer = "Executive approval is needed if budget > 5000."
     interaction = UserInteractionContext(
-        node_id=root_node.id,
-        status=root_node.status,
+        node_id=identity_node.id,
+        status=identity_node.status,
         question_asked="What is the key point of Business Manual?",
         user_answer=user_answer,
     )
@@ -105,8 +205,8 @@ def __(NodeStatus, UserInteractionContext, ai, root_node, mo):
     success, feedback = ai.evaluate_answer(interaction)
 
     if success:
-        root_node.status = NodeStatus.UNLOCKED
-        result_md = f"**Result:** {feedback} Node Unlocked! Summary: {root_node.content.summary}"
+        identity_node.status = NodeStatus.UNLOCKED
+        result_md = f"**Result:** {feedback} Node Unlocked! Summary: {content_node.summary}"
     else:
         result_md = f"**Result:** {feedback} Try again."
 
@@ -115,16 +215,16 @@ def __(NodeStatus, UserInteractionContext, ai, root_node, mo):
 
 
 @app.cell
-def __(PivotAxis, PivotBoard, PivotBoardViewNode, ai, root_node, mo):
+def __(PivotAxis, PivotBoard, PivotBoardViewNode, ai, identity_node, mo):
     mo.md("## Step 3: Pivot KJ Analysis")
 
     board = PivotBoard(
         id="board_1",
-        original_root_id=root_node.id,
+        original_root_id=identity_node.id,
         axis=PivotAxis.ACTOR_STATE,
         nodes=[
             PivotBoardViewNode(
-                node_id=root_node.id, x_position=0.1, y_position=0.2, cluster_id="cluster_1"
+                node_id=identity_node.id, x_position=0.1, y_position=0.2, cluster_id="cluster_1"
             )
         ],
     )

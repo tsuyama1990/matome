@@ -19,8 +19,12 @@ from tests.helpers.mocks import MockAIService
 def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineConfig]:
     from unittest.mock import MagicMock
 
+    from src.config import CredentialConfig
+
     settings = Settings(
-        openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
+        credentials=CredentialConfig(
+            openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890")
+        ),
         openrouter_api_url="https://mock.api.url",
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",

@@ -1,13 +1,11 @@
 from src.domain_models import (
     AIServiceProtocol,
     ContentNode,
-    CredentialProviderProtocol,
-    HTTPClientProtocol,
     IdentityNode,
     PivotBoard,
-    RetryPolicyProtocol,
     UserInteractionContext,
 )
+from src.domain_models.interfaces import AICommunicationClientProtocol, AISecurityScannerProtocol
 
 
 class DefaultAIService(AIServiceProtocol):
@@ -15,58 +13,52 @@ class DefaultAIService(AIServiceProtocol):
 
     def __init__(
         self,
-        credential_provider: "CredentialProviderProtocol",
-        api_url: str,
+        security_scanner: AISecurityScannerProtocol,
+        communication_client: AICommunicationClientProtocol,
         text_fast_model: str,
         text_reasoning_model: str,
-        ai_timeout: int,
-        http_client: HTTPClientProtocol,
-        retry_policy: RetryPolicyProtocol,
     ) -> None:
-        self.http_client = http_client
-        self.retry_policy = retry_policy
-        self.api_url = api_url
+        self.security_scanner = security_scanner
+        self.communication_client = communication_client
         self.text_fast_model = text_fast_model
         self.text_reasoning_model = text_reasoning_model
-        self.ai_timeout = ai_timeout
-        self.credential_provider = credential_provider
-
-    def _call_api(self, prompt: str, model: str | None = None) -> str:
-        def _execute() -> str:
-            headers = {
-                "Authorization": f"Bearer {self.credential_provider.get_api_key()}",
-                "Content-Type": "application/json",
-            }
-            data = {
-                "model": model or self.text_fast_model,
-                "messages": [{"role": "user", "content": prompt}],
-            }
-            result = self.http_client.post(
-                self.api_url,
-                json=data,
-                headers=headers,
-                timeout=self.ai_timeout,
-            )
-            return str(result["choices"][0]["message"]["content"])
-
-        return str(self.retry_policy.execute(_execute))
 
     def generate_summary(self, content: str) -> str:
-        prompt = (
-            f"Summarize the following content comprehensively using Chain of Density:\n\n{content}"
-        )
-        return self._call_api(prompt, model=self.text_fast_model)
+        safe_content = self.security_scanner.sanitize(content)
+        prompt = f"Summarize the following content comprehensively using Chain of Density:\n\n{safe_content}"
+        return self.communication_client.call_api(prompt, model=self.text_fast_model)
 
     def generate_question(self, identity: IdentityNode, content: ContentNode) -> str:
-        prompt = f"Generate an engaging SQ3R question for the following content node:\n\n{identity.title}\n{content.summary}"
-        return self._call_api(prompt, model=self.text_fast_model)
+        safe_title = self.security_scanner.sanitize(identity.title)
+        safe_summary = self.security_scanner.sanitize(content.summary)
+        prompt = f"Generate an engaging SQ3R question for the following content node:\n\n{safe_title}\n{safe_summary}"
+        return self.communication_client.call_api(prompt, model=self.text_fast_model)
 
     def generate_mermaid_diagram(self, board: PivotBoard) -> str:
-        prompt = f"Generate a Mermaid.js diagram based on this structure: {board.id} with axis {board.axis}"
-        return self._call_api(prompt, model=self.text_reasoning_model)
+        safe_id = self.security_scanner.sanitize(str(board.id))
+        safe_axis = self.security_scanner.sanitize(
+            str(board.axis.value if hasattr(board.axis, "value") else board.axis)
+        )
+        prompt = f"Generate a Mermaid.js diagram based on this structure: {safe_id} with axis {safe_axis}"
+        return self.communication_client.call_api(prompt, model=self.text_reasoning_model)
+
+    def generate_markdown_requirements(self, board: PivotBoard) -> str:
+        safe_id = self.security_scanner.sanitize(str(board.id))
+        safe_axis = self.security_scanner.sanitize(
+            str(board.axis.value if hasattr(board.axis, "value") else board.axis)
+        )
+        prompt = f"Generate a detailed Markdown Requirements Document (PRD) based on this structure: {safe_id} structured along axis {safe_axis}."
+        return self.communication_client.call_api(prompt, model=self.text_reasoning_model)
+
+    def verify_web_grounding(self, content: str) -> str:
+        safe_content = self.security_scanner.sanitize(content)
+        prompt = f"Cross-reference the following logic with modern SaaS best practices and web facts. Highlight any biases or outdated practices:\n\n{safe_content}"
+        return self.communication_client.call_api(prompt, model=self.text_reasoning_model)
 
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]:
-        prompt = f"Evaluate this user answer: '{context.user_answer}' for the question: '{context.question_asked}'. Is it basically correct? Start with YES or NO."
-        response = self._call_api(prompt, model=self.text_reasoning_model)
+        safe_answer = self.security_scanner.sanitize(context.user_answer)
+        safe_question = self.security_scanner.sanitize(context.question_asked)
+        prompt = f"Evaluate this user answer: '{safe_answer}' for the question: '{safe_question}'. Is it basically correct? Start with YES or NO."
+        response = self.communication_client.call_api(prompt, model=self.text_reasoning_model)
         is_correct = response.strip().upper().startswith("YES")
         return is_correct, response
