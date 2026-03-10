@@ -102,11 +102,7 @@ def __(
 
     try:
         settings = Settings()
-        api_key = (
-            settings.credentials.openrouter_api_key.get_secret_value()
-            if settings.credentials.openrouter_api_key
-            else None
-        )
+        api_key = os.environ.get("OPENROUTER_API_KEY")
         has_real_key = bool(api_key)
     except ValidationError:
         # Avoid providing fallback dummy keys altogether based on security audit request.
@@ -120,7 +116,7 @@ def __(
     repo = InMemoryDocumentRepository()
 
     if has_real_key and api_key:
-        provider = EnvCredentialProvider(settings.credentials)
+        provider = EnvCredentialProvider()
         http_client = RequestsHTTPClient()
         retry_policy = TenacityRetryPolicy()
         ai = DefaultAIService(

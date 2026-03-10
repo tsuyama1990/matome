@@ -41,8 +41,86 @@ def build_app(
 
 def get_di_container(settings: Settings) -> Any:
     from src.infrastructure.container import ProductionDIContainer
+    from src.application.ai import DefaultAIService
+    from src.config import EnvCredentialProvider
+    from src.domain_models.services import DocumentFactory, MetadataService
+    from src.infrastructure import InMemoryDocumentRepository
+    from src.infrastructure.orchestrator import PipelineConfig, PipelineDependencies
+    from src.infrastructure.security import PromptInjectionScanner
+    from src.infrastructure.services import (
+        DefaultClusteringService,
+        DefaultTextSplitter,
+        LangChainSplitterStrategy,
+        RequestsHTTPClient,
+        TenacityRetryPolicy,
+    )
 
-    return ProductionDIContainer(settings)
+    repo = InMemoryDocumentRepository()
+    ssl_path = settings.ssl_cert_path.get_secret_value() if settings.ssl_cert_path else None
+    http_client = RequestsHTTPClient(ssl_cert_path=ssl_path)
+    retry_policy = TenacityRetryPolicy(
+        ai_retry_attempts=settings.ai_retry_attempts,
+        ai_retry_min_wait=settings.ai_retry_min_wait,
+        ai_retry_max_wait=settings.ai_retry_max_wait,
+    )
+    credential_provider = EnvCredentialProvider()
+    security_scanner = PromptInjectionScanner()
+
+    from src.infrastructure.ai_client import AIClientFactory
+    communication_client = AIClientFactory.create(
+        api_url=settings.openrouter_api_url.get_secret_value(),
+        default_model=settings.text_fast_model,
+        ai_timeout=settings.ai_timeout,
+        http_client=http_client,
+        retry_policy=retry_policy,
+    )
+
+    ai = DefaultAIService(
+        security_scanner=security_scanner,
+        communication_client=communication_client,
+        text_fast_model=settings.text_fast_model,
+        text_reasoning_model=settings.text_reasoning_model,
+    )
+
+    factory = DocumentFactory()
+    metadata_service = MetadataService()
+
+    text_splitter = DefaultTextSplitter(
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+        max_file_size=settings.max_file_size,
+        strategy=LangChainSplitterStrategy(),
+    )
+
+    from src.infrastructure.services import EntityExtractorBuilder
+    from src.utils.rate_limit import RateLimiter
+
+    entity_extractor = EntityExtractorBuilder.build(
+        spacy_model=settings.spacy_model,
+        trusted_models=settings.trusted_spacy_models,
+        trusted_hashes=settings.trusted_model_hashes,
+        fallback_ner_regex=settings.fallback_ner_regex,
+        rate_limiter=RateLimiter(settings.entity_extraction_rate_limit),
+    )
+    clustering_service = DefaultClusteringService(settings.random_seed)
+
+    deps = PipelineDependencies(
+        doc_repo=repo,
+        transaction_manager=repo,
+        summary_service=ai,
+        question_service=ai,
+        doc_factory=factory,
+        metadata_service=metadata_service,
+        text_splitter=text_splitter,
+        entity_extractor=entity_extractor,
+        clustering_service=clustering_service,
+    )
+    config = PipelineConfig(
+        pipeline_timeout=settings.pipeline_timeout,
+        raptor_max_clusters=settings.raptor_max_clusters,
+    )
+
+    return ProductionDIContainer(dependencies=deps, config=config)
 
 
 def main() -> None:

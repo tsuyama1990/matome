@@ -22,13 +22,8 @@ class ModeConfig(MatomeConfig):
     )
 
 
-class CredentialConfig(MatomeConfig):
-    """Configuration class. Removed API keys to prevent memory dumps; use EnvCredentialProvider directly."""
-
 class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""
-
-    credentials: CredentialConfig = Field(default_factory=CredentialConfig)
 
     openrouter_api_url: SecretStr = Field(
         ...,
@@ -269,15 +264,17 @@ class SecureString:
         import ctypes
         if hasattr(self, "_value") and self._value is not None:
             buffer_size = len(self._value)
-            # Use ctypes for guaranteed memory zeroization, requested by audit
-            ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
-            # Explicitly remove the reference
-            self._value = None # type: ignore
+            try:
+                # Use ctypes for guaranteed memory zeroization, requested by audit
+                ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
+            except (ValueError, AttributeError, TypeError):
+                # Ensure graceful failure if the memory is already freed or moved
+                pass
+            finally:
+                # Explicitly remove the reference
+                self._value = None # type: ignore
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self._zeroize()
-
-    def __del__(self) -> None:
         self._zeroize()
 
 
@@ -325,23 +322,25 @@ class CredentialErrorHandler:
 class EnvCredentialProvider:
     """Secure credential provider fetching directly from OS environment variables strictly at runtime to avoid storing secrets in Pydantic models in memory."""
 
-    def __init__(self, credential_config: CredentialConfig | None = None) -> None:
-        # credential_config is kept for backward compatibility but is no longer used to store keys
-        self._config = credential_config
+    def __init__(self) -> None:
+        import threading
         self._error_handler = CredentialErrorHandler()
+        self._lock = threading.Lock()
 
     def get_api_key(self) -> SecureString:
         import os
-        key: str | None = os.getenv("OPENROUTER_API_KEY")
 
-        if not key:
-            self._error_handler.handle_missing_key()
+        with self._lock:
+            key: str | None = os.getenv("OPENROUTER_API_KEY")
 
-        if not isinstance(key, str):
-            self._error_handler.handle_invalid_type()
+            if not key:
+                self._error_handler.handle_missing_key()
 
-        self._error_handler.validate_and_format(key)
-        return SecureString(key)
+            if not isinstance(key, str):
+                self._error_handler.handle_invalid_type()
+
+            self._error_handler.validate_and_format(key)
+            return SecureString(key)
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:

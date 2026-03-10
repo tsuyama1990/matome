@@ -110,18 +110,6 @@ class EvaluationServiceProtocol(Protocol):
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
 
 
-class AIServiceProtocol(
-    SummaryServiceProtocol,
-    QuestionServiceProtocol,
-    DiagramServiceProtocol,
-    DocumentGenerationServiceProtocol,
-    WebGroundingServiceProtocol,
-    EvaluationServiceProtocol,
-    Protocol,
-):
-    """Aggregate protocol for backward compatibility or cases where all are needed."""
-
-
 class SplitterStrategyProtocol(Protocol):
     """Protocol for the underlying strategy used to split text into list of chunks."""
 

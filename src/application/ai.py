@@ -1,14 +1,29 @@
 from src.domain_models import (
-    AIServiceProtocol,
     ContentNode,
     IdentityNode,
     PivotBoard,
     UserInteractionContext,
 )
-from src.domain_models.interfaces import AICommunicationClientProtocol, AISecurityScannerProtocol
+from src.domain_models.interfaces import (
+    AICommunicationClientProtocol,
+    AISecurityScannerProtocol,
+    DiagramServiceProtocol,
+    DocumentGenerationServiceProtocol,
+    EvaluationServiceProtocol,
+    QuestionServiceProtocol,
+    SummaryServiceProtocol,
+    WebGroundingServiceProtocol,
+)
 
 
-class DefaultAIService(AIServiceProtocol):
+class DefaultAIService(
+    SummaryServiceProtocol,
+    QuestionServiceProtocol,
+    DiagramServiceProtocol,
+    DocumentGenerationServiceProtocol,
+    WebGroundingServiceProtocol,
+    EvaluationServiceProtocol
+):
     """Application-level AI orchestrator. Dispatches requests to external infrastructure."""
 
     def __init__(

@@ -28,11 +28,9 @@ def _create_mock_settings(
 
     if api_key:
         os.environ["OPENROUTER_API_KEY"] = api_key
-    from src.config import CredentialConfig
     from pydantic import SecretStr
 
     return Settings(
-        credentials=CredentialConfig(),
         openrouter_api_url=SecretStr("https://mock.api.url"),
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
@@ -59,7 +57,7 @@ def _create_service(
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
     )
-    provider = EnvCredentialProvider(settings.credentials)
+    provider = EnvCredentialProvider()
 
     mock_http_client = http_client or MagicMock()
 

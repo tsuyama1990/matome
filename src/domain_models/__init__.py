@@ -10,7 +10,6 @@ from .exceptions import (
     RepositoryError,
 )
 from .interfaces import (
-    AIServiceProtocol,
     ClusteringServiceProtocol,
     ConfigService,
     CredentialProviderProtocol,
@@ -44,7 +43,6 @@ from .types import CanvasNodeType, DIKWLevel, NodeID
 __all__ = [
     "AIProcessingMetadata",
     "AIServiceError",
-    "AIServiceProtocol",
     "BestPracticeData",
     "CanvasNodeType",
     "ClusteringServiceProtocol",
