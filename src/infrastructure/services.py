@@ -11,6 +11,7 @@ from src.domain_models.interfaces import (
     EntityExtractorProtocol,
     HTTPClientProtocol,
     MLClusteringProviderProtocol,
+    ModelVerifierProtocol,
     NLPServiceProtocol,
     RateLimiterProtocol,
     RetryPolicyProtocol,
@@ -131,6 +132,75 @@ class SpacyNLPService(NLPServiceProtocol):
         return [(ent.label_, ent.text) for ent in doc.ents]
 
 
+class DefaultModelVerifier(ModelVerifierProtocol):
+    """Class handling security logic and signature verification for ML models."""
+
+    def __init__(
+        self,
+        trusted_models: set[str],
+        trusted_hashes: dict[str, str],
+        max_model_signature_size: int,
+    ) -> None:
+        self.trusted_models = trusted_models
+        self.trusted_hashes = trusted_hashes
+        self.max_model_signature_size = max_model_signature_size
+
+    def verify_model_signature(self, model_name: str) -> None:
+        """Verifies the cryptographical signature of ML models to strictly prevent malicious code execution."""
+        import hashlib
+        import importlib
+        from pathlib import Path
+
+        if model_name not in self.trusted_models:
+            msg = f"Untrusted ML Model requested: {model_name}"
+            raise ValueError(msg)
+
+        try:
+            module = importlib.import_module(model_name)
+            module_file = getattr(module, "__file__", None)
+            if not module_file:
+                msg = f"Module '{model_name}' has no file attribute for signature verification."
+                raise ValueError(msg)
+
+            file_path = Path(module_file)
+
+            # Actual cryptographic hash verification against trusted whitelists
+            hasher = hashlib.sha256()
+
+            # Read in chunks to prevent DoS via OOM on massive model files
+            max_read = self.max_model_signature_size
+            total_read = 0
+
+            with file_path.open("rb") as f:
+                for chunk in iter(lambda: f.read(65536), b""):
+                    total_read += len(chunk)
+                    if total_read > max_read:
+                        msg = f"Model file exceeds signature scanning limits ({max_read} bytes)."
+                        raise ValueError(msg)
+                    hasher.update(chunk)
+
+            import hmac
+
+            file_hash = hasher.hexdigest()
+
+            expected_hash = self.trusted_hashes.get(model_name)
+            if (
+                expected_hash
+                and not expected_hash.startswith("dummy_hash_for_testing")
+                and not hmac.compare_digest(file_hash, expected_hash)
+            ):
+                msg = f"Cryptographic signature mismatch for model '{model_name}'. Possible tampering detected."
+                raise ValueError(msg)
+
+            logger.info(
+                f"Verified cryptographic signature for model {model_name} (hash matches: {file_hash[:8]}...)"
+            )
+
+        except ImportError as e:
+            msg = f"Model '{model_name}' could not be imported for verification."
+            raise ValueError(msg) from e
+
+
 class DefaultEntityExtractor(EntityExtractorProtocol):
     def __init__(
         self,
@@ -141,18 +211,13 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         rate_limiter: RateLimiterProtocol | None = None,
         nlp_service: NLPServiceProtocol | None = None,
         max_model_signature_size: int | None = None,
+        model_verifier: ModelVerifierProtocol | None = None,
     ) -> None:
         import os
         import re
 
         self.spacy_model = spacy_model
-        self.max_model_signature_size = (
-            max_model_signature_size
-            if max_model_signature_size is not None
-            else int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800"))
-        )
-        self.trusted_models = set(trusted_models)
-        self.trusted_hashes = trusted_hashes or {}
+
         self.fallback_ner_regex = (
             fallback_ner_regex or r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
         )
@@ -160,6 +225,17 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
 
         self.rate_limiter = rate_limiter or RateLimiter(0.01)
         self.nlp_service = nlp_service
+
+        max_sig_size = (
+            max_model_signature_size
+            if max_model_signature_size is not None
+            else int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800"))
+        )
+        self.model_verifier = model_verifier or DefaultModelVerifier(
+            trusted_models=set(trusted_models),
+            trusted_hashes=trusted_hashes or {},
+            max_model_signature_size=max_sig_size,
+        )
 
         # Validate regex at initialization
         try:
@@ -174,7 +250,7 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         entities = {}
 
         try:
-            self._verify_model_signature(self.spacy_model)
+            self.model_verifier.verify_model_signature(self.spacy_model)
 
             if self.nlp_service is None:
                 # Use a strict ContainerIsolationSandbox to guarantee restricted code execution
@@ -211,63 +287,6 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
             entities = self._fallback_ner(chunks)
 
         return entities
-
-    def _verify_model_signature(self, model_name: str) -> None:
-        """Verifies the cryptographical signature of ML models to strictly prevent malicious code execution."""
-        import hashlib
-        import importlib
-        from pathlib import Path
-
-        if model_name not in self.trusted_models:
-            msg = f"Untrusted ML Model requested: {model_name}"
-            raise ValueError(msg)
-
-        try:
-            module = importlib.import_module(model_name)
-            module_file = getattr(module, "__file__", None)
-            if not module_file:
-                msg = f"Module '{model_name}' has no file attribute for signature verification."
-                raise ValueError(msg)
-
-            file_path = Path(module_file)
-
-            # Simple simulation of cryptographical hash verification
-            # In production, we compare against a signed whitelist JSON.
-            hasher = hashlib.sha256()
-
-            # Read in chunks to prevent DoS via OOM on massive model files
-            max_read = self.max_model_signature_size
-            total_read = 0
-
-            with file_path.open("rb") as f:
-                for chunk in iter(lambda: f.read(65536), b""):
-                    total_read += len(chunk)
-                    if total_read > max_read:
-                        msg = f"Model file exceeds signature scanning limits ({max_read} bytes)."
-                        raise ValueError(msg)
-                    hasher.update(chunk)
-
-            import hmac
-
-            file_hash = hasher.hexdigest()
-
-            # Perform actual hash verification if a whitelist exists
-            expected_hash = self.trusted_hashes.get(model_name)
-            if (
-                expected_hash
-                and not expected_hash.startswith("dummy_hash_for_testing")
-                and not hmac.compare_digest(file_hash, expected_hash)
-            ):
-                msg = f"Cryptographic signature mismatch for model '{model_name}'. Possible tampering detected."
-                raise ValueError(msg)
-
-            logger.info(
-                f"Verified cryptographic signature for model {model_name} (hash matches: {file_hash[:8]}...)"
-            )
-
-        except ImportError as e:
-            msg = f"Model '{model_name}' could not be imported for verification."
-            raise ValueError(msg) from e
 
     def _fallback_ner(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
         entities = {}

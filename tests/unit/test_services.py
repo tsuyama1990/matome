@@ -127,7 +127,7 @@ def test_default_entity_extractor_valid_spacy(monkeypatch: pytest.MonkeyPatch) -
     def mock_verify(*args: object, **kwargs: object) -> None:
         pass
 
-    monkeypatch.setattr(extractor, "_verify_model_signature", mock_verify)
+    monkeypatch.setattr(extractor.model_verifier, "verify_model_signature", mock_verify)
 
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
     entities = extractor.extract_entities(chunks)

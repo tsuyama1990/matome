@@ -32,6 +32,12 @@ class CredentialProviderProtocol(Protocol):
     def get_api_key(self) -> SecureStringProtocol: ...
 
 
+class CredentialFetcherProtocol(Protocol):
+    """Protocol for abstract fetchers retrieving tokens from Env, Vault, etc."""
+
+    def __call__(self) -> str | None: ...
+
+
 class TransactionManager(Protocol):
     """Protocol for handling transaction lifecycle operations."""
 
@@ -136,6 +142,12 @@ class MLClusteringProviderProtocol(Protocol):
 
     def get_vectorizer(self) -> Any: ...
     def get_clusterer(self, max_clusters: int, random_seed: int) -> Any: ...
+
+
+class ModelVerifierProtocol(Protocol):
+    """Protocol for cryptographic signature validation of ML models."""
+
+    def verify_model_signature(self, model_name: str) -> None: ...
 
 
 class HTTPClientProtocol(Protocol):

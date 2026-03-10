@@ -243,7 +243,7 @@ def test_pipeline_orchestrator_validate_length(tmp_path: pytest.TempPathFactory)
     def mock_execute(ctx: PipelineContext) -> tuple[typing.Iterator[str], str]:
         return iter([]), "A" * (orchestrator.deps.doc_factory.max_content_length + 1)
 
-    orchestrator.ingestion_orchestrator.execute = mock_execute  # type: ignore[method-assign,assignment]
+    orchestrator.ingestion_orchestrator.execute = mock_execute
 
     with pytest.raises(RuntimeError):
         orchestrator.run_pipeline(ctx)

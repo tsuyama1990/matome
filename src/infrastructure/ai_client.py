@@ -1,6 +1,7 @@
+from typing import Any
+
 from src.domain_models.interfaces import (
     AICommunicationClientProtocol,
-    CredentialProviderProtocol,
     HTTPClientProtocol,
     RetryPolicyProtocol,
 )
@@ -11,15 +12,18 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
 
     def __init__(
         self,
-        credential_provider: CredentialProviderProtocol,
         api_url: str,
         default_model: str,
         ai_timeout: int,
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
+        **kwargs: Any,
     ) -> None:
-        # Credential provider must be accepted but not stored in long-term memory.
-        # Instead, it is attached to secure enclaves if available, handled transparently by the configured HTTP client.
+        """
+        Security context: Credentials are strictly maintained externally within the `http_client`
+        secure JIT extraction loop. The AI client itself explicitly guarantees no key materials are
+        persisted or logged in memory.
+        """
         self.api_url = api_url
         self.default_model = default_model
         self.ai_timeout = ai_timeout

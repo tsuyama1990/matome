@@ -4,6 +4,8 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.domain_models.interfaces import CredentialFetcherProtocol
+
 
 class MatomeConfig(BaseSettings):
     """Base configuration model class"""
@@ -202,20 +204,25 @@ class SecureString:
         return self
 
     def _zeroize(self) -> None:
+        import ctypes
+
         if hasattr(self, "_value") and self._value:
-            # Platform-independent loop-based zeroization replacing ctypes
-            for i in range(len(self._value)):
-                self._value[i] = 0
+            # Secure platform memory zeroization
+            buffer_size = len(self._value)
+            ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
             self._value = bytearray()
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self._zeroize()
+
+    def __del__(self) -> None:
         self._zeroize()
 
 
 class CompositeCredentialProvider:
     """Abstract secure credential provider resolving credentials sequentially across vaults or environment variables."""
 
-    def __init__(self, fetchers: list[Any]) -> None:
+    def __init__(self, fetchers: list[CredentialFetcherProtocol]) -> None:
         self._fetchers = fetchers
 
     def get_api_key(self) -> SecureString:
@@ -225,6 +232,9 @@ class CompositeCredentialProvider:
         key = None
         for fetcher in self._fetchers:
             key = fetcher()
+            if key is not None and not isinstance(key, str):
+                msg = f"Fetcher returned invalid type: {type(key)}. Expected str or None."
+                raise ConfigurationError(msg)
             if key:
                 break
 
