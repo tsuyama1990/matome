@@ -4,22 +4,22 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: base-url-2.1.0, cov-7.0.0, playwright-0.7.2, anyio-4.12.1, langsmith-0.7.14, Faker-37.12.0
-collected 100 items
+collected 80 items
 
 tests/e2e/test_system.py .                                               [  1%]
-tests/unit/test_ai_client.py .....                                       [  6%]
-tests/unit/test_ai_service.py .........                                  [ 15%]
-tests/unit/test_app_factory.py ..                                        [ 17%]
-tests/unit/test_config.py ......                                         [ 23%]
-tests/unit/test_container.py ..                                          [ 25%]
-tests/unit/test_domain_models.py ......                                  [ 31%]
-tests/unit/test_interfaces.py .                                          [ 32%]
-tests/unit/test_orchestrator.py ...............                          [ 47%]
-tests/unit/test_rate_limit.py ...                                        [ 50%]
-tests/unit/test_repository.py ....                                       [ 54%]
-tests/unit/test_security.py ..............                               [ 68%]
-tests/unit/test_services.py .........................                    [ 93%]
-tests/unit/test_validation.py .......                                    [100%]
+tests/unit/test_ai_client.py .....                                       [  7%]
+tests/unit/test_ai_service.py .........                                  [ 18%]
+tests/unit/test_app_factory.py ..                                        [ 21%]
+tests/unit/test_config.py ....                                           [ 26%]
+tests/unit/test_container.py ..                                          [ 28%]
+tests/unit/test_domain_models.py ......                                  [ 36%]
+tests/unit/test_interfaces.py .                                          [ 37%]
+tests/unit/test_orchestrator.py ...............                          [ 56%]
+tests/unit/test_rate_limit.py ...                                        [ 60%]
+tests/unit/test_repository.py ...                                        [ 63%]
+tests/unit/test_security.py ..........                                   [ 76%]
+tests/unit/test_services.py ..............                               [ 93%]
+tests/unit/test_validation.py .....                                      [100%]
 
 =============================== warnings summary ===============================
 tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
@@ -41,7 +41,7 @@ Name                                 Stmts   Miss  Cover   Missing
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
 src/application/ai.py                   44      0   100%
-src/config.py                          176      7    96%   268-269, 278-279, 286-287, 322
+src/config.py                          176     32    82%   40-41, 61-64, 67-70, 85-86, 90-91, 217, 219-220, 224-225, 246-247, 250-251, 261-262, 268-269, 278-279, 282-283, 286-287, 322
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           1      0   100%
@@ -55,13 +55,13 @@ src/infrastructure/__init__.py           4      0   100%
 src/infrastructure/ai_client.py         51      0   100%
 src/infrastructure/container.py         13      0   100%
 src/infrastructure/orchestrator.py     164      4    98%   239, 281-282, 318
-src/infrastructure/repository.py        43      0   100%
-src/infrastructure/security.py          66      3    95%   74-75, 82
-src/infrastructure/services.py         298     21    93%   102-104, 117, 128-130, 133-134, 164-165, 197, 304-307, 330, 427, 429, 480-483
+src/infrastructure/repository.py        43      7    84%   28-34
+src/infrastructure/security.py          66     14    79%   16-17, 55-56, 65-66, 74-75, 80-86
+src/infrastructure/services.py         298     77    74%   102-104, 117, 128-130, 133-134, 157-158, 162-197, 273-275, 288-307, 330, 388-390, 395-409, 427, 429, 437, 441-442, 445-446, 458-459, 463-465, 480-483
 src/utils/__init__.py                    0      0   100%
-src/utils/errors.py                     23      0   100%
+src/utils/errors.py                     23      4    83%   20-27
 src/utils/rate_limit.py                 26      0   100%
 src/utils/validation.py                 28      4    86%   25-26, 40-41
 ------------------------------------------------------------------
-TOTAL                                 1104     39    96%
-======================= 100 passed, 7 warnings in 27.83s =======================
+TOTAL                                 1104    142    87%
+======================= 80 passed, 7 warnings in 25.15s ========================

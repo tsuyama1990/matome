@@ -29,3 +29,22 @@ def test_validate_api_key_format_invalid_prefix() -> None:
 def test_validate_api_key_format_valid() -> None:
     valid_key = "sk-or-v1-thisisavalidkeythatislongenough"
     assert validate_api_key_format(valid_key) == valid_key
+
+
+def test_credential_error_handler_invalid_type() -> None:
+    from src.utils.errors import CredentialErrorHandler
+    from src.domain_models.exceptions import ConfigurationError
+
+    handler = CredentialErrorHandler()
+    with pytest.raises(ConfigurationError, match="Incorrect data type provided"):
+        handler.handle_invalid_type()
+
+
+def test_credential_error_handler_validate_and_format_exception() -> None:
+    from src.utils.errors import CredentialErrorHandler
+    from src.domain_models.exceptions import ConfigurationError
+
+    handler = CredentialErrorHandler()
+    with pytest.raises(ConfigurationError, match="API Key validation failed"):
+        # Passing an explicitly invalid format key to trigger the ValueError internally
+        handler.validate_and_format("short_key")
