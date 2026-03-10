@@ -1,0 +1,33 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0, anyio-4.12.1
+collected 14 items
+
+tests/e2e/test_main.py ..                                                [ 14%]
+tests/unit/test_config.py ....                                           [ 42%]
+tests/unit/test_di_container.py ...                                      [ 64%]
+tests/unit/test_node.py ....                                             [ 92%]
+tests/unit/test_protocols.py .                                           [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+
+Name                              Stmts   Miss  Cover   Missing
+---------------------------------------------------------------
+main.py                              21      4    81%   35-39, 43
+src/di_container.py                  29      0   100%
+src/domain_models/__init__.py         4      0   100%
+src/domain_models/config.py          14      0   100%
+src/domain_models/node.py            16      0   100%
+src/domain_models/protocols.py        8      0   100%
+tests/e2e/test_main.py               15      0   100%
+tests/unit/test_config.py            20      0   100%
+tests/unit/test_di_container.py      29      0   100%
+tests/unit/test_node.py              21      0   100%
+tests/unit/test_protocols.py         19      5    74%   16, 19, 22, 25, 35
+---------------------------------------------------------------
+TOTAL                               196      9    95%
+============================== 14 passed in 1.94s ==============================
