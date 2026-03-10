@@ -10,7 +10,7 @@ def test_settings_api_key_valid(tmp_path: pytest.TempPathFactory, monkeypatch: p
 
         provider = EnvCredentialProvider()
         with provider.get_api_key() as secure_key:
-            assert secure_key._value.decode("utf-8") == valid_key
+            assert secure_key.value == valid_key
     finally:
         pass
 

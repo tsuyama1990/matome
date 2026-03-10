@@ -154,16 +154,16 @@ class Settings(MatomeConfig):
         import re
         sha_pattern = re.compile(r"^[a-fA-F0-9]{64}$")
 
-        if sm_hash and not sm_hash.startswith("dummy"):
-            if not sha_pattern.match(sm_hash):
-                msg = f"Invalid hash format for en_core_web_sm: {sm_hash}"
+        if sm_hash:
+            if sm_hash.startswith("dummy") or not sha_pattern.match(sm_hash):
+                msg = f"Invalid hash format for en_core_web_sm: {sm_hash}. Dummy hashes are strictly prohibited."
                 from src.domain_models.exceptions import ConfigurationError
                 raise ConfigurationError(msg)
             hashes["en_core_web_sm"] = sm_hash
 
-        if md_hash and not md_hash.startswith("dummy"):
-            if not sha_pattern.match(md_hash):
-                msg = f"Invalid hash format for en_core_web_md: {md_hash}"
+        if md_hash:
+            if md_hash.startswith("dummy") or not sha_pattern.match(md_hash):
+                msg = f"Invalid hash format for en_core_web_md: {md_hash}. Dummy hashes are strictly prohibited."
                 from src.domain_models.exceptions import ConfigurationError
                 raise ConfigurationError(msg)
             hashes["en_core_web_md"] = md_hash
@@ -220,7 +220,10 @@ class Settings(MatomeConfig):
                 msg = "No read permission on ALLOWED_BASE_DIR."
                 raise ConfigurationError(msg)
 
-            # TOCTOU mitigation check using safe OS handle parsing
+            # Note: For robust TOCTOU mitigation, the file descriptor returned by os.open()
+            # should ideally be kept open during the actual operation utilizing this directory.
+            # Here we perform a basic existence verification, but the application must rely
+            # on `is_relative_to` at runtime during actual file resolution to prevent race condition bypass.
             try:
                 fd = os.open(value, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
                 os.close(fd)
@@ -291,6 +294,13 @@ class SecureString:
     def __repr__(self) -> str:
         return "[SECURE]"
 
+    @property
+    def value(self) -> str:
+        if not hasattr(self, "_value") or self._value is None:
+            msg = "SecureString has already been zeroized and destroyed."
+            raise RuntimeError(msg)
+        return self._value.decode("utf-8")
+
     def __enter__(self) -> "SecureString":
         return self
 
@@ -305,7 +315,7 @@ class SecureString:
                 # Ensure graceful failure if the memory is already freed or moved
                 pass
             finally:
-                # Explicitly remove the reference
+                # Explicitly remove the reference completely blocking later access attempts
                 self._value = None # type: ignore
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -347,10 +357,10 @@ class CredentialErrorHandler:
         logger = logging.getLogger(__name__)
         try:
             validate_api_key_format(key)
-        except ValueError:
+        except ValueError as err:
             logger.error("System configuration validation executed: Format rejection.")  # noqa: TRY400
             msg = "Authentication configuration error."
-            raise ConfigurationError(msg) from None
+            raise ConfigurationError(msg) from err
 
 
 class EnvCredentialProvider:
@@ -364,7 +374,8 @@ class EnvCredentialProvider:
     def get_api_key(self) -> SecureString:
         import os
 
-        with self._lock:
+        self._lock.acquire()
+        try:
             key: str | None = os.getenv("OPENROUTER_API_KEY")
 
             if not key:
@@ -375,6 +386,8 @@ class EnvCredentialProvider:
 
             self._error_handler.validate_and_format(key)
             return SecureString(key)
+        finally:
+            self._lock.release()
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
