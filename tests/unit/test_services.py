@@ -75,7 +75,9 @@ def test_default_model_verifier_exceptions(tmp_path: Path) -> None:
         verifier.verify_model_signature("trusted_model")
 
 
-def test_default_model_verifier_signature_size_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_model_verifier_signature_size_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
 
     from src.infrastructure.services import DefaultModelVerifier
 
@@ -90,12 +92,16 @@ def test_default_model_verifier_signature_size_limit(tmp_path: Path, monkeypatch
 
     monkeypatch.syspath_prepend(str(tmp_path))
 
-    verifier = DefaultModelVerifier({"dummy_module_pkg.dummy_module"}, {"dummy_module_pkg.dummy_module": "hash"}, 10)
+    verifier = DefaultModelVerifier(
+        {"dummy_module_pkg.dummy_module"}, {"dummy_module_pkg.dummy_module": "hash"}, 10
+    )
     with pytest.raises(ValueError, match="exceeds signature scanning limits"):
         verifier.verify_model_signature("dummy_module_pkg.dummy_module")
 
 
-def test_default_model_verifier_hash_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_model_verifier_hash_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from src.infrastructure.services import DefaultModelVerifier
 
     pkg_dir = tmp_path / "dummy_module_pkg2"
@@ -105,7 +111,11 @@ def test_default_model_verifier_hash_mismatch(tmp_path: Path, monkeypatch: pytes
     dummy_module_path.write_text("x = 1")
     monkeypatch.syspath_prepend(str(tmp_path))
 
-    verifier = DefaultModelVerifier({"dummy_module_pkg2.dummy_module2"}, {"dummy_module_pkg2.dummy_module2": "invalidhash"}, 10000)
+    verifier = DefaultModelVerifier(
+        {"dummy_module_pkg2.dummy_module2"},
+        {"dummy_module_pkg2.dummy_module2": "invalidhash"},
+        10000,
+    )
     with pytest.raises(ValueError, match="Cryptographic signature mismatch"):
         verifier.verify_model_signature("dummy_module_pkg2.dummy_module2")
 
@@ -133,7 +143,7 @@ def test_default_entity_extractor_invalid_regex(monkeypatch: pytest.MonkeyPatch)
     # We provide an invalid unclosed regex. It should fall back to the safe default
     # r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b" and extract "Apple Inc"
     config = EntityExtractorConfig("dummy", "[unclosed_regex")
-    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+    extractor = DefaultEntityExtractor(config, MockRateLimiter())
 
     entities = extractor.extract_entities(["Apple Inc."])
     assert "chunk_0_Fallback_ORG" in entities
@@ -151,7 +161,7 @@ def test_default_entity_extractor_nlp_import_error(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(spacy.util, "is_package", mock_is_package)
 
     config = EntityExtractorConfig("dummy_spacy_model", r"\b[A-Z][a-z]+\b")
-    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+    extractor = DefaultEntityExtractor(config, MockRateLimiter())
 
     # Will fallback to regex and log warning
     entities = extractor.extract_entities(["Apple Inc."])
@@ -163,7 +173,7 @@ def test_default_entity_extractor_container_isolation_sandbox() -> None:
     from src.infrastructure.services import DefaultEntityExtractor, EntityExtractorConfig
 
     config = EntityExtractorConfig("invalid_nonexistent_module", r"\b[A-Z][a-z]+\b")
-    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+    extractor = DefaultEntityExtractor(config, MockRateLimiter())
 
     # Isolation sandbox raises import error handled internally
     entities = extractor.extract_entities(["Microsoft"])
@@ -181,6 +191,7 @@ def test_default_clustering_service_import_error(monkeypatch: pytest.MonkeyPatch
         def get_vectorizer(self) -> typing.Any:
             msg = "sklearn not found"
             raise ImportError(msg)
+
         def get_clusterer(self, a: int, b: int) -> typing.Any:
             pass
 
@@ -192,7 +203,7 @@ def test_default_clustering_service_import_error(monkeypatch: pytest.MonkeyPatch
     # Verify fallback mechanism returns a flat tree without crashing the ingestion orchestrator
     assert result["algorithm"] == "None (Missing ML modules)"
     assert result["level_0"] == "root"
-    assert "clusters_found" not in result # Since it failed before actually clustering
+    assert "clusters_found" not in result  # Since it failed before actually clustering
 
 
 def test_default_clustering_service_incremental_batching(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -205,14 +216,17 @@ def test_default_clustering_service_incremental_batching(monkeypatch: pytest.Mon
             class MockVectorizer:
                 def transform(self, data: typing.Any) -> typing.Any:
                     return data
+
             return MockVectorizer()
 
         def get_clusterer(self, max_clusters: int, random_seed: int) -> typing.Any:
             class MockClusterer:
                 def __init__(self, max_clusters: int) -> None:
                     self.n_clusters = max_clusters
+
                 def partial_fit(self, data: typing.Any) -> typing.Any:
                     pass
+
             return MockClusterer(max_clusters)
 
     service = DefaultClusteringService(42, MockMLClusteringProvider())
@@ -221,6 +235,7 @@ def test_default_clustering_service_incremental_batching(monkeypatch: pytest.Mon
     chunks = [f"chunk {i}" for i in range(150)]
     result = service.cluster_chunks(chunks, 2)
     assert result["total_chunks"] == "150"
+
 
 def test_default_clustering_service_batch_less_than_max(monkeypatch: pytest.MonkeyPatch) -> None:
     import typing
@@ -232,14 +247,17 @@ def test_default_clustering_service_batch_less_than_max(monkeypatch: pytest.Monk
             class MockVectorizer:
                 def transform(self, data: typing.Any) -> typing.Any:
                     return data
+
             return MockVectorizer()
 
         def get_clusterer(self, max_clusters: int, random_seed: int) -> typing.Any:
             class MockClusterer:
                 def __init__(self, max_clusters: int) -> None:
                     self.n_clusters = max_clusters
+
                 def partial_fit(self, data: typing.Any) -> typing.Any:
                     pass
+
             return MockClusterer(max_clusters)
 
     service = DefaultClusteringService(42, MockMLClusteringProvider())
@@ -258,11 +276,14 @@ def test_default_clustering_service_unexpected_exception(monkeypatch: pytest.Mon
     class BadMLProvider:
         def get_vectorizer(self) -> typing.Any:
             return self
+
         def transform(self, data: typing.Any) -> typing.Any:
             msg = "Unexpected Math Error"
             raise RuntimeError(msg)
+
         def get_clusterer(self, a: int, b: int) -> typing.Any:
             return self
+
         def partial_fit(self, data: typing.Any) -> typing.Any:
             msg = "Unexpected Math Error"
             raise RuntimeError(msg)
@@ -344,7 +365,6 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_default_entity_extractor_fallback() -> None:
     from src.infrastructure.services import (
-        DefaultModelVerifier,
         EntityExtractorBuilder,
         EntityExtractorBuilderConfig,
     )
@@ -360,7 +380,6 @@ def test_default_entity_extractor_fallback() -> None:
     extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
         rate_limiter=RateLimiter(0.01),
-        model_verifier=DefaultModelVerifier({"invalid_model_name"}, {}, 1024),
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
 
@@ -378,7 +397,6 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setitem(sys.modules, "spacy", None)
 
     from src.infrastructure.services import (
-        DefaultModelVerifier,
         EntityExtractorBuilder,
         EntityExtractorBuilderConfig,
     )
@@ -394,7 +412,6 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
     extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
         rate_limiter=RateLimiter(0.01),
-        model_verifier=DefaultModelVerifier({"en_core_web_sm"}, {}, 1024),
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
 
@@ -436,7 +453,6 @@ def test_default_entity_extractor_valid_spacy(monkeypatch: pytest.MonkeyPatch) -
     extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
         rate_limiter=RateLimiter(0.01),
-        model_verifier=verifier,
         nlp_service=MockSpacyNLPService(),
     )
 
@@ -530,6 +546,7 @@ def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -
 
     import os
     from pathlib import Path
+
     monkeypatch.setattr(Path, "is_file", lambda self: True)
     monkeypatch.setattr(os.path, "realpath", lambda x: x)
     monkeypatch.setenv("ALLOWED_API_DOMAINS", "test.com")
@@ -563,6 +580,7 @@ def test_requests_http_client_url_validation() -> None:
 
 def test_requests_http_client_header_validation() -> None:
     from src.infrastructure.services import RequestsHTTPClient
+
     client = RequestsHTTPClient()
 
     with pytest.raises(ValueError, match="Invalid characters"):

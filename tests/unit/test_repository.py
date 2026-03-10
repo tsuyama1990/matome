@@ -18,7 +18,9 @@ def create_mock_identity(
 
 
 def create_mock_content(node_id: str) -> ContentNode:
-    return ContentNode(node_id=node_id, summary=None, text=None)
+    from src.domain_models.manifest import Content
+
+    return ContentNode(node_id=node_id, content=Content(summary=None, text=None))
 
 
 def test_in_memory_repo_save_and_get() -> None:

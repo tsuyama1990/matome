@@ -2,43 +2,54 @@ from collections.abc import Callable, Iterator
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from .analysis import PivotBoard
-from .manifest import ContentNode, IdentityNode, UserInteractionContext
+from .manifest import (
+    AIMetadataContainer,
+    ContentNode,
+    IdentityNode,
+    NodeMetadataContainer,
+    UserInteractionContext,
+)
 
 T = TypeVar("T")
 
 
-class ConfigService(Protocol):
-    """Protocol for fetching application configuration using type-safe properties."""
-
+class OpenRouterUrlService(Protocol):
     @property
     def openrouter_api_url(self) -> str: ...
 
-    @property
-    def ssl_cert_path(self) -> str | None: ...
 
+class OpenRouterCredentialService(Protocol):
+    @property
+    def openrouter_api_key(self) -> str: ...
+
+
+class FileProcessingConfigService(Protocol):
     @property
     def chunk_size(self) -> int: ...
-
     @property
     def chunk_overlap(self) -> int: ...
 
+
+class MLConfigService(Protocol):
     @property
     def spacy_model(self) -> str: ...
-
     @property
     def random_seed(self) -> int: ...
 
 
-class SecurityService(Protocol):
-    """Protocol for security operations such as API key validation."""
-
+class ApiKeyValidator(Protocol):
     def validate_api_key(self, api_key: str) -> str: ...
+
+
+class CertificateValidator(Protocol):
+    def validate_certificate(self, path: str) -> bool: ...
 
 
 class CredentialProviderProtocol(Protocol):
     """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
 
-    def get_api_key(self) -> Any: ...
+    def get_api_url(self) -> str: ...
+    def get_api_key(self) -> Iterator[str]: ...
 
 
 @runtime_checkable
@@ -77,6 +88,18 @@ class DocumentRepository(Protocol):
     def save_identity(self, node: IdentityNode) -> None: ...
 
     def save_content(self, node: ContentNode) -> None: ...
+
+
+class MetadataRepository(Protocol):
+    """Protocol for data persistence operations regarding metadata."""
+
+    def get_node_metadata(self, node_id: str) -> NodeMetadataContainer | None: ...
+
+    def get_ai_metadata(self, node_id: str) -> AIMetadataContainer | None: ...
+
+    def save_node_metadata(self, metadata: NodeMetadataContainer) -> None: ...
+
+    def save_ai_metadata(self, metadata: AIMetadataContainer) -> None: ...
 
 
 class SummaryServiceProtocol(Protocol):

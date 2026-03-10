@@ -4,10 +4,10 @@ import re
 from llm_guard.input_scanners import PromptInjection
 from llm_guard.input_scanners.prompt_injection import MatchType
 
-from src.domain_models.interfaces import SecurityService
+from src.domain_models.interfaces import ApiKeyValidator
 
 
-class DefaultSecurityService(SecurityService):
+class DefaultSecurityService(ApiKeyValidator):
     def validate_api_key(self, api_key: str) -> str:
         from src.utils.validation import validate_api_key_format
 
@@ -16,6 +16,7 @@ class DefaultSecurityService(SecurityService):
             msg = "API Key cannot be None."
             raise ValueError(msg)
         return valid
+
 
 class PromptInjectionScanner:
     def __init__(self, threshold: float | None = None, max_input_length: int = 50000) -> None:

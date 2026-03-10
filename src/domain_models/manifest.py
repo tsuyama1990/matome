@@ -5,11 +5,14 @@ from .enums import NodeStatus
 from .types import NodeID
 
 __all__ = [
+    "AIMetadataContainer",
     "AIProcessingMetadata",
     "BestPracticeData",
+    "Content",
     "ContentNode",
     "IdentityNode",
     "NodeMetadata",
+    "NodeMetadataContainer",
     "NodeStatus",
     "PipelineContext",
     "SummaryNode",
@@ -42,18 +45,25 @@ class NodeMetadata(BaseModel):
     )
 
 
-class ContentNode(BaseModel):
-    """Encapsulates the content of a node entirely separated from its identity structure."""
+class Content(BaseModel):
+    """Encapsulates raw content entirely decoupled from node relations."""
 
     model_config = ConfigDict(extra="forbid")
-
-    node_id: str = Field(..., description="Link to the identity node this content belongs to")
     summary: str | None = Field(
         None, description="CoD summary of the node content", max_length=2000
     )
     text: str | None = Field(
         None, description="Full text content of the node if it is a leaf node", max_length=100000
     )
+
+
+class ContentNode(BaseModel):
+    """Encapsulates the content mapping of a node combining pure identity links to pure content."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    node_id: str = Field(..., description="Link to the identity node this content belongs to")
+    content: Content = Field(..., description="The raw content block")
 
 
 class AIProcessingMetadata(BaseModel):
@@ -72,12 +82,15 @@ class AIProcessingMetadata(BaseModel):
     )
 
 
-class MetadataContainer(BaseModel):
-    """Container grouping all metadata classes to follow SRP strictly outside of IdentityNode."""
-
+class NodeMetadataContainer(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
+    node_id: str = Field(..., description="Link to the identity node")
     metadata: NodeMetadata = Field(..., description="Metadata tags such as Time Axis, Actor, etc.")
+
+
+class AIMetadataContainer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    node_id: str = Field(..., description="Link to the identity node")
     ai_metadata: AIProcessingMetadata = Field(..., description="AI processing metadata")
 
 

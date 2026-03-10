@@ -3,6 +3,7 @@ import typing
 
 logger = logging.getLogger(__name__)
 
+
 class CredentialErrorHandler:
     """Handles parsing errors and format validation specifically for credentials securely without logging specifics."""
 
@@ -37,5 +38,7 @@ class CredentialErrorHandler:
                 "API Key validation failed during formatting/checks. Check permissions and input.",
                 extra={"context": "auth"},
             )
-            msg = f"API Key validation failed: {err!s} Please check your key format and permissions."
+            msg = (
+                f"API Key validation failed: {err!s} Please check your key format and permissions."
+            )
             raise ConfigurationError(msg) from err

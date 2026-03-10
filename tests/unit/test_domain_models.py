@@ -2,11 +2,14 @@ import pytest
 from pydantic import ValidationError
 
 from src.domain_models import (
+    AIMetadataContainer,
     AIProcessingMetadata,
     BestPracticeData,
+    Content,
     ContentNode,
     IdentityNode,
     NodeMetadata,
+    NodeMetadataContainer,
     NodeStatus,
     PivotAxis,
     PivotBoard,
@@ -15,7 +18,6 @@ from src.domain_models import (
     UserInteractionContext,
     WisdomData,
 )
-from src.domain_models.manifest import MetadataContainer
 
 
 def test_identity_and_content_nodes_valid() -> None:
@@ -25,8 +27,9 @@ def test_identity_and_content_nodes_valid() -> None:
         title="Test Node",
         status=NodeStatus.LOCKED,
     )
-    content = ContentNode(node_id="node1", summary=None, text=None)
-    metadata_container = MetadataContainer(
+    content = ContentNode(node_id="node1", content=Content(summary=None, text=None))
+    node_metadata_container = NodeMetadataContainer(
+        node_id="node1",
         metadata=NodeMetadata(
             source=None,
             author="test",
@@ -35,6 +38,9 @@ def test_identity_and_content_nodes_valid() -> None:
             best_practices=[BestPracticeData(content="Test best practice")],
             wisdom_data=[WisdomData(content="Test wisdom")],
         ),
+    )
+    ai_metadata_container = AIMetadataContainer(
+        node_id="node1",
         ai_metadata=AIProcessingMetadata(
             chunk_id=None, chunk_index=None, entity_metadata={}, hierarchical_tree={}
         ),
@@ -43,9 +49,10 @@ def test_identity_and_content_nodes_valid() -> None:
     assert identity.title == "Test Node"
     assert identity.status == NodeStatus.LOCKED
     assert content.node_id == "node1"
-    assert metadata_container.metadata.author == "test"
-    assert len(metadata_container.metadata.best_practices) == 1
-    assert metadata_container.metadata.best_practices[0].content == "Test best practice"
+    assert node_metadata_container.metadata.author == "test"
+    assert len(node_metadata_container.metadata.best_practices) == 1
+    assert node_metadata_container.metadata.best_practices[0].content == "Test best practice"
+    assert ai_metadata_container.node_id == "node1"
 
 
 def test_identity_node_invalid_extra() -> None:

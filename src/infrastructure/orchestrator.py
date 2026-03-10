@@ -164,11 +164,11 @@ class OutputOrchestrator:
             summary=summary,
         )
 
-        metadata_container = self.deps.metadata_service.create_root_metadata(identity.id)
-        metadata_container.ai_metadata.entity_metadata = entities
-        metadata_container.ai_metadata.hierarchical_tree = tree_metadata
-        metadata_container.ai_metadata.chunk_id = f"chunk_{context.root_doc_id}"
-        metadata_container.ai_metadata.chunk_index = 0
+        node_metadata, ai_metadata = self.deps.metadata_service.create_root_metadata(identity.id)
+        ai_metadata.ai_metadata.entity_metadata = entities
+        ai_metadata.ai_metadata.hierarchical_tree = tree_metadata
+        ai_metadata.ai_metadata.chunk_id = f"chunk_{context.root_doc_id}"
+        ai_metadata.ai_metadata.chunk_index = 0
 
         try:
             question = self.deps.question_service.generate_question(identity, content)
@@ -176,7 +176,7 @@ class OutputOrchestrator:
         except AIServiceError as e:
             logger.warning(f"Question generation failed: {e}. Skipping interactive prompt loop.")
 
-        return identity, content, metadata_container
+        return identity, content, (node_metadata, ai_metadata)
 
 
 class PipelineValidator:
@@ -208,8 +208,10 @@ class PipelineTransactionManager:
         self.deps = deps
 
     def save_and_commit(self, result: tuple[IdentityNode, ContentNode, Any]) -> None:
-        identity, content, metadata = result
-        self.deps.metadata_service.save_metadata(identity.id, metadata)
+        identity, content, metadata_tuple = result
+        node_metadata, ai_metadata = metadata_tuple
+        self.deps.metadata_service.save_node_metadata(node_metadata)
+        self.deps.metadata_service.save_ai_metadata(ai_metadata)
         self.deps.doc_repo.save_identity(identity)
         self.deps.doc_repo.save_content(content)
         self.deps.transaction_manager.commit()

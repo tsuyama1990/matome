@@ -8,7 +8,7 @@ from src.application.ai import (
     DefaultSummaryService,
     DefaultWebGroundingService,
 )
-from src.config import Settings
+from src.config import AppContext
 from src.domain_models import (
     ContentNode,
     IdentityNode,
@@ -27,12 +27,13 @@ def _create_mock_settings(
     text_fast_model: str = "google/gemini-2.5-flash",
     text_reasoning_model: str = "deepseek/deepseek-reasoner",
     multimodal_model: str = "openai/gpt-4o",
-) -> Settings:
+) -> AppContext:
 
     if monkeypatch:
         if api_key:
             monkeypatch.setenv("OPENROUTER_API_KEY", api_key)
         from pathlib import Path
+
         dummy_cert = Path(base_dir) / "dummy.pem"
         dummy_cert.write_text("cert")
         monkeypatch.setenv("MATOME_BASE_DATA_DIR", base_dir)
@@ -49,6 +50,7 @@ def _create_mock_settings(
         if api_key:
             os.environ["OPENROUTER_API_KEY"] = api_key
         from pathlib import Path
+
         dummy_cert = Path(base_dir) / "dummy.pem"
         dummy_cert.write_text("cert")
         os.environ["MATOME_BASE_DATA_DIR"] = base_dir
@@ -60,14 +62,33 @@ def _create_mock_settings(
         os.environ["TEXT_REASONING_MODEL"] = text_reasoning_model
         os.environ["MULTIMODAL_MODEL"] = multimodal_model
 
-    return Settings(
-        text_fast_model=text_fast_model,
-        text_reasoning_model=text_reasoning_model,
-        multimodal_model=multimodal_model,
-        allowed_base_dir=base_dir,
-        spacy_model="en_core_web_sm",
-        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
-        chunk_size=1000,
+    from src.config import (
+        AIConfig,
+        FileProcessingConfig,
+        MLConfig,
+        ModeConfig,
+        PipelineConfig,
+        SecurityConfig,
+    )
+
+    return AppContext(
+        ai=AIConfig(
+            text_fast_model=text_fast_model,
+            text_reasoning_model=text_reasoning_model,
+            multimodal_model=multimodal_model,
+        ),
+        file=FileProcessingConfig(
+            allowed_base_dir=base_dir,
+            chunk_size=1000,
+            chunk_overlap=100,
+        ),
+        ml=MLConfig(
+            spacy_model="en_core_web_sm",
+            trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+        ),
+        security=SecurityConfig(),
+        pipeline=PipelineConfig(),
+        mode_config=ModeConfig(),
     )
 
 
@@ -88,7 +109,7 @@ def _create_service(
 ]:
     from unittest.mock import MagicMock
 
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.infrastructure.security import PromptInjectionScanner
 
     settings = _create_mock_settings(
@@ -97,7 +118,7 @@ def _create_service(
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
     )
-    provider = EnvCredentialProvider()
+    provider = EnvOpenRouterConfigProvider()
 
     mock_http_client = http_client or MagicMock()
 
@@ -115,50 +136,50 @@ def _create_service(
 
     communication_client = AIClientFactory.create(
         api_url="https://mock.api.url",
-        default_model=settings.text_fast_model,
-        ai_timeout=settings.ai_timeout,
+        default_model=settings.ai.text_fast_model,
+        ai_timeout=settings.ai.ai_timeout,
         http_client=mock_http_client,  # type: ignore
         retry_policy=DummyRetry(),
         security_scanner=PromptInjectionScanner(threshold=0.9),
     )
-    security_scanner = PromptInjectionScanner(max_input_length=settings.max_input_length)
+    security_scanner = PromptInjectionScanner(max_input_length=settings.security.max_input_length)
 
     return (
         DefaultSummaryService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.ai.text_fast_model,
+            text_reasoning_model=settings.ai.text_reasoning_model,
         ),
         DefaultQuestionService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.ai.text_fast_model,
+            text_reasoning_model=settings.ai.text_reasoning_model,
         ),
         DefaultDiagramService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.ai.text_fast_model,
+            text_reasoning_model=settings.ai.text_reasoning_model,
         ),
         DefaultDocumentGenerationService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.ai.text_fast_model,
+            text_reasoning_model=settings.ai.text_reasoning_model,
         ),
         DefaultWebGroundingService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.ai.text_fast_model,
+            text_reasoning_model=settings.ai.text_reasoning_model,
         ),
         DefaultEvaluationService(
             security_scanner=security_scanner,
             communication_client=communication_client,
-            text_fast_model=settings.text_fast_model,
-            text_reasoning_model=settings.text_reasoning_model,
+            text_fast_model=settings.ai.text_fast_model,
+            text_reasoning_model=settings.ai.text_reasoning_model,
         ),
     )
 
@@ -166,25 +187,25 @@ def _create_service(
 def test_default_ai_service_missing_key_init(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(ConfigurationError), EnvCredentialProvider().get_api_key():
+    with pytest.raises(ConfigurationError), EnvOpenRouterConfigProvider().get_api_key():
         pass
 
 
 def test_default_ai_service_invalid_key_length(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "123")
 
     with (
         pytest.raises(ConfigurationError, match="API Key validation failed"),
-        EnvCredentialProvider().get_api_key(),
+        EnvOpenRouterConfigProvider().get_api_key(),
     ):
         pass
 
@@ -192,14 +213,14 @@ def test_default_ai_service_invalid_key_length(
 def test_default_ai_service_invalid_key_format(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
 
     with (
         pytest.raises(ConfigurationError, match="API Key validation failed"),
-        EnvCredentialProvider().get_api_key(),
+        EnvOpenRouterConfigProvider().get_api_key(),
     ):
         pass
 
@@ -252,7 +273,9 @@ def test_default_ai_service_calls_generate_question_valid(
         title="Test Title",
         status=NodeStatus.LOCKED,
     )
-    content = ContentNode(node_id="test1", summary=None, text=None)
+    from src.domain_models.manifest import Content
+
+    content = ContentNode(node_id="test1", content=Content(summary=None, text=None))
 
     question = services[1].generate_question(identity, content)
     assert question == "mock question"

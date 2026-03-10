@@ -58,12 +58,16 @@ def test_validate_api_key_format_boundaries() -> None:
 
     chars = string.ascii_letters + string.digits
     valid_suffix_len_max = 256 - len("sk-or-v1-")
-    valid_max_key = "sk-or-v1-" + "".join(secrets.choice(chars) for _ in range(valid_suffix_len_max))
+    valid_max_key = "sk-or-v1-" + "".join(
+        secrets.choice(chars) for _ in range(valid_suffix_len_max)
+    )
     assert validate_api_key_format(valid_max_key) == valid_max_key
 
     # Exactly 30 characters (valid)
     valid_suffix_len_min = 30 - len("sk-or-v1-")
-    valid_min_key = "sk-or-v1-" + "".join(secrets.choice(chars) for _ in range(valid_suffix_len_min))
+    valid_min_key = "sk-or-v1-" + "".join(
+        secrets.choice(chars) for _ in range(valid_suffix_len_min)
+    )
     assert validate_api_key_format(valid_min_key) == valid_min_key
 
     # Exceeding 256 characters (invalid)

@@ -18,14 +18,18 @@ def validate_api_key_format(api_key: str | None) -> str | None:
 
     import math
     from collections import Counter
+
     key_body = api_key.rsplit("sk-or-v1-", maxsplit=1)[-1]
     counts = Counter(key_body)
-    entropy = -sum(count/len(key_body) * math.log2(count/len(key_body)) for count in counts.values())
+    entropy = -sum(
+        count / len(key_body) * math.log2(count / len(key_body)) for count in counts.values()
+    )
     if entropy < 3.5:
-         msg = "API Key format is invalid. Key entropy is too low, indicating a potentially fake or compromised key."
-         raise ValueError(msg)
+        msg = "API Key format is invalid. Key entropy is too low, indicating a potentially fake or compromised key."
+        raise ValueError(msg)
 
     return api_key
+
 
 def validate_ai_model(value: str) -> str:
     """Validates an AI model against the allowed whitelist."""

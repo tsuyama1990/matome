@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config import Settings
+from src.config import AppContext
 from src.domain_models import DocumentFactory, MetadataService, PipelineContext
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import (
@@ -20,6 +20,7 @@ from tests.helpers.mocks import MockAIService
 
 def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineConfig]:
     from unittest.mock import MagicMock
+
     dummy_cert = Path(base_dir) / "dummy.pem"
     dummy_cert.write_text("cert")
     os.environ["MATOME_BASE_DATA_DIR"] = base_dir
@@ -31,20 +32,33 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
     os.environ["CHUNK_SIZE"] = "1000"
 
-    settings = Settings(
-        allowed_base_dir=base_dir,
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
-        chunk_size=1000,
-        spacy_model="en_core_web_sm",
-        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+    from src.config import AIConfig, FileProcessingConfig, MLConfig, ModeConfig, SecurityConfig
+    from src.config import PipelineConfig as ConfigPipelineConfig
+
+    settings = AppContext(
+        ai=AIConfig(
+            text_fast_model="google/gemini-2.5-flash",
+            text_reasoning_model="deepseek/deepseek-reasoner",
+            multimodal_model="openai/gpt-4o",
+        ),
+        file=FileProcessingConfig(
+            allowed_base_dir=base_dir,
+            chunk_size=1000,
+            chunk_overlap=100,
+        ),
+        ml=MLConfig(
+            spacy_model="en_core_web_sm",
+            trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+        ),
+        security=SecurityConfig(),
+        pipeline=ConfigPipelineConfig(),
+        mode_config=ModeConfig(),
     )
 
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
-    factory = DocumentFactory()
-    metadata_service = MetadataService()
+    factory = DocumentFactory(max_content_length=100000)
+    metadata_service = MetadataService(repository=repo)
 
     import typing
 
@@ -74,8 +88,8 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
         clustering_service=mock_clustering_service,
     )
     config = PipelineConfig(
-        pipeline_timeout=settings.pipeline_timeout,
-        raptor_max_clusters=settings.raptor_max_clusters,
+        pipeline_timeout=settings.pipeline.pipeline_timeout,
+        raptor_max_clusters=settings.ml.raptor_max_clusters,
     )
     return deps, config
 
@@ -174,9 +188,7 @@ def test_analysis_orchestrator_execute_with_file(tmp_path: Path) -> None:
     assert isinstance(summary, str)
 
 
-def test_analysis_orchestrator_ai_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_analysis_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import typing
 
     from src.domain_models.exceptions import AIServiceError
@@ -202,16 +214,15 @@ def test_output_orchestrator_execute(tmp_path: Path) -> None:
     output = OutputOrchestrator(deps)
 
     ctx = PipelineContext(root_doc_id="test_id", content="Test", file_path=None)
-    identity, content, metadata = output.execute(ctx, "content", "summary", {}, {})
+    identity, content, metadata_tuple = output.execute(ctx, "content", "summary", {}, {})
+    node_metadata, ai_metadata = metadata_tuple
 
     assert identity.id == "test_id"
-    assert content.summary == "summary"
-    assert metadata.ai_metadata.chunk_index == 0
+    assert content.content.summary == "summary"
+    assert ai_metadata.ai_metadata.chunk_index == 0
 
 
-def test_output_orchestrator_ai_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+def test_output_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     import typing
 
     from src.domain_models.exceptions import AIServiceError

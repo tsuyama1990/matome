@@ -40,7 +40,7 @@ class AIClientFactory:
         retry_policy: RetryPolicyProtocol,
         security_scanner: AISecurityScannerProtocol,
         **kwargs: Any,  # noqa: ARG004
-    ) -> "DefaultAICommunicationClient":
+    ) -> AICommunicationClientProtocol:
         # All string format parameters are assumed to have been securely pre-validated directly by domain Config objects.
         # This properly obeys Dependency Inversion by removing direct OS environmental lookups.
         config = AIClientConfig(api_url=api_url, default_model=default_model, ai_timeout=ai_timeout)
@@ -71,6 +71,20 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         self.http_client = http_client
         self.retry_policy = retry_policy
         self.security_scanner = security_scanner
+
+    def __enter__(self) -> "DefaultAICommunicationClient":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Securely zeroize any internal references to configuration data after context completion."""
+        self.config = None  # type: ignore
+        self.http_client = None  # type: ignore
+        import ctypes
+
+        buffer = getattr(self, "_temp_secure_buffer", None)
+        if buffer is not None:
+            ctypes.memset(buffer, 0, len(buffer))
+            self._temp_secure_buffer = None
 
     def rotate_credentials(self) -> None:
         """
