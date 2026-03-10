@@ -180,10 +180,8 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
 
 
 class DefaultClusteringService(ClusteringServiceProtocol):
-    def __init__(self, random_seed: int, n_features: int, batch_size: int) -> None:
+    def __init__(self, random_seed: int) -> None:
         self.random_seed = random_seed
-        self.n_features = n_features
-        self.batch_size = batch_size
 
     def cluster_chunks(
         self, chunks: typing.Iterator[str] | list[str], max_clusters: int
@@ -209,9 +207,9 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             }
 
         try:
-            vectorizer = HashingVectorizer(n_features=self.n_features)
+            vectorizer = HashingVectorizer(n_features=256)
             clusterer = MiniBatchKMeans(
-                n_clusters=max_clusters, random_state=self.random_seed, batch_size=self.batch_size
+                n_clusters=max_clusters, random_state=self.random_seed, batch_size=100
             )
 
             chunk_count = 0

@@ -22,6 +22,11 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     This demonstrates E2E capabilities directly on the orchestrator.
     It reads settings locally to avoid touching the global os.environ block directly.
     """
+    repo = InMemoryDocumentRepository()
+    ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
+    factory = DocumentFactory()
+    metadata_service = MetadataService()
+
     from unittest.mock import patch
 
     from pydantic import SecretStr
@@ -38,11 +43,6 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
             allowed_base_dir=str(tmp_path),
         )
 
-    repo = InMemoryDocumentRepository()
-    ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
-    factory = DocumentFactory(max_content_length=settings.max_content_length)
-    metadata_service = MetadataService()
-
     from src.infrastructure.services import (
         DefaultClusteringService,
         DefaultEntityExtractor,
@@ -53,11 +53,7 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
         chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
     )
     entity_extractor = DefaultEntityExtractor(settings.spacy_model)
-    clustering_service = DefaultClusteringService(
-        random_seed=settings.random_seed,
-        n_features=settings.hashing_n_features,
-        batch_size=settings.kmeans_batch_size,
-    )
+    clustering_service = DefaultClusteringService(settings.random_seed)
 
     deps = PipelineDependencies(
         doc_repo=repo,
@@ -73,8 +69,6 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     config = PipelineConfig(
         pipeline_timeout=settings.pipeline_timeout,
         raptor_max_clusters=settings.raptor_max_clusters,
-        preview_chunk_count=settings.preview_chunk_count,
-        default_doc_title=settings.default_doc_title,
     )
     orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
 

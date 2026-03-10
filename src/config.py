@@ -44,26 +44,6 @@ class Settings(MatomeConfig):
         default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", "root_doc_1")),
         description="Default root document ID used in pipeline initialization",
     )
-    max_content_length: int = Field(
-        default_factory=lambda: int(os.getenv("MAX_CONTENT_LENGTH", "100000")),
-        description="Maximum allowed content length",
-    )
-    preview_chunk_count: int = Field(
-        default_factory=lambda: int(os.getenv("PREVIEW_CHUNK_COUNT", "5")),
-        description="Number of chunks to preview",
-    )
-    default_doc_title: str = Field(
-        default_factory=lambda: str(os.getenv("DEFAULT_DOC_TITLE", "Business Manual")),
-        description="Default title for documents",
-    )
-    hashing_n_features: int = Field(
-        default_factory=lambda: int(os.getenv("HASHING_N_FEATURES", "256")),
-        description="Number of features for hashing vectorizer",
-    )
-    kmeans_batch_size: int = Field(
-        default_factory=lambda: int(os.getenv("KMEANS_BATCH_SIZE", "100")),
-        description="Batch size for kmeans clustering",
-    )
 
     max_file_size: int = Field(
         default_factory=lambda: int(os.getenv("MAX_FILE_SIZE", "10485760")),

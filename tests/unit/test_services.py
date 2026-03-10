@@ -73,7 +73,7 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
 
 
 def test_default_clustering_service_not_enough_chunks() -> None:
-    clustering_service = DefaultClusteringService(random_seed=42, n_features=256, batch_size=100)
+    clustering_service = DefaultClusteringService(random_seed=42)
     chunks = iter(["chunk 1", "chunk 2"])
 
     result = clustering_service.cluster_chunks(chunks, max_clusters=5)
@@ -81,7 +81,7 @@ def test_default_clustering_service_not_enough_chunks() -> None:
 
 
 def test_default_clustering_service_invalid_max_clusters() -> None:
-    clustering_service = DefaultClusteringService(random_seed=42, n_features=256, batch_size=100)
+    clustering_service = DefaultClusteringService(random_seed=42)
     with pytest.raises(ValueError, match="must be at least 1"):
         clustering_service.cluster_chunks(["chunk 1"], max_clusters=0)
 
@@ -91,7 +91,7 @@ def test_default_clustering_service_fallback(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setitem(sys.modules, "sklearn.cluster", None)
 
-    clustering_service = DefaultClusteringService(random_seed=42, n_features=256, batch_size=100)
+    clustering_service = DefaultClusteringService(random_seed=42)
     chunks = iter([f"chunk {i}" for i in range(20)])
 
     result = clustering_service.cluster_chunks(chunks, max_clusters=5)

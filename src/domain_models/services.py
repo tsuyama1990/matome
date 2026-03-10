@@ -11,7 +11,7 @@ from .manifest import (
 class DocumentFactory:
     """Domain service responsible for creating decoupled Identity and Content entities."""
 
-    def __init__(self, max_content_length: int) -> None:
+    def __init__(self, max_content_length: int = 100000) -> None:
         self.max_content_length = max_content_length
 
     def create_root_node(

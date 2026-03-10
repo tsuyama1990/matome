@@ -28,13 +28,9 @@ class PipelineConfig:
         self,
         pipeline_timeout: float,
         raptor_max_clusters: int,
-        preview_chunk_count: int,
-        default_doc_title: str,
     ) -> None:
         self.pipeline_timeout = pipeline_timeout
         self.raptor_max_clusters = raptor_max_clusters
-        self.preview_chunk_count = preview_chunk_count
-        self.default_doc_title = default_doc_title
 
 
 class PipelineDependencies:
@@ -96,16 +92,15 @@ class ProcessManager:
 
 
 class IngestionOrchestrator:
-    def __init__(self, deps: PipelineDependencies, config: PipelineConfig) -> None:
+    def __init__(self, deps: PipelineDependencies) -> None:
         self.deps = deps
-        self.config = config
 
     def execute(self, context: PipelineContext) -> tuple[typing.Iterator[str], str]:
         import itertools
 
         if context.file_path:
             preview_chunks = list(
-                itertools.islice(self.deps.text_splitter.split_document(context.file_path), self.config.preview_chunk_count)
+                itertools.islice(self.deps.text_splitter.split_document(context.file_path), 5)
             )
             combined_content = "\n".join(preview_chunks)
             return self.deps.text_splitter.split_document(context.file_path), combined_content
@@ -150,9 +145,8 @@ class AnalysisOrchestrator:
 
 
 class OutputOrchestrator:
-    def __init__(self, deps: PipelineDependencies, config: PipelineConfig) -> None:
+    def __init__(self, deps: PipelineDependencies) -> None:
         self.deps = deps
-        self.config = config
 
     def execute(
         self,
@@ -164,7 +158,7 @@ class OutputOrchestrator:
     ) -> tuple[IdentityNode, ContentNode, Any]:
         identity, content = self.deps.doc_factory.create_root_node(
             node_id=context.root_doc_id,
-            title=self.config.default_doc_title,
+            title="Business Manual",
             content_text=combined_content,
             summary=summary,
         )
@@ -252,9 +246,9 @@ class PipelineOrchestrator:
         self.validator = PipelineValidator(doc_factory=dependencies.doc_factory)
         self.error_handler = PipelineErrorHandler()
         self.transaction_handler = PipelineTransactionManager(dependencies)
-        self.ingestion_orchestrator = IngestionOrchestrator(dependencies, config)
+        self.ingestion_orchestrator = IngestionOrchestrator(dependencies)
         self.analysis_orchestrator = AnalysisOrchestrator(dependencies, config)
-        self.output_orchestrator = OutputOrchestrator(dependencies, config)
+        self.output_orchestrator = OutputOrchestrator(dependencies)
         self.circuit_breaker = CircuitBreaker()
 
     def run_pipeline(self, context: PipelineContext) -> None:

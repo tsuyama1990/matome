@@ -30,7 +30,7 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
 
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
-    factory = DocumentFactory(max_content_length=settings.max_content_length)
+    factory = DocumentFactory()
     metadata_service = MetadataService()
 
     import typing
@@ -63,8 +63,6 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
     config = PipelineConfig(
         pipeline_timeout=settings.pipeline_timeout,
         raptor_max_clusters=settings.raptor_max_clusters,
-        preview_chunk_count=settings.preview_chunk_count,
-        default_doc_title=settings.default_doc_title,
     )
     return deps, config
 
@@ -93,16 +91,15 @@ def test_orchestrator_raptor_fallback(tmp_path: pytest.TempPathFactory) -> None:
     # Pass more than 15 chunks to avoid the UMAP dimensionality error for N <= 15 when using defaults
     chunks = [f"test document chunk number {i}" for i in range(20)]
     tree = orchestrator.deps.clustering_service.cluster_chunks(
-        chunks,
-        orchestrator.config.raptor_max_clusters,
+        chunks, orchestrator.config.raptor_max_clusters
     )
     assert isinstance(tree, dict)
     assert "level_0" in tree
 
 
 def test_ingestion_orchestrator_execute_content(tmp_path: pytest.TempPathFactory) -> None:
-    deps, config = _create_dependencies(base_dir=str(tmp_path))
-    ingestion = IngestionOrchestrator(deps, config)
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
+    ingestion = IngestionOrchestrator(deps)
     ctx = PipelineContext(root_doc_id="test_id", content="Short test content.", file_path=None)
 
     iterator, combined = ingestion.execute(ctx)
@@ -112,8 +109,8 @@ def test_ingestion_orchestrator_execute_content(tmp_path: pytest.TempPathFactory
 
 
 def test_ingestion_orchestrator_execute_file(tmp_path: pytest.TempPathFactory) -> None:
-    deps, config = _create_dependencies(base_dir=str(tmp_path))
-    ingestion = IngestionOrchestrator(deps, config)
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
+    ingestion = IngestionOrchestrator(deps)
 
     fpath = tmp_path / "test.txt"  # type: ignore[operator]
     fpath.write_text("Test file content.")
@@ -127,8 +124,8 @@ def test_ingestion_orchestrator_execute_file(tmp_path: pytest.TempPathFactory) -
 
 
 def test_ingestion_orchestrator_execute_empty_context(tmp_path: pytest.TempPathFactory) -> None:
-    deps, config = _create_dependencies(base_dir=str(tmp_path))
-    ingestion = IngestionOrchestrator(deps, config)
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
+    ingestion = IngestionOrchestrator(deps)
 
     ctx = PipelineContext(root_doc_id="test_id", content=None, file_path=None)
     with pytest.raises(ValueError, match="either content or file_path"):
@@ -188,8 +185,8 @@ def test_analysis_orchestrator_ai_error(
 
 
 def test_output_orchestrator_execute(tmp_path: pytest.TempPathFactory) -> None:
-    deps, config = _create_dependencies(base_dir=str(tmp_path))
-    output = OutputOrchestrator(deps, config)
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
+    output = OutputOrchestrator(deps)
 
     ctx = PipelineContext(root_doc_id="test_id", content="Test", file_path=None)
     identity, content, metadata = output.execute(ctx, "content", "summary", {}, {})
@@ -206,8 +203,8 @@ def test_output_orchestrator_ai_error(
 
     from src.domain_models.exceptions import AIServiceError
 
-    deps, config = _create_dependencies(base_dir=str(tmp_path))
-    output = OutputOrchestrator(deps, config)
+    deps, _ = _create_dependencies(base_dir=str(tmp_path))
+    output = OutputOrchestrator(deps)
 
     def raise_error(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
         msg = "Mock error"
