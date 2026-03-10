@@ -65,6 +65,14 @@ class DiagramServiceProtocol(Protocol):
     def generate_mermaid_diagram(self, board: PivotBoard) -> str: ...
 
 
+class DocumentGenerationServiceProtocol(Protocol):
+    def generate_markdown_requirements(self, board: PivotBoard) -> str: ...
+
+
+class WebGroundingServiceProtocol(Protocol):
+    def verify_web_grounding(self, content: str) -> str: ...
+
+
 class EvaluationServiceProtocol(Protocol):
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]: ...
 
@@ -73,6 +81,8 @@ class AIServiceProtocol(
     SummaryServiceProtocol,
     QuestionServiceProtocol,
     DiagramServiceProtocol,
+    DocumentGenerationServiceProtocol,
+    WebGroundingServiceProtocol,
     EvaluationServiceProtocol,
     Protocol,
 ):

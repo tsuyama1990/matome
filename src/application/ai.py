@@ -65,6 +65,14 @@ class DefaultAIService(AIServiceProtocol):
         prompt = f"Generate a Mermaid.js diagram based on this structure: {board.id} with axis {board.axis}"
         return self._call_api(prompt, model=self.text_reasoning_model)
 
+    def generate_markdown_requirements(self, board: PivotBoard) -> str:
+        prompt = f"Generate a detailed Markdown Requirements Document (PRD) based on this structure: {board.id} structured along axis {board.axis}."
+        return self._call_api(prompt, model=self.text_reasoning_model)
+
+    def verify_web_grounding(self, content: str) -> str:
+        prompt = f"Cross-reference the following logic with modern SaaS best practices and web facts. Highlight any biases or outdated practices:\n\n{content}"
+        return self._call_api(prompt, model=self.text_reasoning_model)
+
     def evaluate_answer(self, context: UserInteractionContext) -> tuple[bool, str]:
         prompt = f"Evaluate this user answer: '{context.user_answer}' for the question: '{context.question_asked}'. Is it basically correct? Start with YES or NO."
         response = self._call_api(prompt, model=self.text_reasoning_model)

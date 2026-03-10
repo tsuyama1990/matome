@@ -143,6 +143,47 @@ def test_default_ai_service_calls_generate_mermaid_valid(tmp_path: pytest.TempPa
     assert diagram == "graph TD"
 
 
+def test_default_ai_service_calls_generate_markdown_valid(tmp_path: pytest.TempPathFactory) -> None:
+    from unittest.mock import MagicMock
+
+    mock_http = MagicMock()
+    mock_http.post.return_value = {"choices": [{"message": {"content": "# PRD"}}]}
+
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
+    board = PivotBoard(
+        id="board_1",
+        original_root_id="root_1",
+        axis=PivotAxis.ACTOR_STATE,
+        custom_axis_description=None,
+        nodes=[
+            PivotBoardViewNode(node_id="test1", x_position=0.1, y_position=0.2, cluster_id=None)
+        ],
+    )
+    diagram = ai.generate_markdown_requirements(board)
+    assert diagram == "# PRD"
+
+
+def test_default_ai_service_calls_verify_web_grounding_valid(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    from unittest.mock import MagicMock
+
+    mock_http = MagicMock()
+    mock_http.post.return_value = {"choices": [{"message": {"content": "No bias found"}}]}
+
+    ai = _create_service(
+        base_dir=str(tmp_path),
+        api_key="sk-or-v1-validkey12345678901234567890",
+        http_client=mock_http,
+    )
+    result = ai.verify_web_grounding("Some content")
+    assert result == "No bias found"
+
+
 def test_default_ai_service_calls_evaluate_answer_valid(tmp_path: pytest.TempPathFactory) -> None:
     from unittest.mock import MagicMock
 
