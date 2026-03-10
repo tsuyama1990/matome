@@ -27,10 +27,11 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     factory = DocumentFactory()
     metadata_service = MetadataService()
 
+    import os
+
+    os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
+
     settings = IntegrationTestSettings(
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
         allowed_base_dir=str(tmp_path),
     )
 

@@ -10,12 +10,10 @@ def test_settings_default(tmp_path: pytest.TempPathFactory) -> None:
     os.environ["TEXT_FAST_MODEL"] = "google/gemini-2.5-flash"
     os.environ["TEXT_REASONING_MODEL"] = "deepseek/deepseek-reasoner"
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
+    os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
 
     try:
         settings = Settings(
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
             allowed_base_dir=str(tmp_path),
         )
         mode_config = ModeConfig()
@@ -33,12 +31,10 @@ def test_app_context_creation(tmp_path: pytest.TempPathFactory) -> None:
     os.environ["TEXT_FAST_MODEL"] = "google/gemini-2.5-flash"
     os.environ["TEXT_REASONING_MODEL"] = "deepseek/deepseek-reasoner"
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
+    os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
 
     try:
         settings = Settings(
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
             allowed_base_dir=str(tmp_path),
         )
         mode_config = ModeConfig()

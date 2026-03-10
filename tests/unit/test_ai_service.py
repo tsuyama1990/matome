@@ -37,6 +37,8 @@ def _create_mock_settings(
     if api_key:
         os.environ["OPENROUTER_API_KEY"] = api_key
 
+    os.environ["MATOME_BASE_DATA_DIR"] = base_dir
+
     return Settings(
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
@@ -156,7 +158,7 @@ def test_default_ai_service_invalid_key_length(
     monkeypatch.setenv("OPENROUTER_API_KEY", "123")
 
     with (
-        pytest.raises(ConfigurationError, match="Invalid configuration state."),
+        pytest.raises(ConfigurationError, match="API Key validation failed"),
         EnvCredentialProvider().get_api_key(),
     ):
         pass
@@ -171,7 +173,7 @@ def test_default_ai_service_invalid_key_format(
     monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
 
     with (
-        pytest.raises(ConfigurationError, match="Invalid configuration state."),
+        pytest.raises(ConfigurationError, match="API Key validation failed"),
         EnvCredentialProvider().get_api_key(),
     ):
         pass

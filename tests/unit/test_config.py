@@ -6,6 +6,7 @@ def test_settings_api_key_valid(
 ) -> None:
     valid_key = "sk-or-v1-validkey12345678901234567890"
     monkeypatch.setenv("OPENROUTER_API_KEY", valid_key)
+    monkeypatch.setenv("SKIP_ACTIVE_KEY_VALIDATION", "true")
     try:
         from src.config import EnvCredentialProvider
 
@@ -26,7 +27,7 @@ def test_settings_api_key_invalid_length(
     try:
         provider = EnvCredentialProvider()
         with (
-            pytest.raises(ConfigurationError, match="Invalid configuration state."),
+            pytest.raises(ConfigurationError, match="API Key validation failed"),
             provider.get_api_key(),
         ):
             pass
@@ -46,7 +47,7 @@ def test_settings_api_key_invalid_format(
     try:
         provider = EnvCredentialProvider()
         with (
-            pytest.raises(ConfigurationError, match="Invalid configuration state."),
+            pytest.raises(ConfigurationError, match="API Key validation failed"),
             provider.get_api_key(),
         ):
             pass

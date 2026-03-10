@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from src.config import Settings
@@ -18,10 +20,9 @@ from tests.helpers.mocks import MockAIService
 def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineConfig]:
     from unittest.mock import MagicMock
 
+    os.environ["MATOME_BASE_DATA_DIR"] = base_dir
+
     settings = Settings(
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
         allowed_base_dir=base_dir,
     )
 

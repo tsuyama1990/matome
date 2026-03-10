@@ -45,15 +45,15 @@ class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""
 
     text_fast_model: str = Field(
-        ...,
+        default_factory=lambda: os.getenv("TEXT_FAST_MODEL", "google/gemini-2.5-flash"),
         description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging",
     )
     text_reasoning_model: str = Field(
-        ...,
+        default_factory=lambda: os.getenv("TEXT_REASONING_MODEL", "deepseek/deepseek-reasoner"),
         description="Models with advanced logical reasoning capabilities for insight extraction, To-Be generation, web grounding",
     )
     multimodal_model: str = Field(
-        ...,
+        default_factory=lambda: os.getenv("MULTIMODAL_MODEL", "openai/gpt-4o"),
         description="Models excelling in visual understanding for complex charts in PDFs, architecture diagrams, UI mockups",
     )
 
@@ -220,7 +220,7 @@ class Settings(MatomeConfig):
             msg = "ALLOWED_BASE_DIR path too long"
             raise ConfigurationError(msg)
 
-        expected_parent = "/"
+        expected_parent = os.getenv("MATOME_BASE_DATA_DIR", "/app")
 
         try:
             from pathlib import Path
@@ -314,10 +314,10 @@ class CredentialErrorHandler:
 
         logger = logging.getLogger(__name__)
         logger.warning(
-            "Credential configuration state is invalid. Aborting operation securely.",
+            "API Key validation failed: Required API Key is missing from the environment.",
             extra={"context": "auth"},
         )
-        msg = "Invalid configuration state."
+        msg = "API Key validation failed: The key is entirely missing. Please check your environment variables."
         raise ConfigurationError(msg)
 
     def handle_invalid_type(self) -> typing.NoReturn:
@@ -327,10 +327,10 @@ class CredentialErrorHandler:
 
         logger = logging.getLogger(__name__)
         logger.warning(
-            "Credential configuration state is invalid. Aborting operation securely.",
+            "API Key validation failed: The provided key is not a string.",
             extra={"context": "auth"},
         )
-        msg = "Invalid configuration state."
+        msg = "API Key validation failed: Incorrect data type provided."
         raise ConfigurationError(msg)
 
     def validate_and_format(self, key: str) -> None:
@@ -344,10 +344,12 @@ class CredentialErrorHandler:
             DefaultSecurityService().validate_api_key(key)
         except ValueError as err:
             logger.warning(
-                "Credential configuration state is invalid. Aborting operation securely.",
+                f"API Key validation failed: {err!s}",
                 extra={"context": "auth"},
             )
-            msg = "Invalid configuration state."
+            msg = (
+                f"API Key validation failed: {err!s} Please check your key format and permissions."
+            )
             raise ConfigurationError(msg) from err
 
 
