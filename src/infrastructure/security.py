@@ -12,8 +12,14 @@ class PromptInjectionScanner:
         if not text:
             return ""
 
-        # Basic stripping and normalisation
-        sanitized = text.replace("\x00", "").strip()[:50000]
+        # Ensure valid unicode string and prevent encoding tricks
+        sanitized = text.encode("utf-8", "ignore").decode("utf-8")
+
+        # Strip all control characters except standard newlines and tabs
+        sanitized = re.sub(r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]", "", sanitized)
+
+        # Basic length bound
+        sanitized = sanitized.strip()[:50000]
 
         # Use llm-guard scanner to detect prompt injection
         sanitized, is_valid, risk_score = self._scanner.scan(sanitized)

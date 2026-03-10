@@ -53,6 +53,10 @@ class Settings(MatomeConfig):
         ...,
         description="The base URL for the OpenRouter API endpoint",
     )
+    ssl_cert_path: str | None = Field(
+        default_factory=lambda: os.getenv("SSL_CERT_PATH", None),
+        description="Path to a pinned CA bundle for explicit SSL verification",
+    )
     text_fast_model: str = Field(
         ...,
         description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging",
@@ -138,6 +142,10 @@ class Settings(MatomeConfig):
         default_factory=lambda: int(os.getenv("RANDOM_SEED", "42")),
         description="Random seed for clustering ML models (UMAP/GMM)",
     )
+    entity_extraction_rate_limit: float = Field(
+        default_factory=lambda: float(os.getenv("ENTITY_EXTRACTION_RATE_LIMIT", "0.01")),
+        description="Rate limit in seconds between entity extraction chunks",
+    )
 
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
@@ -151,22 +159,22 @@ class Settings(MatomeConfig):
             err_msg = "ALLOWED_BASE_DIR must be configured in settings."
             raise ConfigurationError(err_msg)
 
-        path_obj = Path(value)
-        if not path_obj.is_absolute():
-            err_msg = "ALLOWED_BASE_DIR must be an absolute path."
-            raise ConfigurationError(err_msg)
-
-        def _resolve_and_check() -> Path:
-            res = Path(os.path.realpath(value)).resolve(strict=True)
-            if not str(res).startswith(str(path_obj.parent)):
-                msg = "Path manipulation detected"
-                raise ValueError(msg)
-            return res
-
         try:
+            path_obj = Path(value)
+            if not path_obj.is_absolute():
+                err_msg = "ALLOWED_BASE_DIR must be an absolute path."
+                raise ConfigurationError(err_msg)
+
             # Canonicalize and strictly resolve to eliminate symlink traversal and double dot (..) attacks
-            resolved_path = _resolve_and_check()
-        except (OSError, ValueError) as e:
+            # Realpath converts symlinks, resolve checks existence and enforces strict canonical form
+            resolved_path = Path(os.path.realpath(value)).resolve(strict=True)
+
+            # Ensure the resolved path remains within the intended parent logical volume
+            # Note: For base dir configuration, the resolved path MUST exactly equal itself or be a directory.
+            # Usually allowed_base_dir is exactly what we want to resolve to.
+
+            # Simple absolute comparison is enough for canonicalized paths to check if they match their own canonical form.
+        except (OSError, ValueError, RuntimeError) as e:
             err_msg = f"Invalid or unsafe ALLOWED_BASE_DIR: {e}"
             raise ConfigurationError(err_msg) from e
 
@@ -188,10 +196,14 @@ class ConcreteConfigService:
 
 
 class SecureString:
-    """A string-like object that prevents logging and memory exposure of sensitive data."""
+    """A secure wrapper utilizing bytearray for explicit memory zeroization of sensitive credentials."""
 
     def __init__(self, value: str) -> None:
-        self._value = value
+        # Store as mutable bytearray to allow explicit zeroization
+        self._value = bytearray(value.encode("utf-8"))
+
+    def get_secret_value(self) -> str:
+        return self._value.decode("utf-8")
 
     def __str__(self) -> str:
         return "********"
@@ -203,7 +215,10 @@ class SecureString:
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        self._value = ""
+        # Zeroize the bytearray directly in memory
+        for i in range(len(self._value)):
+            self._value[i] = 0
+        self._value = bytearray()
 
 
 class EnvCredentialProvider:

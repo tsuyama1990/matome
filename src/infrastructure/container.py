@@ -2,6 +2,7 @@ from typing import Protocol
 
 from src.application.ai import DefaultAIService
 from src.config import EnvCredentialProvider, Settings
+from src.domain_models.interfaces import DocumentRepository
 from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.ai_client import DefaultAICommunicationClient
@@ -22,13 +23,14 @@ class DIContainerProtocol(Protocol):
 
 
 class ProductionDIContainer(DIContainerProtocol):
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, doc_repo: DocumentRepository | None = None) -> None:
         self.settings = settings
+        self.doc_repo = doc_repo or InMemoryDocumentRepository()
 
     def get_dependencies(self) -> tuple[PipelineDependencies, PipelineConfig]:
-        repo = InMemoryDocumentRepository()
+        repo = self.doc_repo
 
-        http_client = RequestsHTTPClient()
+        http_client = RequestsHTTPClient(ssl_cert_path=self.settings.ssl_cert_path)
         retry_policy = TenacityRetryPolicy(
             ai_retry_attempts=self.settings.ai_retry_attempts,
             ai_retry_min_wait=self.settings.ai_retry_min_wait,
@@ -61,17 +63,20 @@ class ProductionDIContainer(DIContainerProtocol):
             max_file_size=self.settings.max_file_size,
             strategy=LangChainSplitterStrategy(),
         )
+        from src.utils.rate_limit import RateLimiter
+
         entity_extractor = DefaultEntityExtractor(
             spacy_model=self.settings.spacy_model,
             trusted_models=self.settings.trusted_spacy_models,
             trusted_hashes=self.settings.trusted_model_hashes,
             fallback_ner_regex=self.settings.fallback_ner_regex,
+            rate_limiter=RateLimiter(self.settings.entity_extraction_rate_limit),
         )
         clustering_service = DefaultClusteringService(self.settings.random_seed)
 
         deps = PipelineDependencies(
             doc_repo=repo,
-            transaction_manager=repo,
+            transaction_manager=repo,  # type: ignore[arg-type]
             summary_service=ai,
             question_service=ai,
             doc_factory=factory,

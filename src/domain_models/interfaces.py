@@ -102,6 +102,12 @@ class TextSplitterProtocol(Protocol):
     def split_document(self, file_path: str) -> Iterator[str]: ...
 
 
+class NLPServiceProtocol(Protocol):
+    """Protocol for abstracting NLP operations."""
+
+    def extract_entities(self, text: str) -> list[tuple[str, str]]: ...
+
+
 class EntityExtractorProtocol(Protocol):
     """Protocol for extracting entities from an iterator of text chunks."""
 

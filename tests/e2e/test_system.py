@@ -32,7 +32,8 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     from pydantic import SecretStr
 
     with patch(
-        "src.config.CredentialConfig.validate_api_key", return_value=SecretStr("sk-or-v1-" + "a" * 30)
+        "src.config.CredentialConfig.validate_api_key",
+        return_value=SecretStr("sk-or-v1-" + "a" * 30),
     ):
         from src.config import CredentialConfig
 
