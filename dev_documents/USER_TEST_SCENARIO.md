@@ -1,111 +1,146 @@
 # User Acceptance Test (UAT) Scenario & Tutorial Plan
 
 ## 1. Test Scenarios
-The following scenarios are designed to act both as User Acceptance Tests and engaging tutorials for new users. They will guide the user through the "Aha! Moment" of using the matome platform. We use `marimo` to provide a reproducible, interactive Python notebook experience.
+
 
 ### Scenario ID: UAT-01 - The "Aha!" Moment for a Product Manager (Quick Start)
+**Priority:** High
 **Description:** A Product Manager (PdM) wants to understand a dense legacy system manual and convert it into a modern workflow without falling into the "As-Is" trap.
-**Steps:**
-1.  **Ingestion (Survey):** The user uploads a complex text file (e.g., `testfiles/test_text.txt`) representing a legacy business manual. The system should rapidly process this and display an interactive tree structure (the RAPTOR graph), not a wall of text.
-2.  **Interaction (Question & Read):** The user clicks on a locked node representing "Special Approval Processes." The AI prompts the user: "What condition do you think requires executive approval instead of just the manager's?" The user attempts an answer, and the node bursts open with a satisfying animation, revealing a highly dense summary (CoD).
-3.  **Active Recall (Recite):** After reading, the user activates the microphone and summarises the point: "Executive approval is needed if the budget exceeds £5000." The AI responds with positive Sandwich Feedback, confirming the understanding and correcting minor details.
-4.  **Transformation (Pivot KJ):** The user clicks the "Pivot" button and selects the "Actor vs. State Transition" axis. The interface dynamically re-arranges the manual's chapter-based structure into a new swimlane workflow layout.
-5.  **Export:** The user clicks "Export PRD," and the system instantly downloads a Markdown document containing the new To-Be requirements and a valid Mermaid.js sequence diagram.
-**Expected Result:** The user feels relief from the cognitive load of reading the raw text and experiences the excitement of instantly generating a structured system design from an unstructured manual.
+**Detailed Steps & Expected Behaviors:**
+1.  **Ingestion & Immediate Feedback (Survey):** The PdM begins by locating an incredibly dense, 200-page legacy business manual detailing outdated departmental approval workflows (e.g., `testfiles/legacy_approval_manual.txt`). They drag and drop this file into the matome web interface. The expected behavior is that the system instantly accepts the upload, returning a visual progress indicator. Within seconds, rather than presenting a wall of text, the system displays an elegant, high-level interactive tree structure (the RAPTOR graph) representing the core chapters and top-level concepts of the manual. The UI must remain completely responsive at 60fps during this rendering.
+2.  **Cognitive Friction & Interaction (Question & Read):** The PdM notices a visually locked node titled "Special Executive Approval Processes". They attempt to click it to read the details. Instead of opening immediately, the Semantic Zoom UI halts and the AI tutor gently prompts them via a pop-up: "Based on your understanding of the surrounding chapters, what specific financial threshold do you think requires executive approval instead of just a line manager's?" This intentional friction forces the user to actively recall context. The user types, "Maybe if the budget is over £2000?" and hits enter.
+3.  **Micro-Reward & Active Recall (Recite):** The system evaluates the answer. Because it's close, the node bursts open with a satisfying visual animation and a pleasant sound effect, revealing a highly dense, noise-free summary (generated via Chain of Density). After reading the summary, the user is prompted to recite. They activate their microphone and state, "Ah, executive approval is actually needed if the budget strictly exceeds £5000." The AI processes the audio and responds with positive Sandwich Feedback: "Great job! You correctly identified the £5000 threshold. Just remember it also applies to cross-departmental projects."
+4.  **Radical Transformation (Pivot KJ):** Having understood the "As-Is" state, the PdM wants to design the "To-Be" system. They click the prominent "Pivot" button on the canvas and select the "Actor vs. State Transition" axis from the dropdown menu. The UI physics engine physically detaches the nodes from their original chapter-based hierarchy and dynamically re-arranges them into a new, multi-lane swimlane workflow layout, categorizing actions by 'Manager', 'Executive', and 'System'.
+5.  **Final Export (Insight):** Satisfied with the new logical flow, the PdM clicks "Export PRD". The system instantly downloads a perfectly formatted Markdown document containing the new To-Be requirements and a syntactically valid Mermaid.js sequence diagram ready to be pasted into Jira or Confluence. The expected result is a profound "Aha!" moment where the user realizes they just converted a 200-page manual into a structured software design in minutes.
 
 ### Scenario ID: UAT-02 - Multi-Dimensional Analysis for a Consultant (Advanced)
-**Description:** A business consultant needs to synthesise multiple market reports to find a unique angle for a strategy pitch.
-**Steps:**
-1.  **Ingestion:** The user uploads three separate documents detailing market trends, competitor analysis, and regulatory changes.
-2.  **Exploration:** The user navigates the massive combined knowledge tree using the Semantic Zoom UI, never losing their place thanks to the minimap and breadcrumbs.
-3.  **Restructuring (Pivot KJ):** The user defines a custom axis: "Opportunities vs Threats in the European Market." The system pulls data across all three documents and physically reorganises the nodes into a custom matrix on the canvas.
-4.  **Web-Grounding:** The AI flags a "Threat" node regarding a specific law and suggests, "Recent news indicates this law's enforcement has been delayed. Would you like to downgrade this threat?" The user accepts the suggestion.
-**Expected Result:** The consultant successfully breaks out of the original authors' narrative structures, generating a completely novel and externally validated insight matrix without manual copy-pasting.
+**Priority:** Medium
+**Description:** A business consultant needs to synthesise multiple disparate market reports to find a completely unique, cross-sectional angle for a high-stakes strategy pitch to corporate management.
+**Detailed Steps & Expected Behaviors:**
+1.  **Multi-Document Ingestion:** The consultant starts by uploading three entirely separate and massive documents simultaneously: a global market trend report, a highly technical competitor analysis specification, and a dense legal document regarding upcoming regulatory changes in Europe. The system processes these in parallel. The expected behavior is that the UI unifies these three distinct sources into a single, massive, interconnected knowledge tree without crashing or freezing, seamlessly linking related concepts across the different files.
+2.  **Navigating the Semantic Forest:** The consultant faces a knowledge graph containing potentially thousands of nodes. They utilize the Semantic Zoom UI to dive deep into a cluster regarding "European Privacy Laws." Even while zoomed in at a high resolution to read specific legal clauses, the system constantly displays a minimap in the corner and an interactive breadcrumb trail at the top. The expected behavior is that the user never experiences the "lost in the middle" phenomenon; they can instantly snap back to the macro view by clicking the root breadcrumb.
+3.  **Advanced Restructuring (Custom Pivot KJ):** The consultant realizes the original authors' structures are useless for their specific pitch. They trigger the Pivot KJ engine but choose to define a completely custom axis using natural language: "Plot these nodes on a matrix comparing 'Immediate Revenue Opportunities' against 'Long-term Regulatory Threats' specifically in the European Market." The LangGraph orchestration layer analyzes the vector embeddings across all three documents and physically reorganizes the nodes on the canvas into a custom four-quadrant matrix.
+4.  **External Validation (Web-Grounding):** While reviewing a node placed in the "High Threat" quadrant regarding a specific AI regulation, the system actively intervenes. The AI highlights the node and presents a pop-up: "Web-Grounding Alert: Recent news articles from the past 48 hours indicate that the enforcement of this specific law has been officially delayed by two years. Would you like to automatically downgrade this threat and move the node to a lower-risk quadrant?" The consultant clicks "Accept."
+5.  **Final Synthesis:** The consultant has successfully broken completely free of the original authors' narrative constraints. They have generated a completely novel, externally validated insight matrix that spans three different domains (market, technical, legal) without manually copy-pasting a single sentence. They export the visual matrix to a high-resolution image and the underlying data to a CSV for their presentation.
 
-## 2. Behaviour Definitions (Gherkin)
+## 2. Behavior Definitions
 
-### Feature: Document Ingestion and Chunking
+
+### Feature: Secure Document Ingestion and Chunking
 ```gherkin
-FEATURE: Secure and Context-Aware Document Processing
-  As a user
-  I want to upload a document
-  So that the system can break it down into digestible semantic chunks without losing context.
+FEATURE: Highly Secure and Context-Aware Document Processing
+  As an enterprise user processing sensitive corporate data
+  I want to securely upload massive, complex documents
+  So that the system can break them down into digestible semantic chunks without losing context or exposing my data to vulnerabilities.
 
-  SCENARIO: Uploading a valid text file
-    GIVEN the user has a valid API key configured
-    AND the file "testfiles/test_text.txt" exists
-    WHEN the user uploads the file via the ingestion API
-    THEN the system should return a 202 Accepted status
-    AND the background job should successfully generate a RAPTOR tree
-    AND the root node should be accessible via the study API.
+  SCENARIO: Uploading a valid, complex text file successfully
+    GIVEN the user has successfully authenticated and a valid API key is configured in their session
+    AND the valid file "testfiles/legacy_approval_manual.txt" exists on their local machine
+    WHEN the user initiates an asynchronous upload of the file via the main ingestion REST API
+    THEN the system must immediately return a HTTP 202 Accepted status indicating background processing has started
+    AND the background worker queue should successfully parse the text, normalize the noise, and generate a hierarchical RAPTOR tree
+    AND the root node of this new knowledge tree must become accessible via the study session API within 5 seconds.
 
-  SCENARIO: Attempting a Path Traversal Attack
-    GIVEN a malicious payload attempting to read "../../etc/passwd"
-    WHEN the user submits the payload to the file upload endpoint
-    THEN the system must reject the request with a 400 Bad Request
-    AND no file should be read from the system root.
+  SCENARIO: Defending against a malicious Path Traversal Attack
+    GIVEN an attacker attempts to exploit the upload mechanism
+    AND they craft a highly malicious payload attempting to force the system to read from "../../etc/passwd"
+    WHEN the attacker submits this malicious path payload directly to the file upload endpoint bypassing the UI
+    THEN the system's strict Pydantic input validation layer must immediately intercept the request
+    AND the system must firmly reject the request with a HTTP 400 Bad Request status
+    AND absolutely no file operations should be executed against the host operating system's root directory
+    AND the security event must be logged internally for auditing purposes.
+
+  SCENARIO: Handling massive files that exceed memory limits (Graceful Degradation)
+    GIVEN the user attempts to upload an exceptionally large, 5-Gigabyte log file
+    WHEN the ingestion pipeline begins processing the stream
+    THEN the system must strictly process the data as iterators
+    AND if the file violates the maximum configured chunk threshold, the system must gracefully halt processing for that specific file
+    AND return a clear error to the user interface stating "File exceeds maximum processing limits" without crashing the entire backend worker pool.
 ```
 
-### Feature: Interactive Learning (SQ3R)
+### Feature: Frictionless Interactive Learning (SQ3R)
 ```gherkin
-FEATURE: Frictionless Active Learning
-  As a learner
-  I want to be questioned before reading and give feedback after reading
-  So that I can retain information in my long-term memory.
+FEATURE: Enforced Frictionless Active Learning via Micro-Gamification
+  As a dedicated learner trying to master complex technical concepts
+  I want to be actively questioned before reading and forced to provide feedback after reading
+  So that I can successfully bypass Ebbinghaus's forgetting curve and retain critical information in my long-term memory.
 
-  SCENARIO: Unlocking a node with a correct answer
-    GIVEN a specific concept node is locked
-    WHEN the user requests the node details
-    THEN the system presents a generated question
-    WHEN the user submits a text answer matching the semantic intent of the node
-    THEN the system unlocks the node
-    AND returns the high-density Chain of Density (CoD) summary.
+  SCENARIO: Successfully unlocking a node by demonstrating prior knowledge
+    GIVEN a specific, high-value concept node within the RAPTOR tree is currently in a visually locked state
+    WHEN the user explicitly requests to expand and read the detailed contents of the node
+    THEN the system intervenes and presents a dynamically generated, context-aware question based on the node's hidden contents
+    WHEN the user submits a text-based answer that semantically matches the core intent of the hidden node
+    THEN the system immediately unlocks the node accompanied by positive visual feedback (micro-rewards)
+    AND fully reveals the high-density Chain of Density (CoD) summary text to the user.
 
-  SCENARIO: Reciting information and receiving feedback
-    GIVEN the user has unlocked and read a node
-    WHEN the user submits an audio transcript summarising the node
-    AND the transcript contains a hallucinated fact not present in the original chunk
-    THEN the Context-Aware Hierarchical Merging (CAHM) engine flags the hallucination
-    AND the system returns gentle "Sandwich Feedback" correcting the error without discouraging the user.
+  SCENARIO: Reciting information verbally and receiving corrective Sandwich Feedback
+    GIVEN the user has successfully unlocked, read, and comprehended a complex node
+    WHEN the user utilizes the microphone to submit an audio transcript verbally summarising the core points of the node
+    AND the AI transcribes the audio but detects that the user's summary contains a hallucinated fact absolutely not present in the original source chunk
+    THEN the Context-Aware Hierarchical Merging (CAHM) logic engine explicitly flags the hallucination
+    AND the system responds to the user with gentle "Sandwich Feedback" (Praise -> Correction -> Encouragement) to correct the error without destroying the user's learning motivation.
+
+  SCENARIO: Failing the unlock question and utilizing the progressive hint system
+    GIVEN the system has presented an adaptive question to unlock a node
+    WHEN the user is completely stuck and explicitly clicks the "Show Hint" button instead of guessing
+    THEN the system must not penalize the user
+    AND it must progressively lower the cognitive difficulty by first revealing the first letter of the expected keyword
+    AND if the user requests a second hint, the system transforms the open-ended question into a simpler multiple-choice format.
 ```
 
-### Feature: Pivot KJ Analysis
+### Feature: Pivot KJ Multi-Dimensional Restructuring
 ```gherkin
-FEATURE: Multi-Dimensional Knowledge Restructuring
-  As an analyst
-  I want to dynamically rearrange the knowledge tree based on new axes
-  So that I can generate novel insights and system requirements.
+FEATURE: Radical Multi-Dimensional Knowledge Restructuring
+  As a system architect or business analyst
+  I want to dynamically and physically rearrange the entire knowledge tree based on new analytical axes
+  So that I can break free from the original document's structure and generate completely novel system requirements.
 
-  SCENARIO: Pivoting to a System Design Axis
-    GIVEN a fully processed document tree representing a business manual
-    WHEN the user triggers the Pivot KJ engine with the "Actor/State" axis
-    THEN the system maps the existing nodes into a new PivotBoard
-    AND the new clusters represent workflow stages rather than chapters
-    AND the system successfully generates a valid Mermaid sequence diagram snippet from the new board.
+  SCENARIO: Pivoting a dense manual to a System Design Workflow Axis
+    GIVEN a fully processed, massive document tree representing a highly unstructured legacy business manual
+    WHEN the user explicitly triggers the Pivot KJ engine and selects the predefined "Actor vs. State Transition" multidimensional axis
+    THEN the LangGraph orchestration layer maps the existing nodes and their metadata tags into a completely new spatial PivotBoard layout
+    AND the newly formed visual clusters strictly represent distinct workflow stages (e.g., 'Pending', 'Approved') rather than the original chronological chapters
+    AND the user interface physics engine elegantly animates the nodes moving to their new positions
+    AND the system successfully generates a syntactically valid Mermaid.js sequence diagram code snippet directly derived from the dependencies mapped on the new board.
+
+  SCENARIO: Rejecting a Web-Grounding AI suggestion during restructuring
+    GIVEN the user has successfully pivoted the knowledge tree into a new workflow
+    AND the Web-Grounding AI flags a node and suggests replacing a manual process with an automated AI check based on external internet best practices
+    WHEN the user explicitly rejects the AI's suggestion because it violates strict internal company policy
+    THEN the system must immediately dismiss the suggestion prompt
+    AND the node must remain exactly in its current position without being modified
+    AND the AI must not re-suggest the identical change during the current active session.
 ```
 
 ## 3. Tutorial Strategy
 
-The tutorial strategy aims to provide a frictionless, interactive experience for new developers and users to verify the core functionalities without writing complex scripts. We will use a "Mock Mode" and a "Real Mode" approach.
-*   **Mock Mode (CI/CD and No-API-Key Execution):** The tutorial will use `unittest.mock` to simulate LLM responses and Vector Database interactions. This allows the tutorial to run instantly in CI environments or for users who haven't yet registered an OpenRouter API key, demonstrating the *flow* and *logic* of the system safely.
-*   **Real Mode:** If an `OPENROUTER_API_KEY` environment variable is detected, the tutorial will hit the real infrastructure, proving the end-to-end integration works as designed.
+
+The tutorial strategy is meticulously designed to provide an absolutely frictionless, highly interactive "first-run" experience for both new developers evaluating the codebase and end-users experiencing the product. To ensure maximum accessibility and stability, we will strictly implement a dual-mode approach: "Mock Mode" and "Real Mode".
+
+*   **Mock Mode (CI/CD and No-API-Key Execution):** This is the default, highly resilient state of the tutorial. When the tutorial script executes, it actively checks for the presence of the required OpenRouter API keys. If they are completely absent, the tutorial forcefully falls back to utilizing `unittest.mock` to mathematically simulate all external LLM responses, vector database embedding lookups, and web-grounding API calls. This guarantees that the tutorial can be run instantly, reliably, and completely free of charge in isolated CI/CD environments, or by curious users who simply want to experience the UI flow and application logic safely without managing external credentials.
+*   **Real Mode (End-to-End Integration Verification):** If a valid `OPENROUTER_API_KEY` environment variable is explicitly detected by the system configuration, the tutorial seamlessly transitions into Real Mode. In this state, the tutorial hits the actual, live OpenRouter infrastructure and vector databases. This mode proves unequivocally that the complete end-to-end integration works exactly as architected, executing real semantic chunking, dynamic RAPTOR tree generation, and live Pivot KJ clustering against external APIs.
 
 ## 4. Tutorial Plan
-To ensure simplicity and ease of verification, we will create a **SINGLE** interactive Marimo notebook.
+
+
+To guarantee absolute simplicity, completely eliminate environment configuration headaches, and ensure effortless verification, we will consolidate the entire tutorial experience into a **SINGLE**, highly interactive Marimo notebook file.
 
 *   **File Name:** `tutorials/UAT_AND_TUTORIAL.py`
-*   **Content:** This single file will contain the entire user journey. It will guide the user through:
-    1.  Initialising the system configuration.
-    2.  Simulating the upload of `testfiles/test_text.txt`.
-    3.  Executing the semantic chunking and tree generation logic.
-    4.  Simulating a user answering a question to unlock a node.
-    5.  Executing the Pivot KJ analysis.
-    6.  Displaying the final generated Markdown and Mermaid diagram within the notebook interface.
+*   **Content & Flow:** This solitary file will encapsulate the complete, definitive user journey. By utilizing Marimo's reactive notebook interface, it will guide the user sequentially through the following critical stages:
+    1.  **Bootstrapping & Configuration:** Initializing the strict dependency injection container and explicitly displaying whether the system is currently running in Mock Mode or Real Mode.
+    2.  **Simulated Ingestion:** Programmatically simulating the highly secure asynchronous upload of a sample legacy manual (e.g., `testfiles/test_text.txt`).
+    3.  **Processing Execution:** Visually stepping through the execution of the semantic chunking algorithms and the subsequent LangGraph RAPTOR tree generation logic, printing the resulting tree hierarchy to the notebook interface.
+    4.  **Interactive SQ3R Simulation:** Halting the notebook execution to simulate the "Question & Read" phase. The notebook will prompt the user to type an answer into a cell to unlock a specific semantic node, proving the cognitive friction mechanism works.
+    5.  **Multi-Dimensional Pivot Execution:** Programmatically triggering the complex Pivot KJ analysis engine, forcing the nodes to reorganize along a new architectural axis.
+    6.  **Final Export Verification:** Displaying the final, generated Markdown requirements document and directly rendering the resulting Mermaid.js diagram visually within the Marimo notebook interface to prove total success.
 
-By using `marimo`, the user can execute cells sequentially, modify inputs (like their answer to the AI's question), and immediately see the results, completely satisfying the UAT requirements in a highly visual and reproducible manner.
+By strictly utilizing `marimo`, the user is empowered to execute cells sequentially, dynamically modify inputs (such as intentionally failing the AI's question to test the hint system), and immediately observe the reactive results. This completely satisfies all complex UAT requirements in a highly visual, totally reproducible, and easily debuggable manner.
 
 ## 5. Tutorial Validation
-Validation involves running `uv run marimo edit tutorials/UAT_AND_TUTORIAL.py` (or executing it as a script) and confirming that:
-1.  The script runs from top to bottom without raising any Python exceptions.
-2.  The mock responses (or real responses, depending on the environment) successfully trigger the state changes in the domain models (e.g., unlocking a node).
-3.  The final output clearly demonstrates the transformation of unstructured text into a structured, multi-dimensional format.
+
+
+The formal validation process for this tutorial is strictly defined and easily executed by any developer. It involves running the command `uv run marimo edit tutorials/UAT_AND_TUTORIAL.py` (or alternatively executing it purely as a headless Python script) and formally confirming the following success criteria:
+
+1.  **Execution Integrity:** The entire script must run synchronously from top to bottom without raising a single Python exception, proving the baseline architectural stability.
+2.  **State Management Verification:** The simulated mock responses (or live real responses) must successfully and definitively trigger the expected state changes within the strict Pydantic domain models. For example, a correct answer must demonstrably transition a node's state from `locked=True` to `locked=False`.
+3.  **Transformation Proof:** The final visual output rendered in the notebook must clearly and undeniably demonstrate the mathematical transformation of unstructured input text into a highly structured, multi-dimensional JSON or Markdown format, proving the core value proposition of the entire matome platform.
