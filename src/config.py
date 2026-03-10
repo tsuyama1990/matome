@@ -214,11 +214,20 @@ class SecureString:
     def __enter__(self) -> "SecureString":
         return self
 
+    def _zeroize(self) -> None:
+        import ctypes
+
+        if hasattr(self, "_value") and self._value:
+            # Overwrite memory buffer backing the bytearray directly via ctypes
+            buffer_size = len(self._value)
+            ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
+            self._value = bytearray()
+
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        # Zeroize the bytearray directly in memory
-        for i in range(len(self._value)):
-            self._value[i] = 0
-        self._value = bytearray()
+        self._zeroize()
+
+    def __del__(self) -> None:
+        self._zeroize()
 
 
 class EnvCredentialProvider:

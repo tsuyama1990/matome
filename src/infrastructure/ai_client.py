@@ -30,6 +30,8 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
             with self.credential_provider.get_api_key() as secure_key:
                 headers = {
                     "Content-Type": "application/json",
+                    "User-Agent": "matome-app/1.0",
+                    "Accept": "application/json",
                 }
                 data = {
                     "model": model or self.default_model,
@@ -41,7 +43,6 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
                     json=data,
                     headers=headers,
                     timeout=self.ai_timeout,
-                    verify=True,  # Explicitly force SSL/TLS certificate validation
                     auth_token=secure_key,
                 )
 

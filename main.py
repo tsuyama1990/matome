@@ -86,7 +86,9 @@ def main() -> None:
             sys.exit(1)
 
         # Prevent directory traversal by checking against configured allowed directory
-        if not file_path.resolve().is_relative_to(allowed_dir.resolve()):
+        real_file_path = str(Path(os.path.realpath(file_path)).resolve())
+        real_allowed_dir = str(Path(os.path.realpath(allowed_dir)).resolve())
+        if not real_file_path.startswith(real_allowed_dir):
             logger.error("Security Error: Access denied to the requested file.")
             sys.exit(1)
 

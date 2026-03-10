@@ -36,26 +36,26 @@ Name                                 Stmts   Miss  Cover   Missing
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
 src/application/ai.py                   38      0   100%
-src/config.py                          107     18    83%   34-35, 151-152, 156-157, 162-163, 169-171, 184, 187, 197, 200, 222-224
+src/config.py                          113     17    85%   34-35, 159-160, 165-166, 177-179, 192, 195, 206, 209, 212, 246-248
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           1      0   100%
 src/domain_models/enums.py              12      0   100%
 src/domain_models/exceptions.py          3      0   100%
-src/domain_models/interfaces.py         27      0   100%
+src/domain_models/interfaces.py         28      0   100%
 src/domain_models/manifest.py           59      0   100%
 src/domain_models/services.py           19      0   100%
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
-src/infrastructure/ai_client.py         29      6    79%   50-51, 55-56, 62-63
-src/infrastructure/container.py         29     29     0%   1-87
+src/infrastructure/ai_client.py         29      6    79%   51-52, 56-57, 63-64
+src/infrastructure/container.py         36     36     0%   1-109
 src/infrastructure/orchestrator.py     155      3    98%   228, 256-257
 src/infrastructure/repository.py        43      7    84%   28-34
-src/infrastructure/security.py          17      3    82%   13, 21-24
-src/infrastructure/services.py         207     61    71%   84-85, 89-91, 104, 131-133, 155-168, 172-211, 222, 268-270, 275-289, 306-308, 326-328
+src/infrastructure/security.py          27     10    63%   13, 17-18, 23-25, 29-30, 35-38
+src/infrastructure/services.py         231     69    70%   84-85, 89-91, 104, 115-117, 120-121, 150-152, 162-179, 195-196, 200-235, 252, 298-300, 305-319, 344-348, 354, 369-371
 src/utils/__init__.py                    0      0   100%
-src/utils/rate_limit.py                 18      0   100%
+src/utils/rate_limit.py                 26      9    65%   15, 21, 27-36
 src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  818    128    84%
-======================= 53 passed, 7 warnings in 22.57s ========================
+TOTAL                                  874    158    82%
+======================= 53 passed, 7 warnings in 21.85s ========================

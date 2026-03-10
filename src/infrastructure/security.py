@@ -12,14 +12,22 @@ class PromptInjectionScanner:
         if not text:
             return ""
 
-        # Ensure valid unicode string and prevent encoding tricks
-        sanitized = text.encode("utf-8", "ignore").decode("utf-8")
-
-        # Strip all control characters except standard newlines and tabs
-        sanitized = re.sub(r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]", "", sanitized)
-
         # Basic length bound
-        sanitized = sanitized.strip()[:50000]
+        if len(text) > 50000:
+            msg = "Input rejected due to excessive length."
+            raise ValueError(msg)
+
+        # Ensure valid unicode string and prevent encoding tricks strictly
+        try:
+            sanitized = text.encode("utf-8", "strict").decode("utf-8")
+        except UnicodeError as e:
+            msg = f"Input rejected due to invalid unicode encoding: {e}"
+            raise ValueError(msg) from e
+
+        # Strict validation of control characters instead of dropping
+        if re.search(r"[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]", sanitized):
+            msg = "Input rejected due to presence of unsafe control characters."
+            raise ValueError(msg)
 
         # Use llm-guard scanner to detect prompt injection
         sanitized, is_valid, risk_score = self._scanner.scan(sanitized)

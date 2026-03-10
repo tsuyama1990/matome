@@ -89,4 +89,21 @@ class ProductionDIContainer(DIContainerProtocol):
             pipeline_timeout=self.settings.pipeline_timeout,
             raptor_max_clusters=self.settings.raptor_max_clusters,
         )
+
+        # Strict DI dependency verification
+        for dep_name in [
+            "doc_repo",
+            "transaction_manager",
+            "summary_service",
+            "question_service",
+            "doc_factory",
+            "metadata_service",
+            "text_splitter",
+            "entity_extractor",
+            "clustering_service",
+        ]:
+            if not getattr(deps, dep_name, None):
+                msg = f"DI Container failed to initialize required dependency: {dep_name}"
+                raise RuntimeError(msg)
+
         return deps, config
