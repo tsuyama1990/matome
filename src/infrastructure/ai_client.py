@@ -53,16 +53,11 @@ class AIClientFactory:
             msg = f"Invalid AI timeout value: {ai_timeout}. Must be between 1 and 300 seconds."
             raise ConfigurationError(msg)
 
-        import os
-
-        allowed_env = os.getenv(
-            "ALLOWED_AI_MODELS", "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
-        )
-        allowed_whitelist = {m.strip() for m in allowed_env.split(",") if m.strip()}
-
-        if not default_model or default_model.strip() not in allowed_whitelist:
-            msg = f"Invalid default_model configuration: {default_model}. Must be within verified allowlist."
-            raise ConfigurationError(msg)
+        from src.utils.validation import validate_ai_model
+        try:
+            validate_ai_model(default_model)
+        except ValueError as e:
+            raise ConfigurationError(str(e)) from e
 
         config = AIClientConfig(api_url=api_url, default_model=default_model, ai_timeout=ai_timeout)
         return DefaultAICommunicationClient(

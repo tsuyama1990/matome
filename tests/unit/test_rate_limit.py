@@ -3,7 +3,7 @@ import time
 from src.utils.rate_limit import RateLimiter, rate_limit
 
 
-def test_rate_limiter_zero_limit():
+def test_rate_limiter_zero_limit() -> None:
     limiter = RateLimiter(0.0)
     start = time.time()
     limiter.acquire()
@@ -12,7 +12,7 @@ def test_rate_limiter_zero_limit():
     assert (end - start) < 0.1
 
 
-def test_rate_limiter_positive_limit():
+def test_rate_limiter_positive_limit() -> None:
     limit = 0.1
     limiter = RateLimiter(limit)
     start = time.time()
@@ -22,9 +22,9 @@ def test_rate_limiter_positive_limit():
     assert (end - start) >= limit
 
 
-def test_rate_limit_decorator():
+def test_rate_limit_decorator() -> None:
     @rate_limit(0.1)
-    def fast_func():
+    def fast_func() -> str:
         return "done"
 
     start = time.time()

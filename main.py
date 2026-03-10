@@ -42,13 +42,11 @@ def build_app(
 def get_di_container(settings: Settings) -> DIContainerProtocol:
     import os
 
-    from pydantic import SecretStr
-
     from src.application.ai import (
         DefaultQuestionService,
         DefaultSummaryService,
     )
-    from src.config import CredentialConfig
+    from src.config import CredentialConfig, SecureString
     from src.domain_models.services import DocumentFactory, MetadataService
     from src.infrastructure import InMemoryDocumentRepository
     from src.infrastructure.container import ProductionDIContainer
@@ -66,11 +64,11 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     # and ensuring proper instantiation. Let Pydantic Settings handle the presence checks.
     credential_config_args = {}
     if "OPENROUTER_API_KEY" in os.environ:
-        credential_config_args["openrouter_api_key"] = SecretStr(os.environ["OPENROUTER_API_KEY"])
+        credential_config_args["openrouter_api_key"] = SecureString(os.environ["OPENROUTER_API_KEY"])
     if "OPENROUTER_API_URL" in os.environ:
-        credential_config_args["openrouter_api_url"] = SecretStr(os.environ["OPENROUTER_API_URL"])
+        credential_config_args["openrouter_api_url"] = SecureString(os.environ["OPENROUTER_API_URL"])
     if "SSL_CERT_PATH" in os.environ:
-        credential_config_args["ssl_cert_path"] = SecretStr(os.environ["SSL_CERT_PATH"])
+        credential_config_args["ssl_cert_path"] = SecureString(os.environ["SSL_CERT_PATH"])
 
     credential_config = CredentialConfig(**credential_config_args)
 

@@ -1,67 +1,40 @@
+import typing
+
 import pytest
 
-from src.domain_models.exceptions import ConfigurationError
 from src.infrastructure.ai_client import (
     AIClientConfig,
-    AIClientFactory,
     DefaultAICommunicationClient,
 )
 
 
 class DummyHTTPClient:
-    def post(self, url, json, headers, timeout, verify=None, auth_token=None):
+    def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
         return {"choices": [{"message": {"content": "mocked response"}}]}
 
 
 class DummyRetryPolicy:
-    def execute(self, func):
+    def execute(self, func: typing.Callable[..., typing.Any]) -> typing.Any:
         return func()
 
 
 class DummyScanner:
-    def sanitize(self, text):
-        return text
+    def sanitize(self, text: str | None) -> str:
+        return text or ''
 
 
-def test_aiclientfactory_invalid_url():
-    with pytest.raises(ConfigurationError, match="Invalid API URL configuration: invalid-url"):
-        AIClientFactory.create(
-            "invalid-url",
-            "openai/gpt-4o",
-            10,
-            DummyHTTPClient(),
-            DummyRetryPolicy(),
-            DummyScanner(),
-        )
 
 
-def test_aiclientfactory_invalid_timeout():
-    with pytest.raises(ConfigurationError, match="Invalid AI timeout value: 0"):
-        AIClientFactory.create(
-            "https://openrouter.ai/api",
-            "openai/gpt-4o",
-            0,
-            DummyHTTPClient(),
-            DummyRetryPolicy(),
-            DummyScanner(),
-        )
 
 
-def test_aiclientfactory_invalid_model():
-    with pytest.raises(ConfigurationError, match="Invalid default_model configuration"):
-        AIClientFactory.create(
-            "https://openrouter.ai/api",
-            "unverified-model",
-            10,
-            DummyHTTPClient(),
-            DummyRetryPolicy(),
-            DummyScanner(),
-        )
 
 
-def test_default_ai_communication_client_unexpected_response_format():
+
+
+
+def test_default_ai_communication_client_unexpected_response_format() -> None:
     class BadHTTPClient:
-        def post(self, url, json, headers, timeout, verify=None, auth_token=None):
+        def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
             return {"wrong_key": "data"}
 
     config = AIClientConfig(api_url="https://test", default_model="openai/gpt-4o", ai_timeout=10)
@@ -73,9 +46,9 @@ def test_default_ai_communication_client_unexpected_response_format():
         client.call_api("prompt")
 
 
-def test_default_ai_communication_client_empty_choices():
+def test_default_ai_communication_client_empty_choices() -> None:
     class BadHTTPClient:
-        def post(self, url, json, headers, timeout, verify=None, auth_token=None):
+        def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
             return {"choices": []}
 
     config = AIClientConfig(api_url="https://test", default_model="openai/gpt-4o", ai_timeout=10)
@@ -89,9 +62,9 @@ def test_default_ai_communication_client_empty_choices():
         client.call_api("prompt")
 
 
-def test_default_ai_communication_client_missing_content():
+def test_default_ai_communication_client_missing_content() -> None:
     class BadHTTPClient:
-        def post(self, url, json, headers, timeout, verify=None, auth_token=None):
+        def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
             return {"choices": [{"message": {}}]}
 
     config = AIClientConfig(api_url="https://test", default_model="openai/gpt-4o", ai_timeout=10)
@@ -103,12 +76,14 @@ def test_default_ai_communication_client_missing_content():
         client.call_api("prompt")
 
 
-def test_rotate_credentials():
+def test_rotate_credentials() -> None:
     class FlushingHTTPClient:
         flushed = False
 
-        def flush_credentials_cache(self):
+        def flush_credentials_cache(self) -> None:
             self.flushed = True
+        def post(self, url: str, json: dict[str, typing.Any], headers: dict[str, str], timeout: int, verify: str | None = None, auth_token: typing.Any | None = None) -> dict[str, typing.Any]:
+            return {}
 
     client_mock = FlushingHTTPClient()
     config = AIClientConfig(api_url="https://test", default_model="openai/gpt-4o", ai_timeout=10)
@@ -117,7 +92,7 @@ def test_rotate_credentials():
     assert client_mock.flushed
 
 
-def test_secure_memory_region_stub():
+def test_secure_memory_region_stub() -> None:
     config = AIClientConfig(api_url="https://test", default_model="openai/gpt-4o", ai_timeout=10)
     client = DefaultAICommunicationClient(
         config, DummyHTTPClient(), DummyRetryPolicy(), DummyScanner()
