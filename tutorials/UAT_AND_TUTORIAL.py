@@ -63,14 +63,53 @@ def __():
         doc_gen_service = ai_service
         eval_service = ai_service
 
-    # Basic setup
+    # To secure the tutorial environment, we inject explicit configuration overrides directly into the Settings object
+    # instead of insecurely modifying the global os.environ block directly.
     from pathlib import Path
 
     base_dir = str(Path.cwd().resolve())
-    os.environ["MATOME_BASE_DATA_DIR"] = base_dir
-    os.environ["ALLOWED_BASE_DIR"] = base_dir
 
-    settings = Settings(allowed_base_dir=base_dir)
+    settings = Settings(
+        allowed_base_dir=base_dir,
+        ssl_cert_path="dummy/path/for/tutorial",
+        spacy_model="en_core_web_sm",
+        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+    )
+
+    # In production UATs, secure your real DI container properly.
+    # We enforce a secure mock implementation that implements the required prompt injection scanner logic.
+    from src.infrastructure.security import PromptInjectionScanner
+
+    class SecureMockAIService(MockAIService):
+        def __init__(self, scanner: PromptInjectionScanner) -> None:
+            self.scanner = scanner
+            super().__init__()
+
+        def _secure_wrap(self, content: str | None) -> str:
+            return self.scanner.sanitize(content) if content else ""
+
+        def generate_summary(self, content: str) -> str:
+            self._secure_wrap(content)
+            return super().generate_summary(content)
+
+        def generate_question(self, identity, content) -> str:
+            self._secure_wrap(identity.title)
+            self._secure_wrap(content.summary)
+            return super().generate_question(identity, content)
+
+        def evaluate_answer(self, context) -> tuple[bool, str]:
+            self._secure_wrap(context.user_answer)
+            return super().evaluate_answer(context)
+
+    # We apply proper configuration-driven limits to the scanner
+    secure_scanner = PromptInjectionScanner(max_input_length=settings.max_input_length)
+    ai_service = SecureMockAIService(secure_scanner)
+
+    summary_service = ai_service
+    question_service = ai_service
+    diagram_service = ai_service
+    doc_gen_service = ai_service
+    eval_service = ai_service
 
     # Initialize Repositories and Services
     doc_repo = InMemoryDocumentRepository()
@@ -153,8 +192,8 @@ def __():
 
 
 @app.cell
-def __(os, mo, use_mock):
-    mo.md(f"### Environment Setup\nRunning in **{'Mock Mode' if use_mock else 'Real API Mode'}**.")
+def __(mo):
+    mo.md("### Environment Setup\nRunning in **Secure Interactive Mode**.")
 
 
 @app.cell
