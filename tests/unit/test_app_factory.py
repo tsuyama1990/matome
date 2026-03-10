@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from src.config import ModeConfig, ModelConfig, Settings, create_app_context
+from src.config import ModeConfig, Settings, create_app_context
 
 
 def test_settings_default(tmp_path: Path) -> None:
@@ -13,21 +13,38 @@ def test_settings_default(tmp_path: Path) -> None:
     dummy_cert = tmp_path / "dummy.pem"
     dummy_cert.write_text("cert")
 
+    from src.config import AIConfig, FileProcessingConfig, MLConfig, PipelineConfig, SecurityConfig
+
     try:
+        from src.config import (
+            AIConfig,
+            FileProcessingConfig,
+            MLConfig,
+            PipelineConfig,
+            SecurityConfig,
+        )
+
         settings = Settings(
-            allowed_base_dir=str(tmp_path),
-            models=ModelConfig(
+            ai=AIConfig(
                 text_fast_model="google/gemini-2.5-flash",
                 text_reasoning_model="deepseek/deepseek-reasoner",
                 multimodal_model="openai/gpt-4o",
             ),
-            chunk_size=1000,
-            spacy_model="en_core_web_sm",
-            trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+            file=FileProcessingConfig(
+                allowed_base_dir=str(tmp_path),
+                chunk_size=1000,
+                chunk_overlap=100,
+            ),
+            ml=MLConfig(
+                spacy_model="en_core_web_sm",
+                trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+            ),
+            security=SecurityConfig(),
+            pipeline=PipelineConfig(),
         )
         mode_config = ModeConfig()
         assert mode_config.mode == "cli"
-        assert settings.models.text_fast_model == "google/gemini-2.5-flash"
+        assert settings.ai.text_fast_model == "google/gemini-2.5-flash"
     finally:
         del os.environ["MODE"]
         del os.environ["TEXT_FAST_MODEL"]
@@ -45,16 +62,31 @@ def test_app_context_creation(tmp_path: Path) -> None:
     dummy_cert.write_text("cert")
 
     try:
+        from src.config import (
+            AIConfig,
+            FileProcessingConfig,
+            MLConfig,
+            PipelineConfig,
+            SecurityConfig,
+        )
+
         settings = Settings(
-            allowed_base_dir=str(tmp_path),
-            models=ModelConfig(
+            ai=AIConfig(
                 text_fast_model="google/gemini-2.5-flash",
                 text_reasoning_model="deepseek/deepseek-reasoner",
                 multimodal_model="openai/gpt-4o",
             ),
-            chunk_size=1000,
-            spacy_model="en_core_web_sm",
-            trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+            file=FileProcessingConfig(
+                allowed_base_dir=str(tmp_path),
+                chunk_size=1000,
+                chunk_overlap=100,
+            ),
+            ml=MLConfig(
+                spacy_model="en_core_web_sm",
+                trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+            ),
+            security=SecurityConfig(),
+            pipeline=PipelineConfig(),
         )
         mode_config = ModeConfig()
         from src.config import DatabaseContext

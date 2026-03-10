@@ -14,25 +14,26 @@ def test_validate_api_key_format_empty() -> None:
 
 
 def test_validate_api_key_format_too_short() -> None:
-    with pytest.raises(ValueError, match="API Key must be between 20 and 256 characters long."):
-        validate_api_key_format("tooshort")
+    with pytest.raises(ValueError, match="API Key must be between 30 and 256 characters long."):
+        validate_api_key_format("sk-or-v1-short")
 
 
 def test_validate_api_key_format_invalid_prefix() -> None:
-    # Testing general key format
-    import secrets
-    import string
-
-    chars = string.ascii_letters + string.digits
-    valid_key = "".join(secrets.choice(chars) for _ in range(40))
-    assert validate_api_key_format(valid_key) == valid_key
+    # Testing missing or malformed prefix.
+    # API key structure validation ensures keys conform to expected vendor patterns, reducing the attack surface
+    # against blind injection of random strings into downstream auth components.
+    with pytest.raises(
+        ValueError,
+        match="API Key format is invalid. It must start with 'sk-or-v1-' followed by alphanumeric characters.",
+    ):
+        validate_api_key_format("invalid-prefix-that-is-long-enough-to-pass-length-check")
 
 
 def test_validate_api_key_format_special_characters() -> None:
     # Keys should only contain alphanumeric characters after the prefix to prevent injection vectors.
     with pytest.raises(
         ValueError,
-        match="API Key format is invalid. It must contain only alphanumeric characters, underscores, dots, or hyphens.",
+        match="API Key format is invalid. It must start with 'sk-or-v1-' followed by alphanumeric characters.",
     ):
         validate_api_key_format("sk-or-v1-invalid!@#key$with^special*chars")
 
@@ -56,15 +57,21 @@ def test_validate_api_key_format_boundaries() -> None:
     import string
 
     chars = string.ascii_letters + string.digits
-    valid_max_key = "".join(secrets.choice(chars) for _ in range(256))
+    valid_suffix_len_max = 256 - len("sk-or-v1-")
+    valid_max_key = "sk-or-v1-" + "".join(
+        secrets.choice(chars) for _ in range(valid_suffix_len_max)
+    )
     assert validate_api_key_format(valid_max_key) == valid_max_key
 
-    # Exactly 20 characters (valid)
-    valid_min_key = "".join(secrets.choice(chars) for _ in range(20))
+    # Exactly 30 characters (valid)
+    valid_suffix_len_min = 30 - len("sk-or-v1-")
+    valid_min_key = "sk-or-v1-" + "".join(
+        secrets.choice(chars) for _ in range(valid_suffix_len_min)
+    )
     assert validate_api_key_format(valid_min_key) == valid_min_key
 
     # Exceeding 256 characters (invalid)
-    with pytest.raises(ValueError, match="API Key must be between 20 and 256 characters long."):
+    with pytest.raises(ValueError, match="API Key must be between 30 and 256 characters long."):
         validate_api_key_format(valid_max_key + "a")
 
 

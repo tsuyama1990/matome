@@ -1,11 +1,10 @@
 import pytest
 
-from src.config import ModelConfig, Settings
+from src.config import Settings
 from src.domain_models.manifest import PipelineContext
 from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import (
-    PipelineConfig,
     PipelineDependencies,
     PipelineOrchestrator,
 )
@@ -39,16 +38,25 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
     os.environ["CHUNK_SIZE"] = "1000"
 
+    from src.config import AIConfig, FileProcessingConfig, MLConfig, PipelineConfig, SecurityConfig
+
     settings = IntegrationTestSettings(
-        allowed_base_dir=str(tmp_path),
-        spacy_model="en_core_web_sm",
-        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
-        models=ModelConfig(
+        ai=AIConfig(
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
         ),
-        chunk_size=1000,
+        file=FileProcessingConfig(
+            allowed_base_dir=str(tmp_path),
+            chunk_size=1000,
+            chunk_overlap=100,
+        ),
+        ml=MLConfig(
+            spacy_model="en_core_web_sm",
+            trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+        ),
+        security=SecurityConfig(),
+        pipeline=PipelineConfig(),
     )
 
     from src.infrastructure.services import (
@@ -58,9 +66,9 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     )
 
     text_splitter = DefaultTextSplitter(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap,
-        max_file_size=settings.max_file_size,
+        chunk_size=settings.file.chunk_size,
+        chunk_overlap=settings.file.chunk_overlap,
+        max_file_size=settings.file.max_file_size,
         strategy=LangChainSplitterStrategy(),
     )
     from src.infrastructure.services import (
@@ -71,22 +79,22 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     from src.utils.rate_limit import RateLimiter
 
     builder_config = EntityExtractorBuilderConfig(
-        spacy_model=settings.spacy_model,
-        trusted_models=settings.trusted_spacy_models,
-        trusted_hashes=settings.trusted_model_hashes,
-        fallback_ner_regex=settings.fallback_ner_regex,
-        max_model_signature_size=settings.max_model_signature_size,
+        spacy_model=settings.ml.spacy_model,
+        trusted_models=settings.ml.trusted_spacy_models,
+        trusted_hashes=settings.ml.trusted_model_hashes,
+        fallback_ner_regex=settings.ml.fallback_ner_regex,
+        max_model_signature_size=settings.security.max_model_signature_size,
     )
     entity_extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
         rate_limiter=RateLimiter(0.01),
         model_verifier=DefaultModelVerifier(
-            set(settings.trusted_spacy_models),
-            settings.trusted_model_hashes,
-            settings.max_model_signature_size,
+            set(settings.ml.trusted_spacy_models),
+            settings.ml.trusted_model_hashes,
+            settings.security.max_model_signature_size,
         ),
     )
-    clustering_service = DefaultClusteringService(settings.random_seed)
+    clustering_service = DefaultClusteringService(settings.ml.random_seed)
 
     deps = PipelineDependencies(
         doc_repo=repo,
@@ -99,14 +107,16 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
         entity_extractor=entity_extractor,
         clustering_service=clustering_service,
     )
-    config = PipelineConfig(
-        pipeline_timeout=settings.pipeline_timeout,
-        raptor_max_clusters=settings.raptor_max_clusters,
+    from src.infrastructure.orchestrator import PipelineConfig as OrchPipelineConfig
+
+    config = OrchPipelineConfig(
+        pipeline_timeout=settings.pipeline.pipeline_timeout,
+        raptor_max_clusters=settings.ml.raptor_max_clusters,
     )
     orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
 
     # Run the pipeline
-    root_doc_id = settings.default_root_doc_id
+    root_doc_id = settings.pipeline.default_root_doc_id
 
     content_text = "This is a very long business manual about strategy."
     context = PipelineContext(root_doc_id=root_doc_id, content=content_text, file_path=None)

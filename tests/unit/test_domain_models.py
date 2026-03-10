@@ -11,6 +11,7 @@ from src.domain_models import (
     PivotAxis,
     PivotBoard,
     PivotBoardViewNode,
+    SummaryNode,
     UserInteractionContext,
     WisdomData,
 )
@@ -82,6 +83,18 @@ def test_user_interaction_context_invalid_hints() -> None:
             feedback=None,
             hints_used=-1,
         )
+
+
+def test_summary_node_valid() -> None:
+    summary_node = SummaryNode(
+        id="123",
+        title="Summary Title",
+        summary="This is a summary",
+        children_indices=["1", "child_2"],
+    )
+    assert summary_node.id == "123"
+    assert len(summary_node.children_indices) == 2
+    assert summary_node.children_indices[1] == "child_2"
 
 
 def test_pivot_board_valid() -> None:

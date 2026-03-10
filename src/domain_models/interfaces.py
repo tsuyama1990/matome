@@ -7,32 +7,33 @@ from .manifest import ContentNode, IdentityNode, UserInteractionContext
 T = TypeVar("T")
 
 
-class ConfigService(Protocol):
-    """Protocol for fetching application configuration using type-safe properties."""
-
+class OpenRouterConfigService(Protocol):
     @property
     def openrouter_api_url(self) -> str: ...
-
     @property
-    def ssl_cert_path(self) -> str | None: ...
+    def openrouter_api_key(self) -> str: ...
 
+
+class FileProcessingConfigService(Protocol):
     @property
     def chunk_size(self) -> int: ...
-
     @property
     def chunk_overlap(self) -> int: ...
 
+
+class MLConfigService(Protocol):
     @property
     def spacy_model(self) -> str: ...
-
     @property
     def random_seed(self) -> int: ...
 
 
-class SecurityService(Protocol):
-    """Protocol for security operations such as API key validation."""
-
+class ApiKeyValidator(Protocol):
     def validate_api_key(self, api_key: str) -> str: ...
+
+
+class CertificateValidator(Protocol):
+    def validate_certificate(self, path: str) -> bool: ...
 
 
 class CredentialProviderProtocol(Protocol):

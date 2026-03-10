@@ -82,18 +82,21 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     )
     http_client = RequestsHTTPClient(ssl_cert_path=ssl_path)
     retry_policy = TenacityRetryPolicy(
-        ai_retry_attempts=settings.ai_retry_attempts,
-        ai_retry_min_wait=settings.ai_retry_min_wait,
-        ai_retry_max_wait=settings.ai_retry_max_wait,
+        ai_retry_attempts=settings.ai.ai_retry_attempts,
+        ai_retry_min_wait=settings.ai.ai_retry_min_wait,
+        ai_retry_max_wait=settings.ai.ai_retry_max_wait,
     )
-    security_scanner = PromptInjectionScanner()
+    security_scanner = PromptInjectionScanner(
+        threshold=settings.security.prompt_injection_threshold,
+        max_input_length=settings.security.max_input_length,
+    )
 
     from src.infrastructure.ai_client import AIClientFactory
 
     communication_client = AIClientFactory.create(
         api_url=credential_config.openrouter_api_url.get_secret_value(),
-        default_model=settings.models.text_fast_model,
-        ai_timeout=settings.ai_timeout,
+        default_model=settings.ai.text_fast_model,
+        ai_timeout=settings.ai.ai_timeout,
         http_client=http_client,
         retry_policy=retry_policy,
         security_scanner=security_scanner,
@@ -102,14 +105,14 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     summary_service = DefaultSummaryService(
         security_scanner=security_scanner,
         communication_client=communication_client,
-        text_fast_model=settings.models.text_fast_model,
-        text_reasoning_model=settings.models.text_reasoning_model,
+        text_fast_model=settings.ai.text_fast_model,
+        text_reasoning_model=settings.ai.text_reasoning_model,
     )
     question_service = DefaultQuestionService(
         security_scanner=security_scanner,
         communication_client=communication_client,
-        text_fast_model=settings.models.text_fast_model,
-        text_reasoning_model=settings.models.text_reasoning_model,
+        text_fast_model=settings.ai.text_fast_model,
+        text_reasoning_model=settings.ai.text_reasoning_model,
     )
     # the rest are not strictly required for PipelineDependencies currently, but keeping pattern
 
@@ -117,9 +120,9 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     metadata_service = MetadataService()
 
     text_splitter = DefaultTextSplitter(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap,
-        max_file_size=settings.max_file_size,
+        chunk_size=settings.file.chunk_size,
+        chunk_overlap=settings.file.chunk_overlap,
+        max_file_size=settings.file.max_file_size,
         strategy=LangChainSplitterStrategy(),
     )
 
@@ -131,23 +134,23 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     from src.utils.rate_limit import RateLimiter
 
     builder_config = EntityExtractorBuilderConfig(
-        spacy_model=settings.spacy_model,
-        trusted_models=settings.trusted_spacy_models,
-        trusted_hashes=settings.trusted_model_hashes,
-        fallback_ner_regex=settings.fallback_ner_regex,
-        max_model_signature_size=settings.max_model_signature_size,
+        spacy_model=settings.ml.spacy_model,
+        trusted_models=settings.ml.trusted_spacy_models,
+        trusted_hashes=settings.ml.trusted_model_hashes,
+        fallback_ner_regex=settings.ml.fallback_ner_regex,
+        max_model_signature_size=settings.security.max_model_signature_size,
     )
 
     entity_extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
-        rate_limiter=RateLimiter(settings.entity_extraction_rate_limit),
+        rate_limiter=RateLimiter(settings.ml.entity_extraction_rate_limit),
         model_verifier=DefaultModelVerifier(
-            set(settings.trusted_spacy_models),
-            settings.trusted_model_hashes,
-            settings.max_model_signature_size,
+            set(settings.ml.trusted_spacy_models),
+            settings.ml.trusted_model_hashes,
+            settings.security.max_model_signature_size,
         ),
     )
-    clustering_service = DefaultClusteringService(settings.random_seed)
+    clustering_service = DefaultClusteringService(settings.ml.random_seed)
 
     deps = PipelineDependencies(
         doc_repo=repo,
@@ -161,8 +164,8 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
         clustering_service=clustering_service,
     )
     config = PipelineConfig(
-        pipeline_timeout=settings.pipeline_timeout,
-        raptor_max_clusters=settings.raptor_max_clusters,
+        pipeline_timeout=settings.pipeline.pipeline_timeout,
+        raptor_max_clusters=settings.ml.raptor_max_clusters,
     )
 
     return ProductionDIContainer(dependencies=deps, config=config)
@@ -188,7 +191,7 @@ def validate_security(settings: Settings, target_file: str) -> str:
     import os
     from pathlib import Path
 
-    allowed_dir = Path(settings.allowed_base_dir).resolve()
+    allowed_dir = Path(settings.file.allowed_base_dir).resolve()
     file_path = Path(target_file).resolve()
 
     if not file_path.exists():
@@ -206,9 +209,9 @@ def validate_security(settings: Settings, target_file: str) -> str:
         logger.error("Security Error: Access denied to the requested file.")
         sys.exit(1)
 
-    if file_path.stat().st_size > settings.max_file_size:
+    if file_path.stat().st_size > settings.file.max_file_size:
         logger.error(
-            f"Security Error: File exceeds maximum allowed size of {settings.max_file_size} bytes -> {file_path}"
+            f"Security Error: File exceeds maximum allowed size of {settings.file.max_file_size} bytes -> {file_path}"
         )
         sys.exit(1)
 
@@ -236,7 +239,7 @@ def main() -> None:
 
         # Pass the file path to the pipeline for chunked streaming to prevent OOM
         context = PipelineContext(
-            root_doc_id=app.settings.default_root_doc_id, file_path=safe_file_path
+            root_doc_id=app.settings.pipeline.default_root_doc_id, file_path=safe_file_path
         )
         app.start(context)
     except ValueError:

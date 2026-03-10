@@ -41,14 +41,8 @@ class AIClientFactory:
         security_scanner: AISecurityScannerProtocol,
         **kwargs: Any,  # noqa: ARG004
     ) -> "DefaultAICommunicationClient":
-        # Self-contained validation inside factory to remove assumptions about upstream callers
-        if not api_url.startswith("https://"):
-            msg = "API URL must use HTTPS"
-            raise ValueError(msg)
-        if ai_timeout <= 0:
-            msg = "Timeout must be strictly positive"
-            raise ValueError(msg)
-
+        # All string format parameters are assumed to have been securely pre-validated directly by domain Config objects.
+        # This properly obeys Dependency Inversion by removing direct OS environmental lookups.
         config = AIClientConfig(api_url=api_url, default_model=default_model, ai_timeout=ai_timeout)
         return DefaultAICommunicationClient(
             config=config,

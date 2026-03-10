@@ -12,7 +12,6 @@ from src.domain_models.interfaces import (
     ClusteringServiceProtocol,
     EntityExtractorConfigProtocol,
     EntityExtractorProtocol,
-    CredentialProviderProtocol,
     HTTPClientProtocol,
     MLClusteringProviderProtocol,
     ModelVerifierProtocol,
@@ -431,7 +430,7 @@ class RequestsHTTPClient(HTTPClientProtocol):
     def __init__(
         self,
         ssl_cert_path: str | None = None,
-        credential_provider: CredentialProviderProtocol | None = None,
+        credential_provider: Any | None = None,
     ) -> None:
         self.ssl_cert_path = ssl_cert_path
         self.credential_provider = credential_provider

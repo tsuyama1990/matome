@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config import ModelConfig, Settings
+from src.config import Settings
 from src.domain_models import DocumentFactory, MetadataService, PipelineContext
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import (
@@ -31,20 +31,27 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
     os.environ["TEXT_REASONING_MODEL"] = "deepseek/deepseek-reasoner"
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
     os.environ["CHUNK_SIZE"] = "1000"
-    os.environ["ALLOWED_AI_MODELS"] = (
-        "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
-    )
+
+    from src.config import AIConfig, FileProcessingConfig, MLConfig, SecurityConfig
+    from src.config import PipelineConfig as ConfigPipelineConfig
 
     settings = Settings(
-        allowed_base_dir=base_dir,
-        models=ModelConfig(
+        ai=AIConfig(
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
         ),
-        chunk_size=1000,
-        spacy_model="en_core_web_sm",
-        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+        file=FileProcessingConfig(
+            allowed_base_dir=base_dir,
+            chunk_size=1000,
+            chunk_overlap=100,
+        ),
+        ml=MLConfig(
+            spacy_model="en_core_web_sm",
+            trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+        ),
+        security=SecurityConfig(),
+        pipeline=ConfigPipelineConfig(),
     )
 
     repo = InMemoryDocumentRepository()
@@ -80,8 +87,8 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
         clustering_service=mock_clustering_service,
     )
     config = PipelineConfig(
-        pipeline_timeout=settings.pipeline_timeout,
-        raptor_max_clusters=settings.raptor_max_clusters,
+        pipeline_timeout=settings.pipeline.pipeline_timeout,
+        raptor_max_clusters=settings.ml.raptor_max_clusters,
     )
     return deps, config
 
