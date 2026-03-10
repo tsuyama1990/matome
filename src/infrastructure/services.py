@@ -174,9 +174,6 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         from pathlib import Path
 
         if model_name not in self.trusted_models:
-            logger.warning(
-                f"Security Policy Violation: Model '{model_name}' is unsigned and untrusted."
-            )
             msg = f"Untrusted ML Model requested: {model_name}"
             raise ValueError(msg)
 
@@ -299,12 +296,24 @@ class RequestsHTTPClient(HTTPClientProtocol):
         json: dict[str, Any],
         headers: dict[str, str],
         timeout: int,
-        verify: bool = True,
+        verify: bool | str = True,
+        auth_token: Any | None = None,
     ) -> dict[str, Any]:
 
         try:
+            if auth_token:
+                # Safely extract token in HTTP layer directly right before sending
+                raw_token = getattr(auth_token, "_value", str(auth_token))
+                headers = dict(headers)
+                headers["Authorization"] = f"Bearer {raw_token}"
+
+            import certifi
+
+            # Require strict CA bundle verification
+            ca_bundle = verify if isinstance(verify, str) else certifi.where()
+
             response = requests.post(
-                url, json=json, headers=headers, timeout=timeout, verify=verify
+                url, json=json, headers=headers, timeout=timeout, verify=ca_bundle
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()

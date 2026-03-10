@@ -103,7 +103,9 @@ def __(
     try:
         settings = Settings()
         api_key = (
-            settings.openrouter_api_key.get_secret_value() if settings.openrouter_api_key else None
+            settings.credentials.openrouter_api_key.get_secret_value()
+            if settings.credentials.openrouter_api_key
+            else None
         )
         has_real_key = True
     except ValidationError:
@@ -116,7 +118,7 @@ def __(
     repo = InMemoryDocumentRepository()
 
     if has_real_key and api_key and not api_key.startswith("sk-or-v1-mock-key"):
-        provider = EnvCredentialProvider(settings)
+        provider = EnvCredentialProvider(settings.credentials)
         http_client = RequestsHTTPClient()
         retry_policy = TenacityRetryPolicy()
         ai = DefaultAIService(

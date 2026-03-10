@@ -32,10 +32,12 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     from pydantic import SecretStr
 
     with patch(
-        "src.config.Settings.validate_api_key", return_value=SecretStr("sk-or-v1-" + "a" * 30)
+        "src.config.CredentialConfig.validate_api_key", return_value=SecretStr("sk-or-v1-" + "a" * 30)
     ):
+        from src.config import CredentialConfig
+
         settings = IntegrationTestSettings(
-            openrouter_api_key=SecretStr("sk-or-v1-" + "a" * 30),
+            credentials=CredentialConfig(openrouter_api_key=SecretStr("sk-or-v1-" + "a" * 30)),
             openrouter_api_url="https://mock.api.url",
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",

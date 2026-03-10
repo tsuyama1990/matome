@@ -1,20 +1,14 @@
 import logging
 import sys
+from typing import Any
 
-from src.application.ai import DefaultAIService
 from src.config import ModeConfig, Settings
 from src.domain_models.exceptions import ConfigurationError
 from src.domain_models.manifest import PipelineContext
-from src.domain_models.services import DocumentFactory, MetadataService
-from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import (
     PipelineConfig,
     PipelineDependencies,
     PipelineOrchestrator,
-)
-from src.infrastructure.services import (
-    RequestsHTTPClient,
-    TenacityRetryPolicy,
 )
 
 # Setup basic logging
@@ -45,68 +39,10 @@ def build_app(
     return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
 
 
-def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, PipelineConfig]:
-    repo = InMemoryDocumentRepository()
+def get_di_container(settings: Settings) -> Any:
+    from src.infrastructure.container import ProductionDIContainer
 
-    http_client = RequestsHTTPClient()
-    retry_policy = TenacityRetryPolicy(
-        ai_retry_attempts=settings.ai_retry_attempts,
-        ai_retry_min_wait=settings.ai_retry_min_wait,
-        ai_retry_max_wait=settings.ai_retry_max_wait,
-    )
-    from src.config import EnvCredentialProvider
-
-    provider = EnvCredentialProvider(settings)
-
-    ai = DefaultAIService(
-        credential_provider=provider,
-        api_url=settings.openrouter_api_url,
-        text_fast_model=settings.text_fast_model,
-        text_reasoning_model=settings.text_reasoning_model,
-        ai_timeout=settings.ai_timeout,
-        http_client=http_client,
-        retry_policy=retry_policy,
-    )
-    factory = DocumentFactory()
-    metadata_service = MetadataService()
-
-    from src.infrastructure.services import (
-        DefaultClusteringService,
-        DefaultEntityExtractor,
-        DefaultTextSplitter,
-        LangChainSplitterStrategy,
-    )
-
-    text_splitter = DefaultTextSplitter(
-        chunk_size=settings.chunk_size,
-        chunk_overlap=settings.chunk_overlap,
-        max_file_size=settings.max_file_size,
-        strategy=LangChainSplitterStrategy(),
-    )
-    entity_extractor = DefaultEntityExtractor(
-        spacy_model=settings.spacy_model,
-        trusted_models=settings.trusted_spacy_models,
-        trusted_hashes=settings.trusted_model_hashes,
-        fallback_ner_regex=settings.fallback_ner_regex,
-    )
-    clustering_service = DefaultClusteringService(settings.random_seed)
-
-    deps = PipelineDependencies(
-        doc_repo=repo,
-        transaction_manager=repo,
-        summary_service=ai,
-        question_service=ai,
-        doc_factory=factory,
-        metadata_service=metadata_service,
-        text_splitter=text_splitter,
-        entity_extractor=entity_extractor,
-        clustering_service=clustering_service,
-    )
-    config = PipelineConfig(
-        pipeline_timeout=settings.pipeline_timeout,
-        raptor_max_clusters=settings.raptor_max_clusters,
-    )
-    return deps, config
+    return ProductionDIContainer(settings)
 
 
 def main() -> None:
@@ -132,7 +68,8 @@ def main() -> None:
             settings = Settings(**filtered_env)  # type: ignore[arg-type]
             mode_config = ModeConfig(mode=mode)
 
-            deps, config = create_dependencies(settings)
+            container = get_di_container(settings)
+            deps, config = container.get_dependencies()
             app = build_app(settings, mode_config, deps, config)
         except ConfigurationError:
             logger.exception("Configuration Error")

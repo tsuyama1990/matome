@@ -19,10 +19,36 @@ class ModeConfig(MatomeConfig):
     )
 
 
+class CredentialConfig(MatomeConfig):
+    """Dedicated configuration for handling security credentials separately from app settings."""
+
+    openrouter_api_key: SecretStr = Field(..., description="BYOK API key for OpenRouter")
+
+    @field_validator("openrouter_api_key", mode="after")
+    @classmethod
+    def validate_api_key(cls, value: SecretStr) -> SecretStr:
+        from src.domain_models.exceptions import ConfigurationError
+        from src.utils.validation import validate_api_key_format
+
+        if not value:
+            err_msg = "OPENROUTER_API_KEY is required"
+            raise ConfigurationError(err_msg)
+
+        val_str = value.get_secret_value()
+
+        try:
+            validate_api_key_format(val_str)
+        except ValueError as e:
+            raise ConfigurationError(str(e)) from e
+        else:
+            return value
+
+
 class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""
 
-    openrouter_api_key: SecretStr = Field(..., description="BYOK API key for OpenRouter")
+    credentials: CredentialConfig = Field(default_factory=CredentialConfig)  # type: ignore[arg-type]
+
     openrouter_api_url: str = Field(
         ...,
         description="The base URL for the OpenRouter API endpoint",
@@ -116,6 +142,7 @@ class Settings(MatomeConfig):
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
     def validate_allowed_base_dir(cls, value: str) -> str:
+        import os
         from pathlib import Path
 
         from src.domain_models.exceptions import ConfigurationError
@@ -124,29 +151,26 @@ class Settings(MatomeConfig):
             err_msg = "ALLOWED_BASE_DIR must be configured in settings."
             raise ConfigurationError(err_msg)
 
-        if not Path(value).is_absolute():
+        path_obj = Path(value)
+        if not path_obj.is_absolute():
             err_msg = "ALLOWED_BASE_DIR must be an absolute path."
             raise ConfigurationError(err_msg)
-        return value
 
-    @field_validator("openrouter_api_key", mode="after")
-    @classmethod
-    def validate_api_key(cls, value: SecretStr) -> SecretStr:
-        from src.domain_models.exceptions import ConfigurationError
-        from src.utils.validation import validate_api_key_format
-
-        if not value:
-            err_msg = "OPENROUTER_API_KEY is required"
-            raise ConfigurationError(err_msg)
-
-        val_str = value.get_secret_value()
+        def _resolve_and_check() -> Path:
+            res = Path(os.path.realpath(value)).resolve(strict=True)
+            if not str(res).startswith(str(path_obj.parent)):
+                msg = "Path manipulation detected"
+                raise ValueError(msg)
+            return res
 
         try:
-            validate_api_key_format(val_str)
-        except ValueError as e:
-            raise ConfigurationError(str(e)) from e
-        else:
-            return value
+            # Canonicalize and strictly resolve to eliminate symlink traversal and double dot (..) attacks
+            resolved_path = _resolve_and_check()
+        except (OSError, ValueError) as e:
+            err_msg = f"Invalid or unsafe ALLOWED_BASE_DIR: {e}"
+            raise ConfigurationError(err_msg) from e
+
+        return str(resolved_path)
 
 
 class AppContext(BaseModel):
@@ -169,9 +193,6 @@ class SecureString:
     def __init__(self, value: str) -> None:
         self._value = value
 
-    def get_secret_value(self) -> str:
-        return self._value
-
     def __str__(self) -> str:
         return "********"
 
@@ -188,14 +209,14 @@ class SecureString:
 class EnvCredentialProvider:
     """Secure credential provider strictly executing JIT string extraction directly returning values to the HTTP Client without storing them inside AI services."""
 
-    def __init__(self, settings: Settings) -> None:
-        self._settings = settings
+    def __init__(self, credential_config: CredentialConfig) -> None:
+        self._config = credential_config
 
     def get_api_key(self) -> SecureString:
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
 
-        key = self._settings.openrouter_api_key.get_secret_value()
+        key = self._config.openrouter_api_key.get_secret_value()
         try:
             validate_api_key_format(key)
         except ValueError as e:

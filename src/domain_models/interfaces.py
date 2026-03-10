@@ -125,8 +125,21 @@ class HTTPClientProtocol(Protocol):
         json: dict[str, Any],
         headers: dict[str, str],
         timeout: int,
-        verify: bool = True,
+        verify: bool | str = True,
+        auth_token: Any | None = None,
     ) -> dict[str, Any]: ...
+
+
+class AISecurityScannerProtocol(Protocol):
+    """Protocol for securing AI inputs against prompt injection."""
+
+    def sanitize(self, text: str | None) -> str: ...
+
+
+class AICommunicationClientProtocol(Protocol):
+    """Protocol for communicating with AI models."""
+
+    def call_api(self, prompt: str, model: str | None = None) -> str: ...
 
 
 class RetryPolicyProtocol(Protocol):

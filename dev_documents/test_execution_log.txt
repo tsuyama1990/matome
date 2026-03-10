@@ -3,7 +3,7 @@ platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
-plugins: base-url-2.1.0, cov-7.0.0, playwright-0.7.2, anyio-4.12.1, langsmith-0.7.14
+plugins: base-url-2.1.0, cov-7.0.0, playwright-0.7.2, anyio-4.12.1, langsmith-0.7.14, Faker-37.12.0
 collected 53 items
 
 tests/e2e/test_system.py .                                               [  1%]
@@ -16,6 +16,18 @@ tests/unit/test_orchestrator.py ...............                          [ 69%]
 tests/unit/test_repository.py ...                                        [ 75%]
 tests/unit/test_services.py .............                                [100%]
 
+=============================== warnings summary ===============================
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+  /app/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1480: DeprecationWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.12-final-0 _______________
 
@@ -23,24 +35,27 @@ Name                                 Stmts   Miss  Cover   Missing
 ------------------------------------------------------------------
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
-src/application/ai.py                   67      6    91%   73-74, 78-79, 85-86
-src/config.py                           80     11    86%   117-118, 121-122, 132-133, 153, 156, 172-174
+src/application/ai.py                   38      0   100%
+src/config.py                          107     18    83%   34-35, 151-152, 156-157, 162-163, 169-171, 184, 187, 197, 200, 222-224
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           1      0   100%
 src/domain_models/enums.py              12      0   100%
 src/domain_models/exceptions.py          3      0   100%
-src/domain_models/interfaces.py         25      0   100%
+src/domain_models/interfaces.py         27      0   100%
 src/domain_models/manifest.py           59      0   100%
 src/domain_models/services.py           19      0   100%
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
+src/infrastructure/ai_client.py         29      6    79%   50-51, 55-56, 62-63
+src/infrastructure/container.py         29     29     0%   1-87
 src/infrastructure/orchestrator.py     155      3    98%   228, 256-257
 src/infrastructure/repository.py        43      7    84%   28-34
-src/infrastructure/services.py         197     55    72%   84-85, 89-91, 104, 129-131, 153-166, 170-203, 214, 260-262, 267-281, 306-308
+src/infrastructure/security.py          17      3    82%   13, 21-24
+src/infrastructure/services.py         207     61    71%   84-85, 89-91, 104, 131-133, 155-168, 172-211, 222, 268-270, 275-289, 306-308, 326-328
 src/utils/__init__.py                    0      0   100%
 src/utils/rate_limit.py                 18      0   100%
 src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  733     83    89%
-============================== 53 passed in 6.30s ==============================
+TOTAL                                  818    128    84%
+======================= 53 passed, 7 warnings in 22.57s ========================
