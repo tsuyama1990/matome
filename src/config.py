@@ -339,18 +339,15 @@ class EnvCredentialProvider:
 
         self._error_handler.validate_and_format(key)
 
-        key_bytes = bytearray(key.encode("utf-8"))
-        del key  # Delete python string reference
-
         try:
-            yield key_bytes.decode("utf-8")
+            # We yield the string natively since Python strings are immutable and ctypes memory zeroization
+            # is not robust/reliable across all GC platforms. Memory limits and short-lived execution cycles
+            # offer primary credential safety in standard Python environments.
+            yield key
         finally:
-            if key_bytes:
-                # Strictly zeroize memory buffer to prevent cold-boot and memory leak attacks natively
-                ctypes.memset(
-                    (ctypes.c_char * len(key_bytes)).from_buffer(key_bytes), 0, len(key_bytes)
-                )
-            del key_bytes
+            # Clear local reference to prompt garbage collection
+            key = None  # noqa: F841
+            del key
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
