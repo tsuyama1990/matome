@@ -10,7 +10,9 @@ from src.domain_models.interfaces import (
     ClusteringServiceProtocol,
     EntityExtractorProtocol,
     HTTPClientProtocol,
+    MLClusteringProviderProtocol,
     NLPServiceProtocol,
+    RateLimiterProtocol,
     RetryPolicyProtocol,
     SplitterStrategyProtocol,
     TextSplitterProtocol,
@@ -131,7 +133,7 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         trusted_models: list[str],
         trusted_hashes: dict[str, str] | None = None,
         fallback_ner_regex: str | None = None,
-        rate_limiter: Any = None,
+        rate_limiter: RateLimiterProtocol | None = None,
         nlp_service: NLPServiceProtocol | None = None,
         max_model_signature_size: int | None = None,
     ) -> None:
@@ -259,9 +261,23 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         return entities
 
 
+class ScikitLearnClusteringProvider(MLClusteringProviderProtocol):
+    """Concrete ML provider using scikit-learn."""
+    def get_vectorizer(self) -> Any:
+        from sklearn.feature_extraction.text import HashingVectorizer
+        return HashingVectorizer(n_features=256)
+
+    def get_clusterer(self, max_clusters: int, random_seed: int) -> Any:
+        from sklearn.cluster import MiniBatchKMeans
+        return MiniBatchKMeans(
+            n_clusters=max_clusters, random_state=random_seed, batch_size=100
+        )
+
+
 class DefaultClusteringService(ClusteringServiceProtocol):
-    def __init__(self, random_seed: int) -> None:
+    def __init__(self, random_seed: int, ml_provider: MLClusteringProviderProtocol | None = None) -> None:
         self.random_seed = random_seed
+        self.ml_provider = ml_provider
 
     def cluster_chunks(
         self, chunks: typing.Iterator[str] | list[str], max_clusters: int
@@ -271,15 +287,17 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             raise ValueError(msg)
 
         logger.debug(
-            "Executing incremental MiniBatchKMeans clustering for RAPTOR tree generation..."
+            "Executing incremental clustering for RAPTOR tree generation..."
         )
 
         try:
-            from sklearn.cluster import MiniBatchKMeans
-            from sklearn.feature_extraction.text import HashingVectorizer
+            if not self.ml_provider:
+                self.ml_provider = ScikitLearnClusteringProvider()
+            vectorizer = self.ml_provider.get_vectorizer()
+            clusterer = self.ml_provider.get_clusterer(max_clusters, self.random_seed)
         except ImportError as e:
             logger.warning(
-                f"ML dependency missing: {e}. Please ensure 'scikit-learn' is explicitly installed. Returning basic flat tree."
+                f"ML dependency missing: {e}. Please ensure ML dependencies are installed. Returning basic flat tree."
             )
             return {
                 "level_0": "root",
@@ -287,10 +305,6 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             }
 
         try:
-            vectorizer = HashingVectorizer(n_features=256)
-            clusterer = MiniBatchKMeans(
-                n_clusters=max_clusters, random_state=self.random_seed, batch_size=100
-            )
 
             chunk_count = 0
             batch = []
@@ -326,8 +340,13 @@ class DefaultClusteringService(ClusteringServiceProtocol):
 
 
 class RequestsHTTPClient(HTTPClientProtocol):
-    def __init__(self, ssl_cert_path: str | None = None) -> None:
+    def __init__(
+        self,
+        ssl_cert_path: str | None = None,
+        credential_provider: Any | None = None,
+    ) -> None:
         self.ssl_cert_path = ssl_cert_path
+        self.credential_provider = credential_provider
 
     def post(
         self,
@@ -344,11 +363,17 @@ class RequestsHTTPClient(HTTPClientProtocol):
         safe_headers = {k: v for k, v in headers.items() if k.lower() in allowed_headers}
 
         try:
-            if auth_token:
-                # Safely extract token in HTTP layer directly right before sending
-                # Unpack SecureString bytearray
-                if hasattr(auth_token, "get_secret_value"):
-                    raw_token = auth_token.get_secret_value()
+            if self.credential_provider:
+                # Fetch dynamically at the edge of the network request
+                with self.credential_provider.get_api_key() as secure_key:
+                    if hasattr(secure_key, "_value"):
+                        raw_token = secure_key._value.decode("utf-8")
+                    else:
+                        raw_token = str(secure_key)
+                    safe_headers["Authorization"] = f"Bearer {raw_token}"
+            elif auth_token:
+                if hasattr(auth_token, "_value"):
+                    raw_token = auth_token._value.decode("utf-8")
                 else:
                     raw_token = str(auth_token)
                 safe_headers["Authorization"] = f"Bearer {raw_token}"

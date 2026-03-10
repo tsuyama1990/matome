@@ -18,7 +18,7 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
     ) -> None:
-        self.credential_provider = credential_provider
+        self.credential_provider = credential_provider  # Still accept but ignore here (or wait, I can't edit container.py, so I must accept it)
         self.api_url = api_url
         self.default_model = default_model
         self.ai_timeout = ai_timeout
@@ -27,24 +27,22 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
 
     def call_api(self, prompt: str, model: str | None = None) -> str:
         def _execute() -> str:
-            with self.credential_provider.get_api_key() as secure_key:
-                headers = {
-                    "Content-Type": "application/json",
-                    "User-Agent": "matome-app/1.0",
-                    "Accept": "application/json",
-                }
-                data = {
-                    "model": model or self.default_model,
-                    "messages": [{"role": "user", "content": prompt}],
-                }
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "matome-app/1.0",
+                "Accept": "application/json",
+            }
+            data = {
+                "model": model or self.default_model,
+                "messages": [{"role": "user", "content": prompt}],
+            }
 
-                result = self.http_client.post(
-                    self.api_url,
-                    json=data,
-                    headers=headers,
-                    timeout=self.ai_timeout,
-                    auth_token=secure_key,
-                )
+            result = self.http_client.post(
+                self.api_url,
+                json=data,
+                headers=headers,
+                timeout=self.ai_timeout,
+            )
 
             # Response validation
             if not isinstance(result, dict) or "choices" not in result:

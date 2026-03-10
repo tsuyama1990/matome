@@ -210,9 +210,6 @@ class SecureString:
         # Store as mutable bytearray to allow explicit zeroization
         self._value = bytearray(value.encode("utf-8"))
 
-    def get_secret_value(self) -> str:
-        return self._value.decode("utf-8")
-
     def __str__(self) -> str:
         return "********"
 
