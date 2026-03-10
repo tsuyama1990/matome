@@ -239,7 +239,6 @@ class EntityExtractorBuilder:
     def build(
         builder_config: EntityExtractorBuilderConfig,
         rate_limiter: RateLimiterProtocol,
-        model_verifier: ModelVerifierProtocol,
         nlp_service: NLPServiceProtocol | None = None,
     ) -> "DefaultEntityExtractor":
         config = EntityExtractorConfig(
@@ -251,7 +250,6 @@ class EntityExtractorBuilder:
             config=config,
             rate_limiter=rate_limiter,
             nlp_service=nlp_service,
-            model_verifier=model_verifier,
         )
 
 
@@ -268,7 +266,6 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         self,
         config: EntityExtractorConfigProtocol,
         rate_limiter: RateLimiterProtocol,
-        model_verifier: ModelVerifierProtocol,
         nlp_service: NLPServiceProtocol | None = None,
         **kwargs: Any,
     ) -> None:
@@ -278,7 +275,6 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         self.fallback_ner_regex = config.fallback_ner_regex
         self.rate_limiter = rate_limiter
         self.nlp_service = nlp_service
-        self.model_verifier = model_verifier
 
         import os
 
@@ -303,34 +299,20 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         logger.debug("Executing NLP logic (streamed/batched implementation)...")
         entities = {}
 
-        try:
-            self.model_verifier.verify_model_signature(self.spacy_model)
-
-            if self.nlp_service is None:
-                # Late-bind Spacy if no mock provided. Actual sandboxing is handled externally
-                # by the execution environment. Here we rely strictly on the model signature
-                # verification which acts as the primary security boundary.
-                try:
-                    from spacy.util import is_package
-
-                    if not is_package(self.spacy_model):
-                        msg = f"SpaCy model '{self.spacy_model}' is missing."
-                        raise ValueError(msg)
-                except ImportError as e:
-                    msg = f"SpaCy module not loaded: {e}"
-                    raise ValueError(msg) from e
-
-                self.nlp_service = SpacyNLPService(self.spacy_model)
-
-            for i, chunk in enumerate(chunks):
-                extracted = self.nlp_service.extract_entities(chunk)
-                for label, text in extracted:
-                    entities[f"chunk_{i}_{label}"] = text
-        except (OSError, ValueError) as e:
-            logger.warning(
-                f"NLP model initialization failed or untrusted: {e}. Falling back to regex entity extraction."
-            )
+        if self.nlp_service is None:
+            logger.warning("No NLP Service injected. Falling back to regex entity extraction.")
             entities = self._fallback_ner(chunks)
+        else:
+            try:
+                for i, chunk in enumerate(chunks):
+                    extracted = self.nlp_service.extract_entities(chunk)
+                    for label, text in extracted:
+                        entities[f"chunk_{i}_{label}"] = text
+            except Exception as e:
+                logger.warning(
+                    f"NLP execution failed: {e}. Falling back to regex entity extraction."
+                )
+                entities = self._fallback_ner(chunks)
 
         return entities
 

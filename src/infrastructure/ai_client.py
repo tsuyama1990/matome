@@ -72,6 +72,20 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         self.retry_policy = retry_policy
         self.security_scanner = security_scanner
 
+    def __enter__(self) -> "DefaultAICommunicationClient":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Securely zeroize any internal references to configuration data after context completion."""
+        self.config = None  # type: ignore
+        self.http_client = None  # type: ignore
+        import ctypes
+
+        buffer = getattr(self, "_temp_secure_buffer", None)
+        if buffer is not None:
+            ctypes.memset(buffer, 0, len(buffer))
+            self._temp_secure_buffer = None
+
     def rotate_credentials(self) -> None:
         """
         Forces the underlying secure HTTP client or KMS provider to immediately drop and rotate session tokens via their hardware enclaves.

@@ -25,29 +25,9 @@ class ModeConfig(MatomeConfig):
 class CredentialConfig(MatomeConfig):
     """Dedicated configuration class for externalizing and securely holding credentials."""
 
-    openrouter_api_key: SecretStr = Field(
-        ..., description="The OpenRouter API Key. Accessed securely via EnvCredentialProvider."
-    )
-
-    @field_validator("openrouter_api_key", mode="after")
-    @classmethod
-    def validate_openrouter_api_key(cls, v: SecretStr) -> SecretStr:
-        from src.domain_models.exceptions import ConfigurationError
-        from src.utils.validation import validate_api_key_format
-
-        try:
-            validate_api_key_format(v.get_secret_value())
-        except ValueError as err:
-            raise ConfigurationError(str(err)) from err
-        return v
-
     openrouter_api_url: SecretStr = Field(
         ...,
         description="The base URL for the OpenRouter API endpoint",
-    )
-    ssl_cert_path: SecretStr = Field(
-        ...,
-        description="Path to a pinned CA bundle for explicit SSL verification",
     )
 
     @field_validator("openrouter_api_url", mode="after")
@@ -68,26 +48,6 @@ class CredentialConfig(MatomeConfig):
             from src.domain_models.exceptions import ConfigurationError
 
             msg = "openrouter_api_url must contain a valid domain"
-            raise ConfigurationError(msg)
-
-        return v
-
-    @field_validator("ssl_cert_path", mode="after")
-    @classmethod
-    def validate_ssl_cert_path(cls, v: SecretStr) -> SecretStr:
-        from pathlib import Path
-
-        from src.domain_models.exceptions import ConfigurationError
-
-        val = v.get_secret_value()
-
-        path = Path(val)
-        if not path.is_file():
-            msg = f"ssl_cert_path must point to an existing file: {val}"
-            raise ConfigurationError(msg)
-
-        if not os.access(path, os.R_OK):
-            msg = f"ssl_cert_path file must be readable: {val}"
             raise ConfigurationError(msg)
 
         return v
@@ -308,19 +268,13 @@ class PipelineConfig(BaseModel):
     )
 
 
-class Settings(BaseModel):
-    """Global application configuration settings utilizing dependency injection of configurations."""
-
+class AppContext(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     ai: AIConfig
     file: FileProcessingConfig
     security: SecurityConfig
     ml: MLConfig
     pipeline: PipelineConfig
-
-
-class AppContext(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-    settings: Settings
     mode_config: ModeConfig
 
 
@@ -365,18 +319,34 @@ class EnvCredentialProvider:
             del key_bytes
 
 
-def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
+def create_app_context(
+    ai: AIConfig,
+    file: FileProcessingConfig,
+    security: SecurityConfig,
+    ml: MLConfig,
+    pipeline: PipelineConfig,
+    mode_config: ModeConfig,
+) -> AppContext:
     """Application factory pattern for injecting global settings."""
     return AppContext(
-        settings=settings,
+        ai=ai,
+        file=file,
+        security=security,
+        ml=ml,
+        pipeline=pipeline,
         mode_config=mode_config,
     )
 
 
 __all__ = [
+    "AIConfig",
+    "AppContext",
     "CredentialConfig",
     "DatabaseContext",
+    "FileProcessingConfig",
+    "MLConfig",
     "ModeConfig",
-    "Settings",
+    "PipelineConfig",
+    "SecurityConfig",
     "create_app_context",
 ]

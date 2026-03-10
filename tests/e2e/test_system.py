@@ -1,6 +1,6 @@
 import pytest
 
-from src.config import Settings
+from src.config import AppContext
 from src.domain_models.manifest import PipelineContext
 from src.domain_models.services import DocumentFactory, MetadataService
 from src.infrastructure import InMemoryDocumentRepository
@@ -11,7 +11,7 @@ from src.infrastructure.orchestrator import (
 from tests.helpers.mocks import MockAIService
 
 
-class IntegrationTestSettings(Settings):
+class IntegrationTestAppContext(AppContext):
     """Test-specific configuration class strictly for safe mock validations."""
 
 
@@ -38,9 +38,16 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
     os.environ["CHUNK_SIZE"] = "1000"
 
-    from src.config import AIConfig, FileProcessingConfig, MLConfig, PipelineConfig, SecurityConfig
+    from src.config import (
+        AIConfig,
+        FileProcessingConfig,
+        MLConfig,
+        ModeConfig,
+        PipelineConfig,
+        SecurityConfig,
+    )
 
-    settings = IntegrationTestSettings(
+    settings = IntegrationTestAppContext(
         ai=AIConfig(
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
@@ -57,6 +64,7 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
         ),
         security=SecurityConfig(),
         pipeline=PipelineConfig(),
+        mode_config=ModeConfig(),
     )
 
     from src.infrastructure.services import (
@@ -72,7 +80,6 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
         strategy=LangChainSplitterStrategy(),
     )
     from src.infrastructure.services import (
-        DefaultModelVerifier,
         EntityExtractorBuilder,
         EntityExtractorBuilderConfig,
     )
@@ -88,11 +95,7 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     entity_extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
         rate_limiter=RateLimiter(0.01),
-        model_verifier=DefaultModelVerifier(
-            set(settings.ml.trusted_spacy_models),
-            settings.ml.trusted_model_hashes,
-            settings.security.max_model_signature_size,
-        ),
+        nlp_service=None,
     )
     clustering_service = DefaultClusteringService(settings.ml.random_seed)
 

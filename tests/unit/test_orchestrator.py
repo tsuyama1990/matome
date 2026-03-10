@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from src.config import Settings
+from src.config import AppContext
 from src.domain_models import DocumentFactory, MetadataService, PipelineContext
 from src.infrastructure import InMemoryDocumentRepository
 from src.infrastructure.orchestrator import (
@@ -32,10 +32,10 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
     os.environ["CHUNK_SIZE"] = "1000"
 
-    from src.config import AIConfig, FileProcessingConfig, MLConfig, SecurityConfig
+    from src.config import AIConfig, FileProcessingConfig, MLConfig, ModeConfig, SecurityConfig
     from src.config import PipelineConfig as ConfigPipelineConfig
 
-    settings = Settings(
+    settings = AppContext(
         ai=AIConfig(
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
@@ -52,6 +52,7 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
         ),
         security=SecurityConfig(),
         pipeline=ConfigPipelineConfig(),
+        mode_config=ModeConfig(),
     )
 
     repo = InMemoryDocumentRepository()

@@ -1,7 +1,14 @@
 import logging
 import sys
 
-from src.config import ModeConfig, Settings
+from src.config import (
+    AIConfig,
+    AppContext,
+    FileProcessingConfig,
+    MLConfig,
+    ModeConfig,
+    SecurityConfig,
+)
 from src.domain_models.exceptions import ConfigurationError
 from src.domain_models.manifest import PipelineContext
 from src.infrastructure.container import DIContainerProtocol
@@ -19,27 +26,24 @@ logger = logging.getLogger(__name__)
 class Application:
     """Thin application controller responsible only for executing application logic."""
 
-    def __init__(
-        self, settings: Settings, mode_config: ModeConfig, orchestrator: PipelineOrchestrator
-    ) -> None:
-        self.settings = settings
-        self.mode_config = mode_config
+    def __init__(self, context: AppContext, orchestrator: PipelineOrchestrator) -> None:
+        self.context = context
         self.orchestrator = orchestrator
 
-    def start(self, context: PipelineContext) -> None:
-        logger.info(f"Initializing matome application in {self.mode_config.mode} mode...")
-        self.orchestrator.run_pipeline(context)
+    def start(self, ctx: PipelineContext) -> None:
+        logger.info(f"Initializing matome application in {self.context.mode_config.mode} mode...")
+        self.orchestrator.run_pipeline(ctx)
 
 
 def build_app(
-    settings: Settings, mode_config: ModeConfig, deps: PipelineDependencies, config: PipelineConfig
+    context: AppContext, deps: PipelineDependencies, config: PipelineConfig
 ) -> Application:
     """Factory function for bootstrapping components and dependency injection, detached from state."""
     orchestrator = PipelineOrchestrator(dependencies=deps, config=config)
-    return Application(settings=settings, mode_config=mode_config, orchestrator=orchestrator)
+    return Application(context=context, orchestrator=orchestrator)
 
 
-def get_di_container(settings: Settings) -> DIContainerProtocol:
+def get_di_container(app_ctx: AppContext) -> DIContainerProtocol:
     import os
 
     from pydantic import SecretStr
@@ -65,38 +69,41 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     # Strictly pull credentials from environment variables avoiding hardcoded fallbacks
     # and ensuring proper instantiation. Let Pydantic Settings handle the presence checks.
     credential_config_args = {}
-    if "OPENROUTER_API_KEY" in os.environ:
-        credential_config_args["openrouter_api_key"] = SecretStr(os.environ["OPENROUTER_API_KEY"])
     if "OPENROUTER_API_URL" in os.environ:
         credential_config_args["openrouter_api_url"] = SecretStr(os.environ["OPENROUTER_API_URL"])
-    if "SSL_CERT_PATH" in os.environ:
-        credential_config_args["ssl_cert_path"] = SecretStr(os.environ["SSL_CERT_PATH"])
 
     credential_config = CredentialConfig(**credential_config_args)
 
     repo = InMemoryDocumentRepository()
-    ssl_path = (
-        credential_config.ssl_cert_path.get_secret_value()
-        if credential_config.ssl_cert_path
-        else None
-    )
+    ssl_path = os.getenv("SSL_CERT_PATH")
+
+    from src.domain_models.exceptions import ConfigurationError
+
+    if ssl_path:
+        from pathlib import Path
+
+        path_obj = Path(ssl_path)
+        if not path_obj.is_file() or not os.access(path_obj, os.R_OK):
+            msg = f"Invalid SSL_CERT_PATH: {ssl_path}"
+            raise ConfigurationError(msg)
+
     http_client = RequestsHTTPClient(ssl_cert_path=ssl_path)
     retry_policy = TenacityRetryPolicy(
-        ai_retry_attempts=settings.ai.ai_retry_attempts,
-        ai_retry_min_wait=settings.ai.ai_retry_min_wait,
-        ai_retry_max_wait=settings.ai.ai_retry_max_wait,
+        ai_retry_attempts=app_ctx.ai.ai_retry_attempts,
+        ai_retry_min_wait=app_ctx.ai.ai_retry_min_wait,
+        ai_retry_max_wait=app_ctx.ai.ai_retry_max_wait,
     )
     security_scanner = PromptInjectionScanner(
-        threshold=settings.security.prompt_injection_threshold,
-        max_input_length=settings.security.max_input_length,
+        threshold=app_ctx.security.prompt_injection_threshold,
+        max_input_length=app_ctx.security.max_input_length,
     )
 
     from src.infrastructure.ai_client import AIClientFactory
 
     communication_client = AIClientFactory.create(
         api_url=credential_config.openrouter_api_url.get_secret_value(),
-        default_model=settings.ai.text_fast_model,
-        ai_timeout=settings.ai.ai_timeout,
+        default_model=app_ctx.ai.text_fast_model,
+        ai_timeout=app_ctx.ai.ai_timeout,
         http_client=http_client,
         retry_policy=retry_policy,
         security_scanner=security_scanner,
@@ -105,14 +112,14 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     summary_service = DefaultSummaryService(
         security_scanner=security_scanner,
         communication_client=communication_client,
-        text_fast_model=settings.ai.text_fast_model,
-        text_reasoning_model=settings.ai.text_reasoning_model,
+        text_fast_model=app_ctx.ai.text_fast_model,
+        text_reasoning_model=app_ctx.ai.text_reasoning_model,
     )
     question_service = DefaultQuestionService(
         security_scanner=security_scanner,
         communication_client=communication_client,
-        text_fast_model=settings.ai.text_fast_model,
-        text_reasoning_model=settings.ai.text_reasoning_model,
+        text_fast_model=app_ctx.ai.text_fast_model,
+        text_reasoning_model=app_ctx.ai.text_reasoning_model,
     )
     # the rest are not strictly required for PipelineDependencies currently, but keeping pattern
 
@@ -120,9 +127,9 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     metadata_service = MetadataService()
 
     text_splitter = DefaultTextSplitter(
-        chunk_size=settings.file.chunk_size,
-        chunk_overlap=settings.file.chunk_overlap,
-        max_file_size=settings.file.max_file_size,
+        chunk_size=app_ctx.file.chunk_size,
+        chunk_overlap=app_ctx.file.chunk_overlap,
+        max_file_size=app_ctx.file.max_file_size,
         strategy=LangChainSplitterStrategy(),
     )
 
@@ -134,23 +141,33 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     from src.utils.rate_limit import RateLimiter
 
     builder_config = EntityExtractorBuilderConfig(
-        spacy_model=settings.ml.spacy_model,
-        trusted_models=settings.ml.trusted_spacy_models,
-        trusted_hashes=settings.ml.trusted_model_hashes,
-        fallback_ner_regex=settings.ml.fallback_ner_regex,
-        max_model_signature_size=settings.security.max_model_signature_size,
+        spacy_model=app_ctx.ml.spacy_model,
+        trusted_models=app_ctx.ml.trusted_spacy_models,
+        trusted_hashes=app_ctx.ml.trusted_model_hashes,
+        fallback_ner_regex=app_ctx.ml.fallback_ner_regex,
+        max_model_signature_size=app_ctx.security.max_model_signature_size,
     )
+
+    model_verifier = DefaultModelVerifier(
+        set(app_ctx.ml.trusted_spacy_models),
+        app_ctx.ml.trusted_model_hashes,
+        app_ctx.security.max_model_signature_size,
+    )
+    try:
+        model_verifier.verify_model_signature(app_ctx.ml.spacy_model)
+        from src.infrastructure.services import SpacyNLPService
+
+        nlp_service = SpacyNLPService(app_ctx.ml.spacy_model)
+    except Exception as e:
+        logger.warning(f"Failed to load verified spacy model: {e}")
+        nlp_service = None
 
     entity_extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
-        rate_limiter=RateLimiter(settings.ml.entity_extraction_rate_limit),
-        model_verifier=DefaultModelVerifier(
-            set(settings.ml.trusted_spacy_models),
-            settings.ml.trusted_model_hashes,
-            settings.security.max_model_signature_size,
-        ),
+        rate_limiter=RateLimiter(app_ctx.ml.entity_extraction_rate_limit),
+        nlp_service=nlp_service,
     )
-    clustering_service = DefaultClusteringService(settings.ml.random_seed)
+    clustering_service = DefaultClusteringService(app_ctx.ml.random_seed)
 
     deps = PipelineDependencies(
         doc_repo=repo,
@@ -164,14 +181,14 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
         clustering_service=clustering_service,
     )
     config = PipelineConfig(
-        pipeline_timeout=settings.pipeline.pipeline_timeout,
-        raptor_max_clusters=settings.ml.raptor_max_clusters,
+        pipeline_timeout=app_ctx.pipeline.pipeline_timeout,
+        raptor_max_clusters=app_ctx.ml.raptor_max_clusters,
     )
 
     return ProductionDIContainer(dependencies=deps, config=config)
 
 
-def setup_config() -> tuple[Settings, ModeConfig]:
+def setup_config() -> AppContext:
     import os
 
     mode = os.getenv("MODE", "cli")
@@ -179,19 +196,35 @@ def setup_config() -> tuple[Settings, ModeConfig]:
         msg = f"Invalid mode: {mode}. Must be one of 'cli', 'production', 'test'."
         raise ValueError(msg)
 
-    filtered_env = {
-        k.lower(): v for k, v in os.environ.items() if k.lower() in Settings.model_fields
-    }
-    settings = Settings(**filtered_env)  # type: ignore[arg-type]
+    import typing
+
+    def filter_env(model_cls: typing.Any) -> dict[str, typing.Any]:
+        return {k.lower(): v for k, v in os.environ.items() if k.lower() in model_cls.model_fields}
+
+    from src.config import PipelineConfig, create_app_context
+
+    ai_cfg = AIConfig(**filter_env(AIConfig))
+    file_cfg = FileProcessingConfig(**filter_env(FileProcessingConfig))
+    security_cfg = SecurityConfig(**filter_env(SecurityConfig))
+    ml_cfg = MLConfig(**filter_env(MLConfig))
+    pipeline_cfg = PipelineConfig(**filter_env(PipelineConfig))
     mode_config = ModeConfig(mode=mode)
-    return settings, mode_config
+
+    return create_app_context(
+        ai=ai_cfg,
+        file=file_cfg,
+        security=security_cfg,
+        ml=ml_cfg,
+        pipeline=pipeline_cfg,
+        mode_config=mode_config,
+    )
 
 
-def validate_security(settings: Settings, target_file: str) -> str:
+def validate_security(app_ctx: AppContext, target_file: str) -> str:
     import os
     from pathlib import Path
 
-    allowed_dir = Path(settings.file.allowed_base_dir).resolve()
+    allowed_dir = Path(app_ctx.file.allowed_base_dir).resolve()
     file_path = Path(target_file).resolve()
 
     if not file_path.exists():
@@ -209,9 +242,9 @@ def validate_security(settings: Settings, target_file: str) -> str:
         logger.error("Security Error: Access denied to the requested file.")
         sys.exit(1)
 
-    if file_path.stat().st_size > settings.file.max_file_size:
+    if file_path.stat().st_size > app_ctx.file.max_file_size:
         logger.error(
-            f"Security Error: File exceeds maximum allowed size of {settings.file.max_file_size} bytes -> {file_path}"
+            f"Security Error: File exceeds maximum allowed size of {app_ctx.file.max_file_size} bytes -> {file_path}"
         )
         sys.exit(1)
 
@@ -227,19 +260,19 @@ def main() -> None:
 
     try:
         try:
-            settings, mode_config = setup_config()
-            container = get_di_container(settings)
+            app_ctx = setup_config()
+            container = get_di_container(app_ctx)
             deps, config = container.get_dependencies()
-            app = build_app(settings, mode_config, deps, config)
+            app = build_app(app_ctx, deps, config)
         except ConfigurationError:
             logger.exception("Configuration Error")
             sys.exit(1)
 
-        safe_file_path = validate_security(app.settings, args.file)
+        safe_file_path = validate_security(app.context, args.file)
 
         # Pass the file path to the pipeline for chunked streaming to prevent OOM
         context = PipelineContext(
-            root_doc_id=app.settings.pipeline.default_root_doc_id, file_path=safe_file_path
+            root_doc_id=app.context.pipeline.default_root_doc_id, file_path=safe_file_path
         )
         app.start(context)
     except ValueError:

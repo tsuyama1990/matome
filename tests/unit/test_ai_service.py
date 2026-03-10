@@ -8,7 +8,7 @@ from src.application.ai import (
     DefaultSummaryService,
     DefaultWebGroundingService,
 )
-from src.config import Settings
+from src.config import AppContext
 from src.domain_models import (
     ContentNode,
     IdentityNode,
@@ -27,7 +27,7 @@ def _create_mock_settings(
     text_fast_model: str = "google/gemini-2.5-flash",
     text_reasoning_model: str = "deepseek/deepseek-reasoner",
     multimodal_model: str = "openai/gpt-4o",
-) -> Settings:
+) -> AppContext:
 
     if monkeypatch:
         if api_key:
@@ -62,9 +62,16 @@ def _create_mock_settings(
         os.environ["TEXT_REASONING_MODEL"] = text_reasoning_model
         os.environ["MULTIMODAL_MODEL"] = multimodal_model
 
-    from src.config import AIConfig, FileProcessingConfig, MLConfig, PipelineConfig, SecurityConfig
+    from src.config import (
+        AIConfig,
+        FileProcessingConfig,
+        MLConfig,
+        ModeConfig,
+        PipelineConfig,
+        SecurityConfig,
+    )
 
-    return Settings(
+    return AppContext(
         ai=AIConfig(
             text_fast_model=text_fast_model,
             text_reasoning_model=text_reasoning_model,
@@ -81,6 +88,7 @@ def _create_mock_settings(
         ),
         security=SecurityConfig(),
         pipeline=PipelineConfig(),
+        mode_config=ModeConfig(),
     )
 
 

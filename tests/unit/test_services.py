@@ -143,7 +143,7 @@ def test_default_entity_extractor_invalid_regex(monkeypatch: pytest.MonkeyPatch)
     # We provide an invalid unclosed regex. It should fall back to the safe default
     # r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b" and extract "Apple Inc"
     config = EntityExtractorConfig("dummy", "[unclosed_regex")
-    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+    extractor = DefaultEntityExtractor(config, MockRateLimiter())
 
     entities = extractor.extract_entities(["Apple Inc."])
     assert "chunk_0_Fallback_ORG" in entities
@@ -161,7 +161,7 @@ def test_default_entity_extractor_nlp_import_error(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(spacy.util, "is_package", mock_is_package)
 
     config = EntityExtractorConfig("dummy_spacy_model", r"\b[A-Z][a-z]+\b")
-    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+    extractor = DefaultEntityExtractor(config, MockRateLimiter())
 
     # Will fallback to regex and log warning
     entities = extractor.extract_entities(["Apple Inc."])
@@ -173,7 +173,7 @@ def test_default_entity_extractor_container_isolation_sandbox() -> None:
     from src.infrastructure.services import DefaultEntityExtractor, EntityExtractorConfig
 
     config = EntityExtractorConfig("invalid_nonexistent_module", r"\b[A-Z][a-z]+\b")
-    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+    extractor = DefaultEntityExtractor(config, MockRateLimiter())
 
     # Isolation sandbox raises import error handled internally
     entities = extractor.extract_entities(["Microsoft"])
@@ -365,7 +365,6 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
 
 def test_default_entity_extractor_fallback() -> None:
     from src.infrastructure.services import (
-        DefaultModelVerifier,
         EntityExtractorBuilder,
         EntityExtractorBuilderConfig,
     )
@@ -381,7 +380,6 @@ def test_default_entity_extractor_fallback() -> None:
     extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
         rate_limiter=RateLimiter(0.01),
-        model_verifier=DefaultModelVerifier({"invalid_model_name"}, {}, 1024),
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
 
@@ -399,7 +397,6 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setitem(sys.modules, "spacy", None)
 
     from src.infrastructure.services import (
-        DefaultModelVerifier,
         EntityExtractorBuilder,
         EntityExtractorBuilderConfig,
     )
@@ -415,7 +412,6 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
     extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
         rate_limiter=RateLimiter(0.01),
-        model_verifier=DefaultModelVerifier({"en_core_web_sm"}, {}, 1024),
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
 
@@ -457,7 +453,6 @@ def test_default_entity_extractor_valid_spacy(monkeypatch: pytest.MonkeyPatch) -
     extractor = EntityExtractorBuilder.build(
         builder_config=builder_config,
         rate_limiter=RateLimiter(0.01),
-        model_verifier=verifier,
         nlp_service=MockSpacyNLPService(),
     )
 
