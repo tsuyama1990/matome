@@ -1,6 +1,7 @@
 import logging
 import re
 import typing
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -256,9 +257,8 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         rate_limiter: RateLimiterProtocol,
         model_verifier: ModelVerifierProtocol,
         nlp_service: NLPServiceProtocol | None = None,
-        **kwargs: Any,  # Absorb leftover params during transition from old kwargs format if accessed directly
+        **kwargs: Any,
     ) -> None:
-        import re
 
         self.config = config
         self.spacy_model = config.spacy_model
@@ -267,14 +267,15 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         self.nlp_service = nlp_service
         self.model_verifier = model_verifier
 
-        # Validate regex at initialization
+        # Validate and precompile regex at initialization
         try:
-            re.compile(self.fallback_ner_regex)
+            self._compiled_fallback_regex = re.compile(self.fallback_ner_regex)
         except re.error as e:
             logger.warning(
                 f"Invalid fallback NER regex pattern: {e}. Falling back to default bounded regex."
             )
             self.fallback_ner_regex = r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
+            self._compiled_fallback_regex = re.compile(self.fallback_ner_regex)
 
     def extract_entities(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
         self.rate_limiter.acquire()
@@ -285,28 +286,20 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
             self.model_verifier.verify_model_signature(self.spacy_model)
 
             if self.nlp_service is None:
-                # Use a strict ContainerIsolationSandbox to guarantee restricted code execution
-                # against malicious model loads. Isolates syscalls in restricted environments.
-                class ContainerIsolationSandbox:
-                    def __enter__(self) -> "ContainerIsolationSandbox":
-                        return self
+                # Late-bind Spacy if no mock provided. Actual sandboxing is handled externally
+                # by the execution environment. Here we rely strictly on the model signature
+                # verification which acts as the primary security boundary.
+                try:
+                    from spacy.util import is_package
 
-                    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-                        pass
+                    if not is_package(self.spacy_model):
+                        msg = f"SpaCy model '{self.spacy_model}' is missing."
+                        raise ValueError(msg)
+                except ImportError as e:
+                    msg = f"SpaCy module not loaded: {e}"
+                    raise ValueError(msg) from e
 
-                with ContainerIsolationSandbox():
-                    # Late-bind Spacy if no mock provided inside isolated sandbox memory
-                    try:
-                        from spacy.util import is_package
-
-                        if not is_package(self.spacy_model):
-                            msg = f"SpaCy model '{self.spacy_model}' is missing."
-                            raise ValueError(msg)
-                    except ImportError as e:
-                        msg = f"SpaCy module not loaded: {e}"
-                        raise ValueError(msg) from e
-
-                    self.nlp_service = SpacyNLPService(self.spacy_model)
+                self.nlp_service = SpacyNLPService(self.spacy_model)
 
             for i, chunk in enumerate(chunks):
                 extracted = self.nlp_service.extract_entities(chunk)
@@ -321,11 +314,10 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         return entities
 
     def _fallback_ner(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
-        entities = {}
-        # Prevent catastrophic backtracking by strictly bounding quantifier sequences to avoid ReDoS vectoring.
-        safe_regex = re.compile(self.fallback_ner_regex)
+        entities: dict[str, str] = {}
+        # Use precompiled regex to avoid compilation overhead and ensure validation holds.
         for i, chunk in enumerate(chunks):
-            matches = safe_regex.findall(chunk[:5000])  # hard cap chunk scans
+            matches = self._compiled_fallback_regex.findall(chunk[:5000])  # hard cap chunk scans to bound ReDoS
             if matches:
                 entities[f"chunk_{i}_Fallback_ORG"] = matches[0]
         if not entities:
@@ -496,7 +488,7 @@ class TenacityRetryPolicy(RetryPolicyProtocol):
         self.ai_retry_min_wait = ai_retry_min_wait
         self.ai_retry_max_wait = ai_retry_max_wait
 
-    def execute(self, func: Any) -> Any:
+    def execute(self, func: Callable[..., Any]) -> Any:
         from tenacity import Retrying, stop_after_attempt, wait_exponential_jitter
 
         retryer = Retrying(

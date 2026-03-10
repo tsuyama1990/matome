@@ -53,18 +53,17 @@ def test_validate_api_key_format_boundaries() -> None:
     # via massive payload injections.
 
     # Exactly 256 characters (valid) - using high entropy charset to pass entropy check
-    import random
+    import secrets
     import string
 
     chars = string.ascii_letters + string.digits
-    random.seed(42)
     valid_suffix_len_max = 256 - len("sk-or-v1-")
-    valid_max_key = "sk-or-v1-" + "".join(random.choices(chars, k=valid_suffix_len_max))
+    valid_max_key = "sk-or-v1-" + "".join(secrets.choice(chars) for _ in range(valid_suffix_len_max))
     assert validate_api_key_format(valid_max_key) == valid_max_key
 
     # Exactly 30 characters (valid)
     valid_suffix_len_min = 30 - len("sk-or-v1-")
-    valid_min_key = "sk-or-v1-" + "".join(random.choices(chars, k=valid_suffix_len_min))
+    valid_min_key = "sk-or-v1-" + "".join(secrets.choice(chars) for _ in range(valid_suffix_len_min))
     assert validate_api_key_format(valid_min_key) == valid_min_key
 
     # Exceeding 256 characters (invalid)
@@ -73,8 +72,8 @@ def test_validate_api_key_format_boundaries() -> None:
 
 
 def test_credential_error_handler_invalid_type() -> None:
-    from src.utils.errors import CredentialErrorHandler
     from src.domain_models.exceptions import ConfigurationError
+    from src.utils.errors import CredentialErrorHandler
 
     handler = CredentialErrorHandler()
     with pytest.raises(ConfigurationError, match="Incorrect data type provided"):
@@ -82,8 +81,8 @@ def test_credential_error_handler_invalid_type() -> None:
 
 
 def test_credential_error_handler_validate_and_format_exception() -> None:
-    from src.utils.errors import CredentialErrorHandler
     from src.domain_models.exceptions import ConfigurationError
+    from src.utils.errors import CredentialErrorHandler
 
     handler = CredentialErrorHandler()
     with pytest.raises(ConfigurationError, match="API Key validation failed"):

@@ -125,7 +125,7 @@ def test_settings_advanced_validation(tmp_path: typing.Any, monkeypatch: pytest.
             multimodal_model="openai/gpt-4o",
             chunk_size=1000,
             spacy_model="en_core_web_sm",
-            trusted_spacy_models="",
+            trusted_spacy_models=typing.cast(list[str], ""),
         )
 
     # Test empty base dir
