@@ -1,11 +1,10 @@
 import os
-
-import pytest
+from pathlib import Path
 
 from src.config import ModeConfig, Settings, create_app_context
 
 
-def test_settings_default(tmp_path: pytest.TempPathFactory) -> None:
+def test_settings_default(tmp_path: Path) -> None:
     os.environ["MODE"] = "cli"
     os.environ["TEXT_FAST_MODEL"] = "google/gemini-2.5-flash"
     os.environ["TEXT_REASONING_MODEL"] = "deepseek/deepseek-reasoner"
@@ -34,7 +33,7 @@ def test_settings_default(tmp_path: pytest.TempPathFactory) -> None:
         del os.environ["MULTIMODAL_MODEL"]
 
 
-def test_app_context_creation(tmp_path: pytest.TempPathFactory) -> None:
+def test_app_context_creation(tmp_path: Path) -> None:
     os.environ["MODE"] = "test"
     os.environ["TEXT_FAST_MODEL"] = "google/gemini-2.5-flash"
     os.environ["TEXT_REASONING_MODEL"] = "deepseek/deepseek-reasoner"

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from src.infrastructure.services import (
@@ -29,13 +31,13 @@ def test_default_text_splitter_empty() -> None:
         splitter.split_text("")
 
 
-def test_default_text_splitter_split_document(tmp_path: pytest.TempPathFactory) -> None:
+def test_default_text_splitter_split_document(tmp_path: Path) -> None:
     from src.infrastructure.services import LangChainSplitterStrategy
 
     splitter = DefaultTextSplitter(
         chunk_size=10, chunk_overlap=2, max_file_size=500000, strategy=LangChainSplitterStrategy()
     )
-    file_path = tmp_path / "test.txt"  # type: ignore[operator]
+    file_path = tmp_path / "test.txt"
     file_path.write_text("01234567890123456789" * 1000)
 
     iterator = splitter.split_document(str(file_path))
@@ -44,14 +46,14 @@ def test_default_text_splitter_split_document(tmp_path: pytest.TempPathFactory) 
 
 
 def test_default_text_splitter_split_document_exceeds_max_size(
-    tmp_path: pytest.TempPathFactory,
+    tmp_path: Path,
 ) -> None:
     from src.infrastructure.services import LangChainSplitterStrategy
 
     splitter = DefaultTextSplitter(
         chunk_size=10, chunk_overlap=2, max_file_size=50, strategy=LangChainSplitterStrategy()
     )
-    file_path = tmp_path / "test_exceed.txt"  # type: ignore[operator]
+    file_path = tmp_path / "test_exceed.txt"
     file_path.write_text("01234567890123456789" * 10)
 
     iterator = splitter.split_document(str(file_path))
@@ -234,7 +236,6 @@ def test_requests_http_client_post(monkeypatch: pytest.MonkeyPatch) -> None:
     client = RequestsHTTPClient()
 
     # Needs valid ca_bundle mock or file, bypass by monkeypatching Path.is_file
-    from pathlib import Path
 
     monkeypatch.setattr(Path, "is_file", lambda self: True)
 
@@ -259,7 +260,6 @@ def test_requests_http_client_post_timeout(monkeypatch: pytest.MonkeyPatch) -> N
 
     client = RequestsHTTPClient()
 
-    from pathlib import Path
 
     monkeypatch.setattr(Path, "is_file", lambda self: True)
 
@@ -288,7 +288,6 @@ def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -
 
     client = RequestsHTTPClient()
 
-    from pathlib import Path
 
     monkeypatch.setattr(Path, "is_file", lambda self: True)
 

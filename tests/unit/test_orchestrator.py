@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import pytest
 
@@ -18,7 +19,6 @@ from tests.helpers.mocks import MockAIService
 
 
 def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineConfig]:
-    from pathlib import Path
     from unittest.mock import MagicMock
     dummy_cert = Path(base_dir) / "dummy.pem"
     dummy_cert.write_text("cert")
@@ -85,21 +85,21 @@ def _create_orchestrator(base_dir: str) -> PipelineOrchestrator:
     return PipelineOrchestrator(dependencies=deps, config=config)
 
 
-def test_orchestrator_chunking_fallback(tmp_path: pytest.TempPathFactory) -> None:
+def test_orchestrator_chunking_fallback(tmp_path: Path) -> None:
     orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     chunks = orchestrator.deps.text_splitter.split_text("test " * 1000)
     assert len(chunks) > 0
     assert "test" in chunks[0]
 
 
-def test_orchestrator_ner_fallback(tmp_path: pytest.TempPathFactory) -> None:
+def test_orchestrator_ner_fallback(tmp_path: Path) -> None:
     orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     entities = orchestrator.deps.entity_extractor.extract_entities(["test chunk 1", "test chunk 2"])
     # May use Spacy if present, or fallback. Ensure it returns a dictionary.
     assert isinstance(entities, dict)
 
 
-def test_orchestrator_raptor_fallback(tmp_path: pytest.TempPathFactory) -> None:
+def test_orchestrator_raptor_fallback(tmp_path: Path) -> None:
     orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     # Pass more than 15 chunks to avoid the UMAP dimensionality error for N <= 15 when using defaults
     chunks = [f"test document chunk number {i}" for i in range(20)]
@@ -110,7 +110,7 @@ def test_orchestrator_raptor_fallback(tmp_path: pytest.TempPathFactory) -> None:
     assert "level_0" in tree
 
 
-def test_ingestion_orchestrator_execute_content(tmp_path: pytest.TempPathFactory) -> None:
+def test_ingestion_orchestrator_execute_content(tmp_path: Path) -> None:
     deps, _ = _create_dependencies(base_dir=str(tmp_path))
     ingestion = IngestionOrchestrator(deps)
     ctx = PipelineContext(root_doc_id="test_id", content="Short test content.", file_path=None)
@@ -121,11 +121,11 @@ def test_ingestion_orchestrator_execute_content(tmp_path: pytest.TempPathFactory
     assert len(chunks) > 0
 
 
-def test_ingestion_orchestrator_execute_file(tmp_path: pytest.TempPathFactory) -> None:
+def test_ingestion_orchestrator_execute_file(tmp_path: Path) -> None:
     deps, _ = _create_dependencies(base_dir=str(tmp_path))
     ingestion = IngestionOrchestrator(deps)
 
-    fpath = tmp_path / "test.txt"  # type: ignore[operator]
+    fpath = tmp_path / "test.txt"
     fpath.write_text("Test file content.")
 
     ctx = PipelineContext(root_doc_id="test_id", file_path=str(fpath), content=None)
@@ -136,7 +136,7 @@ def test_ingestion_orchestrator_execute_file(tmp_path: pytest.TempPathFactory) -
     assert len(chunks) > 0
 
 
-def test_ingestion_orchestrator_execute_empty_context(tmp_path: pytest.TempPathFactory) -> None:
+def test_ingestion_orchestrator_execute_empty_context(tmp_path: Path) -> None:
     deps, _ = _create_dependencies(base_dir=str(tmp_path))
     ingestion = IngestionOrchestrator(deps)
 
@@ -145,7 +145,7 @@ def test_ingestion_orchestrator_execute_empty_context(tmp_path: pytest.TempPathF
         ingestion.execute(ctx)
 
 
-def test_analysis_orchestrator_execute(tmp_path: pytest.TempPathFactory) -> None:
+def test_analysis_orchestrator_execute(tmp_path: Path) -> None:
     deps, config = _create_dependencies(base_dir=str(tmp_path))
     analysis = AnalysisOrchestrator(deps, config)
 
@@ -158,11 +158,11 @@ def test_analysis_orchestrator_execute(tmp_path: pytest.TempPathFactory) -> None
     assert isinstance(summary, str)
 
 
-def test_analysis_orchestrator_execute_with_file(tmp_path: pytest.TempPathFactory) -> None:
+def test_analysis_orchestrator_execute_with_file(tmp_path: Path) -> None:
     deps, config = _create_dependencies(base_dir=str(tmp_path))
     analysis = AnalysisOrchestrator(deps, config)
 
-    fpath = tmp_path / "test.txt"  # type: ignore[operator]
+    fpath = tmp_path / "test.txt"
     fpath.write_text("Test file content.")
 
     ctx = PipelineContext(root_doc_id="test_id", file_path=str(fpath), content=None)
@@ -175,7 +175,7 @@ def test_analysis_orchestrator_execute_with_file(tmp_path: pytest.TempPathFactor
 
 
 def test_analysis_orchestrator_ai_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     import typing
 
@@ -197,7 +197,7 @@ def test_analysis_orchestrator_ai_error(
     assert "Fallback Summary:" in summary
 
 
-def test_output_orchestrator_execute(tmp_path: pytest.TempPathFactory) -> None:
+def test_output_orchestrator_execute(tmp_path: Path) -> None:
     deps, _ = _create_dependencies(base_dir=str(tmp_path))
     output = OutputOrchestrator(deps)
 
@@ -210,7 +210,7 @@ def test_output_orchestrator_execute(tmp_path: pytest.TempPathFactory) -> None:
 
 
 def test_output_orchestrator_ai_error(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     import typing
 
@@ -232,7 +232,7 @@ def test_output_orchestrator_ai_error(
     # Should not raise exception
 
 
-def test_pipeline_orchestrator_run_pipeline(tmp_path: pytest.TempPathFactory) -> None:
+def test_pipeline_orchestrator_run_pipeline(tmp_path: Path) -> None:
     orchestrator = _create_orchestrator(base_dir=str(tmp_path))
     ctx = PipelineContext(root_doc_id="test_id", content="Short content.", file_path=None)
 
@@ -242,7 +242,7 @@ def test_pipeline_orchestrator_run_pipeline(tmp_path: pytest.TempPathFactory) ->
     assert node is not None
 
 
-def test_pipeline_orchestrator_validate_length(tmp_path: pytest.TempPathFactory) -> None:
+def test_pipeline_orchestrator_validate_length(tmp_path: Path) -> None:
     import typing
 
     orchestrator = _create_orchestrator(base_dir=str(tmp_path))
