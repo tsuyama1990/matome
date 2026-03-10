@@ -10,20 +10,20 @@ from src.infrastructure.services import (
 
 
 def test_default_text_splitter_split_text() -> None:
-    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2)
+    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2, max_file_size=1000)
     text = "01234567890123456789"
     chunks = splitter.split_text(text)
     assert len(chunks) > 0
 
 
 def test_default_text_splitter_empty() -> None:
-    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2)
+    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2, max_file_size=1000)
     with pytest.raises(ValueError, match="Semantic chunking returned no content"):
         splitter.split_text("")
 
 
 def test_default_text_splitter_split_document(tmp_path: pytest.TempPathFactory) -> None:
-    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2)
+    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2, max_file_size=500000)
     file_path = tmp_path / "test.txt"  # type: ignore[operator]
     file_path.write_text("01234567890123456789" * 1000)
 
@@ -38,7 +38,7 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
     # Force LangChain import to fail
     monkeypatch.setitem(sys.modules, "langchain_text_splitters", None)
 
-    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2)
+    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2, max_file_size=1000)
     text = "01234567890123456789"
     chunks = splitter.split_text(text)
 

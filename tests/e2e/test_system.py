@@ -50,7 +50,9 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     )
 
     text_splitter = DefaultTextSplitter(
-        chunk_size=settings.chunk_size, chunk_overlap=settings.chunk_overlap
+        chunk_size=settings.chunk_size,
+        chunk_overlap=settings.chunk_overlap,
+        max_file_size=settings.max_file_size,
     )
     entity_extractor = DefaultEntityExtractor(settings.spacy_model)
     clustering_service = DefaultClusteringService(settings.random_seed)

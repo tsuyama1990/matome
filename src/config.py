@@ -163,7 +163,16 @@ class EnvCredentialProvider:
         self._settings = settings
 
     def get_api_key(self) -> str:
-        return self._settings.openrouter_api_key.get_secret_value()
+        from src.domain_models.exceptions import ConfigurationError
+        from src.utils.validation import validate_api_key_format
+
+        key = self._settings.openrouter_api_key.get_secret_value()
+        try:
+            validate_api_key_format(key)
+        except ValueError as e:
+            msg = f"Secure Credential Provider intercepted invalid API key during retrieval: {e}"
+            raise ConfigurationError(msg) from e
+        return key
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:

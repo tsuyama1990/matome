@@ -33,18 +33,24 @@ class DefaultAIService(AIServiceProtocol):
 
     def _sanitize_input(self, text: str | None) -> str:
         """Sanitize user input to prevent prompt injection and ensure safety."""
+        import re
+
         if not text:
             return ""
         # Remove null bytes and limit length to prevent massive prompt abuse
-        return text.replace("\x00", "").strip()[:50000]
+        sanitized = text.replace("\x00", "").strip()[:50000]
+        # Basic prompt injection mitigation: neutralizing system instruction keywords
+        sanitized = re.sub(
+            r"(?i)\b(ignore previous instructions|system prompt|you are a)\b",
+            "[REDACTED]",
+            sanitized,
+        )
+        # Escape markdown backticks to prevent breaking prompt formatting
+        return sanitized.replace("```", "'''")
 
     def _call_api(self, prompt: str, model: str | None = None) -> str:
         def _execute() -> str:
             api_key = self.credential_provider.get_api_key()
-            if not api_key or not isinstance(api_key, str) or len(api_key) < 10:
-                msg = "Invalid or missing API key detected during AI service execution."
-                raise ValueError(msg)
-
             headers = {
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",

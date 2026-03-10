@@ -13,7 +13,13 @@ from src.domain_models import (
 )
 
 
-def _create_mock_settings(base_dir: str, api_key: str | None = None) -> Settings:
+def _create_mock_settings(
+    base_dir: str,
+    api_key: str | None = None,
+    text_fast_model: str = "google/gemini-2.5-flash",
+    text_reasoning_model: str = "deepseek/deepseek-reasoner",
+    multimodal_model: str = "openai/gpt-4o",
+) -> Settings:
     from pydantic import SecretStr
 
     # Completely isolate tests from os.environ side-effects and avoid hardcoded secrets where unnecessary
@@ -22,21 +28,30 @@ def _create_mock_settings(base_dir: str, api_key: str | None = None) -> Settings
     return Settings(
         openrouter_api_key=SecretStr(api_key) if api_key is not None else None,  # type: ignore
         openrouter_api_url="https://mock.api.url",
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
+        text_fast_model=text_fast_model,
+        text_reasoning_model=text_reasoning_model,
+        multimodal_model=multimodal_model,
         allowed_base_dir=base_dir,
     )
 
 
 def _create_service(
-    base_dir: str, api_key: str | None = None, http_client: object = None
+    base_dir: str,
+    api_key: str | None = None,
+    http_client: object = None,
+    text_fast_model: str = "google/gemini-2.5-flash",
+    text_reasoning_model: str = "deepseek/deepseek-reasoner",
 ) -> DefaultAIService:
     from unittest.mock import MagicMock
 
     from src.config import EnvCredentialProvider
 
-    settings = _create_mock_settings(base_dir=base_dir, api_key=api_key)
+    settings = _create_mock_settings(
+        base_dir=base_dir,
+        api_key=api_key,
+        text_fast_model=text_fast_model,
+        text_reasoning_model=text_reasoning_model,
+    )
     provider = EnvCredentialProvider(settings)
 
     mock_http_client = http_client or MagicMock()
