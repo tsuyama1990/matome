@@ -7,7 +7,7 @@ plugins: base-url-2.1.0, cov-7.0.0, playwright-0.7.2, anyio-4.12.1, langsmith-0.
 collected 55 items
 
 tests/e2e/test_system.py .                                               [  1%]
-tests/unit/test_ai_service.py .........                                  [ 18%]
+tests/unit/test_ai_service.py .FF......                                  [ 18%]
 tests/unit/test_app_factory.py ..                                        [ 21%]
 tests/unit/test_config.py ...                                            [ 27%]
 tests/unit/test_domain_models.py ......                                  [ 38%]
@@ -16,6 +16,121 @@ tests/unit/test_orchestrator.py ...............                          [ 67%]
 tests/unit/test_repository.py ...                                        [ 72%]
 tests/unit/test_services.py ...............                              [100%]
 
+=================================== FAILURES ===================================
+__________________ test_default_ai_service_invalid_key_length __________________
+
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-5/test_default_ai_service_invali0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc70fd96360>
+
+    def test_default_ai_service_invalid_key_length(
+        tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import EnvCredentialProvider
+        from src.domain_models.exceptions import ConfigurationError
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "123")
+        with pytest.raises(ConfigurationError, match="API Key must be at least 30 characters long"):
+>           EnvCredentialProvider().get_api_key()
+
+tests/unit/test_ai_service.py:112:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/config.py:310: in get_api_key
+    self._error_handler.handle_missing_key()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.config.CredentialErrorHandler object at 0x7fc85a211550>
+
+    def handle_missing_key(self) -> typing.NoReturn:
+        import logging
+
+        from src.domain_models.exceptions import ConfigurationError
+
+        logger = logging.getLogger(__name__)
+        logger.error("API Key could not be resolved from any configured secure credential source.")
+        msg = "Authentication configuration error."
+>       raise ConfigurationError(msg)
+E       src.domain_models.exceptions.ConfigurationError: Authentication configuration error.
+
+src/config.py:266: ConfigurationError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-5/test_default_ai_service_invali0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc70fd96360>
+
+    def test_default_ai_service_invalid_key_length(
+        tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import EnvCredentialProvider
+        from src.domain_models.exceptions import ConfigurationError
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "123")
+>       with pytest.raises(ConfigurationError, match="API Key must be at least 30 characters long"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'API Key must be at least 30 characters long'
+E         Actual message: 'Authentication configuration error.'
+
+tests/unit/test_ai_service.py:111: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    src.config:config.py:264 API Key could not be resolved from any configured secure credential source.
+__________________ test_default_ai_service_invalid_key_format __________________
+
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-5/test_default_ai_service_invali1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc70edf3a40>
+
+    def test_default_ai_service_invalid_key_format(
+        tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import EnvCredentialProvider
+        from src.domain_models.exceptions import ConfigurationError
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
+        with pytest.raises(ConfigurationError, match="API Key format is invalid"):
+>           EnvCredentialProvider().get_api_key()
+
+tests/unit/test_ai_service.py:123:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/config.py:310: in get_api_key
+    self._error_handler.handle_missing_key()
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <src.config.CredentialErrorHandler object at 0x7fc70edf1e20>
+
+    def handle_missing_key(self) -> typing.NoReturn:
+        import logging
+
+        from src.domain_models.exceptions import ConfigurationError
+
+        logger = logging.getLogger(__name__)
+        logger.error("API Key could not be resolved from any configured secure credential source.")
+        msg = "Authentication configuration error."
+>       raise ConfigurationError(msg)
+E       src.domain_models.exceptions.ConfigurationError: Authentication configuration error.
+
+src/config.py:266: ConfigurationError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = PosixPath('/tmp/pytest-of-jules/pytest-5/test_default_ai_service_invali1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7fc70edf3a40>
+
+    def test_default_ai_service_invalid_key_format(
+        tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.config import EnvCredentialProvider
+        from src.domain_models.exceptions import ConfigurationError
+
+        monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
+>       with pytest.raises(ConfigurationError, match="API Key format is invalid"):
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: Regex pattern did not match.
+E         Expected regex: 'API Key format is invalid'
+E         Actual message: 'Authentication configuration error.'
+
+tests/unit/test_ai_service.py:122: AssertionError
+------------------------------ Captured log call -------------------------------
+ERROR    src.config:config.py:264 API Key could not be resolved from any configured secure credential source.
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.12-final-0 _______________
 
@@ -24,13 +139,13 @@ Name                                 Stmts   Miss  Cover   Missing
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
 src/application/ai.py                   38      0   100%
-src/config.py                          131     17    87%   151-152, 157-158, 169-171, 184, 187, 198-199, 202-203, 235-237, 261
+src/config.py                          169     44    74%   151-152, 157-158, 169-171, 184, 187, 190-195, 198-203, 206-211, 214-219, 230-231, 234-235, 269-276, 305
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           1      0   100%
 src/domain_models/enums.py              12      0   100%
 src/domain_models/exceptions.py          3      0   100%
-src/domain_models/interfaces.py         36      0   100%
+src/domain_models/interfaces.py         37      0   100%
 src/domain_models/manifest.py           59      0   100%
 src/domain_models/services.py           19      0   100%
 src/domain_models/types.py              11      0   100%
@@ -45,5 +160,8 @@ src/utils/__init__.py                    0      0   100%
 src/utils/rate_limit.py                 26      9    65%   15, 21, 27-36
 src/utils/validation.py                 11      1    91%   7
 ------------------------------------------------------------------
-TOTAL                                  990    171    83%
-============================= 55 passed in 34.53s ==============================
+TOTAL                                 1029    198    81%
+=========================== short test summary info ============================
+FAILED tests/unit/test_ai_service.py::test_default_ai_service_invalid_key_length
+FAILED tests/unit/test_ai_service.py::test_default_ai_service_invalid_key_format
+======================== 2 failed, 53 passed in 23.26s =========================

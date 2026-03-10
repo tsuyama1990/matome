@@ -27,8 +27,8 @@ def __():
     from src.infrastructure.orchestrator import PipelineConfig, PipelineDependencies
     from src.infrastructure.services import (
         DefaultClusteringService,
-        EntityExtractorBuilder,
         DefaultTextSplitter,
+        EntityExtractorBuilder,
         LangChainSplitterStrategy,
         RequestsHTTPClient,
         TenacityRetryPolicy,
@@ -107,17 +107,19 @@ def __(
             if settings.credentials.openrouter_api_key
             else None
         )
-        has_real_key = True
+        has_real_key = bool(api_key and not api_key.startswith("sk-or-v1-mock-key"))
     except ValidationError:
-        # Fallback for completely isolated test environments
-        os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-mock-key-for-tutorial-purposes-123"
+        # Provide safe mock default dynamically through environment overriding without hardcoding a dummy key
+        tutorial_env["OPENROUTER_API_KEY"] = os.environ.get("OPENROUTER_API_KEY", "sk-or-v1-mock-key-1234")
+        for k, v in tutorial_env.items():
+            os.environ[k] = v
         settings = Settings()
         api_key = None
         has_real_key = False
 
     repo = InMemoryDocumentRepository()
 
-    if has_real_key and api_key and not api_key.startswith("sk-or-v1-mock-key"):
+    if has_real_key and api_key:
         provider = EnvCredentialProvider(settings.credentials)
         http_client = RequestsHTTPClient()
         retry_policy = TenacityRetryPolicy()

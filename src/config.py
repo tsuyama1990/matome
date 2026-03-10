@@ -183,8 +183,40 @@ class ConcreteConfigService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    def get(self, key: str) -> Any:
-        return getattr(self._settings, key)
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self._settings, key, default)
+
+    def get_str(self, key: str, default: str | None = None) -> str:
+        value = getattr(self._settings, key, default)
+        if value is None:
+            msg = f"Configuration string key '{key}' is missing."
+            from src.domain_models.exceptions import ConfigurationError
+            raise ConfigurationError(msg)
+        return str(value)
+
+    def get_int(self, key: str, default: int | None = None) -> int:
+        value = getattr(self._settings, key, default)
+        if value is None:
+            msg = f"Configuration int key '{key}' is missing."
+            from src.domain_models.exceptions import ConfigurationError
+            raise ConfigurationError(msg)
+        return int(value)
+
+    def get_float(self, key: str, default: float | None = None) -> float:
+        value = getattr(self._settings, key, default)
+        if value is None:
+            msg = f"Configuration float key '{key}' is missing."
+            from src.domain_models.exceptions import ConfigurationError
+            raise ConfigurationError(msg)
+        return float(value)
+
+    def get_bool(self, key: str, default: bool | None = None) -> bool:
+        value = getattr(self._settings, key, default)
+        if value is None:
+            msg = f"Configuration bool key '{key}' is missing."
+            from src.domain_models.exceptions import ConfigurationError
+            raise ConfigurationError(msg)
+        return bool(value)
 
 
 class SecureString:
@@ -217,9 +249,6 @@ class SecureString:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._zeroize()
 
-    def __del__(self) -> None:
-        self._zeroize()
-
 
 
 
@@ -227,22 +256,37 @@ class CredentialErrorHandler:
     """Handles parsing errors and format validation specifically for credentials."""
 
     def handle_missing_key(self) -> typing.NoReturn:
+        import logging
+
         from src.domain_models.exceptions import ConfigurationError
-        msg = "API Key could not be resolved from any configured credential source (e.g., Vault, Env)."
+
+        logger = logging.getLogger(__name__)
+        logger.error("API Key could not be resolved from any configured secure credential source.")
+        msg = "Authentication configuration error."
         raise ConfigurationError(msg)
 
     def handle_invalid_type(self, key_type: type) -> typing.NoReturn:
+        import logging
+
         from src.domain_models.exceptions import ConfigurationError
-        msg = f"Fetcher returned invalid type: {key_type}. Expected str or None."
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Credential fetcher returned invalid type: {key_type}.")
+        msg = "Authentication configuration error."
         raise ConfigurationError(msg)
 
     def validate_and_format(self, key: str) -> None:
+        import logging
+
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
+
+        logger = logging.getLogger(__name__)
         try:
             validate_api_key_format(key)
         except ValueError as e:
-            msg = f"Secure Credential Provider intercepted invalid API key during retrieval: {e}"
+            logger.exception(f"Invalid API key intercepted during retrieval: {e}")
+            msg = "Authentication configuration error."
             raise ConfigurationError(msg) from e
 
 
@@ -280,11 +324,15 @@ class EnvCredentialProvider(CompositeCredentialProvider):
     """Concrete instantiation injecting Vault and Env fallback configuration sources."""
 
     def __init__(self, credential_config: CredentialConfig | None = None) -> None:
-        import os
+
+        def _fetch_from_config() -> str | None:
+            if credential_config and credential_config.openrouter_api_key:
+                return credential_config.openrouter_api_key.get_secret_value()
+            return None
 
         vault = VaultCredentialProvider()
         super().__init__(
-            fetchers=[vault.get_api_key_from_vault, lambda: os.getenv("OPENROUTER_API_KEY")]
+            fetchers=[vault.get_api_key_from_vault, _fetch_from_config]
         )
 
 

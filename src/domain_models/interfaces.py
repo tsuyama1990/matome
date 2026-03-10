@@ -1,14 +1,23 @@
 from collections.abc import Callable, Iterator
-from typing import Any, Protocol
+from typing import Any, Protocol, TypeVar
 
 from .analysis import PivotBoard
 from .manifest import ContentNode, IdentityNode, UserInteractionContext
 
+T = TypeVar("T")
 
 class ConfigService(Protocol):
     """Protocol for fetching application configuration."""
 
-    def get(self, key: str) -> Any: ...
+    def get(self, key: str, default: T | None = None) -> Any: ...
+
+    def get_str(self, key: str, default: str | None = None) -> str: ...
+
+    def get_int(self, key: str, default: int | None = None) -> int: ...
+
+    def get_float(self, key: str, default: float | None = None) -> float: ...
+
+    def get_bool(self, key: str, default: bool | None = None) -> bool: ...
 
 
 class SecurityService(Protocol):
