@@ -13,6 +13,9 @@ class ConfigService(Protocol):
     def openrouter_api_url(self) -> str: ...
 
     @property
+    def ssl_cert_path(self) -> str | None: ...
+
+    @property
     def chunk_size(self) -> int: ...
 
     @property

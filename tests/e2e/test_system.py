@@ -29,9 +29,10 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
 
     from src.config import CredentialConfig
 
+    from pydantic import SecretStr
     settings = IntegrationTestSettings(
         credentials=CredentialConfig(),
-        openrouter_api_url="https://mock.api.url",
+        openrouter_api_url=SecretStr("https://mock.api.url"),
         text_fast_model="google/gemini-2.5-flash",
         text_reasoning_model="deepseek/deepseek-reasoner",
         multimodal_model="openai/gpt-4o",

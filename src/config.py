@@ -23,22 +23,19 @@ class ModeConfig(MatomeConfig):
 
 
 class CredentialConfig(MatomeConfig):
-    """Dedicated configuration for handling security credentials separately from app settings."""
-    openrouter_api_key: SecretStr | None = Field(
-        default=None, description="OpenRouter API Key used for accessing AI Models"
-    )
+    """Configuration class. Removed API keys to prevent memory dumps; use EnvCredentialProvider directly."""
 
 class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""
 
     credentials: CredentialConfig = Field(default_factory=CredentialConfig)
 
-    openrouter_api_url: str = Field(
+    openrouter_api_url: SecretStr = Field(
         ...,
         description="The base URL for the OpenRouter API endpoint",
     )
-    ssl_cert_path: str | None = Field(
-        default_factory=lambda: os.getenv("SSL_CERT_PATH", None),
+    ssl_cert_path: SecretStr | None = Field(
+        default_factory=lambda: SecretStr(cert_path) if (cert_path := os.getenv("SSL_CERT_PATH", None)) else None,
         description="Path to a pinned CA bundle for explicit SSL verification",
     )
     text_fast_model: str = Field(
@@ -114,21 +111,18 @@ class Settings(MatomeConfig):
         description="List of trusted SpaCy models that are allowed to load",
     )
     trusted_model_hashes: dict[str, str] = Field(
-        default_factory=lambda: {
-            "en_core_web_sm": os.getenv("HASH_EN_CORE_WEB_SM", "dummy_hash_for_testing"),
-            "en_core_web_md": os.getenv("HASH_EN_CORE_WEB_MD", "dummy_hash_for_testing_md"),
-        },
-        description="Map of allowed models to their expected SHA256 hashes",
+        default_factory=dict,
+        description="Map of allowed models to their expected SHA256 hashes. Populated dynamically via environment variables.",
     )
     max_model_signature_size: int = Field(
         default_factory=lambda: int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800")),
         description="Max bytes read when verifying a model signature",
+        le=104857600,
+        ge=1024,
     )
     fallback_ner_regex: str = Field(
-        default_factory=lambda: str(
-            os.getenv("FALLBACK_NER_REGEX", r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b")
-        ),
-        description="Regex pattern used for fallback entity extraction",
+        default=r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b",
+        description="Strictly bound regex pattern used for fallback entity extraction",
     )
     random_seed: int = Field(
         default_factory=lambda: int(os.getenv("RANDOM_SEED", "42")),
@@ -138,6 +132,48 @@ class Settings(MatomeConfig):
         default_factory=lambda: float(os.getenv("ENTITY_EXTRACTION_RATE_LIMIT", "0.01")),
         description="Rate limit in seconds between entity extraction chunks",
     )
+
+    @field_validator("trusted_spacy_models", mode="after")
+    @classmethod
+    def validate_trusted_models(cls, values: list[str]) -> list[str]:
+        from src.domain_models.exceptions import ConfigurationError
+
+        allowed_whitelist = {"en_core_web_sm", "en_core_web_md"}
+        for model in values:
+            if model.strip() not in allowed_whitelist:
+                msg = f"Untrusted ML Model configured: {model}. Only verified models are allowed."
+                raise ConfigurationError(msg)
+        return values
+
+    @field_validator("trusted_model_hashes", mode="before")
+    @classmethod
+    def populate_and_validate_hashes(cls, value: dict[str, str]) -> dict[str, str]:
+        import os
+
+        # Remove dummy hashes and enforce strict hash availability from environment mapping.
+        hashes = value or {}
+        sm_hash = os.getenv("HASH_EN_CORE_WEB_SM")
+        md_hash = os.getenv("HASH_EN_CORE_WEB_MD")
+
+        # Security validation ensuring hashes conform to sha256 specs
+        import re
+        sha_pattern = re.compile(r"^[a-fA-F0-9]{64}$")
+
+        if sm_hash and not sm_hash.startswith("dummy"):
+            if not sha_pattern.match(sm_hash):
+                msg = f"Invalid hash format for en_core_web_sm: {sm_hash}"
+                from src.domain_models.exceptions import ConfigurationError
+                raise ConfigurationError(msg)
+            hashes["en_core_web_sm"] = sm_hash
+
+        if md_hash and not md_hash.startswith("dummy"):
+            if not sha_pattern.match(md_hash):
+                msg = f"Invalid hash format for en_core_web_md: {md_hash}"
+                from src.domain_models.exceptions import ConfigurationError
+                raise ConfigurationError(msg)
+            hashes["en_core_web_md"] = md_hash
+
+        return hashes
 
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
@@ -186,7 +222,13 @@ class ConcreteConfigService:
 
     @property
     def openrouter_api_url(self) -> str:
-        return self._settings.openrouter_api_url
+        return self._settings.openrouter_api_url.get_secret_value()
+
+    @property
+    def ssl_cert_path(self) -> str | None:
+        if self._settings.ssl_cert_path is not None:
+            return self._settings.ssl_cert_path.get_secret_value()
+        return None
 
     @property
     def chunk_size(self) -> int:
@@ -224,16 +266,18 @@ class SecureString:
         return self
 
     def _zeroize(self) -> None:
+        import ctypes
         if hasattr(self, "_value") and self._value is not None:
-            # Overwrite the bytearray explicitly to clear sensitive data
             buffer_size = len(self._value)
-            for _ in range(3):  # Multiple passes for zeroization
-                for i in range(buffer_size):
-                    self._value[i] = 0
+            # Use ctypes for guaranteed memory zeroization, requested by audit
+            ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
             # Explicitly remove the reference
             self._value = None # type: ignore
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self._zeroize()
+
+    def __del__(self) -> None:
         self._zeroize()
 
 
@@ -248,7 +292,8 @@ class CredentialErrorHandler:
         from src.domain_models.exceptions import ConfigurationError
 
         logger = logging.getLogger(__name__)
-        logger.error("Authentication process failed to load necessary credentials.")
+        # Use structured logging to prevent info leaks about the auth mechanics
+        logger.error("System configuration validation executed: Missing dependency.")
         msg = "Authentication configuration error."
         raise ConfigurationError(msg)
 
@@ -258,7 +303,7 @@ class CredentialErrorHandler:
         from src.domain_models.exceptions import ConfigurationError
 
         logger = logging.getLogger(__name__)
-        logger.error("Authentication process failed due to unexpected credential format.")
+        logger.error("System configuration validation executed: Type mismatch.")
         msg = "Authentication configuration error."
         raise ConfigurationError(msg)
 
@@ -272,27 +317,28 @@ class CredentialErrorHandler:
         try:
             validate_api_key_format(key)
         except ValueError:
-            logger.error("Authentication process failed during key validation.")  # noqa: TRY400
+            logger.error("System configuration validation executed: Format rejection.")  # noqa: TRY400
             msg = "Authentication configuration error."
             raise ConfigurationError(msg) from None
 
 
 class EnvCredentialProvider:
-    """Concrete instantiation for credential loading. Strictly handles configurations."""
+    """Secure credential provider fetching directly from OS environment variables strictly at runtime to avoid storing secrets in Pydantic models in memory."""
 
     def __init__(self, credential_config: CredentialConfig | None = None) -> None:
+        # credential_config is kept for backward compatibility but is no longer used to store keys
         self._config = credential_config
         self._error_handler = CredentialErrorHandler()
 
     def get_api_key(self) -> SecureString:
-        key: str | None = None
-        if self._config and self._config.openrouter_api_key:
-            key = self._config.openrouter_api_key.get_secret_value()
-            if not isinstance(key, str):
-                self._error_handler.handle_invalid_type()
+        import os
+        key: str | None = os.getenv("OPENROUTER_API_KEY")
 
         if not key:
             self._error_handler.handle_missing_key()
+
+        if not isinstance(key, str):
+            self._error_handler.handle_invalid_type()
 
         self._error_handler.validate_and_format(key)
         return SecureString(key)

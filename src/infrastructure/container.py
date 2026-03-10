@@ -28,7 +28,8 @@ class ProductionDIContainer(DIContainerProtocol):
     def get_dependencies(self) -> tuple[PipelineDependencies, PipelineConfig]:
         repo = self.doc_repo
 
-        http_client = RequestsHTTPClient(ssl_cert_path=self.settings.ssl_cert_path)
+        ssl_path = self.settings.ssl_cert_path.get_secret_value() if self.settings.ssl_cert_path else None
+        http_client = RequestsHTTPClient(ssl_cert_path=ssl_path)
         retry_policy = TenacityRetryPolicy(
             ai_retry_attempts=self.settings.ai_retry_attempts,
             ai_retry_min_wait=self.settings.ai_retry_min_wait,
@@ -39,7 +40,7 @@ class ProductionDIContainer(DIContainerProtocol):
         security_scanner = PromptInjectionScanner()
         from src.infrastructure.ai_client import AIClientFactory
         communication_client = AIClientFactory.create(
-            api_url=self.settings.openrouter_api_url,
+            api_url=self.settings.openrouter_api_url.get_secret_value(),
             default_model=self.settings.text_fast_model,
             ai_timeout=self.settings.ai_timeout,
             http_client=http_client,

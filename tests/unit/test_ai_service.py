@@ -29,10 +29,11 @@ def _create_mock_settings(
     if api_key:
         os.environ["OPENROUTER_API_KEY"] = api_key
     from src.config import CredentialConfig
+    from pydantic import SecretStr
 
     return Settings(
         credentials=CredentialConfig(),
-        openrouter_api_url="https://mock.api.url",
+        openrouter_api_url=SecretStr("https://mock.api.url"),
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
         multimodal_model=multimodal_model,
@@ -74,7 +75,7 @@ def _create_service(
 
     from src.infrastructure.ai_client import AIClientFactory
     communication_client = AIClientFactory.create(
-        api_url=settings.openrouter_api_url,
+        api_url=settings.openrouter_api_url.get_secret_value(),
         default_model=settings.text_fast_model,
         ai_timeout=settings.ai_timeout,
         http_client=mock_http_client,  # type: ignore
@@ -104,29 +105,25 @@ def test_default_ai_service_missing_key_init(
 def test_default_ai_service_invalid_key_length(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from pydantic import SecretStr
-
-    from src.config import CredentialConfig, EnvCredentialProvider
+    from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
-    config = CredentialConfig(openrouter_api_key=SecretStr("123"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "123")
 
     with pytest.raises(ConfigurationError, match="Authentication configuration error."):
-        EnvCredentialProvider(credential_config=config).get_api_key()
+        EnvCredentialProvider().get_api_key()
 
 
 def test_default_ai_service_invalid_key_format(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from pydantic import SecretStr
-
-    from src.config import CredentialConfig, EnvCredentialProvider
+    from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
-    config = CredentialConfig(openrouter_api_key=SecretStr("invalid_format_key_with_spaces and_tabs"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
 
     with pytest.raises(ConfigurationError, match="Authentication configuration error."):
-        EnvCredentialProvider(credential_config=config).get_api_key()
+        EnvCredentialProvider().get_api_key()
 
 
 def test_default_ai_service_calls_generate_summary_valid(
