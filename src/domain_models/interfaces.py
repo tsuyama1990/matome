@@ -120,7 +120,12 @@ class HTTPClientProtocol(Protocol):
     """Protocol for sending HTTP requests."""
 
     def post(
-        self, url: str, json: dict[str, Any], headers: dict[str, str], timeout: int
+        self,
+        url: str,
+        json: dict[str, Any],
+        headers: dict[str, str],
+        timeout: int,
+        verify: bool = True,
     ) -> dict[str, Any]: ...
 
 

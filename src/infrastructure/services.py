@@ -247,12 +247,19 @@ class DefaultClusteringService(ClusteringServiceProtocol):
 
 class RequestsHTTPClient(HTTPClientProtocol):
     def post(
-        self, url: str, json: dict[str, Any], headers: dict[str, str], timeout: int
+        self,
+        url: str,
+        json: dict[str, Any],
+        headers: dict[str, str],
+        timeout: int,
+        verify: bool = True,
     ) -> dict[str, Any]:
         import requests
 
         try:
-            response = requests.post(url, json=json, headers=headers, timeout=timeout, verify=True)
+            response = requests.post(
+                url, json=json, headers=headers, timeout=timeout, verify=verify
+            )
             response.raise_for_status()
             data: dict[str, Any] = response.json()
         except requests.Timeout as e:
