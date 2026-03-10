@@ -25,7 +25,9 @@ def test_settings_api_key_invalid_length(
     monkeypatch.setenv("OPENROUTER_API_KEY", "short")
     try:
         provider = EnvCredentialProvider()
-        with pytest.raises(ConfigurationError, match="Authentication configuration error."):
+        with pytest.raises(
+            ConfigurationError, match="API Key format is invalid or insufficient length."
+        ):
             provider.get_api_key()
     finally:
         pass
@@ -42,7 +44,9 @@ def test_settings_api_key_invalid_format(
     )
     try:
         provider = EnvCredentialProvider()
-        with pytest.raises(ConfigurationError, match="Authentication configuration error."):
+        with pytest.raises(
+            ConfigurationError, match="API Key format is invalid or insufficient length."
+        ):
             provider.get_api_key()
     finally:
         pass

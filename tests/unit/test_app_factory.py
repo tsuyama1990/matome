@@ -12,10 +12,7 @@ def test_settings_default(tmp_path: pytest.TempPathFactory) -> None:
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
 
     try:
-        from pydantic import SecretStr
-
         settings = Settings(
-            openrouter_api_url=SecretStr("https://mock.api.url"),
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
@@ -38,20 +35,20 @@ def test_app_context_creation(tmp_path: pytest.TempPathFactory) -> None:
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
 
     try:
-        from pydantic import SecretStr
-
         settings = Settings(
-            openrouter_api_url=SecretStr("https://mock.api.url"),
             text_fast_model="google/gemini-2.5-flash",
             text_reasoning_model="deepseek/deepseek-reasoner",
             multimodal_model="openai/gpt-4o",
             allowed_base_dir=str(tmp_path),
         )
         mode_config = ModeConfig()
+        from src.config import DatabaseContext
+
         context = create_app_context(settings, mode_config)
+        db_context = DatabaseContext()
         assert context.mode_config.mode == "test"
         assert context.settings is settings
-        assert context.db is None
+        assert db_context.db is None
     finally:
         del os.environ["MODE"]
         del os.environ["TEXT_FAST_MODEL"]

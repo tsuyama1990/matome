@@ -3,6 +3,7 @@ from typing import Any
 from src.domain_models.interfaces import (
     AIClientConfigProtocol,
     AICommunicationClientProtocol,
+    AISecurityScannerProtocol,
     HTTPClientProtocol,
     RetryPolicyProtocol,
 )
@@ -37,6 +38,7 @@ class AIClientFactory:
         ai_timeout: int,
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
+        security_scanner: AISecurityScannerProtocol,
         **kwargs: Any,  # noqa: ARG004
     ) -> "DefaultAICommunicationClient":
         config = AIClientConfig(api_url=api_url, default_model=default_model, ai_timeout=ai_timeout)
@@ -44,6 +46,7 @@ class AIClientFactory:
             config=config,
             http_client=http_client,
             retry_policy=retry_policy,
+            security_scanner=security_scanner,
         )
 
 
@@ -55,6 +58,7 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         config: AIClientConfigProtocol,
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
+        security_scanner: AISecurityScannerProtocol,
     ) -> None:
         """
         Security context: Credentials are strictly maintained externally within the `http_client`
@@ -64,6 +68,7 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         self.config = config
         self.http_client = http_client
         self.retry_policy = retry_policy
+        self.security_scanner = security_scanner
 
     def rotate_credentials(self) -> None:
         """
@@ -77,6 +82,8 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         """Stub representing secure enclave handling of memory APIs."""
 
     def call_api(self, prompt: str, model: str | None = None) -> str:
+        safe_prompt = self.security_scanner.sanitize(prompt)
+
         def _execute() -> str:
             headers = {
                 "Content-Type": "application/json",
@@ -85,7 +92,7 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
             }
             data = {
                 "model": model or self.config.default_model,
-                "messages": [{"role": "user", "content": prompt}],
+                "messages": [{"role": "user", "content": safe_prompt}],
             }
 
             result = self.http_client.post(

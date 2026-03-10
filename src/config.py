@@ -28,16 +28,6 @@ class CredentialConfig(MatomeConfig):
     openrouter_api_key: SecretStr | None = Field(
         None, description="The OpenRouter API Key. Accessed securely via EnvCredentialProvider."
     )
-
-
-class Settings(MatomeConfig):
-    """Global application configuration settings utilizing pydantic-settings."""
-
-    credentials: CredentialConfig | None = Field(
-        default_factory=lambda: CredentialConfig(openrouter_api_key=None),
-        description="Security credentials nested configuration.",
-    )
-
     openrouter_api_url: SecretStr = Field(
         ...,
         description="The base URL for the OpenRouter API endpoint",
@@ -48,6 +38,11 @@ class Settings(MatomeConfig):
         ),
         description="Path to a pinned CA bundle for explicit SSL verification",
     )
+
+
+class Settings(MatomeConfig):
+    """Global application configuration settings utilizing pydantic-settings."""
+
     text_fast_model: str = Field(
         ...,
         description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging",
@@ -146,12 +141,16 @@ class Settings(MatomeConfig):
     @field_validator("trusted_spacy_models", mode="after")
     @classmethod
     def validate_spacy_models(cls, values: list[str]) -> list[str]:
+        import os
+
         from src.domain_models.exceptions import ConfigurationError
 
-        allowed_whitelist = {"en_core_web_sm", "en_core_web_md"}
+        allowed_env = os.getenv("ALLOWED_SPACY_MODELS", "en_core_web_sm,en_core_web_md")
+        allowed_whitelist = {model.strip() for model in allowed_env.split(",") if model.strip()}
+
         for model in values:
             if model.strip() not in allowed_whitelist:
-                msg = f"Untrusted ML Model configured: {model}. Only verified models are allowed."
+                msg = f"Untrusted ML Model configured: {model}. Only verified models ({allowed_env}) are allowed."
                 raise ConfigurationError(msg)
         return values
 
@@ -263,21 +262,26 @@ class AppContext(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     settings: Settings
     mode_config: ModeConfig
+
+
+class DatabaseContext(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     db: DatabaseProtocol | None = None
 
 
 class ConcreteConfigService:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, credential_config: CredentialConfig) -> None:
         self._settings = settings
+        self._credential_config = credential_config
 
     @property
     def openrouter_api_url(self) -> str:
-        return self._settings.openrouter_api_url.get_secret_value()
+        return self._credential_config.openrouter_api_url.get_secret_value()
 
     @property
     def ssl_cert_path(self) -> str | None:
-        if self._settings.ssl_cert_path is not None:
-            return self._settings.ssl_cert_path.get_secret_value()
+        if self._credential_config.ssl_cert_path is not None:
+            return self._credential_config.ssl_cert_path.get_secret_value()
         return None
 
     @property
@@ -323,17 +327,14 @@ class SecureString:
         return self
 
     def _zeroize(self) -> None:
-        import ctypes
-
         if hasattr(self, "_value") and self._value is not None:
-            buffer_size = len(self._value)
             try:
-                # Use ctypes for guaranteed memory zeroization, requested by audit
-                ctypes.memset(
-                    (ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size
-                )
-            except (ValueError, AttributeError, TypeError):
-                # Ensure graceful failure if the memory is already freed or moved
+                # Safe zeroization using Python native memoryview without ctypes compatibility risks
+                view = memoryview(self._value)
+                for i in range(len(self._value)):
+                    view[i] = 0
+                view.release()
+            except (ValueError, AttributeError, TypeError, BufferError):
                 pass
             finally:
                 # Explicitly remove the reference completely blocking later access attempts
@@ -352,9 +353,11 @@ class CredentialErrorHandler:
         from src.domain_models.exceptions import ConfigurationError
 
         logger = logging.getLogger(__name__)
-        # Use structured logging to prevent info leaks about the auth mechanics
-        logger.error("System configuration validation executed: Missing dependency.")
-        msg = "Authentication configuration error."
+        logger.error(
+            "Credential validation failed: Authentication key is entirely missing from the environment.",
+            extra={"context": "auth"},
+        )
+        msg = "Missing required API Key dependency."
         raise ConfigurationError(msg)
 
     def handle_invalid_type(self) -> typing.NoReturn:
@@ -363,8 +366,11 @@ class CredentialErrorHandler:
         from src.domain_models.exceptions import ConfigurationError
 
         logger = logging.getLogger(__name__)
-        logger.error("System configuration validation executed: Type mismatch.")
-        msg = "Authentication configuration error."
+        logger.error(
+            "Credential validation failed: Retrieved API key is not a valid string object.",
+            extra={"context": "auth"},
+        )
+        msg = "API Key type mismatch. Expected string."
         raise ConfigurationError(msg)
 
     def validate_and_format(self, key: str) -> None:
@@ -377,8 +383,11 @@ class CredentialErrorHandler:
         try:
             DefaultSecurityService().validate_api_key(key)
         except ValueError as err:
-            logger.error("System configuration validation executed: Format rejection.")  # noqa: TRY400
-            msg = "Authentication configuration error."
+            logger.exception(
+                "Credential validation failed: API key format was rejected by security constraints.",
+                extra={"context": "auth"},
+            )
+            msg = "API Key format is invalid or insufficient length."
             raise ConfigurationError(msg) from err
 
 
@@ -386,28 +395,21 @@ class EnvCredentialProvider:
     """Secure credential provider fetching directly from OS environment variables strictly at runtime to avoid storing secrets in Pydantic models in memory."""
 
     def __init__(self) -> None:
-        import threading
-
         self._error_handler = CredentialErrorHandler()
-        self._lock = threading.Lock()
 
     def get_api_key(self) -> SecureString:
         import os
 
-        self._lock.acquire()
-        try:
-            key: str | None = os.getenv("OPENROUTER_API_KEY")
+        key: str | None = os.getenv("OPENROUTER_API_KEY")
 
-            if not key:
-                self._error_handler.handle_missing_key()
+        if not key:
+            self._error_handler.handle_missing_key()
 
-            if not isinstance(key, str):
-                self._error_handler.handle_invalid_type()
+        if not isinstance(key, str):
+            self._error_handler.handle_invalid_type()
 
-            self._error_handler.validate_and_format(key)
-            return SecureString(key)
-        finally:
-            self._lock.release()
+        self._error_handler.validate_and_format(key)
+        return SecureString(key)
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
@@ -415,8 +417,14 @@ def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContex
     return AppContext(
         settings=settings,
         mode_config=mode_config,
-        db=None,  # Placeholder for a DB connection dependency
     )
 
 
-__all__ = ["ConcreteConfigService", "ModeConfig", "Settings", "create_app_context"]
+__all__ = [
+    "ConcreteConfigService",
+    "CredentialConfig",
+    "DatabaseContext",
+    "ModeConfig",
+    "Settings",
+    "create_app_context",
+]

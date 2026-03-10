@@ -40,10 +40,15 @@ def build_app(
 
 
 def get_di_container(settings: Settings) -> DIContainerProtocol:
+    import os
+
+    from pydantic import SecretStr
+
     from src.application.ai import (
         DefaultQuestionService,
         DefaultSummaryService,
     )
+    from src.config import CredentialConfig
     from src.domain_models.services import DocumentFactory, MetadataService
     from src.infrastructure import InMemoryDocumentRepository
     from src.infrastructure.container import ProductionDIContainer
@@ -57,8 +62,19 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
         TenacityRetryPolicy,
     )
 
+    credential_config = CredentialConfig(
+        openrouter_api_key=None,
+        openrouter_api_url=SecretStr(
+            os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
+        ),
+    )
+
     repo = InMemoryDocumentRepository()
-    ssl_path = settings.ssl_cert_path.get_secret_value() if settings.ssl_cert_path else None
+    ssl_path = (
+        credential_config.ssl_cert_path.get_secret_value()
+        if credential_config.ssl_cert_path
+        else None
+    )
     http_client = RequestsHTTPClient(ssl_cert_path=ssl_path)
     retry_policy = TenacityRetryPolicy(
         ai_retry_attempts=settings.ai_retry_attempts,
@@ -70,11 +86,12 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
     from src.infrastructure.ai_client import AIClientFactory
 
     communication_client = AIClientFactory.create(
-        api_url=settings.openrouter_api_url.get_secret_value(),
+        api_url=credential_config.openrouter_api_url.get_secret_value(),
         default_model=settings.text_fast_model,
         ai_timeout=settings.ai_timeout,
         http_client=http_client,
         retry_policy=retry_policy,
+        security_scanner=security_scanner,
     )
 
     summary_service = DefaultSummaryService(
@@ -101,15 +118,29 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
         strategy=LangChainSplitterStrategy(),
     )
 
-    from src.infrastructure.services import EntityExtractorBuilder
+    from src.infrastructure.services import (
+        DefaultModelVerifier,
+        EntityExtractorBuilder,
+        EntityExtractorBuilderConfig,
+    )
     from src.utils.rate_limit import RateLimiter
 
-    entity_extractor = EntityExtractorBuilder.build(
+    builder_config = EntityExtractorBuilderConfig(
         spacy_model=settings.spacy_model,
         trusted_models=settings.trusted_spacy_models,
         trusted_hashes=settings.trusted_model_hashes,
         fallback_ner_regex=settings.fallback_ner_regex,
+        max_model_signature_size=settings.max_model_signature_size,
+    )
+
+    entity_extractor = EntityExtractorBuilder.build(
+        builder_config=builder_config,
         rate_limiter=RateLimiter(settings.entity_extraction_rate_limit),
+        model_verifier=DefaultModelVerifier(
+            set(settings.trusted_spacy_models),
+            settings.trusted_model_hashes,
+            settings.max_model_signature_size,
+        ),
     )
     clustering_service = DefaultClusteringService(settings.random_seed)
 

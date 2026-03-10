@@ -80,10 +80,24 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_default_entity_extractor_fallback() -> None:
-    from src.infrastructure.services import EntityExtractorBuilder
+    from src.infrastructure.services import (
+        DefaultModelVerifier,
+        EntityExtractorBuilder,
+        EntityExtractorBuilderConfig,
+    )
+    from src.utils.rate_limit import RateLimiter
 
+    builder_config = EntityExtractorBuilderConfig(
+        spacy_model="invalid_model_name",
+        trusted_models=["invalid_model_name"],
+        trusted_hashes={},
+        fallback_ner_regex=r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b",
+        max_model_signature_size=1024,
+    )
     extractor = EntityExtractorBuilder.build(
-        spacy_model="invalid_model_name", trusted_models=["invalid_model_name"]
+        builder_config=builder_config,
+        rate_limiter=RateLimiter(0.01),
+        model_verifier=DefaultModelVerifier({"invalid_model_name"}, {}, 1024),
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
 
@@ -100,10 +114,24 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setitem(sys.modules, "spacy", None)
 
-    from src.infrastructure.services import EntityExtractorBuilder
+    from src.infrastructure.services import (
+        DefaultModelVerifier,
+        EntityExtractorBuilder,
+        EntityExtractorBuilderConfig,
+    )
+    from src.utils.rate_limit import RateLimiter
 
+    builder_config = EntityExtractorBuilderConfig(
+        spacy_model="en_core_web_sm",
+        trusted_models=["en_core_web_sm"],
+        trusted_hashes={},
+        fallback_ner_regex=r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b",
+        max_model_signature_size=1024,
+    )
     extractor = EntityExtractorBuilder.build(
-        spacy_model="en_core_web_sm", trusted_models=["en_core_web_sm"]
+        builder_config=builder_config,
+        rate_limiter=RateLimiter(0.01),
+        model_verifier=DefaultModelVerifier({"en_core_web_sm"}, {}, 1024),
     )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
 
@@ -120,19 +148,34 @@ def test_default_entity_extractor_valid_spacy(monkeypatch: pytest.MonkeyPatch) -
         def extract_entities(self, text: str) -> list[tuple[str, str]]:
             return [("ORG", "MockCompany")]
 
-    from src.infrastructure.services import EntityExtractorBuilder
+    from src.infrastructure.services import (
+        DefaultModelVerifier,
+        EntityExtractorBuilder,
+        EntityExtractorBuilderConfig,
+    )
+    from src.utils.rate_limit import RateLimiter
 
-    extractor = EntityExtractorBuilder.build(
+    builder_config = EntityExtractorBuilderConfig(
         spacy_model="test_model",
         trusted_models=["test_model"],
-        nlp_service=MockSpacyNLPService(),
+        trusted_hashes={},
+        fallback_ner_regex=r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b",
+        max_model_signature_size=1024,
     )
+    verifier = DefaultModelVerifier({"test_model"}, {}, 1024)
 
     # Monkeypatch the signature check so it doesn't fail trying to read test_model
     def mock_verify(*args: object, **kwargs: object) -> None:
         pass
 
-    monkeypatch.setattr(extractor.model_verifier, "verify_model_signature", mock_verify)
+    monkeypatch.setattr(verifier, "verify_model_signature", mock_verify)
+
+    extractor = EntityExtractorBuilder.build(
+        builder_config=builder_config,
+        rate_limiter=RateLimiter(0.01),
+        model_verifier=verifier,
+        nlp_service=MockSpacyNLPService(),
+    )
 
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
     entities = extractor.extract_entities(chunks)
