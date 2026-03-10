@@ -63,6 +63,267 @@ def test_default_text_splitter_split_document_exceeds_max_size(
         list(iterator)
 
 
+def test_default_model_verifier_exceptions(tmp_path: Path) -> None:
+    from src.infrastructure.services import DefaultModelVerifier
+
+    verifier = DefaultModelVerifier({"trusted_model"}, {}, 1000)
+
+    with pytest.raises(ValueError, match="Untrusted ML Model requested"):
+        verifier.verify_model_signature("untrusted_model")
+
+    with pytest.raises(ValueError, match="could not be imported"):
+        verifier.verify_model_signature("trusted_model")
+
+
+def test_default_model_verifier_signature_size_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
+    from src.infrastructure.services import DefaultModelVerifier
+
+    # Create a dummy module inside a package
+    pkg_dir = tmp_path / "dummy_module_pkg"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    dummy_module_path = pkg_dir / "dummy_module.py"
+
+    # Must be valid python or it fails on import before reaching the signature check
+    dummy_module_path.write_text("x = 'a' * 2000\n")
+
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    verifier = DefaultModelVerifier({"dummy_module_pkg.dummy_module"}, {"dummy_module_pkg.dummy_module": "hash"}, 10)
+    with pytest.raises(ValueError, match="exceeds signature scanning limits"):
+        verifier.verify_model_signature("dummy_module_pkg.dummy_module")
+
+
+def test_default_model_verifier_hash_mismatch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.infrastructure.services import DefaultModelVerifier
+
+    pkg_dir = tmp_path / "dummy_module_pkg2"
+    pkg_dir.mkdir()
+    (pkg_dir / "__init__.py").write_text("")
+    dummy_module_path = pkg_dir / "dummy_module2.py"
+    dummy_module_path.write_text("x = 1")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    verifier = DefaultModelVerifier({"dummy_module_pkg2.dummy_module2"}, {"dummy_module_pkg2.dummy_module2": "invalidhash"}, 10000)
+    with pytest.raises(ValueError, match="Cryptographic signature mismatch"):
+        verifier.verify_model_signature("dummy_module_pkg2.dummy_module2")
+
+
+class MockModelVerifier:
+    def verify_model_signature(self, model_name: str) -> None:
+        pass
+
+
+class MockRateLimiter:
+    def acquire(self) -> None:
+        pass
+
+
+def test_default_entity_extractor_invalid_regex(monkeypatch: pytest.MonkeyPatch) -> None:
+    import spacy.util
+
+    from src.infrastructure.services import DefaultEntityExtractor, EntityExtractorConfig
+
+    def mock_is_package(name: str) -> bool:
+        return False
+
+    monkeypatch.setattr(spacy.util, "is_package", mock_is_package)
+
+    # We provide an invalid unclosed regex. It should fall back to the safe default
+    # r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b" and extract "Apple Inc"
+    config = EntityExtractorConfig("dummy", "[unclosed_regex")
+    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+
+    entities = extractor.extract_entities(["Apple Inc."])
+    assert "chunk_0_Fallback_ORG" in entities
+    assert entities["chunk_0_Fallback_ORG"] == "Apple Inc"
+
+
+def test_default_entity_extractor_nlp_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import spacy.util
+
+    from src.infrastructure.services import DefaultEntityExtractor, EntityExtractorConfig
+
+    def mock_is_package(name: str) -> bool:
+        return False
+
+    monkeypatch.setattr(spacy.util, "is_package", mock_is_package)
+
+    config = EntityExtractorConfig("dummy_spacy_model", r"\b[A-Z][a-z]+\b")
+    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+
+    # Will fallback to regex and log warning
+    entities = extractor.extract_entities(["Apple Inc."])
+    assert "chunk_0_Fallback_ORG" in entities
+    assert entities["chunk_0_Fallback_ORG"] == "Apple"
+
+
+def test_default_entity_extractor_container_isolation_sandbox() -> None:
+    from src.infrastructure.services import DefaultEntityExtractor, EntityExtractorConfig
+
+    config = EntityExtractorConfig("invalid_nonexistent_module", r"\b[A-Z][a-z]+\b")
+    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+
+    # Isolation sandbox raises import error handled internally
+    entities = extractor.extract_entities(["Microsoft"])
+    assert "chunk_0_Fallback_ORG" in entities
+
+
+def test_default_clustering_service_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    import typing
+
+    from src.infrastructure.services import DefaultClusteringService
+
+    # Mock ML provider to raise import error simulating missing sklearn
+    # In reality, without sklearn, we must fallback to a single root node graceful degradation.
+    class BadMLProvider:
+        def get_vectorizer(self) -> typing.Any:
+            msg = "sklearn not found"
+            raise ImportError(msg)
+        def get_clusterer(self, a: int, b: int) -> typing.Any:
+            pass
+
+    service = DefaultClusteringService(42, BadMLProvider())
+
+    chunks = ["chunk1", "chunk2", "chunk3"]
+    result = service.cluster_chunks(chunks, 2)
+
+    # Verify fallback mechanism returns a flat tree without crashing the ingestion orchestrator
+    assert result["algorithm"] == "None (Missing ML modules)"
+    assert result["level_0"] == "root"
+    assert "clusters_found" not in result # Since it failed before actually clustering
+
+
+def test_default_clustering_service_incremental_batching(monkeypatch: pytest.MonkeyPatch) -> None:
+    import typing
+
+    from src.infrastructure.services import DefaultClusteringService
+
+    class MockMLClusteringProvider:
+        def get_vectorizer(self) -> typing.Any:
+            class MockVectorizer:
+                def transform(self, data: typing.Any) -> typing.Any:
+                    return data
+            return MockVectorizer()
+
+        def get_clusterer(self, max_clusters: int, random_seed: int) -> typing.Any:
+            class MockClusterer:
+                def __init__(self, max_clusters: int) -> None:
+                    self.n_clusters = max_clusters
+                def partial_fit(self, data: typing.Any) -> typing.Any:
+                    pass
+            return MockClusterer(max_clusters)
+
+    service = DefaultClusteringService(42, MockMLClusteringProvider())
+
+    # More than 100 chunks to trigger batching
+    chunks = [f"chunk {i}" for i in range(150)]
+    result = service.cluster_chunks(chunks, 2)
+    assert result["total_chunks"] == "150"
+
+def test_default_clustering_service_batch_less_than_max(monkeypatch: pytest.MonkeyPatch) -> None:
+    import typing
+
+    from src.infrastructure.services import DefaultClusteringService
+
+    class MockMLClusteringProvider:
+        def get_vectorizer(self) -> typing.Any:
+            class MockVectorizer:
+                def transform(self, data: typing.Any) -> typing.Any:
+                    return data
+            return MockVectorizer()
+
+        def get_clusterer(self, max_clusters: int, random_seed: int) -> typing.Any:
+            class MockClusterer:
+                def __init__(self, max_clusters: int) -> None:
+                    self.n_clusters = max_clusters
+                def partial_fit(self, data: typing.Any) -> typing.Any:
+                    pass
+            return MockClusterer(max_clusters)
+
+    service = DefaultClusteringService(42, MockMLClusteringProvider())
+
+    # chunks < 100 but chunks > max_clusters
+    chunks = [f"chunk {i}" for i in range(10)]
+    result = service.cluster_chunks(chunks, 5)
+    assert result["total_chunks"] == "10"
+
+
+def test_default_clustering_service_unexpected_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    import typing
+
+    from src.infrastructure.services import DefaultClusteringService
+
+    class BadMLProvider:
+        def get_vectorizer(self) -> typing.Any:
+            return self
+        def transform(self, data: typing.Any) -> typing.Any:
+            msg = "Unexpected Math Error"
+            raise RuntimeError(msg)
+        def get_clusterer(self, a: int, b: int) -> typing.Any:
+            return self
+        def partial_fit(self, data: typing.Any) -> typing.Any:
+            msg = "Unexpected Math Error"
+            raise RuntimeError(msg)
+
+    service = DefaultClusteringService(42, BadMLProvider())
+    result = service.cluster_chunks(["chunk1", "chunk2", "chunk3"], 2)
+    assert "error_fallback" in result
+    assert "Unexpected Math Error" in result["error_fallback"]
+
+
+def test_requests_http_client_exceptions(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    import typing
+
+    import requests
+
+    from src.domain_models.exceptions import AIServiceError
+    from src.infrastructure.services import RequestsHTTPClient
+
+    cert_path = tmp_path / "cert.pem"
+    cert_path.write_text("cert")
+
+    client = RequestsHTTPClient(str(cert_path))
+
+    monkeypatch.setenv("ALLOWED_API_DOMAINS", "mock")
+
+    # Test Timeout
+    def mock_post_timeout(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+        msg = "timed out"
+        raise requests.Timeout(msg)
+
+    monkeypatch.setattr(requests, "post", mock_post_timeout)
+    with pytest.raises(AIServiceError, match="timed out"):
+        client.post("https://mock", {}, {}, 10)
+
+    # Test HTTPError
+    def mock_post_http_error(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+        msg = "http error"
+        raise requests.HTTPError(msg)
+
+    monkeypatch.setattr(requests, "post", mock_post_http_error)
+    with pytest.raises(AIServiceError, match="http error"):
+        client.post("https://mock", {}, {}, 10)
+
+    # Test RequestException
+    def mock_post_request_error(*args: typing.Any, **kwargs: typing.Any) -> typing.Any:
+        msg = "connection error"
+        raise requests.RequestException(msg)
+
+    monkeypatch.setattr(requests, "post", mock_post_request_error)
+    with pytest.raises(AIServiceError, match="connection error"):
+        client.post("https://mock", {}, {}, 10)
+
+    # Test invalid cert path resolution
+    client_invalid = RequestsHTTPClient()
+    with pytest.raises(ValueError, match="Strict SSL certificate pinning is required."):
+        client_invalid.post("https://mock", {}, {}, 10)
+
+    with pytest.raises(ValueError, match="CA bundle path is invalid"):
+        client_invalid.post("https://mock", {}, {}, 10, verify="/does/not/exist.pem")
+
+
 def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
@@ -240,9 +501,10 @@ def test_requests_http_client_post(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(Path, "is_file", lambda self: True)
     monkeypatch.setattr(os.path, "realpath", lambda x: x)
+    monkeypatch.setenv("ALLOWED_API_DOMAINS", "test.com")
 
     result = client.post(
-        "http://test.com",
+        "https://test.com",
         {"key": "value"},
         {"Authorization": "token"},
         10,
@@ -270,15 +532,41 @@ def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -
     from pathlib import Path
     monkeypatch.setattr(Path, "is_file", lambda self: True)
     monkeypatch.setattr(os.path, "realpath", lambda x: x)
+    monkeypatch.setenv("ALLOWED_API_DOMAINS", "test.com")
 
     with pytest.raises(AIServiceError, match="HTTP error"):
         client.post(
-            "http://test.com",
+            "https://test.com",
             {"key": "value"},
             {"Authorization": "token"},
             10,
             verify="mock_cert.pem",
         )
+
+
+def test_requests_http_client_url_validation() -> None:
+    import os
+
+    from src.infrastructure.services import RequestsHTTPClient
+
+    client = RequestsHTTPClient()
+    os.environ["ALLOWED_API_DOMAINS"] = "api.openai.com,api.anthropic.com"
+
+    # Test scheme validation
+    with pytest.raises(ValueError, match="Strict HTTPS enforcement failed"):
+        client._validate_url("http://api.openai.com")
+
+    # Test domain whitelist
+    with pytest.raises(ValueError, match="not in the trusted whitelist"):
+        client._validate_url("https://malicious-domain.com")
+
+
+def test_requests_http_client_header_validation() -> None:
+    from src.infrastructure.services import RequestsHTTPClient
+    client = RequestsHTTPClient()
+
+    with pytest.raises(ValueError, match="Invalid characters"):
+        client._prepare_headers({"Authorization": "Bearer token\r\nInjected: True"})
 
 
 def test_tenacity_retry_policy() -> None:

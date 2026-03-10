@@ -57,11 +57,11 @@ src/infrastructure/container.py         13      0   100%
 src/infrastructure/orchestrator.py     164      4    98%   239, 281-282, 318
 src/infrastructure/repository.py        43      0   100%
 src/infrastructure/security.py          66      5    92%   16-17, 74-75, 82
-src/infrastructure/services.py         336     36    89%   103-105, 118, 129-131, 134-135, 167-168, 174-175, 203, 262, 287-288, 319-322, 344, 449, 451-454, 523-524, 527-533, 537-538
+src/infrastructure/services.py         338     37    89%   103-105, 118, 129-131, 134-135, 167-168, 174-175, 203, 262, 266, 290-291, 322-325, 347, 452, 454-457, 526-527, 530-536, 540-541
 src/utils/__init__.py                    0      0   100%
 src/utils/errors.py                     23      0   100%
 src/utils/rate_limit.py                 26      0   100%
 src/utils/validation.py                 28      2    93%   40-41
 ------------------------------------------------------------------
-TOTAL                                 1142     54    95%
-======================= 104 passed, 7 warnings in 31.34s =======================
+TOTAL                                 1144     55    95%
+======================= 104 passed, 7 warnings in 35.17s =======================

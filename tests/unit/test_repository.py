@@ -60,6 +60,40 @@ def test_in_memory_repo_get_children() -> None:
     assert id2 in children
 
 
+def test_in_memory_repository_rollback() -> None:
+    repo = InMemoryDocumentRepository()
+
+    # Save initial state
+    repo.begin()
+    id1 = create_mock_identity("n1", status=NodeStatus.LOCKED)
+    repo.save_identity(id1)
+    repo.commit()
+
+    assert repo.get_identity("n1") is not None
+
+    # Start new transaction and modify state
+    repo.begin()
+    id2 = create_mock_identity("n2", status=NodeStatus.UNLOCKED)
+    content2 = create_mock_content("n2")
+    repo.save_identity(id2)
+    repo.save_content(content2)
+
+    # Verify they exist during transaction
+    assert repo.get_identity("n2") is not None
+    assert repo.get_content("n2") is not None
+
+    # Rollback should remove n2 and restore n1
+    repo.rollback()
+
+    assert repo.get_identity("n1") is not None
+    assert repo.get_identity("n2") is None
+    assert repo.get_content("n2") is None
+
+    # Rollback without active transaction should do nothing
+    repo.rollback()
+    assert repo.get_identity("n1") is not None
+
+
 def test_in_memory_query_service() -> None:
     repo = InMemoryDocumentRepository()
     repo.begin()
