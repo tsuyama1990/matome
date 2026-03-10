@@ -76,8 +76,8 @@ def test_default_model_verifier_exceptions(tmp_path: Path) -> None:
 
 
 def test_default_model_verifier_signature_size_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+
     from src.infrastructure.services import DefaultModelVerifier
-    import sys
 
     # Create a dummy module inside a package
     pkg_dir = tmp_path / "dummy_module_pkg"
@@ -120,17 +120,30 @@ class MockRateLimiter:
         pass
 
 
-def test_default_entity_extractor_invalid_regex() -> None:
+def test_default_entity_extractor_invalid_regex(monkeypatch: pytest.MonkeyPatch) -> None:
+    import spacy.util
+
     from src.infrastructure.services import DefaultEntityExtractor, EntityExtractorConfig
 
+    def mock_is_package(name: str) -> bool:
+        return False
+
+    monkeypatch.setattr(spacy.util, "is_package", mock_is_package)
+
+    # We provide an invalid unclosed regex. It should fall back to the safe default
+    # r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b" and extract "Apple Inc"
     config = EntityExtractorConfig("dummy", "[unclosed_regex")
-    with pytest.raises(ValueError, match="Invalid fallback NER regex pattern"):
-        DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+    extractor = DefaultEntityExtractor(config, MockRateLimiter(), MockModelVerifier())
+
+    entities = extractor.extract_entities(["Apple Inc."])
+    assert "chunk_0_Fallback_ORG" in entities
+    assert entities["chunk_0_Fallback_ORG"] == "Apple Inc"
 
 
 def test_default_entity_extractor_nlp_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.infrastructure.services import DefaultEntityExtractor, EntityExtractorConfig
     import spacy.util
+
+    from src.infrastructure.services import DefaultEntityExtractor, EntityExtractorConfig
 
     def mock_is_package(name: str) -> bool:
         return False
@@ -158,10 +171,12 @@ def test_default_entity_extractor_container_isolation_sandbox() -> None:
 
 
 def test_default_clustering_service_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.infrastructure.services import DefaultClusteringService
     import typing
 
+    from src.infrastructure.services import DefaultClusteringService
+
     # Mock ML provider to raise import error simulating missing sklearn
+    # In reality, without sklearn, we must fallback to a single root node graceful degradation.
     class BadMLProvider:
         def get_vectorizer(self) -> typing.Any:
             msg = "sklearn not found"
@@ -170,13 +185,20 @@ def test_default_clustering_service_import_error(monkeypatch: pytest.MonkeyPatch
             pass
 
     service = DefaultClusteringService(42, BadMLProvider())
-    result = service.cluster_chunks(["chunk1"], 2)
+
+    chunks = ["chunk1", "chunk2", "chunk3"]
+    result = service.cluster_chunks(chunks, 2)
+
+    # Verify fallback mechanism returns a flat tree without crashing the ingestion orchestrator
     assert result["algorithm"] == "None (Missing ML modules)"
+    assert result["level_0"] == "root"
+    assert "clusters_found" not in result # Since it failed before actually clustering
 
 
 def test_default_clustering_service_incremental_batching(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.infrastructure.services import DefaultClusteringService
     import typing
+
+    from src.infrastructure.services import DefaultClusteringService
 
     class MockMLClusteringProvider:
         def get_vectorizer(self) -> typing.Any:
@@ -201,8 +223,9 @@ def test_default_clustering_service_incremental_batching(monkeypatch: pytest.Mon
     assert result["total_chunks"] == "150"
 
 def test_default_clustering_service_batch_less_than_max(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.infrastructure.services import DefaultClusteringService
     import typing
+
+    from src.infrastructure.services import DefaultClusteringService
 
     class MockMLClusteringProvider:
         def get_vectorizer(self) -> typing.Any:
@@ -228,8 +251,9 @@ def test_default_clustering_service_batch_less_than_max(monkeypatch: pytest.Monk
 
 
 def test_default_clustering_service_unexpected_exception(monkeypatch: pytest.MonkeyPatch) -> None:
-    from src.infrastructure.services import DefaultClusteringService
     import typing
+
+    from src.infrastructure.services import DefaultClusteringService
 
     class BadMLProvider:
         def get_vectorizer(self) -> typing.Any:

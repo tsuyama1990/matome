@@ -5,6 +5,7 @@ import pytest
 
 def test_credential_config_validation(tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import SecretStr
+
     from src.config import CredentialConfig
     from src.domain_models.exceptions import ConfigurationError
 
@@ -95,7 +96,7 @@ def test_settings_ssl_cert_path(tmp_path: typing.Any, monkeypatch: pytest.Monkey
 
 def test_settings_advanced_validation(tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import os
-    from pydantic_core._pydantic_core import ValidationError
+
     from src.config import Settings
     from src.domain_models.exceptions import ConfigurationError
 

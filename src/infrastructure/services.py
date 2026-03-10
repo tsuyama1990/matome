@@ -271,8 +271,10 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         try:
             re.compile(self.fallback_ner_regex)
         except re.error as e:
-            msg = f"Invalid fallback NER regex pattern: {e}"
-            raise ValueError(msg) from e
+            logger.warning(
+                f"Invalid fallback NER regex pattern: {e}. Falling back to default bounded regex."
+            )
+            self.fallback_ner_regex = r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
 
     def extract_entities(self, chunks: typing.Iterator[str] | list[str]) -> dict[str, str]:
         self.rate_limiter.acquire()
