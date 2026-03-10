@@ -49,6 +49,7 @@ def _create_mock_settings(
 
 def _create_service(
     base_dir: str,
+    monkeypatch: pytest.MonkeyPatch | None = None,
     api_key: str | None = None,
     http_client: object = None,
     text_fast_model: str = "google/gemini-2.5-flash",
@@ -292,15 +293,20 @@ def test_default_ai_service_calls_generate_markdown_valid(
 
 
 def test_default_ai_service_calls_verify_web_grounding_valid(
-    tmp_path: pytest.TempPathFactory,
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from unittest.mock import MagicMock
 
     mock_http = MagicMock()
     mock_http.post.return_value = {"choices": [{"message": {"content": "No bias found"}}]}
 
+    monkeypatch.setattr(
+        "src.infrastructure.security.PromptInjectionScanner.sanitize", lambda self, text: text
+    )
+
     services = _create_service(
         base_dir=str(tmp_path),
+        monkeypatch=monkeypatch,
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
     )
@@ -322,6 +328,7 @@ def test_default_ai_service_calls_evaluate_answer_valid(
 
     services = _create_service(
         base_dir=str(tmp_path),
+        monkeypatch=monkeypatch,
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
     )

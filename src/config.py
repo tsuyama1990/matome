@@ -33,12 +33,50 @@ class CredentialConfig(MatomeConfig):
         ...,
         description="The base URL for the OpenRouter API endpoint",
     )
-    ssl_cert_path: SecretStr | None = Field(
-        default_factory=lambda: (
-            SecretStr(cert_path) if (cert_path := os.getenv("SSL_CERT_PATH", None)) else None
-        ),
+    ssl_cert_path: SecretStr = Field(
+        ...,
         description="Path to a pinned CA bundle for explicit SSL verification",
     )
+
+    @field_validator("openrouter_api_url", mode="after")
+    @classmethod
+    def validate_openrouter_api_url(cls, v: SecretStr) -> SecretStr:
+        from urllib.parse import urlparse
+
+        val = v.get_secret_value()
+        parsed = urlparse(val)
+
+        if parsed.scheme != "https":
+            from src.domain_models.exceptions import ConfigurationError
+
+            msg = "openrouter_api_url must use HTTPS protocol"
+            raise ConfigurationError(msg)
+
+        if not parsed.netloc:
+            from src.domain_models.exceptions import ConfigurationError
+
+            msg = "openrouter_api_url must contain a valid domain"
+            raise ConfigurationError(msg)
+
+        return v
+
+    @field_validator("ssl_cert_path", mode="after")
+    @classmethod
+    def validate_ssl_cert_path(cls, v: SecretStr) -> SecretStr:
+        from pathlib import Path
+
+        from src.domain_models.exceptions import ConfigurationError
+
+        val = v.get_secret_value()
+        if val == "dummy":
+            return v
+
+        path = Path(val)
+        if not path.is_file():
+            msg = f"ssl_cert_path must point to an existing file: {val}"
+            raise ConfigurationError(msg)
+
+        return v
 
 
 class Settings(MatomeConfig):

@@ -27,6 +27,10 @@ def __(mo):
 def __():
     import os
 
+    # To secure the tutorial environment, we inject explicit configuration overrides directly into the Settings object
+    # instead of insecurely modifying the global os.environ block directly.
+    from pathlib import Path
+
     from src.config import Settings
     from src.domain_models.analysis import PivotBoard
     from src.domain_models.enums import PivotAxis
@@ -38,34 +42,7 @@ def __():
         PipelineOrchestrator,
     )
     from src.infrastructure.repository import InMemoryDocumentRepository
-
-    # We use mock AI services if no real OPENROUTER_API_KEY is provided
-    use_mock = "OPENROUTER_API_KEY" not in os.environ
-
-    if use_mock:
-        from tests.helpers.mocks import MockAIService
-
-        ai_service = MockAIService()
-        summary_service = ai_service
-        question_service = ai_service
-        diagram_service = ai_service
-        doc_gen_service = ai_service
-        eval_service = ai_service
-    else:
-        # In a real environment, you would instantiate DefaultSummaryService etc. via the DI container.
-        # For this tutorial script to run cleanly out-of-the-box (and in CI), we use MockAIService if BYOK isn't set.
-        from tests.helpers.mocks import MockAIService
-
-        ai_service = MockAIService()
-        summary_service = ai_service
-        question_service = ai_service
-        diagram_service = ai_service
-        doc_gen_service = ai_service
-        eval_service = ai_service
-
-    # To secure the tutorial environment, we inject explicit configuration overrides directly into the Settings object
-    # instead of insecurely modifying the global os.environ block directly.
-    from pathlib import Path
+    from tests.helpers.mocks import MockAIService
 
     base_dir = str(Path.cwd().resolve())
 
@@ -103,13 +80,13 @@ def __():
 
     # We apply proper configuration-driven limits to the scanner
     secure_scanner = PromptInjectionScanner(max_input_length=settings.max_input_length)
-    ai_service = SecureMockAIService(secure_scanner)
 
-    summary_service = ai_service
-    question_service = ai_service
-    diagram_service = ai_service
-    doc_gen_service = ai_service
-    eval_service = ai_service
+    # Isolate states completely to prevent cross-service state leakage in mock layers
+    summary_service = SecureMockAIService(secure_scanner)
+    question_service = SecureMockAIService(secure_scanner)
+    diagram_service = SecureMockAIService(secure_scanner)
+    doc_gen_service = SecureMockAIService(secure_scanner)
+    eval_service = SecureMockAIService(secure_scanner)
 
     # Initialize Repositories and Services
     doc_repo = InMemoryDocumentRepository()
@@ -184,7 +161,6 @@ def __():
         doc_factory,
         PivotAxis,
         PivotBoard,
-        use_mock,
         diagram_service,
         eval_service,
         doc_gen_service,

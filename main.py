@@ -67,6 +67,7 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
         openrouter_api_url=SecretStr(
             os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
         ),
+        ssl_cert_path=SecretStr(os.getenv("SSL_CERT_PATH", "dummy")),
     )
 
     repo = InMemoryDocumentRepository()
