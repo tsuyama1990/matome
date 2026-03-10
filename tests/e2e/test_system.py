@@ -23,8 +23,8 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     """
     repo = InMemoryDocumentRepository()
     ai = MockAIService()  # Even the audit allows mocked AI here to not burn credits if api_key not set, but we use the properly constructed components.
-    factory = DocumentFactory()
-    metadata_service = MetadataService()
+    factory = DocumentFactory(max_content_length=100000)
+    metadata_service = MetadataService(repository=repo)
 
     import os
 
@@ -133,10 +133,10 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     assert identity is not None
     assert content_node is not None
     assert identity.id == root_doc_id
-    assert content_node.summary is not None
-    assert "System Actor" in content_node.summary
-    assert "Action" in content_node.summary
+    assert content_node.content.summary is not None
+    assert "System Actor" in content_node.content.summary
+    assert "Action" in content_node.content.summary
 
-    metadata = metadata_service.get_metadata(identity.id)
+    metadata = metadata_service.get_node_metadata(identity.id)
     assert metadata is not None
     assert metadata.metadata.category == "business"

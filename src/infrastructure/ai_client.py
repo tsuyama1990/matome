@@ -40,7 +40,7 @@ class AIClientFactory:
         retry_policy: RetryPolicyProtocol,
         security_scanner: AISecurityScannerProtocol,
         **kwargs: Any,  # noqa: ARG004
-    ) -> "DefaultAICommunicationClient":
+    ) -> AICommunicationClientProtocol:
         # All string format parameters are assumed to have been securely pre-validated directly by domain Config objects.
         # This properly obeys Dependency Inversion by removing direct OS environmental lookups.
         config = AIClientConfig(api_url=api_url, default_model=default_model, ai_timeout=ai_timeout)

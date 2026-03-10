@@ -2,14 +2,23 @@ from collections.abc import Callable, Iterator
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from .analysis import PivotBoard
-from .manifest import ContentNode, IdentityNode, UserInteractionContext
+from .manifest import (
+    AIMetadataContainer,
+    ContentNode,
+    IdentityNode,
+    NodeMetadataContainer,
+    UserInteractionContext,
+)
 
 T = TypeVar("T")
 
 
-class OpenRouterConfigService(Protocol):
+class OpenRouterUrlService(Protocol):
     @property
     def openrouter_api_url(self) -> str: ...
+
+
+class OpenRouterCredentialService(Protocol):
     @property
     def openrouter_api_key(self) -> str: ...
 
@@ -39,7 +48,8 @@ class CertificateValidator(Protocol):
 class CredentialProviderProtocol(Protocol):
     """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
 
-    def get_api_key(self) -> Any: ...
+    def get_api_url(self) -> str: ...
+    def get_api_key(self) -> Iterator[str]: ...
 
 
 @runtime_checkable
@@ -78,6 +88,18 @@ class DocumentRepository(Protocol):
     def save_identity(self, node: IdentityNode) -> None: ...
 
     def save_content(self, node: ContentNode) -> None: ...
+
+
+class MetadataRepository(Protocol):
+    """Protocol for data persistence operations regarding metadata."""
+
+    def get_node_metadata(self, node_id: str) -> NodeMetadataContainer | None: ...
+
+    def get_ai_metadata(self, node_id: str) -> AIMetadataContainer | None: ...
+
+    def save_node_metadata(self, metadata: NodeMetadataContainer) -> None: ...
+
+    def save_ai_metadata(self, metadata: AIMetadataContainer) -> None: ...
 
 
 class SummaryServiceProtocol(Protocol):

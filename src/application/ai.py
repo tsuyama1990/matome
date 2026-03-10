@@ -40,7 +40,7 @@ class DefaultSummaryService(BaseAIService, SummaryServiceProtocol):
 class DefaultQuestionService(BaseAIService, QuestionServiceProtocol):
     def generate_question(self, identity: IdentityNode, content: ContentNode) -> str:
         safe_title = self.security_scanner.sanitize(identity.title)
-        safe_summary = self.security_scanner.sanitize(content.summary)
+        safe_summary = self.security_scanner.sanitize(content.content.summary)
         prompt = f"Generate an engaging SQ3R question for the following content node:\n\n{safe_title}\n{safe_summary}"
         return self.communication_client.call_api(prompt, model=self.text_fast_model)
 

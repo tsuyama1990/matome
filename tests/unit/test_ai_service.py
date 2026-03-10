@@ -109,7 +109,7 @@ def _create_service(
 ]:
     from unittest.mock import MagicMock
 
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.infrastructure.security import PromptInjectionScanner
 
     settings = _create_mock_settings(
@@ -118,7 +118,7 @@ def _create_service(
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
     )
-    provider = EnvCredentialProvider()
+    provider = EnvOpenRouterConfigProvider()
 
     mock_http_client = http_client or MagicMock()
 
@@ -187,25 +187,25 @@ def _create_service(
 def test_default_ai_service_missing_key_init(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(ConfigurationError), EnvCredentialProvider().get_api_key():
+    with pytest.raises(ConfigurationError), EnvOpenRouterConfigProvider().get_api_key():
         pass
 
 
 def test_default_ai_service_invalid_key_length(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "123")
 
     with (
         pytest.raises(ConfigurationError, match="API Key validation failed"),
-        EnvCredentialProvider().get_api_key(),
+        EnvOpenRouterConfigProvider().get_api_key(),
     ):
         pass
 
@@ -213,14 +213,14 @@ def test_default_ai_service_invalid_key_length(
 def test_default_ai_service_invalid_key_format(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
 
     with (
         pytest.raises(ConfigurationError, match="API Key validation failed"),
-        EnvCredentialProvider().get_api_key(),
+        EnvOpenRouterConfigProvider().get_api_key(),
     ):
         pass
 
@@ -273,7 +273,9 @@ def test_default_ai_service_calls_generate_question_valid(
         title="Test Title",
         status=NodeStatus.LOCKED,
     )
-    content = ContentNode(node_id="test1", summary=None, text=None)
+    from src.domain_models.manifest import Content
+
+    content = ContentNode(node_id="test1", content=Content(summary=None, text=None))
 
     question = services[1].generate_question(identity, content)
     assert question == "mock question"

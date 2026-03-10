@@ -3,23 +3,30 @@ import typing
 import pytest
 
 
-def test_credential_config_validation() -> None:
-    from pydantic import SecretStr
-
-    from src.config import CredentialConfig
+def test_openrouter_provider_validation(monkeypatch: pytest.MonkeyPatch) -> None:
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
+    provider = EnvOpenRouterConfigProvider()
+
+    # Missing URL
+    monkeypatch.delenv("OPENROUTER_API_URL", raising=False)
+    with pytest.raises(ConfigurationError, match="OPENROUTER_API_URL is missing"):
+        provider.get_api_url()
+
     # Invalid URL scheme
-    with pytest.raises(ConfigurationError):
-        CredentialConfig(
-            openrouter_api_url=SecretStr("http://mock.com"),
-        )
+    monkeypatch.setenv("OPENROUTER_API_URL", "http://mock.com")
+    with pytest.raises(ConfigurationError, match="must use HTTPS"):
+        provider.get_api_url()
 
     # Invalid URL domain
-    with pytest.raises(ConfigurationError):
-        CredentialConfig(
-            openrouter_api_url=SecretStr("https://"),
-        )
+    monkeypatch.setenv("OPENROUTER_API_URL", "https://")
+    with pytest.raises(ConfigurationError, match="must contain a valid domain"):
+        provider.get_api_url()
+
+    # Valid URL
+    monkeypatch.setenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1")
+    assert provider.get_api_url() == "https://openrouter.ai/api/v1"
 
 
 def test_settings_advanced_validation(
@@ -190,9 +197,9 @@ def test_settings_api_key_valid(tmp_path: typing.Any, monkeypatch: pytest.Monkey
     monkeypatch.setenv("OPENROUTER_API_KEY", valid_key)
     monkeypatch.setenv("SKIP_ACTIVE_KEY_VALIDATION", "true")
     try:
-        from src.config import EnvCredentialProvider
+        from src.config import EnvOpenRouterConfigProvider
 
-        provider = EnvCredentialProvider()
+        provider = EnvOpenRouterConfigProvider()
         with provider.get_api_key() as secure_key:
             assert secure_key == valid_key
     finally:
@@ -202,12 +209,12 @@ def test_settings_api_key_valid(tmp_path: typing.Any, monkeypatch: pytest.Monkey
 def test_settings_api_key_invalid_length(
     tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.setenv("OPENROUTER_API_KEY", "short")
     try:
-        provider = EnvCredentialProvider()
+        provider = EnvOpenRouterConfigProvider()
         with (
             pytest.raises(ConfigurationError, match="API Key validation failed"),
             provider.get_api_key(),
@@ -220,14 +227,14 @@ def test_settings_api_key_invalid_length(
 def test_settings_api_key_invalid_format(
     tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.setenv(
         "OPENROUTER_API_KEY", "invalid_key_with_spaces_too_long_to_pass_length_check"
     )
     try:
-        provider = EnvCredentialProvider()
+        provider = EnvOpenRouterConfigProvider()
         with (
             pytest.raises(ConfigurationError, match="API Key validation failed"),
             provider.get_api_key(),

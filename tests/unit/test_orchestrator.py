@@ -57,8 +57,8 @@ def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineC
 
     repo = InMemoryDocumentRepository()
     ai = MockAIService()
-    factory = DocumentFactory()
-    metadata_service = MetadataService()
+    factory = DocumentFactory(max_content_length=100000)
+    metadata_service = MetadataService(repository=repo)
 
     import typing
 
@@ -214,11 +214,12 @@ def test_output_orchestrator_execute(tmp_path: Path) -> None:
     output = OutputOrchestrator(deps)
 
     ctx = PipelineContext(root_doc_id="test_id", content="Test", file_path=None)
-    identity, content, metadata = output.execute(ctx, "content", "summary", {}, {})
+    identity, content, metadata_tuple = output.execute(ctx, "content", "summary", {}, {})
+    node_metadata, ai_metadata = metadata_tuple
 
     assert identity.id == "test_id"
-    assert content.summary == "summary"
-    assert metadata.ai_metadata.chunk_index == 0
+    assert content.content.summary == "summary"
+    assert ai_metadata.ai_metadata.chunk_index == 0
 
 
 def test_output_orchestrator_ai_error(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

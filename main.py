@@ -46,13 +46,11 @@ def build_app(
 def get_di_container(app_ctx: AppContext) -> DIContainerProtocol:
     import os
 
-    from pydantic import SecretStr
-
     from src.application.ai import (
         DefaultQuestionService,
         DefaultSummaryService,
     )
-    from src.config import CredentialConfig
+    from src.config import EnvOpenRouterConfigProvider
     from src.domain_models.services import DocumentFactory, MetadataService
     from src.infrastructure import InMemoryDocumentRepository
     from src.infrastructure.container import ProductionDIContainer
@@ -66,13 +64,7 @@ def get_di_container(app_ctx: AppContext) -> DIContainerProtocol:
         TenacityRetryPolicy,
     )
 
-    # Strictly pull credentials from environment variables avoiding hardcoded fallbacks
-    # and ensuring proper instantiation. Let Pydantic Settings handle the presence checks.
-    credential_config_args = {}
-    if "OPENROUTER_API_URL" in os.environ:
-        credential_config_args["openrouter_api_url"] = SecretStr(os.environ["OPENROUTER_API_URL"])
-
-    credential_config = CredentialConfig(**credential_config_args)
+    openrouter_provider = EnvOpenRouterConfigProvider()
 
     repo = InMemoryDocumentRepository()
     ssl_path = os.getenv("SSL_CERT_PATH")
@@ -101,7 +93,7 @@ def get_di_container(app_ctx: AppContext) -> DIContainerProtocol:
     from src.infrastructure.ai_client import AIClientFactory
 
     communication_client = AIClientFactory.create(
-        api_url=credential_config.openrouter_api_url.get_secret_value(),
+        api_url=openrouter_provider.get_api_url(),
         default_model=app_ctx.ai.text_fast_model,
         ai_timeout=app_ctx.ai.ai_timeout,
         http_client=http_client,
@@ -123,8 +115,8 @@ def get_di_container(app_ctx: AppContext) -> DIContainerProtocol:
     )
     # the rest are not strictly required for PipelineDependencies currently, but keeping pattern
 
-    factory = DocumentFactory()
-    metadata_service = MetadataService()
+    factory = DocumentFactory(max_content_length=app_ctx.security.max_input_length)
+    metadata_service = MetadataService(repository=repo)
 
     text_splitter = DefaultTextSplitter(
         chunk_size=app_ctx.file.chunk_size,

@@ -2,7 +2,7 @@ import contextlib
 import os
 from collections.abc import Iterator
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.interfaces import DatabaseProtocol
@@ -20,37 +20,6 @@ class ModeConfig(MatomeConfig):
     mode: str = Field(
         default="production", description="Application execution mode (e.g. cli, production, test)"
     )
-
-
-class CredentialConfig(MatomeConfig):
-    """Dedicated configuration class for externalizing and securely holding credentials."""
-
-    openrouter_api_url: SecretStr = Field(
-        ...,
-        description="The base URL for the OpenRouter API endpoint",
-    )
-
-    @field_validator("openrouter_api_url", mode="after")
-    @classmethod
-    def validate_openrouter_api_url(cls, v: SecretStr) -> SecretStr:
-        from urllib.parse import urlparse
-
-        val = v.get_secret_value()
-        parsed = urlparse(val)
-
-        if parsed.scheme != "https":
-            from src.domain_models.exceptions import ConfigurationError
-
-            msg = "openrouter_api_url must use HTTPS protocol"
-            raise ConfigurationError(msg)
-
-        if not parsed.netloc:
-            from src.domain_models.exceptions import ConfigurationError
-
-            msg = "openrouter_api_url must contain a valid domain"
-            raise ConfigurationError(msg)
-
-        return v
 
 
 class AIConfig(BaseModel):
@@ -283,17 +252,42 @@ class DatabaseContext(BaseModel):
     db: DatabaseProtocol | None = None
 
 
-class EnvCredentialProvider:
-    """Secure JIT credential provider fetching directly from OS environment variables strictly at runtime. Uses context manager for immediate explicit memory deletion."""
+class EnvOpenRouterConfigProvider:
+    """Secure JIT credential and URL provider fetching directly from OS environment variables strictly at runtime."""
 
     def __init__(self) -> None:
         from src.utils.errors import CredentialErrorHandler
 
         self._error_handler = CredentialErrorHandler()
 
+    def get_api_url(self) -> str:
+        import os
+        from urllib.parse import urlparse
+
+        url = os.getenv("OPENROUTER_API_URL")
+        if not url:
+            from src.domain_models.exceptions import ConfigurationError
+
+            msg = "OPENROUTER_API_URL is missing."
+            raise ConfigurationError(msg)
+
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            from src.domain_models.exceptions import ConfigurationError
+
+            msg = "openrouter_api_url must use HTTPS protocol"
+            raise ConfigurationError(msg)
+
+        if not parsed.netloc:
+            from src.domain_models.exceptions import ConfigurationError
+
+            msg = "openrouter_api_url must contain a valid domain"
+            raise ConfigurationError(msg)
+        return url
+
     @contextlib.contextmanager
     def get_api_key(self) -> Iterator[str]:
-        import ctypes
+        import os
 
         key: str | None = os.getenv("OPENROUTER_API_KEY")
 
@@ -305,18 +299,12 @@ class EnvCredentialProvider:
 
         self._error_handler.validate_and_format(key)
 
-        key_bytes = bytearray(key.encode("utf-8"))
-        del key  # Delete python string reference
-
         try:
-            yield key_bytes.decode("utf-8")
+            yield key
         finally:
-            if key_bytes:
-                # Strictly zeroize memory buffer to prevent cold-boot and memory leak attacks natively
-                ctypes.memset(
-                    (ctypes.c_char * len(key_bytes)).from_buffer(key_bytes), 0, len(key_bytes)
-                )
-            del key_bytes
+            # Clear local reference to prompt garbage collection
+            key = None
+            del key
 
 
 def create_app_context(
@@ -341,8 +329,8 @@ def create_app_context(
 __all__ = [
     "AIConfig",
     "AppContext",
-    "CredentialConfig",
     "DatabaseContext",
+    "EnvOpenRouterConfigProvider",
     "FileProcessingConfig",
     "MLConfig",
     "ModeConfig",
