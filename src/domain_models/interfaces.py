@@ -1,5 +1,5 @@
 from collections.abc import Callable, Iterator
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from .analysis import PivotBoard
 from .manifest import ContentNode, IdentityNode, UserInteractionContext
@@ -7,17 +7,22 @@ from .manifest import ContentNode, IdentityNode, UserInteractionContext
 T = TypeVar("T")
 
 class ConfigService(Protocol):
-    """Protocol for fetching application configuration."""
+    """Protocol for fetching application configuration using type-safe properties."""
 
-    def get(self, key: str, default: T | None = None) -> Any: ...
+    @property
+    def openrouter_api_url(self) -> str: ...
 
-    def get_str(self, key: str, default: str | None = None) -> str: ...
+    @property
+    def chunk_size(self) -> int: ...
 
-    def get_int(self, key: str, default: int | None = None) -> int: ...
+    @property
+    def chunk_overlap(self) -> int: ...
 
-    def get_float(self, key: str, default: float | None = None) -> float: ...
+    @property
+    def spacy_model(self) -> str: ...
 
-    def get_bool(self, key: str, default: bool | None = None) -> bool: ...
+    @property
+    def random_seed(self) -> int: ...
 
 
 class SecurityService(Protocol):
@@ -41,10 +46,11 @@ class CredentialProviderProtocol(Protocol):
     def get_api_key(self) -> SecureStringProtocol: ...
 
 
-class CredentialFetcherProtocol(Protocol):
-    """Protocol for abstract fetchers retrieving tokens from Env, Vault, etc."""
-
-    def __call__(self) -> str | None: ...
+@runtime_checkable
+class DatabaseProtocol(Protocol):
+    """Protocol representing a database connection or session."""
+    def execute(self, query: str) -> Any: ...
+    def close(self) -> None: ...
 
 
 class TransactionManager(Protocol):

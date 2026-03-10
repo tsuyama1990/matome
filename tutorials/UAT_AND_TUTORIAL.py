@@ -107,10 +107,10 @@ def __(
             if settings.credentials.openrouter_api_key
             else None
         )
-        has_real_key = bool(api_key and not api_key.startswith("sk-or-v1-mock-key"))
+        has_real_key = bool(api_key)
     except ValidationError:
-        # Provide safe mock default dynamically through environment overriding without hardcoding a dummy key
-        tutorial_env["OPENROUTER_API_KEY"] = os.environ.get("OPENROUTER_API_KEY", "sk-or-v1-mock-key-1234")
+        # Avoid providing fallback dummy keys altogether based on security audit request.
+        # Fallback to pure mock service if environment doesn't supply anything valid.
         for k, v in tutorial_env.items():
             os.environ[k] = v
         settings = Settings()

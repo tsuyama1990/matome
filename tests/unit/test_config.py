@@ -1,4 +1,3 @@
-import os
 
 import pytest
 
@@ -7,6 +6,7 @@ def test_settings_api_key_valid(tmp_path: pytest.TempPathFactory) -> None:
     valid_key = "sk-or-v1-validkey12345678901234567890"
     try:
         from pydantic import SecretStr
+
         from src.config import CredentialConfig, EnvCredentialProvider
 
         config = CredentialConfig(openrouter_api_key=SecretStr(valid_key))
@@ -19,6 +19,7 @@ def test_settings_api_key_valid(tmp_path: pytest.TempPathFactory) -> None:
 
 def test_settings_api_key_invalid_length(tmp_path: pytest.TempPathFactory) -> None:
     from pydantic import SecretStr
+
     from src.config import CredentialConfig, EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
@@ -33,6 +34,7 @@ def test_settings_api_key_invalid_length(tmp_path: pytest.TempPathFactory) -> No
 
 def test_settings_api_key_invalid_format(tmp_path: pytest.TempPathFactory) -> None:
     from pydantic import SecretStr
+
     from src.config import CredentialConfig, EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 

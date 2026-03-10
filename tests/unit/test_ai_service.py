@@ -104,23 +104,29 @@ def test_default_ai_service_missing_key_init(
 def test_default_ai_service_invalid_key_length(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from pydantic import SecretStr
+
+    from src.config import CredentialConfig, EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
-    monkeypatch.setenv("OPENROUTER_API_KEY", "123")
-    with pytest.raises(ConfigurationError, match="API Key must be at least 30 characters long"):
-        EnvCredentialProvider().get_api_key()
+    config = CredentialConfig(openrouter_api_key=SecretStr("123"))
+
+    with pytest.raises(ConfigurationError, match="Authentication configuration error."):
+        EnvCredentialProvider(credential_config=config).get_api_key()
 
 
 def test_default_ai_service_invalid_key_format(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from src.config import EnvCredentialProvider
+    from pydantic import SecretStr
+
+    from src.config import CredentialConfig, EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
-    monkeypatch.setenv("OPENROUTER_API_KEY", "invalid_format_key_with_spaces and_tabs")
-    with pytest.raises(ConfigurationError, match="API Key format is invalid"):
-        EnvCredentialProvider().get_api_key()
+    config = CredentialConfig(openrouter_api_key=SecretStr("invalid_format_key_with_spaces and_tabs"))
+
+    with pytest.raises(ConfigurationError, match="Authentication configuration error."):
+        EnvCredentialProvider(credential_config=config).get_api_key()
 
 
 def test_default_ai_service_calls_generate_summary_valid(

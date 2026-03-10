@@ -2,10 +2,10 @@ import os
 import typing
 from typing import Any
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.domain_models.interfaces import CredentialFetcherProtocol
+from src.domain_models.interfaces import DatabaseProtocol
 
 
 class MatomeConfig(BaseSettings):
@@ -174,49 +174,35 @@ class Settings(MatomeConfig):
 
 
 class AppContext(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
     settings: Settings
     mode_config: ModeConfig
-    db: Any | None = None
+    db: DatabaseProtocol | None = None
 
 
 class ConcreteConfigService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    def get(self, key: str, default: Any = None) -> Any:
-        return getattr(self._settings, key, default)
+    @property
+    def openrouter_api_url(self) -> str:
+        return self._settings.openrouter_api_url
 
-    def get_str(self, key: str, default: str | None = None) -> str:
-        value = getattr(self._settings, key, default)
-        if value is None:
-            msg = f"Configuration string key '{key}' is missing."
-            from src.domain_models.exceptions import ConfigurationError
-            raise ConfigurationError(msg)
-        return str(value)
+    @property
+    def chunk_size(self) -> int:
+        return self._settings.chunk_size
 
-    def get_int(self, key: str, default: int | None = None) -> int:
-        value = getattr(self._settings, key, default)
-        if value is None:
-            msg = f"Configuration int key '{key}' is missing."
-            from src.domain_models.exceptions import ConfigurationError
-            raise ConfigurationError(msg)
-        return int(value)
+    @property
+    def chunk_overlap(self) -> int:
+        return self._settings.chunk_overlap
 
-    def get_float(self, key: str, default: float | None = None) -> float:
-        value = getattr(self._settings, key, default)
-        if value is None:
-            msg = f"Configuration float key '{key}' is missing."
-            from src.domain_models.exceptions import ConfigurationError
-            raise ConfigurationError(msg)
-        return float(value)
+    @property
+    def spacy_model(self) -> str:
+        return self._settings.spacy_model
 
-    def get_bool(self, key: str, default: bool | None = None) -> bool:
-        value = getattr(self._settings, key, default)
-        if value is None:
-            msg = f"Configuration bool key '{key}' is missing."
-            from src.domain_models.exceptions import ConfigurationError
-            raise ConfigurationError(msg)
-        return bool(value)
+    @property
+    def random_seed(self) -> int:
+        return self._settings.random_seed
 
 
 class SecureString:
@@ -225,26 +211,27 @@ class SecureString:
     def __init__(self, value: str) -> None:
         # Store as mutable bytearray to allow explicit zeroization
         self._value = bytearray(value.encode("utf-8"))
+        # Immediately overwrite the input string value variable in memory locally
+        value = ""
 
     def __str__(self) -> str:
-        msg = "SecureString value cannot be represented as string."
-        raise ValueError(msg)
+        return "[SECURE]"
 
     def __repr__(self) -> str:
-        msg = "SecureString value cannot be represented as string."
-        raise ValueError(msg)
+        return "[SECURE]"
 
     def __enter__(self) -> "SecureString":
         return self
 
     def _zeroize(self) -> None:
-        import ctypes
-
-        if hasattr(self, "_value") and self._value:
-            # Secure platform memory zeroization
+        if hasattr(self, "_value") and self._value is not None:
+            # Overwrite the bytearray explicitly to clear sensitive data
             buffer_size = len(self._value)
-            ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
-            self._value = bytearray()
+            for _ in range(3):  # Multiple passes for zeroization
+                for i in range(buffer_size):
+                    self._value[i] = 0
+            # Explicitly remove the reference
+            self._value = None # type: ignore
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._zeroize()
@@ -261,17 +248,17 @@ class CredentialErrorHandler:
         from src.domain_models.exceptions import ConfigurationError
 
         logger = logging.getLogger(__name__)
-        logger.error("API Key could not be resolved from any configured secure credential source.")
+        logger.error("Authentication process failed to load necessary credentials.")
         msg = "Authentication configuration error."
         raise ConfigurationError(msg)
 
-    def handle_invalid_type(self, key_type: type) -> typing.NoReturn:
+    def handle_invalid_type(self) -> typing.NoReturn:
         import logging
 
         from src.domain_models.exceptions import ConfigurationError
 
         logger = logging.getLogger(__name__)
-        logger.error(f"Credential fetcher returned invalid type: {key_type}.")
+        logger.error("Authentication process failed due to unexpected credential format.")
         msg = "Authentication configuration error."
         raise ConfigurationError(msg)
 
@@ -284,56 +271,31 @@ class CredentialErrorHandler:
         logger = logging.getLogger(__name__)
         try:
             validate_api_key_format(key)
-        except ValueError as e:
-            logger.exception(f"Invalid API key intercepted during retrieval: {e}")
+        except ValueError:
+            logger.error("Authentication process failed during key validation.")  # noqa: TRY400
             msg = "Authentication configuration error."
-            raise ConfigurationError(msg) from e
+            raise ConfigurationError(msg) from None
 
 
-class CompositeCredentialProvider:
-    """Abstract secure credential provider resolving credentials sequentially across vaults or environment variables."""
+class EnvCredentialProvider:
+    """Concrete instantiation for credential loading. Strictly handles configurations."""
 
-    def __init__(self, fetchers: list[CredentialFetcherProtocol], error_handler: CredentialErrorHandler | None = None) -> None:
-        self._fetchers = fetchers
-        self._error_handler = error_handler or CredentialErrorHandler()
+    def __init__(self, credential_config: CredentialConfig | None = None) -> None:
+        self._config = credential_config
+        self._error_handler = CredentialErrorHandler()
 
     def get_api_key(self) -> SecureString:
-        key = None
-        for fetcher in self._fetchers:
-            key = fetcher()
-            if key is not None and not isinstance(key, str):
-                self._error_handler.handle_invalid_type(type(key))
-            if key:
-                break
+        key: str | None = None
+        if self._config and self._config.openrouter_api_key:
+            key = self._config.openrouter_api_key.get_secret_value()
+            if not isinstance(key, str):
+                self._error_handler.handle_invalid_type()
 
         if not key:
             self._error_handler.handle_missing_key()
 
         self._error_handler.validate_and_format(key)
         return SecureString(key)
-
-
-class VaultCredentialProvider:
-    """Mock secure vault integration handling credentials strictly."""
-
-    def get_api_key_from_vault(self) -> str | None:
-        return None
-
-
-class EnvCredentialProvider(CompositeCredentialProvider):
-    """Concrete instantiation injecting Vault and Env fallback configuration sources."""
-
-    def __init__(self, credential_config: CredentialConfig | None = None) -> None:
-
-        def _fetch_from_config() -> str | None:
-            if credential_config and credential_config.openrouter_api_key:
-                return credential_config.openrouter_api_key.get_secret_value()
-            return None
-
-        vault = VaultCredentialProvider()
-        super().__init__(
-            fetchers=[vault.get_api_key_from_vault, _fetch_from_config]
-        )
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
