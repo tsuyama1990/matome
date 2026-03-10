@@ -18,10 +18,8 @@ from tests.helpers.mocks import MockAIService
 
 
 def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineConfig]:
-    from unittest.mock import MagicMock
-
-    import tempfile
     from pathlib import Path
+    from unittest.mock import MagicMock
     dummy_cert = Path(base_dir) / "dummy.pem"
     dummy_cert.write_text("cert")
     os.environ["MATOME_BASE_DATA_DIR"] = base_dir

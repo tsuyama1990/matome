@@ -34,6 +34,7 @@ class CredentialConfig(MatomeConfig):
     @classmethod
     def validate_openrouter_api_key(cls, v: SecretStr) -> SecretStr:
         import re
+
         from src.domain_models.exceptions import ConfigurationError
         val = v.get_secret_value()
 
@@ -125,6 +126,7 @@ class Settings(MatomeConfig):
     @classmethod
     def validate_ai_models(cls, value: str) -> str:
         import os
+
         from src.domain_models.exceptions import ConfigurationError
 
         allowed_env = os.getenv(

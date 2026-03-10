@@ -4,11 +4,12 @@ import pytest
 def test_settings_ssl_cert_path(
     tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from pydantic_core._pydantic_core import ValidationError
-    from src.config import Settings
-
     # Missing required fields should raise error
     import os
+
+    from pydantic_core._pydantic_core import ValidationError
+
+    from src.config import Settings
     os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
     with pytest.raises(ValidationError):
         Settings(allowed_base_dir=str(tmp_path))
