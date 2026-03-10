@@ -31,8 +31,22 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
 
     os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
 
+    os.environ["SSL_CERT_PATH"] = "dummy"
+    os.environ["SPACY_MODEL"] = "en_core_web_sm"
+    os.environ["TRUSTED_SPACY_MODELS"] = '["en_core_web_sm", "en_core_web_md"]'
+    os.environ["TEXT_FAST_MODEL"] = "google/gemini-2.5-flash"
+    os.environ["TEXT_REASONING_MODEL"] = "deepseek/deepseek-reasoner"
+    os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
+    os.environ["CHUNK_SIZE"] = "1000"
+
     settings = IntegrationTestSettings(
         allowed_base_dir=str(tmp_path),
+        spacy_model="en_core_web_sm",
+        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+        text_fast_model="google/gemini-2.5-flash",
+        text_reasoning_model="deepseek/deepseek-reasoner",
+        multimodal_model="openai/gpt-4o",
+        chunk_size=1000,
     )
 
     from src.infrastructure.services import (

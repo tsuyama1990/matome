@@ -4,18 +4,35 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: base-url-2.1.0, cov-7.0.0, playwright-0.7.2, anyio-4.12.1, langsmith-0.7.14, Faker-37.12.0
-collected 55 items
+collected 83 items
 
 tests/e2e/test_system.py .                                               [  1%]
-tests/unit/test_ai_service.py .........                                  [ 18%]
-tests/unit/test_app_factory.py ..                                        [ 21%]
+tests/unit/test_ai_client.py ........                                    [ 10%]
+tests/unit/test_ai_service.py .........                                  [ 21%]
+tests/unit/test_app_factory.py ..                                        [ 24%]
 tests/unit/test_config.py ...                                            [ 27%]
-tests/unit/test_domain_models.py ......                                  [ 38%]
-tests/unit/test_interfaces.py .                                          [ 40%]
-tests/unit/test_orchestrator.py ...............                          [ 67%]
-tests/unit/test_repository.py ...                                        [ 72%]
-tests/unit/test_services.py ...............                              [100%]
+tests/unit/test_container.py ..                                          [ 30%]
+tests/unit/test_domain_models.py ......                                  [ 37%]
+tests/unit/test_interfaces.py .                                          [ 38%]
+tests/unit/test_orchestrator.py ...............                          [ 56%]
+tests/unit/test_rate_limit.py ...                                        [ 60%]
+tests/unit/test_repository.py ...                                        [ 63%]
+tests/unit/test_security.py ..........                                   [ 75%]
+tests/unit/test_services.py ...............                              [ 93%]
+tests/unit/test_validation.py .....                                      [100%]
 
+=============================== warnings summary ===============================
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+tests/unit/test_ai_service.py::test_default_ai_service_calls_generate_summary_valid
+  /app/.venv/lib/python3.12/site-packages/torch/jit/_script.py:1480: DeprecationWarning: `torch.jit.script` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.12-final-0 _______________
 
@@ -24,26 +41,26 @@ Name                                 Stmts   Miss  Cover   Missing
 src/__init__.py                          0      0   100%
 src/application/__init__.py              0      0   100%
 src/application/ai.py                   44      0   100%
-src/config.py                          216     58    73%   139-140, 158-162, 165-169, 183-184, 187-188, 192-193, 198-199, 204-205, 208-209, 212-213, 216-217, 220-221, 230-232, 236-238, 253, 257, 261-263, 267, 271, 275, 279, 292, 295, 300-301, 314-316, 342-349, 385
+src/config.py                          194     48    75%   73-74, 171-172, 191-196, 199-204, 216-217, 220-221, 233-234, 237-238, 244-245, 248-249, 253-258, 277-278, 282, 286-288, 292, 296, 300, 304, 324-334, 372
 src/domain_models/__init__.py            7      0   100%
 src/domain_models/analysis.py           21      0   100%
 src/domain_models/constants.py           1      0   100%
 src/domain_models/enums.py              12      0   100%
 src/domain_models/exceptions.py          3      0   100%
-src/domain_models/interfaces.py         37      0   100%
+src/domain_models/interfaces.py         35      0   100%
 src/domain_models/manifest.py           59      0   100%
 src/domain_models/services.py           19      0   100%
 src/domain_models/types.py              11      0   100%
 src/infrastructure/__init__.py           4      0   100%
-src/infrastructure/ai_client.py         49      9    82%   23, 72-73, 99-100, 104-105, 111-112
-src/infrastructure/container.py         13     13     0%   1-40
+src/infrastructure/ai_client.py         65      0   100%
+src/infrastructure/container.py         13      0   100%
 src/infrastructure/orchestrator.py     164      4    98%   239, 281-282, 318
 src/infrastructure/repository.py        43      7    84%   28-34
-src/infrastructure/security.py          34     13    62%   15-17, 23, 27-28, 33-35, 39-40, 45-48
-src/infrastructure/services.py         284     74    74%   101-103, 116, 127-129, 132-133, 156-157, 161-196, 285-287, 300-319, 342, 400-402, 407-421, 455-459, 461-464, 470, 474-475, 492-494
+src/infrastructure/security.py          47      2    96%   69-72
+src/infrastructure/services.py         282     70    75%   102-104, 117, 128-130, 133-134, 157-158, 162-197, 273-275, 288-307, 330, 388-390, 395-409, 443-444, 446, 452, 456-457, 474-476
 src/utils/__init__.py                    0      0   100%
-src/utils/rate_limit.py                 26      9    65%   15, 21, 27-36
-src/utils/validation.py                 11      1    91%   7
+src/utils/rate_limit.py                 26      0   100%
+src/utils/validation.py                 11      0   100%
 ------------------------------------------------------------------
-TOTAL                                 1058    188    82%
-============================= 55 passed in 22.78s ==============================
+TOTAL                                 1061    131    88%
+======================= 83 passed, 7 warnings in 32.42s ========================

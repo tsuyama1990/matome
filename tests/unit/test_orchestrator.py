@@ -20,10 +20,27 @@ from tests.helpers.mocks import MockAIService
 def _create_dependencies(base_dir: str) -> tuple[PipelineDependencies, PipelineConfig]:
     from unittest.mock import MagicMock
 
+    import tempfile
+    from pathlib import Path
+    dummy_cert = Path(base_dir) / "dummy.pem"
+    dummy_cert.write_text("cert")
     os.environ["MATOME_BASE_DATA_DIR"] = base_dir
+    os.environ["SSL_CERT_PATH"] = str(dummy_cert)
+    os.environ["SPACY_MODEL"] = "en_core_web_sm"
+    os.environ["TRUSTED_SPACY_MODELS"] = '["en_core_web_sm", "en_core_web_md"]'
+    os.environ["TEXT_FAST_MODEL"] = "google/gemini-2.5-flash"
+    os.environ["TEXT_REASONING_MODEL"] = "deepseek/deepseek-reasoner"
+    os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
+    os.environ["CHUNK_SIZE"] = "1000"
 
     settings = Settings(
         allowed_base_dir=base_dir,
+        text_fast_model="google/gemini-2.5-flash",
+        text_reasoning_model="deepseek/deepseek-reasoner",
+        multimodal_model="openai/gpt-4o",
+        chunk_size=1000,
+        spacy_model="en_core_web_sm",
+        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
     )
 
     repo = InMemoryDocumentRepository()
