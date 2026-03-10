@@ -53,11 +53,7 @@ The system uses `main.py` as a lightweight gateway to orchestrate FastAPI routin
    uv sync
    ```
 
-3. Configure your environment variables. Copy the example file and add your keys:
-   ```bash
-   cp .env.example .env
-   # Edit .env and set OPENROUTER_API_KEY=your_key_here
-   ```
+3. Configure your environment variables. Create a `.env` file based on your environment configurations.
 
 ## Usage
 
@@ -67,7 +63,7 @@ Start the backend server using the main entry point:
 uv run python main.py
 ```
 
-*Note: The current `main.py` is the baseline entry point. Once the FastAPI cycle is completed, it will expose the REST API at `http://localhost:8000`.*
+Currently, `main.py` serves as the initial entry point, loading foundational Dependency Injection (DI) context variables via FastAPI's app state.
 
 ### Quick Start (Tutorial)
 To experience the UAT and tutorial workflow interactively:
@@ -76,41 +72,25 @@ To experience the UAT and tutorial workflow interactively:
 uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
 ```
 
-## Development Workflow
+## Quality Assurance & Tools
 
-This project adheres to strict type-checking and linting standards to ensure robustness. Ensure you run the following commands before submitting any changes:
+This project adheres to strict type-checking and linting standards to ensure robustness.
 
-- **Run Linters (Ruff):**
-  ```bash
-  uv run ruff check .
-  ```
-- **Format Code (Ruff):**
-  ```bash
-  uv run ruff format .
-  ```
-- **Static Type Checking (Mypy):**
-  ```bash
-  uv run mypy .
-  ```
-- **Run Tests & Coverage (Pytest):**
-  ```bash
-  uv run pytest
-  ```
-
-Development is divided into 6 distinct implementation cycles, beginning with infrastructure setup and progressing through semantic chunking, RAPTOR tree generation, UI integration, Pivot KJ development, and finally enterprise security hardening.
+- **Run Linters (Ruff):** `uv run ruff check .`
+- **Format Code (Ruff):** `uv run ruff format .`
+- **Static Type Checking (Mypy):** `uv run mypy .`
+- **Run Tests & Coverage (Pytest):** `uv run pytest --cov`
 
 ## Project Structure
 
 ```text
 .
-├── main.py                     # Primary entry point (FastAPI Gateway)
+├── main.py                     # Primary entry point (FastAPI Gateway & DI Injection)
 ├── pyproject.toml              # Project configuration and linter settings
 ├── README.md                   # Project documentation
 ├── src/                        # Source code directory
-│   ├── domain/                 # Core Pydantic domain models (IdentityNode, ContentNode)
-│   ├── application/            # Business logic and use case orchestrators
-│   ├── infrastructure/         # External APIs, VectorDB, and OpenRouter integration
-│   └── api/                    # FastAPI routes and dependencies
+│   ├── dependencies.py         # Centralized Dependency Injection container
+│   └── domain_models/          # Core Pydantic domain models, configurations, and Protocols
 └── tests/                      # Unit and integration tests
 ```
 
