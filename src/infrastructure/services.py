@@ -54,7 +54,12 @@ class DefaultTextSplitter(TextSplitterProtocol):
         self.max_file_size = max_file_size
         self.strategy = strategy
         import os
-        self.file_buffer_size = file_buffer_size if file_buffer_size is not None else int(os.getenv("FILE_BUFFER_SIZE", "16384"))
+
+        self.file_buffer_size = (
+            file_buffer_size
+            if file_buffer_size is not None
+            else int(os.getenv("FILE_BUFFER_SIZE", "16384"))
+        )
 
     def split_text(self, text: str) -> list[str]:
         chunks = self.strategy.split_text(text, self.chunk_size, self.chunk_overlap)
@@ -141,7 +146,11 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         import re
 
         self.spacy_model = spacy_model
-        self.max_model_signature_size = max_model_signature_size if max_model_signature_size is not None else int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800"))
+        self.max_model_signature_size = (
+            max_model_signature_size
+            if max_model_signature_size is not None
+            else int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800"))
+        )
         self.trusted_models = set(trusted_models)
         self.trusted_hashes = trusted_hashes or {}
         self.fallback_ner_regex = (
@@ -228,6 +237,8 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
                         raise ValueError(msg)
                     hasher.update(chunk)
 
+            import hmac
+
             file_hash = hasher.hexdigest()
 
             # Perform actual hash verification if a whitelist exists
@@ -235,7 +246,7 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
             if (
                 expected_hash
                 and not expected_hash.startswith("dummy_hash_for_testing")
-                and file_hash != expected_hash
+                and not hmac.compare_digest(file_hash, expected_hash)
             ):
                 msg = f"Cryptographic signature mismatch for model '{model_name}'. Possible tampering detected."
                 raise ValueError(msg)
@@ -263,19 +274,22 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
 
 class ScikitLearnClusteringProvider(MLClusteringProviderProtocol):
     """Concrete ML provider using scikit-learn."""
+
     def get_vectorizer(self) -> Any:
         from sklearn.feature_extraction.text import HashingVectorizer
+
         return HashingVectorizer(n_features=256)
 
     def get_clusterer(self, max_clusters: int, random_seed: int) -> Any:
         from sklearn.cluster import MiniBatchKMeans
-        return MiniBatchKMeans(
-            n_clusters=max_clusters, random_state=random_seed, batch_size=100
-        )
+
+        return MiniBatchKMeans(n_clusters=max_clusters, random_state=random_seed, batch_size=100)
 
 
 class DefaultClusteringService(ClusteringServiceProtocol):
-    def __init__(self, random_seed: int, ml_provider: MLClusteringProviderProtocol | None = None) -> None:
+    def __init__(
+        self, random_seed: int, ml_provider: MLClusteringProviderProtocol | None = None
+    ) -> None:
         self.random_seed = random_seed
         self.ml_provider = ml_provider
 
@@ -286,9 +300,7 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             msg = "max_clusters must be at least 1"
             raise ValueError(msg)
 
-        logger.debug(
-            "Executing incremental clustering for RAPTOR tree generation..."
-        )
+        logger.debug("Executing incremental clustering for RAPTOR tree generation...")
 
         try:
             if not self.ml_provider:
@@ -305,7 +317,6 @@ class DefaultClusteringService(ClusteringServiceProtocol):
             }
 
         try:
-
             chunk_count = 0
             batch = []
 
@@ -348,7 +359,7 @@ class RequestsHTTPClient(HTTPClientProtocol):
         self.ssl_cert_path = ssl_cert_path
         self.credential_provider = credential_provider
 
-    def post(
+    def post(  # noqa: C901, PLR0912
         self,
         url: str,
         json: dict[str, Any],
@@ -362,32 +373,43 @@ class RequestsHTTPClient(HTTPClientProtocol):
         allowed_headers = {"content-type", "authorization", "accept", "user-agent"}
         safe_headers = {k: v for k, v in headers.items() if k.lower() in allowed_headers}
 
+        # Support byte-based headers to prevent decoded token logging
+        final_headers: dict[str, str | bytes] = {}
+        for k, v in safe_headers.items():
+            final_headers[k] = v
+
         try:
             if self.credential_provider:
                 # Fetch dynamically at the edge of the network request
                 with self.credential_provider.get_api_key() as secure_key:
                     if hasattr(secure_key, "_value"):
-                        raw_token = secure_key._value.decode("utf-8")
+                        final_headers["Authorization"] = b"Bearer " + secure_key._value
                     else:
-                        raw_token = str(secure_key)
-                    safe_headers["Authorization"] = f"Bearer {raw_token}"
+                        final_headers["Authorization"] = f"Bearer {secure_key}"
             elif auth_token:
                 if hasattr(auth_token, "_value"):
-                    raw_token = auth_token._value.decode("utf-8")
+                    final_headers["Authorization"] = b"Bearer " + auth_token._value
                 else:
-                    raw_token = str(auth_token)
-                safe_headers["Authorization"] = f"Bearer {raw_token}"
+                    final_headers["Authorization"] = f"Bearer {auth_token}"
+
+            from pathlib import Path
 
             import certifi
 
-            # Require strict CA bundle verification
+            # Require strict CA bundle verification via explicit environment or param
             if self.ssl_cert_path:
                 ca_bundle = self.ssl_cert_path
+            elif isinstance(verify, str) and Path(verify).is_file():
+                ca_bundle = verify
             else:
-                ca_bundle = verify if isinstance(verify, str) else certifi.where()
+                ca_bundle = certifi.where()
 
             response = requests.post(
-                url, json=json, headers=safe_headers, timeout=timeout, verify=ca_bundle
+                url,
+                json=json,
+                headers=final_headers,
+                timeout=timeout,
+                verify=ca_bundle,  # type: ignore[arg-type]
             )
             response.raise_for_status()
             data: dict[str, Any] = response.json()

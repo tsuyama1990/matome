@@ -27,24 +27,18 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     factory = DocumentFactory()
     metadata_service = MetadataService()
 
-    from unittest.mock import patch
 
-    from pydantic import SecretStr
 
-    with patch(
-        "src.config.CredentialConfig.validate_api_key",
-        return_value=SecretStr("sk-or-v1-" + "a" * 30),
-    ):
-        from src.config import CredentialConfig
+    from src.config import CredentialConfig
 
-        settings = IntegrationTestSettings(
-            credentials=CredentialConfig(openrouter_api_key=SecretStr("sk-or-v1-" + "a" * 30)),
-            openrouter_api_url="https://mock.api.url",
-            text_fast_model="google/gemini-2.5-flash",
-            text_reasoning_model="deepseek/deepseek-reasoner",
-            multimodal_model="openai/gpt-4o",
-            allowed_base_dir=str(tmp_path),
-        )
+    settings = IntegrationTestSettings(
+        credentials=CredentialConfig(),
+        openrouter_api_url="https://mock.api.url",
+        text_fast_model="google/gemini-2.5-flash",
+        text_reasoning_model="deepseek/deepseek-reasoner",
+        multimodal_model="openai/gpt-4o",
+        allowed_base_dir=str(tmp_path),
+    )
 
     from src.infrastructure.services import (
         DefaultClusteringService,

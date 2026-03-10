@@ -1,7 +1,7 @@
 import os
 from typing import Any
 
-from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,32 +22,11 @@ class ModeConfig(MatomeConfig):
 class CredentialConfig(MatomeConfig):
     """Dedicated configuration for handling security credentials separately from app settings."""
 
-    openrouter_api_key: SecretStr = Field(..., description="BYOK API key for OpenRouter")
-
-    @field_validator("openrouter_api_key", mode="after")
-    @classmethod
-    def validate_api_key(cls, value: SecretStr) -> SecretStr:
-        from src.domain_models.exceptions import ConfigurationError
-        from src.utils.validation import validate_api_key_format
-
-        if not value:
-            err_msg = "OPENROUTER_API_KEY is required"
-            raise ConfigurationError(err_msg)
-
-        val_str = value.get_secret_value()
-
-        try:
-            validate_api_key_format(val_str)
-        except ValueError as e:
-            raise ConfigurationError(str(e)) from e
-        else:
-            return value
-
 
 class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""
 
-    credentials: CredentialConfig = Field(default_factory=CredentialConfig)  # type: ignore[arg-type]
+    credentials: CredentialConfig = Field(default_factory=CredentialConfig)
 
     openrouter_api_url: str = Field(
         ...,
@@ -231,21 +210,24 @@ class SecureString:
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         self._zeroize()
 
-    def __del__(self) -> None:
-        self._zeroize()
-
 
 class EnvCredentialProvider:
     """Secure credential provider strictly executing JIT string extraction directly returning values to the HTTP Client without storing them inside AI services."""
 
-    def __init__(self, credential_config: CredentialConfig) -> None:
+    def __init__(self, credential_config: CredentialConfig | None = None) -> None:
         self._config = credential_config
 
     def get_api_key(self) -> SecureString:
+        import os
+
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
 
-        key = self._config.openrouter_api_key.get_secret_value()
+        key = os.getenv("OPENROUTER_API_KEY")
+        if not key:
+            msg = "OPENROUTER_API_KEY environment variable is not set."
+            raise ConfigurationError(msg)
+
         try:
             validate_api_key_format(key)
         except ValueError as e:

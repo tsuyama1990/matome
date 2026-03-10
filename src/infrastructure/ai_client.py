@@ -18,7 +18,6 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
     ) -> None:
-        self.credential_provider = credential_provider  # Still accept but ignore here (or wait, I can't edit container.py, so I must accept it)
         self.api_url = api_url
         self.default_model = default_model
         self.ai_timeout = ai_timeout
