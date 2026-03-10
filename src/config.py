@@ -26,9 +26,32 @@ class ModeConfig(MatomeConfig):
 class CredentialConfig(MatomeConfig):
     """Dedicated configuration class for externalizing and securely holding credentials."""
 
-    openrouter_api_key: SecretStr | None = Field(
-        None, description="The OpenRouter API Key. Accessed securely via EnvCredentialProvider."
+    openrouter_api_key: SecretStr = Field(
+        ..., description="The OpenRouter API Key. Accessed securely via EnvCredentialProvider."
     )
+
+    @field_validator("openrouter_api_key", mode="after")
+    @classmethod
+    def validate_openrouter_api_key(cls, v: SecretStr) -> SecretStr:
+        import re
+        from src.domain_models.exceptions import ConfigurationError
+        val = v.get_secret_value()
+
+        if len(val) < 30 or len(val) > 256:
+            raise ConfigurationError("API Key must be between 30 and 256 characters long.")
+
+        if not re.match(r"^sk-or-v1-[a-zA-Z0-9_-]+$", val):
+            raise ConfigurationError("API Key format is invalid. It must start with 'sk-or-v1-' followed by alphanumeric characters.")
+
+        import math
+        from collections import Counter
+        key_body = val.rsplit("sk-or-v1-", maxsplit=1)[-1]
+        counts = Counter(key_body)
+        entropy = -sum(count/len(key_body) * math.log2(count/len(key_body)) for count in counts.values())
+        if entropy < 3.5:
+             raise ConfigurationError("API Key format is invalid. Key entropy is too low, indicating a potentially fake or compromised key.")
+
+        return v
     openrouter_api_url: SecretStr = Field(
         ...,
         description="The base URL for the OpenRouter API endpoint",
@@ -68,12 +91,15 @@ class CredentialConfig(MatomeConfig):
         from src.domain_models.exceptions import ConfigurationError
 
         val = v.get_secret_value()
-        if val == "dummy":
-            return v
 
         path = Path(val)
         if not path.is_file():
             msg = f"ssl_cert_path must point to an existing file: {val}"
+            raise ConfigurationError(msg)
+
+        import os
+        if not os.access(path, os.R_OK):
+            msg = f"ssl_cert_path file must be readable: {val}"
             raise ConfigurationError(msg)
 
         return v
@@ -83,15 +109,15 @@ class Settings(MatomeConfig):
     """Global application configuration settings utilizing pydantic-settings."""
 
     text_fast_model: str = Field(
-        default_factory=lambda: os.getenv("TEXT_FAST_MODEL", "google/gemini-2.5-flash"),
+        ...,
         description="Cheap, fast models with large context windows for chunking massive text, initial summarisation, tagging",
     )
     text_reasoning_model: str = Field(
-        default_factory=lambda: os.getenv("TEXT_REASONING_MODEL", "deepseek/deepseek-reasoner"),
+        ...,
         description="Models with advanced logical reasoning capabilities for insight extraction, To-Be generation, web grounding",
     )
     multimodal_model: str = Field(
-        default_factory=lambda: os.getenv("MULTIMODAL_MODEL", "openai/gpt-4o"),
+        ...,
         description="Models excelling in visual understanding for complex charts in PDFs, architecture diagrams, UI mockups",
     )
 
@@ -99,13 +125,12 @@ class Settings(MatomeConfig):
     @classmethod
     def validate_ai_models(cls, value: str) -> str:
         import os
-
         from src.domain_models.exceptions import ConfigurationError
 
         allowed_env = os.getenv(
             "ALLOWED_AI_MODELS", "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
         )
-        allowed_whitelist = {model.strip() for model in allowed_env.split(",") if model.strip()}
+        allowed_whitelist = {m.strip() for m in allowed_env.split(",") if m.strip()}
 
         if value.strip() not in allowed_whitelist:
             msg = f"Untrusted AI Model configured: {value}. Only verified models ({allowed_env}) are allowed."
@@ -134,8 +159,7 @@ class Settings(MatomeConfig):
         description="Base directory allowed for file ingestion",
     )
     chunk_size: int = Field(
-        default_factory=lambda: int(os.getenv("CHUNK_SIZE", "1000")),
-        description="Default character length for semantic chunking",
+        ..., description="Default character length for semantic chunking", ge=100, le=10000
     )
     chunk_overlap: int = Field(
         default_factory=lambda: int(os.getenv("CHUNK_OVERLAP", "100")),
@@ -166,13 +190,11 @@ class Settings(MatomeConfig):
         description="Maximum backoff wait time in seconds",
     )
     spacy_model: str = Field(
-        default_factory=lambda: str(os.getenv("SPACY_MODEL", "en_core_web_sm")),
+        ...,
         description="SpaCy model used for Entity Extraction",
     )
     trusted_spacy_models: list[str] = Field(
-        default_factory=lambda: os.getenv(
-            "TRUSTED_SPACY_MODELS", "en_core_web_sm,en_core_web_md"
-        ).split(","),
+        ...,
         description="List of trusted SpaCy models that are allowed to load",
     )
     trusted_model_hashes: dict[str, str] = Field(
@@ -198,21 +220,32 @@ class Settings(MatomeConfig):
         description="Rate limit in seconds between entity extraction chunks",
     )
 
-    @field_validator("trusted_spacy_models", mode="after")
+    @field_validator("trusted_spacy_models", mode="before")
     @classmethod
-    def validate_spacy_models(cls, values: list[str]) -> list[str]:
+    def split_and_validate_spacy_models(cls, v: str | list[str]) -> list[str]:
         import os
 
         from src.domain_models.exceptions import ConfigurationError
 
+        values = v.split(",") if isinstance(v, str) else v
+
         allowed_env = os.getenv("ALLOWED_SPACY_MODELS", "en_core_web_sm,en_core_web_md")
         allowed_whitelist = {model.strip() for model in allowed_env.split(",") if model.strip()}
 
+        parsed_values = []
         for model in values:
-            if model.strip() not in allowed_whitelist:
-                msg = f"Untrusted ML Model configured: {model}. Only verified models ({allowed_env}) are allowed."
+            model_clean = model.strip()
+            if not model_clean:
+                continue
+            if model_clean not in allowed_whitelist:
+                msg = f"Untrusted ML Model configured: {model_clean}. Only verified models ({allowed_env}) are allowed."
                 raise ConfigurationError(msg)
-        return values
+            parsed_values.append(model_clean)
+
+        if not parsed_values:
+            msg = "TRUSTED_SPACY_MODELS cannot be empty."
+            raise ConfigurationError(msg)
+        return parsed_values
 
     @field_validator("trusted_model_hashes", mode="before")
     @classmethod

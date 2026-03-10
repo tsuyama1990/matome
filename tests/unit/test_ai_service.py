@@ -1,5 +1,3 @@
-import os
-
 import pytest
 
 from src.application.ai import (
@@ -24,26 +22,52 @@ from src.domain_models import (
 
 def _create_mock_settings(
     base_dir: str,
+    monkeypatch: pytest.MonkeyPatch | None = None,
     api_key: str | None = None,
     text_fast_model: str = "google/gemini-2.5-flash",
     text_reasoning_model: str = "deepseek/deepseek-reasoner",
     multimodal_model: str = "openai/gpt-4o",
 ) -> Settings:
 
-    # Completely isolate tests from os.environ side-effects and avoid hardcoded secrets where unnecessary
-    # Pass dynamically resolved secret or mock parameter directly to Settings constructor
-    # Since pydantic validator catches invalid secrets, we can test validation behaviors here.
+    if monkeypatch:
+        if api_key:
+            monkeypatch.setenv("OPENROUTER_API_KEY", api_key)
+        from pathlib import Path
+        dummy_cert = Path(base_dir) / "dummy.pem"
+        dummy_cert.write_text("cert")
+        monkeypatch.setenv("MATOME_BASE_DATA_DIR", base_dir)
+        monkeypatch.setenv("SSL_CERT_PATH", str(dummy_cert))
+        monkeypatch.setenv("SPACY_MODEL", "en_core_web_sm")
+        monkeypatch.setenv("TRUSTED_SPACY_MODELS", '["en_core_web_sm", "en_core_web_md"]')
+        monkeypatch.setenv("CHUNK_SIZE", "1000")
+        monkeypatch.setenv("TEXT_FAST_MODEL", text_fast_model)
+        monkeypatch.setenv("TEXT_REASONING_MODEL", text_reasoning_model)
+        monkeypatch.setenv("MULTIMODAL_MODEL", multimodal_model)
+    else:
+        import os
 
-    if api_key:
-        os.environ["OPENROUTER_API_KEY"] = api_key
-
-    os.environ["MATOME_BASE_DATA_DIR"] = base_dir
+        if api_key:
+            os.environ["OPENROUTER_API_KEY"] = api_key
+        from pathlib import Path
+        dummy_cert = Path(base_dir) / "dummy.pem"
+        dummy_cert.write_text("cert")
+        os.environ["MATOME_BASE_DATA_DIR"] = base_dir
+        os.environ["SSL_CERT_PATH"] = str(dummy_cert)
+        os.environ["SPACY_MODEL"] = "en_core_web_sm"
+        os.environ["TRUSTED_SPACY_MODELS"] = '["en_core_web_sm", "en_core_web_md"]'
+        os.environ["CHUNK_SIZE"] = "1000"
+        os.environ["TEXT_FAST_MODEL"] = text_fast_model
+        os.environ["TEXT_REASONING_MODEL"] = text_reasoning_model
+        os.environ["MULTIMODAL_MODEL"] = multimodal_model
 
     return Settings(
         text_fast_model=text_fast_model,
         text_reasoning_model=text_reasoning_model,
         multimodal_model=multimodal_model,
         allowed_base_dir=base_dir,
+        spacy_model="en_core_web_sm",
+        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+        chunk_size=1000,
     )
 
 
@@ -195,6 +219,7 @@ def test_default_ai_service_calls_generate_summary_valid(
 
     services = _create_service(
         base_dir=str(tmp_path),
+        monkeypatch=monkeypatch,
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
     )
@@ -217,6 +242,7 @@ def test_default_ai_service_calls_generate_question_valid(
 
     services = _create_service(
         base_dir=str(tmp_path),
+        monkeypatch=monkeypatch,
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
     )
@@ -246,6 +272,7 @@ def test_default_ai_service_calls_generate_mermaid_valid(
 
     services = _create_service(
         base_dir=str(tmp_path),
+        monkeypatch=monkeypatch,
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
     )
@@ -276,6 +303,7 @@ def test_default_ai_service_calls_generate_markdown_valid(
 
     services = _create_service(
         base_dir=str(tmp_path),
+        monkeypatch=monkeypatch,
         api_key="sk-or-v1-validkey12345678901234567890",
         http_client=mock_http,
     )

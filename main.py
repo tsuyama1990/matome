@@ -62,13 +62,17 @@ def get_di_container(settings: Settings) -> DIContainerProtocol:
         TenacityRetryPolicy,
     )
 
-    credential_config = CredentialConfig(
-        openrouter_api_key=None,
-        openrouter_api_url=SecretStr(
-            os.getenv("OPENROUTER_API_URL", "https://openrouter.ai/api/v1/chat/completions")
-        ),
-        ssl_cert_path=SecretStr(os.getenv("SSL_CERT_PATH", "dummy")),
-    )
+    # Strictly pull credentials from environment variables avoiding hardcoded fallbacks
+    # and ensuring proper instantiation. Let Pydantic Settings handle the presence checks.
+    credential_config_args = {}
+    if "OPENROUTER_API_KEY" in os.environ:
+        credential_config_args["openrouter_api_key"] = SecretStr(os.environ["OPENROUTER_API_KEY"])
+    if "OPENROUTER_API_URL" in os.environ:
+        credential_config_args["openrouter_api_url"] = SecretStr(os.environ["OPENROUTER_API_URL"])
+    if "SSL_CERT_PATH" in os.environ:
+        credential_config_args["ssl_cert_path"] = SecretStr(os.environ["SSL_CERT_PATH"])
+
+    credential_config = CredentialConfig(**credential_config_args)
 
     repo = InMemoryDocumentRepository()
     ssl_path = (
