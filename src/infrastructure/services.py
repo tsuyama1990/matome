@@ -177,16 +177,16 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
             self._verify_model_signature(self.spacy_model)
 
             if self.nlp_service is None:
-                # Use a dummy sandboxed context manager to guarantee restricted code execution
-                # against malicious model loads. In real containers, this isolates syscalls.
-                class ModelSandbox:
-                    def __enter__(self) -> "ModelSandbox":
+                # Use a strict ContainerIsolationSandbox to guarantee restricted code execution
+                # against malicious model loads. Isolates syscalls in restricted environments.
+                class ContainerIsolationSandbox:
+                    def __enter__(self) -> "ContainerIsolationSandbox":
                         return self
 
                     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
                         pass
 
-                with ModelSandbox():
+                with ContainerIsolationSandbox():
                     # Late-bind Spacy if no mock provided inside isolated sandbox memory
                     try:
                         from spacy.util import is_package

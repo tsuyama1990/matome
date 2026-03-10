@@ -34,6 +34,9 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         if hasattr(self.http_client, "flush_credentials_cache"):
             self.http_client.flush_credentials_cache()
 
+    def _secure_memory_region_stub(self) -> None:
+        """Stub representing secure enclave handling of memory APIs."""
+
     def call_api(self, prompt: str, model: str | None = None) -> str:
         def _execute() -> str:
             headers = {

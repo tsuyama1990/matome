@@ -98,9 +98,7 @@ def test_default_ai_service_missing_key_init(
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(
-        ConfigurationError
-    ):
+    with pytest.raises(ConfigurationError):
         EnvCredentialProvider().get_api_key()
 
 

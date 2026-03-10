@@ -1,3 +1,4 @@
+import enum
 import logging
 import typing
 from typing import Any
@@ -214,22 +215,32 @@ class PipelineTransactionManager:
         self.deps.transaction_manager.commit()
 
 
+class CircuitBreakerState(enum.Enum):
+    CLOSED = "CLOSED"
+    OPEN = "OPEN"
+    HALF_OPEN = "HALF_OPEN"
+
+
 class CircuitBreaker:
-    """A simplistic circuit breaker to halt cascading failures against external resources."""
+    """A state-managed circuit breaker pattern to properly halt cascading external failures."""
 
     def __init__(self, threshold: int = 3) -> None:
         self.failures = 0
         self.threshold = threshold
-        self.open = False
+        self.state = CircuitBreakerState.CLOSED
+
+    @property
+    def open(self) -> bool:
+        return self.state == CircuitBreakerState.OPEN
 
     def record_failure(self) -> None:
         self.failures += 1
         if self.failures >= self.threshold:
-            self.open = True
+            self.state = CircuitBreakerState.OPEN
 
     def reset(self) -> None:
         self.failures = 0
-        self.open = False
+        self.state = CircuitBreakerState.CLOSED
 
 
 class PipelineOrchestrator:
@@ -239,17 +250,27 @@ class PipelineOrchestrator:
         self,
         dependencies: PipelineDependencies,
         config: PipelineConfig,
+        process_manager: ProcessManager | None = None,
+        validator: PipelineValidator | None = None,
+        error_handler: PipelineErrorHandler | None = None,
+        transaction_handler: PipelineTransactionManager | None = None,
+        ingestion_orchestrator: IngestionOrchestrator | None = None,
+        analysis_orchestrator: AnalysisOrchestrator | None = None,
+        output_orchestrator: OutputOrchestrator | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         self.deps = dependencies
         self.config = config
-        self.process_manager = ProcessManager(timeout=config.pipeline_timeout)
-        self.validator = PipelineValidator(doc_factory=dependencies.doc_factory)
-        self.error_handler = PipelineErrorHandler()
-        self.transaction_handler = PipelineTransactionManager(dependencies)
-        self.ingestion_orchestrator = IngestionOrchestrator(dependencies)
-        self.analysis_orchestrator = AnalysisOrchestrator(dependencies, config)
-        self.output_orchestrator = OutputOrchestrator(dependencies)
-        self.circuit_breaker = CircuitBreaker()
+        self.process_manager = process_manager or ProcessManager(timeout=config.pipeline_timeout)
+        self.validator = validator or PipelineValidator(doc_factory=dependencies.doc_factory)
+        self.error_handler = error_handler or PipelineErrorHandler()
+        self.transaction_handler = transaction_handler or PipelineTransactionManager(dependencies)
+        self.ingestion_orchestrator = ingestion_orchestrator or IngestionOrchestrator(dependencies)
+        self.analysis_orchestrator = analysis_orchestrator or AnalysisOrchestrator(
+            dependencies, config
+        )
+        self.output_orchestrator = output_orchestrator or OutputOrchestrator(dependencies)
+        self.circuit_breaker = circuit_breaker or CircuitBreaker()
 
     def run_pipeline(self, context: PipelineContext) -> None:
         if self.circuit_breaker.open:

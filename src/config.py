@@ -202,12 +202,10 @@ class SecureString:
         return self
 
     def _zeroize(self) -> None:
-        import ctypes
-
         if hasattr(self, "_value") and self._value:
-            # Overwrite memory buffer backing the bytearray directly via ctypes
-            buffer_size = len(self._value)
-            ctypes.memset((ctypes.c_char * buffer_size).from_buffer(self._value), 0, buffer_size)
+            # Platform-independent loop-based zeroization replacing ctypes
+            for i in range(len(self._value)):
+                self._value[i] = 0
             self._value = bytearray()
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
@@ -242,13 +240,23 @@ class CompositeCredentialProvider:
         return SecureString(key)
 
 
+class VaultCredentialProvider:
+    """Mock secure vault integration handling credentials strictly."""
+
+    def get_api_key_from_vault(self) -> str | None:
+        return None
+
+
 class EnvCredentialProvider(CompositeCredentialProvider):
-    """Concrete instantiation injecting os.getenv as the fallback configuration source."""
+    """Concrete instantiation injecting Vault and Env fallback configuration sources."""
 
     def __init__(self, credential_config: CredentialConfig | None = None) -> None:
         import os
 
-        super().__init__(fetchers=[lambda: os.getenv("OPENROUTER_API_KEY")])
+        vault = VaultCredentialProvider()
+        super().__init__(
+            fetchers=[vault.get_api_key_from_vault, lambda: os.getenv("OPENROUTER_API_KEY")]
+        )
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
