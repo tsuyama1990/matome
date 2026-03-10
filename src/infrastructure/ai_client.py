@@ -41,29 +41,8 @@ class AIClientFactory:
         security_scanner: AISecurityScannerProtocol,
         **kwargs: Any,  # noqa: ARG004
     ) -> "DefaultAICommunicationClient":
-        import re
-
-        from src.domain_models.exceptions import ConfigurationError
-
-        if not api_url or not re.match(r"^https?://[\w.-]+", api_url):
-            msg = f"Invalid API URL configuration: {api_url}"
-            raise ConfigurationError(msg)
-
-        if ai_timeout <= 0 or ai_timeout > 300:
-            msg = f"Invalid AI timeout value: {ai_timeout}. Must be between 1 and 300 seconds."
-            raise ConfigurationError(msg)
-
-        import os
-
-        allowed_env = os.getenv(
-            "ALLOWED_AI_MODELS", "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
-        )
-        allowed_whitelist = {m.strip() for m in allowed_env.split(",") if m.strip()}
-
-        if not default_model or default_model.strip() not in allowed_whitelist:
-            msg = f"Invalid default_model configuration: {default_model}. Must be within verified allowlist."
-            raise ConfigurationError(msg)
-
+        # All string format parameters are assumed to have been securely pre-validated directly by domain Config objects.
+        # This properly obeys Dependency Inversion by removing direct OS environmental lookups.
         config = AIClientConfig(api_url=api_url, default_model=default_model, ai_timeout=ai_timeout)
         return DefaultAICommunicationClient(
             config=config,

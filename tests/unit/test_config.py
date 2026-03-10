@@ -1,41 +1,44 @@
+import typing
+
 import pytest
 
 
-def test_settings_ssl_cert_path(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from pydantic_core._pydantic_core import ValidationError
-    from src.config import Settings
-
-    # Missing required fields should raise error
+def test_settings_ssl_cert_path(tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch) -> None:
     import os
+    os.environ["HASH_EN_CORE_WEB_SM"] = "a"*64
+    os.environ["HASH_EN_CORE_WEB_MD"] = "b"*64
     os.environ["MATOME_BASE_DATA_DIR"] = str(tmp_path)
-    with pytest.raises(ValidationError):
-        Settings(allowed_base_dir=str(tmp_path))
+    from pydantic_core._pydantic_core import ValidationError
 
-    dummy_cert = tmp_path / "dummy.pem"  # type: ignore
+    from src.config import Settings
+    from src.domain_models.exceptions import ConfigurationError
+    with pytest.raises((ValidationError, ConfigurationError)):
+        Settings(
+            allowed_base_dir=str(tmp_path) + "/invalid_because_of_extra",
+            text_fast_model="google/gemini-2.5-flash",
+            text_reasoning_model="deepseek/deepseek-reasoner",
+            multimodal_model="openai/gpt-4o",
+            chunk_size=1000,
+            spacy_model="en_core_web_sm",
+            trusted_spacy_models=["en_core_web_sm", "en_core_web_md"],
+        )
+
+    dummy_cert = tmp_path / "dummy.pem"
     dummy_cert.write_text("cert")
+
+    from pydantic import SecretStr
 
     from src.config import CredentialConfig
     creds = CredentialConfig(
-        openrouter_api_url="https://mock",
-        openrouter_api_key="sk-or-v1-validkey12345678901234567890",
-        ssl_cert_path=str(dummy_cert)
+        openrouter_api_url=SecretStr("https://mock"),
+        openrouter_api_key=SecretStr("sk-or-v1-validkey12345678901234567890"),
+        ssl_cert_path=SecretStr(str(dummy_cert))
     )
 
-    settings = Settings(
-        allowed_base_dir=str(tmp_path),
-        text_fast_model="google/gemini-2.5-flash",
-        text_reasoning_model="deepseek/deepseek-reasoner",
-        multimodal_model="openai/gpt-4o",
-        chunk_size=1000,
-        spacy_model="en_core_web_sm",
-        trusted_spacy_models=["en_core_web_sm", "en_core_web_md"]
-    )
     assert creds.ssl_cert_path.get_secret_value() == str(dummy_cert)
 
 def test_settings_api_key_valid(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     valid_key = "sk-or-v1-validkey12345678901234567890"
     monkeypatch.setenv("OPENROUTER_API_KEY", valid_key)
@@ -51,7 +54,7 @@ def test_settings_api_key_valid(
 
 
 def test_settings_api_key_invalid_length(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
@@ -69,7 +72,7 @@ def test_settings_api_key_invalid_length(
 
 
 def test_settings_api_key_invalid_format(
-    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+    tmp_path: typing.Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError

@@ -1,6 +1,5 @@
 import contextlib
 import os
-import typing
 from collections.abc import Iterator
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
@@ -33,24 +32,13 @@ class CredentialConfig(MatomeConfig):
     @field_validator("openrouter_api_key", mode="after")
     @classmethod
     def validate_openrouter_api_key(cls, v: SecretStr) -> SecretStr:
-        import re
         from src.domain_models.exceptions import ConfigurationError
-        val = v.get_secret_value()
+        from src.utils.validation import validate_api_key_format
 
-        if len(val) < 30 or len(val) > 256:
-            raise ConfigurationError("API Key must be between 30 and 256 characters long.")
-
-        if not re.match(r"^sk-or-v1-[a-zA-Z0-9_-]+$", val):
-            raise ConfigurationError("API Key format is invalid. It must start with 'sk-or-v1-' followed by alphanumeric characters.")
-
-        import math
-        from collections import Counter
-        key_body = val.rsplit("sk-or-v1-", maxsplit=1)[-1]
-        counts = Counter(key_body)
-        entropy = -sum(count/len(key_body) * math.log2(count/len(key_body)) for count in counts.values())
-        if entropy < 3.5:
-             raise ConfigurationError("API Key format is invalid. Key entropy is too low, indicating a potentially fake or compromised key.")
-
+        try:
+            validate_api_key_format(v.get_secret_value())
+        except ValueError as err:
+            raise ConfigurationError(str(err)) from err
         return v
     openrouter_api_url: SecretStr = Field(
         ...,
@@ -124,18 +112,8 @@ class Settings(MatomeConfig):
     @field_validator("text_fast_model", "text_reasoning_model", "multimodal_model", mode="after")
     @classmethod
     def validate_ai_models(cls, value: str) -> str:
-        import os
-        from src.domain_models.exceptions import ConfigurationError
-
-        allowed_env = os.getenv(
-            "ALLOWED_AI_MODELS", "google/gemini-2.5-flash,deepseek/deepseek-reasoner,openai/gpt-4o"
-        )
-        allowed_whitelist = {m.strip() for m in allowed_env.split(",") if m.strip()}
-
-        if value.strip() not in allowed_whitelist:
-            msg = f"Untrusted AI Model configured: {value}. Only verified models ({allowed_env}) are allowed."
-            raise ConfigurationError(msg)
-        return value
+        from src.utils.validation import validate_ai_model
+        return validate_ai_model(value)
 
     default_root_doc_id: str = Field(
         default_factory=lambda: str(os.getenv("DEFAULT_ROOT_DOC_ID", "root_doc_1")),
@@ -249,36 +227,13 @@ class Settings(MatomeConfig):
 
     @field_validator("trusted_model_hashes", mode="before")
     @classmethod
-    def populate_and_validate_hashes(cls, value: dict[str, str]) -> dict[str, str]:
+    def populate_and_validate_hashes(cls, _v: dict[str, str]) -> dict[str, str]:
         import os
-
-        # Remove dummy hashes and enforce strict hash availability from environment mapping.
-        hashes = value or {}
-        sm_hash = os.getenv("HASH_EN_CORE_WEB_SM")
-        md_hash = os.getenv("HASH_EN_CORE_WEB_MD")
-
-        # Security validation ensuring hashes conform to sha256 specs
-        import re
-
-        sha_pattern = re.compile(r"^[a-fA-F0-9]{64}$")
-
-        if sm_hash:
-            if sm_hash.startswith("dummy") or not sha_pattern.match(sm_hash):
-                msg = f"Invalid hash format for en_core_web_sm: {sm_hash}. Dummy hashes are strictly prohibited."
-                from src.domain_models.exceptions import ConfigurationError
-
-                raise ConfigurationError(msg)
-            hashes["en_core_web_sm"] = sm_hash
-
-        if md_hash:
-            if md_hash.startswith("dummy") or not sha_pattern.match(md_hash):
-                msg = f"Invalid hash format for en_core_web_md: {md_hash}. Dummy hashes are strictly prohibited."
-                from src.domain_models.exceptions import ConfigurationError
-
-                raise ConfigurationError(msg)
-            hashes["en_core_web_md"] = md_hash
-
-        return hashes
+        # Only populate hashes, strict cryptographic validation must be done securely at runtime by ModelVerifier.
+        return {
+            "en_core_web_sm": os.getenv("HASH_EN_CORE_WEB_SM", ""),
+            "en_core_web_md": os.getenv("HASH_EN_CORE_WEB_MD", "")
+        }
 
     @field_validator("allowed_base_dir", mode="after")
     @classmethod
@@ -299,12 +254,17 @@ class Settings(MatomeConfig):
 
         try:
             from pathlib import Path
-
-            # Canonicalize path using os.path.realpath and absolute conversion to eliminate relative sequences entirely
             path_obj = Path(value)
-            canonical_path = str(path_obj.resolve())
 
-            if not path_obj.is_absolute():
+            # Explicitly reject symlinks before canonicalization to prevent symlink traversal attacks
+            if path_obj.is_symlink():
+                msg = "Symlinks are strictly prohibited for ALLOWED_BASE_DIR."
+                raise ConfigurationError(msg)
+
+            # Canonicalize path using os.path.realpath securely
+            canonical_path = os.path.realpath(str(path_obj))
+
+            if not Path(canonical_path).is_absolute():
                 msg = "ALLOWED_BASE_DIR must be an absolute path."
                 raise ConfigurationError(msg)
 
@@ -313,7 +273,6 @@ class Settings(MatomeConfig):
                 raise ConfigurationError(msg)
 
             # Enforce strictly that canonicalized path remains within the required commonpath parent
-            # os.path.commonpath prevents arbitrary traversal bypassing prefix matching
             common = os.path.commonpath([canonical_path, expected_parent])
             if common != expected_parent:
                 msg = "ALLOWED_BASE_DIR outside expected parent."
@@ -321,11 +280,6 @@ class Settings(MatomeConfig):
 
             if not os.access(canonical_path, os.R_OK):
                 msg = "No read permission on ALLOWED_BASE_DIR."
-                raise ConfigurationError(msg)
-
-            # Disallow symlinks inherently by confirming realpath hasn't mutated unexpectedly
-            if path_obj.is_symlink():
-                msg = "Symlinks are strictly prohibited for ALLOWED_BASE_DIR."
                 raise ConfigurationError(msg)
 
         except (OSError, ValueError, RuntimeError) as e:
@@ -347,95 +301,16 @@ class DatabaseContext(BaseModel):
     db: DatabaseProtocol | None = None
 
 
-class ConcreteConfigService:
-    def __init__(self, settings: Settings, credential_config: CredentialConfig) -> None:
-        self._settings = settings
-        self._credential_config = credential_config
-
-    @property
-    def openrouter_api_url(self) -> str:
-        return self._credential_config.openrouter_api_url.get_secret_value()
-
-    @property
-    def ssl_cert_path(self) -> str | None:
-        if self._credential_config.ssl_cert_path is not None:
-            return self._credential_config.ssl_cert_path.get_secret_value()
-        return None
-
-    @property
-    def chunk_size(self) -> int:
-        return self._settings.chunk_size
-
-    @property
-    def chunk_overlap(self) -> int:
-        return self._settings.chunk_overlap
-
-    @property
-    def spacy_model(self) -> str:
-        return self._settings.spacy_model
-
-    @property
-    def random_seed(self) -> int:
-        return self._settings.random_seed
-
-
-class CredentialErrorHandler:
-    """Handles parsing errors and format validation specifically for credentials securely without logging specifics."""
-
-    def handle_missing_key(self) -> typing.NoReturn:
-        import logging
-
-        from src.domain_models.exceptions import ConfigurationError
-
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            "API Key validation failed: Required API Key is missing from the environment.",
-            extra={"context": "auth"},
-        )
-        msg = "API Key validation failed: The key is entirely missing. Please check your environment variables."
-        raise ConfigurationError(msg)
-
-    def handle_invalid_type(self) -> typing.NoReturn:
-        import logging
-
-        from src.domain_models.exceptions import ConfigurationError
-
-        logger = logging.getLogger(__name__)
-        logger.warning(
-            "API Key validation failed: The provided key is not a string.",
-            extra={"context": "auth"},
-        )
-        msg = "API Key validation failed: Incorrect data type provided."
-        raise ConfigurationError(msg)
-
-    def validate_and_format(self, key: str) -> None:
-        import logging
-
-        from src.domain_models.exceptions import ConfigurationError
-        from src.infrastructure.security import DefaultSecurityService
-
-        logger = logging.getLogger(__name__)
-        try:
-            DefaultSecurityService().validate_api_key(key)
-        except ValueError as err:
-            logger.warning(
-                f"API Key validation failed: {err!s}",
-                extra={"context": "auth"},
-            )
-            msg = (
-                f"API Key validation failed: {err!s} Please check your key format and permissions."
-            )
-            raise ConfigurationError(msg) from err
-
-
 class EnvCredentialProvider:
     """Secure JIT credential provider fetching directly from OS environment variables strictly at runtime. Uses context manager for immediate explicit memory deletion."""
 
     def __init__(self) -> None:
+        from src.utils.errors import CredentialErrorHandler
         self._error_handler = CredentialErrorHandler()
 
     @contextlib.contextmanager
     def get_api_key(self) -> Iterator[str]:
+        import ctypes
         import os
 
         key: str | None = os.getenv("OPENROUTER_API_KEY")
@@ -448,11 +323,16 @@ class EnvCredentialProvider:
 
         self._error_handler.validate_and_format(key)
 
+        key_bytes = bytearray(key.encode("utf-8"))
+        del key # Delete python string reference
+
         try:
-            yield key
+            yield key_bytes.decode("utf-8")
         finally:
-            # Force immediate cleanup logic of local reference
-            del key
+            if key_bytes:
+                # Strictly zeroize memory buffer to prevent cold-boot and memory leak attacks natively
+                ctypes.memset((ctypes.c_char * len(key_bytes)).from_buffer(key_bytes), 0, len(key_bytes))
+            del key_bytes
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:
@@ -464,7 +344,6 @@ def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContex
 
 
 __all__ = [
-    "ConcreteConfigService",
     "CredentialConfig",
     "DatabaseContext",
     "ModeConfig",

@@ -418,51 +418,40 @@ class RequestsHTTPClient(HTTPClientProtocol):
         self.ssl_cert_path = ssl_cert_path
         self.credential_provider = credential_provider
 
-    def post(
-        self,
-        url: str,
-        json: dict[str, Any],
-        headers: dict[str, str],
-        timeout: int,
-        verify: str | None = None,
-        auth_token: Any | None = None,
-    ) -> dict[str, Any]:
-
-        # Header whitelist validation
+    def _prepare_headers(self, headers: dict[str, str], auth_token: Any | None = None) -> dict[str, str | bytes]:
         allowed_headers = {"content-type", "authorization", "accept", "user-agent"}
-        safe_headers = {k: v for k, v in headers.items() if k.lower() in allowed_headers}
+        final_headers: dict[str, str | bytes] = {k: v for k, v in headers.items() if k.lower() in allowed_headers}
 
-        # Support byte-based headers to prevent decoded token logging
-        final_headers: dict[str, str | bytes] = {}
-        for k, v in safe_headers.items():
-            final_headers[k] = v
+        if self.credential_provider:
+            # Note: _prepare_headers is not used directly for credential provider due to the context manager requirement
+            pass
+        elif auth_token:
+            final_headers["Authorization"] = f"Bearer {auth_token}"
 
+        return final_headers
+
+    def _resolve_ca_bundle(self, verify: str | None = None) -> str:
+        import os
+        from pathlib import Path
+        if self.ssl_cert_path:
+            ca_bundle = os.path.realpath(self.ssl_cert_path)
+        elif isinstance(verify, str):
+            ca_bundle = os.path.realpath(verify)
+        else:
+            msg = "Strict SSL certificate pinning is required. No valid CA bundle path was provided."
+            raise ValueError(msg)
+
+        if not Path(ca_bundle).is_file():
+            msg = f"Strict SSL certificate pinning is required. CA bundle path is invalid: {ca_bundle}"
+            raise ValueError(msg)
+        return ca_bundle
+
+    def _execute_request(self, url: str, json: dict[str, Any], headers: dict[str, str | bytes], timeout: int, ca_bundle: str) -> dict[str, Any]:
         try:
-            if self.credential_provider:
-                # Fetch dynamically at the edge of the network request
-                with self.credential_provider.get_api_key() as secure_key:
-                    final_headers["Authorization"] = f"Bearer {secure_key}"
-            elif auth_token:
-                final_headers["Authorization"] = f"Bearer {auth_token}"
-
-            from pathlib import Path
-
-            # Require strict CA bundle verification via explicit environment or param
-            if self.ssl_cert_path:
-                ca_bundle = self.ssl_cert_path
-            elif isinstance(verify, str) and Path(verify).is_file():
-                ca_bundle = verify
-            else:
-                msg = "Strict SSL certificate pinning is required. No valid CA bundle path was provided."
-                raise ValueError(msg)
-
-            response = requests.post(
-                url,
-                json=json,
-                headers=final_headers,
-                timeout=timeout,
-                verify=ca_bundle,
-            )
+            response = requests.post(url, json=json, headers=headers, timeout=timeout, verify=ca_bundle)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug("Dispatching secure outbound HTTP API request.")
             response.raise_for_status()
             data: dict[str, Any] = response.json()
         except requests.Timeout as e:
@@ -476,6 +465,25 @@ class RequestsHTTPClient(HTTPClientProtocol):
             raise AIServiceError(msg) from e
         else:
             return data
+
+    def post(
+        self,
+        url: str,
+        json: dict[str, Any],
+        headers: dict[str, str],
+        timeout: int,
+        verify: str | None = None,
+        auth_token: Any | None = None,
+    ) -> dict[str, Any]:
+        final_headers = self._prepare_headers(headers, auth_token)
+        if self.credential_provider:
+            with self.credential_provider.get_api_key() as secure_key:
+                final_headers["Authorization"] = f"Bearer {secure_key}"
+                ca_bundle = self._resolve_ca_bundle(verify)
+                return self._execute_request(url, json, final_headers, timeout, ca_bundle)
+        else:
+            ca_bundle = self._resolve_ca_bundle(verify)
+            return self._execute_request(url, json, final_headers, timeout, ca_bundle)
 
 
 class TenacityRetryPolicy(RetryPolicyProtocol):
