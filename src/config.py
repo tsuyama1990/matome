@@ -186,8 +186,11 @@ class SecureString:
     """A secure wrapper utilizing bytearray for explicit memory zeroization of sensitive credentials."""
 
     def __init__(self, value: str) -> None:
+        import weakref
+
         # Store as mutable bytearray to allow explicit zeroization
         self._value = bytearray(value.encode("utf-8"))
+        self._finalizer = weakref.finalize(self, self._zeroize)
 
     def __str__(self) -> str:
         return "********"
@@ -211,21 +214,24 @@ class SecureString:
         self._zeroize()
 
 
-class EnvCredentialProvider:
-    """Secure credential provider strictly executing JIT string extraction directly returning values to the HTTP Client without storing them inside AI services."""
+class CompositeCredentialProvider:
+    """Abstract secure credential provider resolving credentials sequentially across vaults or environment variables."""
 
-    def __init__(self, credential_config: CredentialConfig | None = None) -> None:
-        self._config = credential_config
+    def __init__(self, fetchers: list[Any]) -> None:
+        self._fetchers = fetchers
 
     def get_api_key(self) -> SecureString:
-        import os
-
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
 
-        key = os.getenv("OPENROUTER_API_KEY")
+        key = None
+        for fetcher in self._fetchers:
+            key = fetcher()
+            if key:
+                break
+
         if not key:
-            msg = "OPENROUTER_API_KEY environment variable is not set."
+            msg = "API Key could not be resolved from any configured credential source (e.g., Vault, Env)."
             raise ConfigurationError(msg)
 
         try:
@@ -234,6 +240,15 @@ class EnvCredentialProvider:
             msg = f"Secure Credential Provider intercepted invalid API key during retrieval: {e}"
             raise ConfigurationError(msg) from e
         return SecureString(key)
+
+
+class EnvCredentialProvider(CompositeCredentialProvider):
+    """Concrete instantiation injecting os.getenv as the fallback configuration source."""
+
+    def __init__(self, credential_config: CredentialConfig | None = None) -> None:
+        import os
+
+        super().__init__(fetchers=[lambda: os.getenv("OPENROUTER_API_KEY")])
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:

@@ -12,7 +12,6 @@ def test_settings_default(tmp_path: pytest.TempPathFactory) -> None:
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
 
     try:
-
         from src.config import CredentialConfig
 
         settings = Settings(
@@ -40,7 +39,6 @@ def test_app_context_creation(tmp_path: pytest.TempPathFactory) -> None:
     os.environ["MULTIMODAL_MODEL"] = "openai/gpt-4o"
 
     try:
-
         from src.config import CredentialConfig
 
         settings = Settings(

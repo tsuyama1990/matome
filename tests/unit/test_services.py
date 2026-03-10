@@ -184,7 +184,12 @@ def test_requests_http_client_post(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(requests, "post", mock_post)
 
     client = RequestsHTTPClient()
-    result = client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10)
+
+    # Needs valid ca_bundle mock or file, bypass by monkeypatching Path.is_file
+    from pathlib import Path
+    monkeypatch.setattr(Path, "is_file", lambda self: True)
+
+    result = client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10, verify="mock_cert.pem")
     assert result == {"test": "data"}
 
 
@@ -202,8 +207,12 @@ def test_requests_http_client_post_timeout(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(requests, "post", mock_post)
 
     client = RequestsHTTPClient()
+
+    from pathlib import Path
+    monkeypatch.setattr(Path, "is_file", lambda self: True)
+
     with pytest.raises(AIServiceError, match="timed out"):
-        client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10)
+        client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10, verify="mock_cert.pem")
 
 
 def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -220,8 +229,12 @@ def test_requests_http_client_post_http_error(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(requests, "post", mock_post)
 
     client = RequestsHTTPClient()
+
+    from pathlib import Path
+    monkeypatch.setattr(Path, "is_file", lambda self: True)
+
     with pytest.raises(AIServiceError, match="HTTP error"):
-        client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10)
+        client.post("http://test.com", {"key": "value"}, {"Authorization": "token"}, 10, verify="mock_cert.pem")
 
 
 def test_tenacity_retry_policy() -> None:

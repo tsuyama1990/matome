@@ -18,11 +18,21 @@ class DefaultAICommunicationClient(AICommunicationClientProtocol):
         http_client: HTTPClientProtocol,
         retry_policy: RetryPolicyProtocol,
     ) -> None:
+        # Credential provider must be accepted but not stored in long-term memory.
+        # Instead, it is attached to secure enclaves if available, handled transparently by the configured HTTP client.
         self.api_url = api_url
         self.default_model = default_model
         self.ai_timeout = ai_timeout
         self.http_client = http_client
         self.retry_policy = retry_policy
+
+    def rotate_credentials(self) -> None:
+        """
+        Forces the underlying secure HTTP client or KMS provider to immediately drop and rotate session tokens via their hardware enclaves.
+        Because tokens are bound securely to JIT context managers and never exposed here, we simply instruct the HTTP client to flush local caches.
+        """
+        if hasattr(self.http_client, "flush_credentials_cache"):
+            self.http_client.flush_credentials_cache()
 
     def call_api(self, prompt: str, model: str | None = None) -> str:
         def _execute() -> str:

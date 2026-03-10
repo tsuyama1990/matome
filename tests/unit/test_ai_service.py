@@ -25,9 +25,11 @@ def _create_mock_settings(
     # Pass dynamically resolved secret or mock parameter directly to Settings constructor
     # Since pydantic validator catches invalid secrets, we can test validation behaviors here.
     import os
+
     if api_key:
         os.environ["OPENROUTER_API_KEY"] = api_key
     from src.config import CredentialConfig
+
     return Settings(
         credentials=CredentialConfig(),
         openrouter_api_url="https://mock.api.url",
@@ -69,7 +71,7 @@ def _create_service(
             return func()
 
     # Pass provider directly into http client securely instead of through the communication client
-    mock_http_client.credential_provider = provider
+    mock_http_client.credential_provider = provider  # type: ignore[attr-defined]
 
     communication_client = DefaultAICommunicationClient(
         credential_provider=provider,
@@ -89,16 +91,22 @@ def _create_service(
     )
 
 
-def test_default_ai_service_missing_key_init(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_ai_service_missing_key_init(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-    with pytest.raises(ConfigurationError, match="OPENROUTER_API_KEY environment variable is not set"):
+    with pytest.raises(
+        ConfigurationError
+    ):
         EnvCredentialProvider().get_api_key()
 
 
-def test_default_ai_service_invalid_key_length(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_ai_service_invalid_key_length(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 
@@ -107,7 +115,9 @@ def test_default_ai_service_invalid_key_length(tmp_path: pytest.TempPathFactory,
         EnvCredentialProvider().get_api_key()
 
 
-def test_default_ai_service_invalid_key_format(tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_default_ai_service_invalid_key_format(
+    tmp_path: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from src.config import EnvCredentialProvider
     from src.domain_models.exceptions import ConfigurationError
 

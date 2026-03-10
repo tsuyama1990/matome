@@ -147,7 +147,7 @@ class HTTPClientProtocol(Protocol):
         json: dict[str, Any],
         headers: dict[str, str],
         timeout: int,
-        verify: bool | str = True,
+        verify: str | None = None,
         auth_token: Any | None = None,
     ) -> dict[str, Any]: ...
 

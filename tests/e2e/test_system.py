@@ -27,8 +27,6 @@ def test_pipeline_orchestrator_integration(tmp_path: pytest.TempPathFactory) -> 
     factory = DocumentFactory()
     metadata_service = MetadataService()
 
-
-
     from src.config import CredentialConfig
 
     settings = IntegrationTestSettings(
