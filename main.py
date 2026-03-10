@@ -74,16 +74,19 @@ def create_dependencies(settings: Settings) -> tuple[PipelineDependencies, Pipel
         DefaultClusteringService,
         DefaultEntityExtractor,
         DefaultTextSplitter,
+        LangChainSplitterStrategy,
     )
 
     text_splitter = DefaultTextSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
         max_file_size=settings.max_file_size,
+        strategy=LangChainSplitterStrategy(),
     )
     entity_extractor = DefaultEntityExtractor(
         spacy_model=settings.spacy_model,
-        trusted_models=set(settings.trusted_spacy_models),
+        trusted_models=settings.trusted_spacy_models,
+        trusted_hashes=settings.trusted_model_hashes,
         fallback_ner_regex=settings.fallback_ner_regex,
     )
     clustering_service = DefaultClusteringService(settings.random_seed)

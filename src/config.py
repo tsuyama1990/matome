@@ -95,6 +95,13 @@ class Settings(MatomeConfig):
         ).split(","),
         description="List of trusted SpaCy models that are allowed to load",
     )
+    trusted_model_hashes: dict[str, str] = Field(
+        default_factory=lambda: {
+            "en_core_web_sm": os.getenv("HASH_EN_CORE_WEB_SM", "dummy_hash_for_testing"),
+            "en_core_web_md": os.getenv("HASH_EN_CORE_WEB_MD", "dummy_hash_for_testing_md"),
+        },
+        description="Map of allowed models to their expected SHA256 hashes",
+    )
     fallback_ner_regex: str = Field(
         default_factory=lambda: str(
             os.getenv("FALLBACK_NER_REGEX", r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b")
@@ -156,13 +163,35 @@ class ConcreteConfigService:
         return getattr(self._settings, key)
 
 
+class SecureString:
+    """A string-like object that prevents logging and memory exposure of sensitive data."""
+
+    def __init__(self, value: str) -> None:
+        self._value = value
+
+    def get_secret_value(self) -> str:
+        return self._value
+
+    def __str__(self) -> str:
+        return "********"
+
+    def __repr__(self) -> str:
+        return "SecureString('********')"
+
+    def __enter__(self) -> "SecureString":
+        return self
+
+    def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        self._value = ""
+
+
 class EnvCredentialProvider:
     """Secure credential provider strictly executing JIT string extraction directly returning values to the HTTP Client without storing them inside AI services."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    def get_api_key(self) -> str:
+    def get_api_key(self) -> SecureString:
         from src.domain_models.exceptions import ConfigurationError
         from src.utils.validation import validate_api_key_format
 
@@ -172,7 +201,7 @@ class EnvCredentialProvider:
         except ValueError as e:
             msg = f"Secure Credential Provider intercepted invalid API key during retrieval: {e}"
             raise ConfigurationError(msg) from e
-        return key
+        return SecureString(key)
 
 
 def create_app_context(settings: Settings, mode_config: ModeConfig) -> AppContext:

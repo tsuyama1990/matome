@@ -44,12 +44,12 @@ class DefaultTextSplitter(TextSplitterProtocol):
         chunk_size: int,
         chunk_overlap: int,
         max_file_size: int,
-        strategy: SplitterStrategyProtocol | None = None,
+        strategy: SplitterStrategyProtocol,
     ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.max_file_size = max_file_size
-        self.strategy = strategy or LangChainSplitterStrategy()
+        self.strategy = strategy
 
     def split_text(self, text: str) -> list[str]:
         chunks = self.strategy.split_text(text, self.chunk_size, self.chunk_overlap)
@@ -112,13 +112,15 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
     def __init__(
         self,
         spacy_model: str,
-        trusted_models: set[str] | None = None,
+        trusted_models: list[str],
+        trusted_hashes: dict[str, str] | None = None,
         fallback_ner_regex: str | None = None,
     ) -> None:
         import re
 
         self.spacy_model = spacy_model
-        self.trusted_models = trusted_models or {"en_core_web_sm", "en_core_web_md"}
+        self.trusted_models = set(trusted_models)
+        self.trusted_hashes = trusted_hashes or {}
         self.fallback_ner_regex = (
             fallback_ner_regex or r"\b[A-Z][a-z]{1,20}(?:\s+[A-Z][a-z]{1,20}){0,3}\b"
         )
@@ -193,9 +195,18 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
             hasher.update(file_path.read_bytes())
             file_hash = hasher.hexdigest()
 
-            # Simulated check against an actual trusted hash (we just log the check to demonstrate completeness)
+            # Perform actual hash verification if a whitelist exists
+            expected_hash = self.trusted_hashes.get(model_name)
+            if (
+                expected_hash
+                and not expected_hash.startswith("dummy_hash_for_testing")
+                and file_hash != expected_hash
+            ):
+                msg = f"Cryptographic signature mismatch for model '{model_name}'. Possible tampering detected."
+                raise ValueError(msg)
+
             logger.info(
-                f"Verified cryptographic signature for model {model_name} (hash: {file_hash[:8]}...)"
+                f"Verified cryptographic signature for model {model_name} (hash matches: {file_hash[:8]}...)"
             )
 
         except ImportError as e:

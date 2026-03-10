@@ -29,6 +29,7 @@ def __():
         DefaultClusteringService,
         DefaultEntityExtractor,
         DefaultTextSplitter,
+        LangChainSplitterStrategy,
         RequestsHTTPClient,
         TenacityRetryPolicy,
     )
@@ -53,6 +54,7 @@ def __():
         RequestsHTTPClient,
         TenacityRetryPolicy,
         DefaultTextSplitter,
+        LangChainSplitterStrategy,
         DefaultEntityExtractor,
         DefaultClusteringService,
         MetadataService,
@@ -76,6 +78,7 @@ def __(
     RequestsHTTPClient,
     TenacityRetryPolicy,
     DefaultTextSplitter,
+    LangChainSplitterStrategy,
     DefaultEntityExtractor,
     DefaultClusteringService,
     MetadataService,
@@ -137,8 +140,11 @@ def __(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,
         max_file_size=settings.max_file_size,
+        strategy=LangChainSplitterStrategy(),
     )
-    entity_extractor = DefaultEntityExtractor(settings.spacy_model)
+    entity_extractor = DefaultEntityExtractor(
+        settings.spacy_model, settings.trusted_spacy_models, settings.trusted_model_hashes
+    )
     clustering_service = DefaultClusteringService(settings.random_seed)
 
     deps = PipelineDependencies(

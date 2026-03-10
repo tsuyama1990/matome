@@ -20,7 +20,7 @@ class SecurityService(Protocol):
 class CredentialProviderProtocol(Protocol):
     """Protocol for securely providing sensitive credentials strictly at runtime without hoarding."""
 
-    def get_api_key(self) -> str: ...
+    def get_api_key(self) -> Any: ...
 
 
 class TransactionManager(Protocol):

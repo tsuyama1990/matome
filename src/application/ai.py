@@ -39,34 +39,62 @@ class DefaultAIService(AIServiceProtocol):
             return ""
         # Remove null bytes and limit length to prevent massive prompt abuse
         sanitized = text.replace("\x00", "").strip()[:50000]
-        # Basic prompt injection mitigation: neutralizing system instruction keywords
-        sanitized = re.sub(
-            r"(?i)\b(ignore previous instructions|system prompt|you are a)\b",
-            "[REDACTED]",
-            sanitized,
-        )
+
+        # 1. Whitelist approach: Allow only common text characters, rejecting unexpected control chars.
+        if not re.match(r"^[\w\s.,;:!?\-_@#$%^&*()[\]{}<>'\"]*$", sanitized):
+            sanitized = re.sub(r"[^\w\s.,;:!?\-_@#$%^&*()[\]{}<>'\"]", "", sanitized)
+
+        # 2. Comprehensive pattern detection
+        injection_pattern = r"(?i)\b(ignore previous instructions|system prompt|you are a|disregard previous|forget what i said|ignore all|bypassing|developer mode|dan mode)\b"
+        sanitized = re.sub(injection_pattern, "[REDACTED]", sanitized)
+
+        # 3. Context-aware semantic detection (heuristic: ratio of imperative action verbs)
+        words = sanitized.split()
+        if len(words) > 5:
+            imperative_keywords = {
+                "ignore",
+                "disregard",
+                "forget",
+                "bypass",
+                "system",
+                "prompt",
+                "act",
+                "behave",
+                "output",
+                "print",
+                "reveal",
+            }
+            imperative_count = sum(
+                1 for w in words if w.lower().strip(".,;:!?") in imperative_keywords
+            )
+            if imperative_count / len(words) > 0.3:
+                msg = "Input rejected due to suspected prompt injection semantics."
+                raise ValueError(msg)
+
         # Escape markdown backticks to prevent breaking prompt formatting
         return sanitized.replace("```", "'''")
 
     def _call_api(self, prompt: str, model: str | None = None) -> str:
         def _execute() -> str:
-            api_key = self.credential_provider.get_api_key()
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            }
-            data = {
-                "model": model or self.text_fast_model,
-                "messages": [{"role": "user", "content": prompt}],
-            }
+            with self.credential_provider.get_api_key() as secure_key:
+                # Extract raw string only immediately before usage to minimize exposure window
+                api_key_str = getattr(secure_key, "get_secret_value", lambda: str(secure_key))()
+                headers = {
+                    "Authorization": f"Bearer {api_key_str}",
+                    "Content-Type": "application/json",
+                }
+                data = {
+                    "model": model or self.text_fast_model,
+                    "messages": [{"role": "user", "content": prompt}],
+                }
 
-            result = self.http_client.post(
-                self.api_url,
-                json=data,
-                headers=headers,
-                timeout=self.ai_timeout,
-                verify=True,  # Explicitly force SSL/TLS certificate validation
-            )
+                result = self.http_client.post(
+                    self.api_url,
+                    json=data,
+                    headers=headers,
+                    timeout=self.ai_timeout,
+                    verify=True,  # Explicitly force SSL/TLS certificate validation
+                )
 
             # Response validation
             if not isinstance(result, dict) or "choices" not in result:

@@ -10,20 +10,32 @@ from src.infrastructure.services import (
 
 
 def test_default_text_splitter_split_text() -> None:
-    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2, max_file_size=1000)
+    from src.infrastructure.services import LangChainSplitterStrategy
+
+    splitter = DefaultTextSplitter(
+        chunk_size=10, chunk_overlap=2, max_file_size=1000, strategy=LangChainSplitterStrategy()
+    )
     text = "01234567890123456789"
     chunks = splitter.split_text(text)
     assert len(chunks) > 0
 
 
 def test_default_text_splitter_empty() -> None:
-    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2, max_file_size=1000)
+    from src.infrastructure.services import LangChainSplitterStrategy
+
+    splitter = DefaultTextSplitter(
+        chunk_size=10, chunk_overlap=2, max_file_size=1000, strategy=LangChainSplitterStrategy()
+    )
     with pytest.raises(ValueError, match="Semantic chunking returned no content"):
         splitter.split_text("")
 
 
 def test_default_text_splitter_split_document(tmp_path: pytest.TempPathFactory) -> None:
-    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2, max_file_size=500000)
+    from src.infrastructure.services import LangChainSplitterStrategy
+
+    splitter = DefaultTextSplitter(
+        chunk_size=10, chunk_overlap=2, max_file_size=500000, strategy=LangChainSplitterStrategy()
+    )
     file_path = tmp_path / "test.txt"  # type: ignore[operator]
     file_path.write_text("01234567890123456789" * 1000)
 
@@ -38,7 +50,11 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
     # Force LangChain import to fail
     monkeypatch.setitem(sys.modules, "langchain_text_splitters", None)
 
-    splitter = DefaultTextSplitter(chunk_size=10, chunk_overlap=2, max_file_size=1000)
+    from src.infrastructure.services import LangChainSplitterStrategy
+
+    splitter = DefaultTextSplitter(
+        chunk_size=10, chunk_overlap=2, max_file_size=1000, strategy=LangChainSplitterStrategy()
+    )
     text = "01234567890123456789"
     chunks = splitter.split_text(text)
 
@@ -47,7 +63,9 @@ def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_default_entity_extractor_fallback() -> None:
-    extractor = DefaultEntityExtractor(spacy_model="invalid_model_name")
+    extractor = DefaultEntityExtractor(
+        spacy_model="invalid_model_name", trusted_models=["invalid_model_name"]
+    )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
 
     entities = extractor.extract_entities(chunks)
@@ -63,7 +81,9 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setitem(sys.modules, "spacy", None)
 
-    extractor = DefaultEntityExtractor(spacy_model="en_core_web_sm")
+    extractor = DefaultEntityExtractor(
+        spacy_model="en_core_web_sm", trusted_models=["en_core_web_sm"]
+    )
     chunks = iter(["Test Chunk", "Another Chunk with Entities"])
 
     entities = extractor.extract_entities(chunks)
