@@ -1,0 +1,36 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0
+collected 17 items
+
+tests/e2e/test_main.py .                                                 [  5%]
+tests/unit/test_config.py .....                                          [ 35%]
+tests/unit/test_dependencies.py ..                                       [ 47%]
+tests/unit/test_node.py .......                                          [ 88%]
+tests/unit/test_security.py ..                                           [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+
+Name                                 Stmts   Miss  Cover   Missing
+------------------------------------------------------------------
+src/__init__.py                          0      0   100%
+src/dependencies.py                     38     10    74%   45-46, 48-49, 51-52, 54-55, 57-58
+src/domain_models/__init__.py            7      0   100%
+src/domain_models/config.py             11      0   100%
+src/domain_models/constants.py           5      0   100%
+src/domain_models/exceptions.py          1      0   100%
+src/domain_models/node.py               18      0   100%
+src/domain_models/protocols.py          34      9    74%   10, 14, 18, 24, 28, 32, 38, 42, 48
+src/domain_models/secure_string.py      21      0   100%
+tests/e2e/test_main.py                   5      0   100%
+tests/unit/test_config.py               20      0   100%
+tests/unit/test_dependencies.py         48      9    81%   18, 21, 24, 29, 32, 35, 40, 43, 48
+tests/unit/test_node.py                 31      0   100%
+tests/unit/test_security.py             14      0   100%
+------------------------------------------------------------------
+TOTAL                                  253     28    89%
+============================== 17 passed in 0.67s ==============================
