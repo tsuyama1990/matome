@@ -44,6 +44,24 @@ def test_default_text_splitter_split_document(tmp_path: pytest.TempPathFactory) 
     assert len(chunks) > 0
 
 
+def test_default_text_splitter_split_document_exceeds_max_size(
+    tmp_path: pytest.TempPathFactory,
+) -> None:
+    from src.infrastructure.services import LangChainSplitterStrategy
+
+    splitter = DefaultTextSplitter(
+        chunk_size=10, chunk_overlap=2, max_file_size=50, strategy=LangChainSplitterStrategy()
+    )
+    file_path = tmp_path / "test_exceed.txt"  # type: ignore[operator]
+    file_path.write_text("01234567890123456789" * 10)
+
+    iterator = splitter.split_document(str(file_path))
+    with pytest.raises(
+        ValueError, match="Security Error: File processing stream exceeded maximum allowed size"
+    ):
+        list(iterator)
+
+
 def test_default_text_splitter_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
 
@@ -90,6 +108,32 @@ def test_default_entity_extractor_missing_spacy(monkeypatch: pytest.MonkeyPatch)
     assert isinstance(entities, dict)
     # Verify fallback logic executes correctly when spacy is entirely missing
     assert "chunk_0_Fallback_ORG" in entities
+
+
+def test_default_entity_extractor_valid_spacy(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Need to bypass actual cryptographic signature check while validating spacy execution
+
+    class MockSpacyNLPService:
+        def extract_entities(self, text: str) -> list[tuple[str, str]]:
+            return [("ORG", "MockCompany")]
+
+    extractor = DefaultEntityExtractor(
+        spacy_model="test_model",
+        trusted_models=["test_model"],
+        nlp_service=MockSpacyNLPService(),
+    )
+
+    # Monkeypatch the signature check so it doesn't fail trying to read test_model
+    def mock_verify(*args: object, **kwargs: object) -> None:
+        pass
+
+    monkeypatch.setattr(extractor, "_verify_model_signature", mock_verify)
+
+    chunks = iter(["Test Chunk", "Another Chunk with Entities"])
+    entities = extractor.extract_entities(chunks)
+    assert isinstance(entities, dict)
+    assert "chunk_0_ORG" in entities
+    assert entities["chunk_0_ORG"] == "MockCompany"
 
 
 def test_default_clustering_service_not_enough_chunks() -> None:

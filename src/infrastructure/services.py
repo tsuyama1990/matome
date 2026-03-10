@@ -45,11 +45,14 @@ class DefaultTextSplitter(TextSplitterProtocol):
         chunk_overlap: int,
         max_file_size: int,
         strategy: SplitterStrategyProtocol,
+        file_buffer_size: int | None = None,
     ) -> None:
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.max_file_size = max_file_size
         self.strategy = strategy
+        import os
+        self.file_buffer_size = file_buffer_size if file_buffer_size is not None else int(os.getenv("FILE_BUFFER_SIZE", "16384"))
 
     def split_text(self, text: str) -> list[str]:
         chunks = self.strategy.split_text(text, self.chunk_size, self.chunk_overlap)
@@ -67,7 +70,7 @@ class DefaultTextSplitter(TextSplitterProtocol):
 
         overlap_buffer = ""
         # Explicit buffer configuration enforcing strict constraints against giant unyielding I/O blocking
-        read_chunk_size = max(16384, self.chunk_size * 4)
+        read_chunk_size = max(self.file_buffer_size, self.chunk_size * 4)
         has_yielded = False
 
         total_bytes_read = 0
@@ -130,10 +133,13 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
         fallback_ner_regex: str | None = None,
         rate_limiter: Any = None,
         nlp_service: NLPServiceProtocol | None = None,
+        max_model_signature_size: int | None = None,
     ) -> None:
+        import os
         import re
 
         self.spacy_model = spacy_model
+        self.max_model_signature_size = max_model_signature_size if max_model_signature_size is not None else int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800"))
         self.trusted_models = set(trusted_models)
         self.trusted_hashes = trusted_hashes or {}
         self.fallback_ner_regex = (
@@ -209,7 +215,7 @@ class DefaultEntityExtractor(EntityExtractorProtocol):
             hasher = hashlib.sha256()
 
             # Read in chunks to prevent DoS via OOM on massive model files
-            max_read = 50 * 1024 * 1024  # 50MB max read just for signature to prevent DoS
+            max_read = self.max_model_signature_size
             total_read = 0
 
             with file_path.open("rb") as f:

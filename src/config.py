@@ -75,6 +75,10 @@ class Settings(MatomeConfig):
         description="Default root document ID used in pipeline initialization",
     )
 
+    file_buffer_size: int = Field(
+        default_factory=lambda: int(os.getenv("FILE_BUFFER_SIZE", "16384")),
+        description="Buffer size used for reading streaming files",
+    )
     max_file_size: int = Field(
         default_factory=lambda: int(os.getenv("MAX_FILE_SIZE", "10485760")),
         description="Maximum allowed file size in bytes (default 10MB)",
@@ -131,6 +135,10 @@ class Settings(MatomeConfig):
             "en_core_web_md": os.getenv("HASH_EN_CORE_WEB_MD", "dummy_hash_for_testing_md"),
         },
         description="Map of allowed models to their expected SHA256 hashes",
+    )
+    max_model_signature_size: int = Field(
+        default_factory=lambda: int(os.getenv("MAX_MODEL_SIGNATURE_SIZE", "52428800")),
+        description="Max bytes read when verifying a model signature",
     )
     fallback_ner_regex: str = Field(
         default_factory=lambda: str(
