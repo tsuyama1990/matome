@@ -1,43 +1,45 @@
 ============================= test session starts ==============================
-platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
-plugins: cov-7.0.0, httpx-0.36.0, anyio-4.12.1
-collected 31 items
+plugins: httpx-0.36.0, cov-7.0.0, anyio-4.12.1
+collected 34 items
 
-tests/unit/test_config.py ....                                           [ 12%]
-tests/unit/test_container.py ..                                          [ 19%]
-tests/unit/test_infrastructure.py .................                      [ 74%]
-tests/unit/test_main.py ...                                              [ 83%]
+tests/unit/test_config.py .....                                          [ 14%]
+tests/unit/test_container.py ...                                         [ 23%]
+tests/unit/test_infrastructure.py ..............                         [ 64%]
+tests/unit/test_main.py .......                                          [ 85%]
 tests/unit/test_schemas.py .....                                         [100%]
 
 ================================ tests coverage ================================
-_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+_______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
-Name                                Stmts   Miss  Cover   Missing
------------------------------------------------------------------
-main.py                                51     13    75%   66-68, 71-81, 90
-src/__init__.py                         0      0   100%
-src/container.py                       40      0   100%
-src/domain_models/__init__.py           6      0   100%
-src/domain_models/chunk.py             20      3    85%   30-32
-src/domain_models/config.py            72      3    96%   68, 106-107
-src/domain_models/constants.py         13      0   100%
-src/domain_models/graph.py             16      0   100%
-src/domain_models/pivot.py             13      0   100%
-src/domain_models/state.py             13      0   100%
-src/infrastructure/__init__.py          3      0   100%
-src/infrastructure/mock_vdb.py         39      2    95%   24, 40
-src/infrastructure/openrouter.py      108      9    92%   106-108, 121, 123, 157-158, 170-171
-src/interfaces.py                      24      0   100%
-tests/__init__.py                       0      0   100%
-tests/unit/__init__.py                  0      0   100%
-tests/unit/test_config.py              51      0   100%
-tests/unit/test_container.py           90     12    87%   41, 50, 53-54, 59-60, 63-64, 67-68, 71-72
-tests/unit/test_infrastructure.py     137      0   100%
-tests/unit/test_main.py                41      1    98%   55
-tests/unit/test_schemas.py             54      0   100%
------------------------------------------------------------------
-TOTAL                                 791     43    95%
-============================== 31 passed in 3.88s ==============================
+Name                                   Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------
+main.py                                   30     13    57%   31-33, 36-46, 55
+src/__init__.py                            0      0   100%
+src/container.py                          79      8    90%   58-59, 61-62, 64-65, 83-84
+src/document.py                           97     35    64%   24-25, 31-32, 42-43, 76, 84-93, 114-115, 121-122, 126-127, 135-156
+src/domain_models/__init__.py              6      0   100%
+src/domain_models/chunk.py                11      0   100%
+src/domain_models/config.py               95      5    95%   140-141, 146-148
+src/domain_models/constants.py            16      0   100%
+src/domain_models/graph.py                16      0   100%
+src/domain_models/pivot.py                13      0   100%
+src/domain_models/state.py                13      0   100%
+src/infrastructure/__init__.py             4      0   100%
+src/infrastructure/crypto.py              34      3    91%   27, 36-37
+src/infrastructure/llm_middleware.py      36      0   100%
+src/infrastructure/openrouter.py          87      6    93%   86, 88, 124-125, 137-138
+src/interfaces.py                         24      0   100%
+tests/__init__.py                          0      0   100%
+tests/unit/__init__.py                     0      0   100%
+tests/unit/test_config.py                 73      0   100%
+tests/unit/test_container.py              89     12    87%   41, 50, 53-54, 59-60, 63-64, 67-68, 71-72
+tests/unit/test_infrastructure.py        116      0   100%
+tests/unit/test_main.py                   96      1    99%   45
+tests/unit/test_schemas.py                54      0   100%
+--------------------------------------------------------------------
+TOTAL                                    989     83    92%
+============================== 34 passed in 4.95s ==============================

@@ -1,7 +1,5 @@
-import re
-from typing import Any
 
-from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator
+from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import (
@@ -15,6 +13,7 @@ from src.domain_models.constants import (
     DEFAULT_GRAPH_SERVICE_PATH,
     DEFAULT_LLM_SERVICE_PATH,
     DEFAULT_MAX_CHUNK_SCAN_SIZE,
+    DEFAULT_MAX_FILE_SIZE,
     DEFAULT_MAX_PROMPT_LENGTH,
     DEFAULT_MULTIMODAL_MODEL,
     DEFAULT_OPENROUTER_ENDPOINT,
@@ -51,25 +50,21 @@ class ApiCredentials(BaseSettings):
             if len(val) < 20:
                 msg = "API key must be at least 20 characters long"
                 raise ValueError(msg)
-            # OpenRouter keys typically start with sk-or-v1- and contain hex/alphanumeric strings
-            pattern = r"^sk-or-v1-[a-zA-Z0-9]{64}$"
-            if not re.match(pattern, val):
-                msg = "API key must strictly match the OpenRouter 'sk-or-v1-' 64-char alphanumeric pattern."
+            # Validate basic format
+            if not val.startswith("sk-or-v1-"):
+                msg = "API key must start with the OpenRouter 'sk-or-v1-' prefix."
                 raise ValueError(msg)
         return v
 
-    def __init__(self, **data: Any) -> None:
-        super().__init__(**data)
-
-        from src.infrastructure.crypto import CryptoService
-
-        # Encrypt the API key at rest upon instantiation using transient key from OS environment
+    @model_validator(mode="after")
+    def encrypt_api_key(self) -> "ApiCredentials":
+        # Ensure encryption only happens after all validations pass
         if self.openrouter_api_key is not None:
+            from src.infrastructure.crypto import CryptoService
             crypto_service = CryptoService(self.crypto_config)
             self._encrypted_api_key = crypto_service.encrypt(self.openrouter_api_key)
-
-            # Erase the raw SecretStr entirely to prevent memory inspection
             self.openrouter_api_key = None
+        return self
 
     def get_decrypted_api_key(self) -> SecretStr | None:
         """Returns the decrypted API key securely wrapped in Pydantic's SecretStr."""
@@ -89,6 +84,7 @@ class PipelineConfig(BaseSettings):
 
     credentials: ApiCredentials = Field(default_factory=ApiCredentials)
 
+    max_file_size: int = Field(default=DEFAULT_MAX_FILE_SIZE)
     max_chunk_scan_size: int = Field(default=DEFAULT_MAX_CHUNK_SCAN_SIZE)
     fast_model: str = Field(default=DEFAULT_FAST_MODEL)
     reasoning_model: str = Field(default=DEFAULT_REASONING_MODEL)
@@ -125,6 +121,8 @@ class PipelineConfig(BaseSettings):
     @classmethod
     def validate_allowed_api_domains(cls, v: str, info: ValidationInfo) -> str:
         """Enforces strict HTTPS and validates URLs against a whitelist of allowed domains (SSRF protection)."""
+        import ipaddress
+        import socket
         import urllib.parse
 
         parsed = urllib.parse.urlparse(v)
@@ -136,4 +134,26 @@ class PipelineConfig(BaseSettings):
         if domain not in allowed:
             msg = f"Domain {domain} is not in the allowed API domains whitelist."
             raise ValueError(msg)
-        return v
+
+        hostname = parsed.hostname
+        if not hostname:
+            msg = "Invalid hostname."
+            raise ValueError(msg)
+
+        # DNS Resolution Validation to prevent SSRF and DNS Rebinding
+        try:
+            ip = socket.gethostbyname(hostname)
+        except socket.gaierror as e:
+            msg = f"Could not resolve hostname {parsed.hostname}."
+            raise ValueError(msg) from e
+
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback:
+            msg = f"Domain resolves to private or loopback IP ({ip})."
+            raise ValueError(msg)
+
+        # Implement DNS pinning to prevent DNS Rebinding by modifying the endpoint to use the resolved IP directly
+        port = f":{parsed.port}" if parsed.port else ""
+        path = parsed.path or ""
+        query = f"?{parsed.query}" if parsed.query else ""
+        return f"{parsed.scheme}://{ip}{port}{path}{query}"
