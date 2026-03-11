@@ -15,6 +15,7 @@ from src.domain_models.constants import (
     DEFAULT_GRAPH_SERVICE_PATH,
     DEFAULT_LLM_SERVICE_PATH,
     DEFAULT_MAX_CHUNK_SCAN_SIZE,
+    DEFAULT_MAX_FILE_SIZE,
     DEFAULT_MAX_PROMPT_LENGTH,
     DEFAULT_MULTIMODAL_MODEL,
     DEFAULT_OPENROUTER_ENDPOINT,
@@ -89,6 +90,7 @@ class PipelineConfig(BaseSettings):
 
     credentials: ApiCredentials = Field(default_factory=ApiCredentials)
 
+    max_file_size: int = Field(default=DEFAULT_MAX_FILE_SIZE)
     max_chunk_scan_size: int = Field(default=DEFAULT_MAX_CHUNK_SCAN_SIZE)
     fast_model: str = Field(default=DEFAULT_FAST_MODEL)
     reasoning_model: str = Field(default=DEFAULT_REASONING_MODEL)
