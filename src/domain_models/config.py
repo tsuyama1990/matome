@@ -17,6 +17,7 @@ from src.domain_models.constants import (
     DEFAULT_MAX_CHUNK_SCAN_SIZE,
     DEFAULT_MAX_PROMPT_LENGTH,
     DEFAULT_MULTIMODAL_MODEL,
+    DEFAULT_OPENROUTER_ENDPOINT,
     DEFAULT_REASONING_MODEL,
     DEFAULT_REQUESTS_PER_MINUTE_LIMIT,
 )
@@ -30,7 +31,6 @@ class CredentialConfig(BaseSettings):
     openrouter_api_key: SecretStr | None = None
 
     # Use an explicitly loaded key; no defaults allowed in production.
-    _encryption_key: bytes = PrivateAttr()
     _encrypted_api_key: bytes | None = PrivateAttr(default=None)
 
     @field_validator("openrouter_api_key")
@@ -58,11 +58,9 @@ class CredentialConfig(BaseSettings):
             msg = "MATOME_ENCRYPTION_KEY environment variable must be set for secure operations."
             raise ValueError(msg)
 
-        self._encryption_key = raw_key.encode("utf-8")
-
-        # Encrypt the API key at rest upon instantiation
+        # Encrypt the API key at rest upon instantiation using transient key from OS environment
         if self.openrouter_api_key is not None:
-            fernet = Fernet(self._encryption_key)
+            fernet = Fernet(raw_key.encode("utf-8"))
             self._encrypted_api_key = fernet.encrypt(
                 self.openrouter_api_key.get_secret_value().encode("utf-8")
             )
@@ -74,7 +72,14 @@ class CredentialConfig(BaseSettings):
         """Returns the decrypted API key securely wrapped in Pydantic's SecretStr."""
         if self._encrypted_api_key is None:
             return None
-        fernet = Fernet(self._encryption_key)
+
+        # Load transient key to decrypt
+        raw_key = os.environ.get("MATOME_ENCRYPTION_KEY")
+        if not raw_key:
+            msg = "MATOME_ENCRYPTION_KEY environment variable is missing during decryption phase."
+            raise ValueError(msg)
+
+        fernet = Fernet(raw_key.encode("utf-8"))
         decrypted_bytes = fernet.decrypt(self._encrypted_api_key)
         return SecretStr(decrypted_bytes.decode("utf-8"))
 
@@ -96,6 +101,7 @@ class PipelineConfig(BaseSettings):
     app_title: str = Field(default=DEFAULT_APP_TITLE)
     max_prompt_length: int = Field(default=DEFAULT_MAX_PROMPT_LENGTH)
     requests_per_minute_limit: int = Field(default=DEFAULT_REQUESTS_PER_MINUTE_LIMIT)
+    openrouter_endpoint: str = Field(default=DEFAULT_OPENROUTER_ENDPOINT)
 
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)

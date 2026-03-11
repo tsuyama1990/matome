@@ -28,7 +28,6 @@ class OpenRouterGateway(LLMProtocol):
 
     def __init__(self, config: PipelineConfig) -> None:
         self.config = config
-        self.endpoint = "https://openrouter.ai/api/v1/chat/completions"
         self._last_request_time = 0.0
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
@@ -36,11 +35,28 @@ class OpenRouterGateway(LLMProtocol):
         prompt = self._validate_and_sanitize_prompt(prompt)
         self._enforce_rate_limit()
 
-        headers = self._prepare_headers()
         payload = self._prepare_payload(prompt, **kwargs)
 
-        with httpx.Client(timeout=timeout) as client:
-            return self._execute_request(client, payload, headers, retries)
+        # To prevent exposing the plaintext key string in memory, we dynamically
+        # supply a generator-based Auth object to the HTTPX client so the authorization
+        # header is generated securely and immediately during request transmission.
+        def auth_generator(request: httpx.Request) -> httpx.Request:
+            decrypted_key: SecretStr | None = self.config.credentials.get_decrypted_api_key()
+            if not decrypted_key:
+                msg = "Missing or invalid OpenRouter API key"
+                raise LLMError(msg)
+
+            # This string exists only within the scope of this closure during transmission
+            request.headers["Authorization"] = f"Bearer {decrypted_key.get_secret_value()}"
+
+            # Other required headers
+            request.headers["HTTP-Referer"] = self.config.app_domain
+            request.headers["X-Title"] = self.config.app_title
+            request.headers["Content-Type"] = "application/json"
+            return request
+
+        with httpx.Client(timeout=timeout, auth=auth_generator) as client:
+            return self._execute_request(client, payload, retries)
 
     def _validate_and_sanitize_prompt(self, prompt: str) -> str:
         """Validates prompt length and strips dangerous null bytes."""
@@ -72,19 +88,6 @@ class OpenRouterGateway(LLMProtocol):
 
         self._last_request_time = time.time()
 
-    def _prepare_headers(self) -> dict[str, str]:
-        decrypted_key: SecretStr | None = self.config.credentials.get_decrypted_api_key()
-        if not decrypted_key:
-            msg = "Missing or invalid OpenRouter API key"
-            raise LLMError(msg)
-
-        return {
-            "Authorization": f"Bearer {decrypted_key.get_secret_value()}",
-            "HTTP-Referer": self.config.app_domain,
-            "X-Title": self.config.app_title,
-            "Content-Type": "application/json",
-        }
-
     def _prepare_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         model = kwargs.get("model", self.config.reasoning_model)
 
@@ -101,12 +104,12 @@ class OpenRouterGateway(LLMProtocol):
         return payload
 
     def _execute_request(
-        self, client: httpx.Client, payload: dict[str, Any], headers: dict[str, str], retries: int
+        self, client: httpx.Client, payload: dict[str, Any], retries: int
     ) -> str:
         for attempt in range(retries):
             try:
                 logger.debug(f"Sending request to OpenRouter (Attempt {attempt + 1}/{retries})")
-                response = client.post(self.endpoint, headers=headers, json=payload)
+                response = client.post(self.config.openrouter_endpoint, json=payload)
                 response.raise_for_status()
 
                 response_json = response.json()
@@ -138,7 +141,7 @@ class OpenRouterGateway(LLMProtocol):
             # Validate against Pydantic schema
             validated_response = OpenRouterResponseSchema(**response_json)
         except Exception as e:
-            logger.exception(f"Failed to validate OpenRouter response schema: {e}")
+            logger.exception("Failed to validate OpenRouter response schema")
             msg = f"Invalid response format from OpenRouter: {response_json}"
             raise LLMError(msg) from e
 

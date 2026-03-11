@@ -23,11 +23,18 @@ def mock_env_key() -> Any:
 
 @pytest.fixture
 def valid_config(mock_env_key: Any) -> PipelineConfig:
+    # mock_env_key must wrap everything doing tests with the decryption phase now!
     with mock_env_key:
         valid_key = "sk-or-v1-" + ("C" * 64)
         config = PipelineConfig()
         config.credentials = CredentialConfig(openrouter_api_key=SecretStr(valid_key))
         return config
+
+@pytest.fixture(autouse=True)
+def _auto_mock_env(mock_env_key: Any) -> Any:
+    """Ensure MATOME_ENCRYPTION_KEY is available during the request phase in tests."""
+    with mock_env_key:
+        yield
 
 
 def test_openrouter_gateway_success(valid_config: PipelineConfig, httpx_mock: Any) -> None:
@@ -211,3 +218,14 @@ def test_openrouter_gateway_network_error(valid_config: PipelineConfig, httpx_mo
 
     with pytest.raises(LLMError, match="Network error connecting to OpenRouter"):
         gateway.invoke("Test prompt")
+
+def test_mock_vector_db_empty_queries_and_docs() -> None:
+    vdb = MockVectorDB()
+
+    # Empty DB
+    assert vdb.search("test") == []
+
+    # DB with docs, empty query
+    vdb.store([SemanticChunk(id="1", text="some text")])
+    assert vdb.search("") == []
+    assert vdb.search("!!!") == [] # Only punctuation
