@@ -32,6 +32,26 @@ class LLMProtocol(Protocol):
         ...
 
 
+class VectorDBProtocol(Protocol):
+    """Protocol for Vector Database interactions."""
+
+    def store(self, chunks: list[SemanticChunk]) -> None:
+        """Stores a list of semantic chunks in the vector database.
+
+        Raises:
+            ProcessingError: If storage operation fails.
+        """
+        ...
+
+    def search(self, query: str, top_k: int = 5) -> list[SemanticChunk]:
+        """Searches for chunks similar to the query.
+
+        Raises:
+            ProcessingError: If search operation fails.
+        """
+        ...
+
+
 class DocumentProcessingService(Protocol):
     """Protocol for the DocumentProcessingService executing within a LangGraph state machine."""
 

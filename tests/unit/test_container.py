@@ -144,14 +144,22 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
         # Test mypy overridden missing initialization values
         with pytest.raises(ValueError, match="PipelineConfig must be explicitly provided."):
             ProductionDIContainer(
-                None, get_llm_factory(), get_doc_factory(), get_kg_factory(), get_al_factory()  # type: ignore[arg-type]
+                None,  # type: ignore[arg-type]
+                get_llm_factory(),
+                get_doc_factory(),
+                get_kg_factory(),
+                get_al_factory(),
             )
 
         with pytest.raises(
             ValueError, match="LLMProtocol factory or instance must be explicitly provided."
         ):
             ProductionDIContainer(
-                config, None, get_doc_factory(), get_kg_factory(), get_al_factory()  # type: ignore[arg-type]
+                config,
+                None,  # type: ignore[arg-type]
+                get_doc_factory(),
+                get_kg_factory(),
+                get_al_factory(),
             )
 
         with pytest.raises(
@@ -159,7 +167,11 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
             match="DocumentProcessingService factory or instance must be explicitly provided.",
         ):
             ProductionDIContainer(
-                config, get_llm_factory(), None, get_kg_factory(), get_al_factory()  # type: ignore[arg-type]
+                config,
+                get_llm_factory(),
+                None,  # type: ignore[arg-type]
+                get_kg_factory(),
+                get_al_factory(),
             )
 
         with pytest.raises(
@@ -167,7 +179,11 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
             match="KnowledgeGraphService factory or instance must be explicitly provided.",
         ):
             ProductionDIContainer(
-                config, get_llm_factory(), get_doc_factory(), None, get_al_factory()  # type: ignore[arg-type]
+                config,
+                get_llm_factory(),
+                get_doc_factory(),
+                None,  # type: ignore[arg-type]
+                get_al_factory(),
             )
 
         with pytest.raises(
@@ -175,5 +191,9 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
             match="ActiveLearningService factory or instance must be explicitly provided.",
         ):
             ProductionDIContainer(
-                config, get_llm_factory(), get_doc_factory(), get_kg_factory(), None  # type: ignore[arg-type]
+                config,
+                get_llm_factory(),
+                get_doc_factory(),
+                get_kg_factory(),
+                None,  # type: ignore[arg-type]
             )
