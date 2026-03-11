@@ -42,20 +42,34 @@ class OpenRouterGateway(LLMProtocol):
             msg = "Missing or invalid OpenRouter API key"
             raise LLMError(msg)
 
-        # Use the key directly to avoid intermediate memory storage per zero-knowledge principles
-        headers = {
-            "Authorization": f"Bearer {decrypted_key.get_secret_value()}",
-            "HTTP-Referer": self.config.app_domain,
-            "X-Title": self.config.app_title,
-            "Content-Type": "application/json",
-        }
+        # For secure memory wiping, we maintain the key in a mutable memoryview/bytearray
+        # to ensure it can be natively overwritten without segfaulting the python GC
+        # which expects strings to remain immutable at the C-level object header.
+        secret_bytes = bytearray(f"Bearer {decrypted_key.get_secret_value()}", "utf-8")
 
         try:
-            with httpx.Client(timeout=timeout) as client:
+            # We strictly yield a custom Auth object that utilizes memoryview to read the bytes directly.
+            # However, since httpx strictly requires standard strings for headers, we decode it
+            # specifically for the transmission window to minimize footprint.
+            class EphemeralAuth(httpx.Auth):
+                def auth_flow(self, request: httpx.Request) -> Any:
+                    # Decoding creates a transient string strictly bounded to the request dispatch
+                    request.headers["Authorization"] = secret_bytes.decode("utf-8")
+                    yield request
+
+            headers = {
+                "HTTP-Referer": self.config.app_domain,
+                "X-Title": self.config.app_title,
+                "Content-Type": "application/json",
+            }
+
+            with httpx.Client(timeout=timeout, auth=EphemeralAuth()) as client:
                 return self._execute_request(client, payload, headers, retries)
         finally:
-            # Delete explicit references immediately after use
-            del headers
+            # Explicitly memory wipe the bytearray before GC
+            for i in range(len(secret_bytes)):
+                secret_bytes[i] = 0
+            del secret_bytes
             del decrypted_key
 
     def _validate_and_sanitize_prompt(self, prompt: str) -> str:

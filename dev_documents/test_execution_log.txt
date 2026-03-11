@@ -29,7 +29,7 @@ src/domain_models/pivot.py             13      0   100%
 src/domain_models/state.py             13      0   100%
 src/infrastructure/__init__.py          3      0   100%
 src/infrastructure/mock_vdb.py         39      2    95%   24, 40
-src/infrastructure/openrouter.py      101      9    91%   92-94, 107, 109, 143-144, 156-157
+src/infrastructure/openrouter.py      108      9    92%   106-108, 121, 123, 157-158, 170-171
 src/interfaces.py                      24      0   100%
 tests/__init__.py                       0      0   100%
 tests/unit/__init__.py                  0      0   100%
@@ -39,5 +39,5 @@ tests/unit/test_infrastructure.py     137      0   100%
 tests/unit/test_main.py                41      1    98%   55
 tests/unit/test_schemas.py             54      0   100%
 -----------------------------------------------------------------
-TOTAL                                 784     43    95%
-============================== 31 passed in 4.21s ==============================
+TOTAL                                 791     43    95%
+============================== 31 passed in 3.88s ==============================
