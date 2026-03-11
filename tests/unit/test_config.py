@@ -47,8 +47,9 @@ def test_credential_config_validation(mock_env_key: Any) -> None:
 
 def test_credential_config_missing_key() -> None:
     """Verifies it fails fast if encryption key is missing from environment."""
-    with mock.patch.dict(os.environ, {}, clear=True), pytest.raises(
-        ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"
+    with (
+        mock.patch.dict(os.environ, {}, clear=True),
+        pytest.raises(ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"),
     ):
         CredentialConfig()
 

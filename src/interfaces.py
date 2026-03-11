@@ -60,9 +60,7 @@ class KnowledgeGraphService(Protocol):
         """
         ...
 
-    def generate_raptor_tree_batch(
-        self, state: GraphState, batch_size: int = 100
-    ) -> GraphState:
+    def generate_raptor_tree_batch(self, state: GraphState, batch_size: int = 100) -> GraphState:
         """Processes massive chunk lists in batches safely."""
         ...
 
