@@ -37,18 +37,14 @@ class OpenRouterGateway(LLMProtocol):
 
         payload = self._prepare_payload(prompt, **kwargs)
 
-        from src.infrastructure.secure_cache import SecureMemoryCache
-
         decrypted_key: SecretStr | None = self.config.credentials.get_decrypted_api_key()
         if not decrypted_key:
             msg = "Missing or invalid OpenRouter API key"
             raise LLMError(msg)
 
-        # Use httpx's standard headers instead of Auth class, fetching right before execution
-        cache = SecureMemoryCache(decrypted_key.get_secret_value())
-
+        # Use the key directly to avoid intermediate memory storage per zero-knowledge principles
         headers = {
-            "Authorization": f"Bearer {cache.get_secret()}",
+            "Authorization": f"Bearer {decrypted_key.get_secret_value()}",
             "HTTP-Referer": self.config.app_domain,
             "X-Title": self.config.app_title,
             "Content-Type": "application/json",
@@ -58,8 +54,9 @@ class OpenRouterGateway(LLMProtocol):
             with httpx.Client(timeout=timeout) as client:
                 return self._execute_request(client, payload, headers, retries)
         finally:
-            # Securely zero out the key in cache after headers are prepared and request is executed
-            cache.clear()
+            # Delete explicit references immediately after use
+            del headers
+            del decrypted_key
 
     def _validate_and_sanitize_prompt(self, prompt: str) -> str:
         """Validates prompt length, explicitly normalizes unicode, and strictly whitelists characters."""

@@ -13,29 +13,26 @@ class MockVectorDB(VectorDBProtocol):
         self.chunks.extend(chunks)
 
     def _pseudo_embed(self, text: str) -> list[float]:
-        """Generates a pseudo-embedding based on deterministic word hashes for semantic similarity."""
+        """Generates a fast, deterministic pseudo-embedding based on a single hash of the text."""
         import hashlib
         import math
-        import re
 
-        # Extract words for semantic representation rather than characters
-        words = re.findall(r"\b\w+\b", text.lower())
-
-        # 50-dimensional fake embedding space
         dimensions = 50
         vector = [0.0] * dimensions
 
-        if not words:
+        if not text.strip():
             return vector
 
-        for word in words:
-            # Use deterministic hash to map a word consistently to a specific feature dimension
-            hash_val = int(hashlib.sha256(word.encode("utf-8")).hexdigest(), 16)
+        # Single fast hash for the entire chunk
+        hash_hex = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-            # Activate 3 different dimensions per word to simulate distributed representations
-            for i in range(3):
-                dim = (hash_val + i * 17) % dimensions
-                vector[dim] += 1.0
+        # Map the hex string into float dimensions deterministically
+        for i in range(dimensions):
+            # Take a 2-character slice of the hash for each dimension (0-255 value)
+            # Cycle through the hash if dimensions > 32
+            idx = (i * 2) % len(hash_hex)
+            val = int(hash_hex[idx:idx+2], 16)
+            vector[i] = float(val)
 
         # Normalize the embedding vector
         magnitude = math.sqrt(sum(x * x for x in vector))

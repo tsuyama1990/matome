@@ -59,8 +59,15 @@ class CredentialConfig(BaseSettings):
             msg = "MATOME_ENCRYPTION_KEY environment variable must be set for secure operations."
             raise ValueError(msg)
 
-        # Generate a per-process salt to ensure key material varies
-        self._salt = os.urandom(16)
+        # For reproducibility and testing, use a configurable deterministic salt.
+        # Fallback to hashing the master key itself as the salt to ensure it remains
+        # deterministic across executions for proper decryption, without random generation.
+        import hashlib
+        env_salt = os.environ.get("MATOME_SALT")
+        if env_salt:
+            self._salt = env_salt.encode("utf-8")
+        else:
+            self._salt = hashlib.sha256(raw_key.encode("utf-8")).digest()[:16]
 
         # Encrypt the API key at rest upon instantiation using transient key from OS environment
         if self.openrouter_api_key is not None:

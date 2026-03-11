@@ -232,12 +232,3 @@ def test_openrouter_gateway_sanitize_prompt(valid_config: PipelineConfig, httpx_
     body = json.loads(request.read().decode("utf-8"))
 
     assert body["messages"][0]["content"] == "hello world[31m" # control characters removed
-def test_secure_cache_zeroing() -> None:
-    from src.infrastructure.secure_cache import SecureMemoryCache
-    cache = SecureMemoryCache("super_secret_key")
-    assert cache.get_secret() == "super_secret_key"
-
-    # After clearing, it should be empty
-    cache.clear()
-    assert cache.get_secret() == ""
-    assert cache._secret == bytearray()
