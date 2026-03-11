@@ -3,13 +3,15 @@ import re
 from typing import Any
 
 from cryptography.fernet import Fernet
-from pydantic import Field, PrivateAttr, SecretStr, field_validator
+from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import (
     DEFAULT_ACTIVE_LEARNING_SERVICE_PATH,
+    DEFAULT_ALLOWED_API_DOMAINS,
     DEFAULT_APP_DOMAIN,
     DEFAULT_APP_TITLE,
+    DEFAULT_CRYPTO_HASH_ALGORITHM,
     DEFAULT_DOCUMENT_SERVICE_PATH,
     DEFAULT_FAST_MODEL,
     DEFAULT_GRAPH_SERVICE_PATH,
@@ -29,6 +31,7 @@ class CredentialConfig(BaseSettings):
     model_config = SettingsConfigDict(env_nested_delimiter="__", extra="forbid")
 
     openrouter_api_key: SecretStr | None = None
+    crypto_hash_algorithm: str = Field(default=DEFAULT_CRYPTO_HASH_ALGORITHM)
 
     # Use an explicitly loaded key; no defaults allowed in production.
     _encrypted_api_key: bytes | None = PrivateAttr(default=None)
@@ -63,11 +66,14 @@ class CredentialConfig(BaseSettings):
         # Fallback to hashing the master key itself as the salt to ensure it remains
         # deterministic across executions for proper decryption, without random generation.
         import hashlib
+
         env_salt = os.environ.get("MATOME_SALT")
         if env_salt:
             self._salt = env_salt.encode("utf-8")
         else:
-            self._salt = hashlib.sha256(raw_key.encode("utf-8")).digest()[:16]
+            hasher = hashlib.new(self.crypto_hash_algorithm)
+            hasher.update(raw_key.encode("utf-8"))
+            self._salt = hasher.digest()[:16]
 
         # Encrypt the API key at rest upon instantiation using transient key from OS environment
         if self.openrouter_api_key is not None:
@@ -87,11 +93,11 @@ class CredentialConfig(BaseSettings):
         # We explicitly satisfy Ruff S324 / S303 by using hashlib.new with pbkdf2_hmac
         # and derive a safe Fernet-compatible 32-byte url-safe base64 key
         derived = hashlib.pbkdf2_hmac(
-            "sha256",
+            self.crypto_hash_algorithm,
             master_key.encode("utf-8"),
             self._salt,
             100000,
-            dklen=32
+            dklen=32,
         )
         return Fernet(base64.urlsafe_b64encode(derived))
 
@@ -129,9 +135,36 @@ class PipelineConfig(BaseSettings):
     max_prompt_length: int = Field(default=DEFAULT_MAX_PROMPT_LENGTH)
     requests_per_minute_limit: int = Field(default=DEFAULT_REQUESTS_PER_MINUTE_LIMIT)
     openrouter_endpoint: str = Field(default=DEFAULT_OPENROUTER_ENDPOINT)
+    allowed_api_domains: list[str] = Field(default=DEFAULT_ALLOWED_API_DOMAINS)
 
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)
     document_service_path: str = Field(default=DEFAULT_DOCUMENT_SERVICE_PATH)
     graph_service_path: str = Field(default=DEFAULT_GRAPH_SERVICE_PATH)
     active_learning_service_path: str = Field(default=DEFAULT_ACTIVE_LEARNING_SERVICE_PATH)
+
+    @field_validator("app_domain", "app_title")
+    @classmethod
+    def validate_no_crlf(cls, v: str) -> str:
+        """Validates HTTP headers to strictly reject Carriage Return and Line Feed (CRLF) characters."""
+        if "\r" in v or "\n" in v:
+            msg = "CRLF injection detected in header value."
+            raise ValueError(msg)
+        return v
+
+    @field_validator("openrouter_endpoint")
+    @classmethod
+    def validate_allowed_api_domains(cls, v: str, info: ValidationInfo) -> str:
+        """Enforces strict HTTPS and validates URLs against a whitelist of allowed domains (SSRF protection)."""
+        import urllib.parse
+
+        parsed = urllib.parse.urlparse(v)
+        if parsed.scheme != "https":
+            msg = "Endpoint must use HTTPS."
+            raise ValueError(msg)
+        domain = f"{parsed.scheme}://{parsed.netloc}"
+        allowed = info.data.get("allowed_api_domains", DEFAULT_ALLOWED_API_DOMAINS)
+        if domain not in allowed:
+            msg = f"Domain {domain} is not in the allowed API domains whitelist."
+            raise ValueError(msg)
+        return v

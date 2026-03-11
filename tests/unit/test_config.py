@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -54,13 +55,14 @@ def test_credential_config_missing_key() -> None:
         CredentialConfig()
 
 
-def test_credential_config_loading(mock_env_key: Any) -> None:
-    """Verifies that CredentialConfig correctly reads .env variables natively."""
+def test_credential_config_loading(mock_env_key: Any, tmp_path: Path) -> None:
+    """Verifies that CredentialConfig correctly reads .env variables natively via file."""
     valid_key = "sk-or-v1-" + ("B" * 64)
-    with mock_env_key, mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": valid_key}):
-        # Directly instantiate the unmodified production class, relying on os.environ directly
-        # rather than dynamically altering `model_config` settings in a subclass.
-        config = CredentialConfig()
+    env_file = tmp_path / ".env"
+    env_file.write_text(f"OPENROUTER_API_KEY={valid_key}")
+
+    with mock_env_key:
+        config = CredentialConfig(_env_file=str(env_file))
 
         assert config.openrouter_api_key is None
         assert config._encrypted_api_key is not None
@@ -86,3 +88,18 @@ def test_pipeline_config_defaults(mock_env_key: Any) -> None:
         assert config.app_title == "matome"
         assert config.max_prompt_length == 1000000
         assert config.requests_per_minute_limit == 60
+
+
+def test_pipeline_config_ssrf_crlf_protections(mock_env_key: Any) -> None:
+    """Verifies PipelineConfig strict SSRF and CRLF protections."""
+    with mock_env_key:
+        with pytest.raises(ValidationError, match="CRLF injection detected in header value."):
+            PipelineConfig(app_title="matome\nadmin")
+
+        with pytest.raises(ValidationError, match="Endpoint must use HTTPS."):
+            PipelineConfig(openrouter_endpoint="http://openrouter.ai/api")
+
+        with pytest.raises(
+            ValidationError, match="Domain https://evil.com is not in the allowed API domains whitelist."
+        ):
+            PipelineConfig(openrouter_endpoint="https://evil.com/api")

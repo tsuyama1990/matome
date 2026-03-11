@@ -52,9 +52,12 @@ class OpenRouterGateway(LLMProtocol):
             # However, since httpx strictly requires standard strings for headers, we decode it
             # specifically for the transmission window to minimize footprint.
             class EphemeralAuth(httpx.Auth):
+                def __init__(self, secret_bytes: bytearray) -> None:
+                    self.secret_bytes = secret_bytes
+
                 def auth_flow(self, request: httpx.Request) -> Any:
                     # Decoding creates a transient string strictly bounded to the request dispatch
-                    request.headers["Authorization"] = secret_bytes.decode("utf-8")
+                    request.headers["Authorization"] = self.secret_bytes.decode("utf-8", errors="strict")
                     yield request
 
             headers = {
@@ -63,7 +66,7 @@ class OpenRouterGateway(LLMProtocol):
                 "Content-Type": "application/json",
             }
 
-            with httpx.Client(timeout=timeout, auth=EphemeralAuth()) as client:
+            with httpx.Client(timeout=timeout, auth=EphemeralAuth(secret_bytes)) as client:
                 return self._execute_request(client, payload, headers, retries)
         finally:
             # Explicitly memory wipe the bytearray before GC

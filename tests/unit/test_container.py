@@ -152,7 +152,7 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
             )
 
         with pytest.raises(
-            ValueError, match="LLMProtocol factory or instance must be explicitly provided."
+            ValueError, match="LLMProtocol factory function must be explicitly provided."
         ):
             ProductionDIContainer(
                 config,
@@ -164,7 +164,7 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
 
         with pytest.raises(
             ValueError,
-            match="DocumentProcessingService factory or instance must be explicitly provided.",
+            match="DocumentProcessingService factory function must be explicitly provided.",
         ):
             ProductionDIContainer(
                 config,
@@ -176,7 +176,7 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
 
         with pytest.raises(
             ValueError,
-            match="KnowledgeGraphService factory or instance must be explicitly provided.",
+            match="KnowledgeGraphService factory function must be explicitly provided.",
         ):
             ProductionDIContainer(
                 config,
@@ -188,7 +188,7 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
 
         with pytest.raises(
             ValueError,
-            match="ActiveLearningService factory or instance must be explicitly provided.",
+            match="ActiveLearningService factory function must be explicitly provided.",
         ):
             ProductionDIContainer(
                 config,
@@ -196,4 +196,14 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
                 get_doc_factory(),
                 get_kg_factory(),
                 None,  # type: ignore[arg-type]
+            )
+
+        # Type errors for non-callables
+        with pytest.raises(TypeError, match="llm_gateway_factory must be a callable factory function."):
+            ProductionDIContainer(
+                config,
+                MockLLMProtocol(),  # type: ignore[arg-type]
+                get_doc_factory(),
+                get_kg_factory(),
+                get_al_factory(),
             )
