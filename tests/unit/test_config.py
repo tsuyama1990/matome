@@ -82,3 +82,7 @@ def test_pipeline_config_defaults(mock_env_key: Any) -> None:
         assert config.credentials is not None
         assert config.credentials.openrouter_api_key is None
         assert config.llm_service_path == "src.interfaces.LLMProtocol"
+        assert config.app_domain == "https://matome.test"
+        assert config.app_title == "matome"
+        assert config.max_prompt_length == 1000000
+        assert config.requests_per_minute_limit == 60

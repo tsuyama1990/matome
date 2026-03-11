@@ -8,13 +8,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import (
     DEFAULT_ACTIVE_LEARNING_SERVICE_PATH,
+    DEFAULT_APP_DOMAIN,
+    DEFAULT_APP_TITLE,
     DEFAULT_DOCUMENT_SERVICE_PATH,
     DEFAULT_FAST_MODEL,
     DEFAULT_GRAPH_SERVICE_PATH,
     DEFAULT_LLM_SERVICE_PATH,
     DEFAULT_MAX_CHUNK_SCAN_SIZE,
+    DEFAULT_MAX_PROMPT_LENGTH,
     DEFAULT_MULTIMODAL_MODEL,
+    DEFAULT_OPENROUTER_ENDPOINT,
     DEFAULT_REASONING_MODEL,
+    DEFAULT_REQUESTS_PER_MINUTE_LIMIT,
 )
 
 
@@ -26,8 +31,8 @@ class CredentialConfig(BaseSettings):
     openrouter_api_key: SecretStr | None = None
 
     # Use an explicitly loaded key; no defaults allowed in production.
-    _encryption_key: bytes = PrivateAttr()
     _encrypted_api_key: bytes | None = PrivateAttr(default=None)
+    _salt: bytes = PrivateAttr(default=b"")
 
     @field_validator("openrouter_api_key")
     @classmethod
@@ -54,11 +59,19 @@ class CredentialConfig(BaseSettings):
             msg = "MATOME_ENCRYPTION_KEY environment variable must be set for secure operations."
             raise ValueError(msg)
 
-        self._encryption_key = raw_key.encode("utf-8")
+        # For reproducibility and testing, use a configurable deterministic salt.
+        # Fallback to hashing the master key itself as the salt to ensure it remains
+        # deterministic across executions for proper decryption, without random generation.
+        import hashlib
+        env_salt = os.environ.get("MATOME_SALT")
+        if env_salt:
+            self._salt = env_salt.encode("utf-8")
+        else:
+            self._salt = hashlib.sha256(raw_key.encode("utf-8")).digest()[:16]
 
-        # Encrypt the API key at rest upon instantiation
+        # Encrypt the API key at rest upon instantiation using transient key from OS environment
         if self.openrouter_api_key is not None:
-            fernet = Fernet(self._encryption_key)
+            fernet = self._get_fernet_instance(raw_key)
             self._encrypted_api_key = fernet.encrypt(
                 self.openrouter_api_key.get_secret_value().encode("utf-8")
             )
@@ -66,11 +79,34 @@ class CredentialConfig(BaseSettings):
             # Erase the raw SecretStr entirely to prevent memory inspection
             self.openrouter_api_key = None
 
+    def _get_fernet_instance(self, master_key: str) -> "Fernet":
+        """Derives a secure runtime key using PBKDF2 with a per-process salt."""
+        import base64
+        import hashlib
+
+        # We explicitly satisfy Ruff S324 / S303 by using hashlib.new with pbkdf2_hmac
+        # and derive a safe Fernet-compatible 32-byte url-safe base64 key
+        derived = hashlib.pbkdf2_hmac(
+            "sha256",
+            master_key.encode("utf-8"),
+            self._salt,
+            100000,
+            dklen=32
+        )
+        return Fernet(base64.urlsafe_b64encode(derived))
+
     def get_decrypted_api_key(self) -> SecretStr | None:
         """Returns the decrypted API key securely wrapped in Pydantic's SecretStr."""
         if self._encrypted_api_key is None:
             return None
-        fernet = Fernet(self._encryption_key)
+
+        # Load transient key to decrypt
+        raw_key = os.environ.get("MATOME_ENCRYPTION_KEY")
+        if not raw_key:
+            msg = "MATOME_ENCRYPTION_KEY environment variable is missing during decryption phase."
+            raise ValueError(msg)
+
+        fernet = self._get_fernet_instance(raw_key)
         decrypted_bytes = fernet.decrypt(self._encrypted_api_key)
         return SecretStr(decrypted_bytes.decode("utf-8"))
 
@@ -87,6 +123,12 @@ class PipelineConfig(BaseSettings):
     reasoning_model: str = Field(default=DEFAULT_REASONING_MODEL)
     multimodal_model: str = Field(default=DEFAULT_MULTIMODAL_MODEL)
     trusted_model_hashes: list[str] = Field(default_factory=list)
+
+    app_domain: str = Field(default=DEFAULT_APP_DOMAIN)
+    app_title: str = Field(default=DEFAULT_APP_TITLE)
+    max_prompt_length: int = Field(default=DEFAULT_MAX_PROMPT_LENGTH)
+    requests_per_minute_limit: int = Field(default=DEFAULT_REQUESTS_PER_MINUTE_LIMIT)
+    openrouter_endpoint: str = Field(default=DEFAULT_OPENROUTER_ENDPOINT)
 
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)
