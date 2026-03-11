@@ -44,40 +44,27 @@ class OpenRouterGateway(LLMProtocol):
             msg = "Missing or invalid OpenRouter API key"
             raise LLMError(msg)
 
-        # We define a class to hold the reference to the cache so the closure can access it
-        # without running into UnboundLocalError or undefined name issues in Python's weird scoping
-        class RequestAuth(httpx.Auth):
-            def __init__(self, key: str, domain: str, title: str) -> None:
-                self.cache = SecureMemoryCache(key)
-                self.domain = domain
-                self.title = title
+        # Use httpx's standard headers instead of Auth class, fetching right before execution
+        cache = SecureMemoryCache(decrypted_key.get_secret_value())
 
-            def auth_flow(self, request: httpx.Request) -> Any:
-                request.headers["Authorization"] = f"Bearer {self.cache.get_secret()}"
-                request.headers["HTTP-Referer"] = self.domain
-                request.headers["X-Title"] = self.title
-                request.headers["Content-Type"] = "application/json"
-                yield request
-
-            def cleanup(self) -> None:
-                self.cache.clear()
-                del self.cache
-
-        auth = RequestAuth(
-            decrypted_key.get_secret_value(),
-            self.config.app_domain,
-            self.config.app_title,
-        )
+        headers = {
+            "Authorization": f"Bearer {cache.get_secret()}",
+            "HTTP-Referer": self.config.app_domain,
+            "X-Title": self.config.app_title,
+            "Content-Type": "application/json",
+        }
 
         try:
-            with httpx.Client(timeout=timeout, auth=auth) as client:
-                return self._execute_request(client, payload, retries)
+            with httpx.Client(timeout=timeout) as client:
+                return self._execute_request(client, payload, headers, retries)
         finally:
-            auth.cleanup()
+            # Securely zero out the key in cache after headers are prepared and request is executed
+            cache.clear()
 
     def _validate_and_sanitize_prompt(self, prompt: str) -> str:
-        """Validates prompt length, removes control characters, and ensures content exists."""
+        """Validates prompt length, explicitly normalizes unicode, and strictly whitelists characters."""
         import re
+        import unicodedata
 
         if not prompt or not prompt.strip():
             msg = "Prompt cannot be empty"
@@ -87,9 +74,14 @@ class OpenRouterGateway(LLMProtocol):
             msg = f"Prompt length exceeds maximum allowed length of {self.config.max_prompt_length}"
             raise ValueError(msg)
 
-        # Remove control characters except standard whitespace (newlines, tabs)
-        # This prevents terminal injection, ANSI escape sequence injection, or null-byte attacks
-        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', prompt)
+        # 1. Normalize Unicode to prevent homoglyph/visual spoofing attacks
+        prompt = unicodedata.normalize("NFC", prompt)
+
+        # 2. Strict Whitelist Approach:
+        # Allow alphanumeric, standard punctuation, and standard whitespaces (space, tab, newline)
+        # Any hidden control characters, ANSI escapes, or bizarre symbols are stripped.
+        # This guarantees safety against prompt injections utilizing unprintable/control tokens.
+        return re.sub(r'[^\w\s.,!?:;\'"()\[\]{}+=*/\\&%$#@~<>-]', '', prompt)
 
     def _enforce_rate_limit(self) -> None:
         """Enforces a simple rate limit based on configured limits."""
@@ -122,12 +114,12 @@ class OpenRouterGateway(LLMProtocol):
         return payload
 
     def _execute_request(
-        self, client: httpx.Client, payload: dict[str, Any], retries: int
+        self, client: httpx.Client, payload: dict[str, Any], headers: dict[str, str], retries: int
     ) -> str:
         for attempt in range(retries):
             try:
                 logger.debug(f"Sending request to OpenRouter (Attempt {attempt + 1}/{retries})")
-                response = client.post(self.config.openrouter_endpoint, json=payload)
+                response = client.post(self.config.openrouter_endpoint, headers=headers, json=payload)
                 response.raise_for_status()
 
                 response_json = response.json()

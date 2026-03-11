@@ -13,23 +13,36 @@ class MockVectorDB(VectorDBProtocol):
         self.chunks.extend(chunks)
 
     def _pseudo_embed(self, text: str) -> list[float]:
-        """Generates a pseudo-embedding for the text based on character frequencies."""
-        # This acts as a mock embedding vector space of size 26 (A-Z frequencies)
-        # It provides a true cosine similarity calculation across text inputs to satisfy architectural requirements.
-        import string
-
-        counts = dict.fromkeys(string.ascii_lowercase, 0)
-        for char in text.lower():
-            if char in counts:
-                counts[char] += 1
-
-        # Return as normalized vector
+        """Generates a pseudo-embedding based on deterministic word hashes for semantic similarity."""
+        import hashlib
         import math
-        vector = list(counts.values())
-        magnitude = math.sqrt(sum(x*x for x in vector))
+        import re
+
+        # Extract words for semantic representation rather than characters
+        words = re.findall(r"\b\w+\b", text.lower())
+
+        # 50-dimensional fake embedding space
+        dimensions = 50
+        vector = [0.0] * dimensions
+
+        if not words:
+            return vector
+
+        for word in words:
+            # Use deterministic hash to map a word consistently to a specific feature dimension
+            hash_val = int(hashlib.sha256(word.encode("utf-8")).hexdigest(), 16)
+
+            # Activate 3 different dimensions per word to simulate distributed representations
+            for i in range(3):
+                dim = (hash_val + i * 17) % dimensions
+                vector[dim] += 1.0
+
+        # Normalize the embedding vector
+        magnitude = math.sqrt(sum(x * x for x in vector))
         if magnitude == 0:
-            return [0.0] * 26
-        return [x/magnitude for x in vector]
+            return vector
+
+        return [x / magnitude for x in vector]
 
     def _cosine_similarity(self, vec1: list[float], vec2: list[float]) -> float:
         """Calculates true cosine similarity between two mock embeddings."""

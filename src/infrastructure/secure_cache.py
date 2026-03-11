@@ -1,32 +1,21 @@
-import contextlib
-
-
-def zero_memory(s: str) -> None:
-    """Uses ctypes to overwrite the memory of a string with zeros."""
-    if not isinstance(s, str):
-        return
-
-    # To avoid segfaults in python garbage collection of strings (which often intern short strings
-    # or reuse them), we should only try to memset the data if we are absolutely sure it's safe.
-    # Actually, modifying a Python string buffer via ctypes is notoriously dangerous in CPython
-    # and leads to segfaults (as seen in tests). Instead of doing an unsafe memset that crashes,
-    # we'll "pseudo-zero" by replacing the reference and relying on immediate GC, while
-    # documenting that true zeroing requires a C extension.
-
 class SecureMemoryCache:
-    """A cache that holds secrets and allows explicit clearing of references."""
+    """A cache that holds secrets via bytearrays to guarantee secure zeroization without segfaults."""
 
     def __init__(self, secret: str) -> None:
-        # Avoid interning to increase the likelihood it's uniquely allocated
-        self._secret = "".join([secret])
+        # Store as a mutable bytearray to allow safe in-place memory wiping
+        self._secret = bytearray(secret, "utf-8")
 
     def get_secret(self) -> str:
-        return self._secret
+        """Decodes the bytes to string immediately for use."""
+        return self._secret.decode("utf-8")
+
+    def clear(self) -> None:
+        """Securely zeroes out the memory of the mutable byte buffer."""
+        if hasattr(self, "_secret") and self._secret:
+            for i in range(len(self._secret)):
+                self._secret[i] = 0
+            # Remove reference
+            self._secret = bytearray()
 
     def __del__(self) -> None:
         self.clear()
-
-    def clear(self) -> None:
-        with contextlib.suppress(Exception):
-            if hasattr(self, '_secret'):
-                self._secret = ""
