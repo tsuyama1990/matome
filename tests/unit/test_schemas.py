@@ -12,6 +12,7 @@ from src.domain_models import (
     SemanticChunk,
     SummaryTree,
 )
+from src.domain_models.constants import DEFAULT_MAX_CHUNK_SCAN_SIZE
 
 
 def test_semantic_chunk_validation() -> None:
@@ -27,9 +28,9 @@ def test_semantic_chunk_validation() -> None:
     with pytest.raises(ValidationError):
         SemanticChunk(id="c2", text="")
 
-    # Too long
-    with pytest.raises(ValidationError):
-        SemanticChunk(id="c3", text="a" * 100001)
+    # Too long (Cycle 3 ReDoS protection via bounded quantifiers)
+    with pytest.raises(ValidationError, match="String should have at most"):
+        SemanticChunk(id="c3", text="a" * (DEFAULT_MAX_CHUNK_SCAN_SIZE + 1))
 
     # Extra forbid
     with pytest.raises(ValidationError):
@@ -104,8 +105,16 @@ def test_pivot_response_validation() -> None:
 def test_graph_state_validation() -> None:
     """Validates that GraphState enforces strict state typing and extra='forbid'."""
     # Valid initialization
-    state = GraphState(file_path="foo.txt")
+    state = GraphState(
+        file_path="foo.txt",
+        raw_text="raw test",
+        cleaned_text="clean test",
+        embedded_chunks=True,
+    )
     assert state.file_path == "foo.txt"
+    assert state.raw_text == "raw test"
+    assert state.cleaned_text == "clean test"
+    assert state.embedded_chunks is True
     assert state.chunks == []
     assert state.tree is None
     assert state.active_node_id is None

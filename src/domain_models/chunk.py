@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.domain_models.constants import DEFAULT_MAX_CHUNK_SCAN_SIZE
+
 
 class ChunkMetadata(BaseModel):
     """Strictly validated metadata payload for SemanticChunks."""
@@ -17,7 +19,7 @@ class SemanticChunk(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: str
-    text: str = Field(min_length=1, max_length=100000)
+    text: str = Field(min_length=1, max_length=DEFAULT_MAX_CHUNK_SCAN_SIZE)
     metadata: ChunkMetadata = Field(default_factory=ChunkMetadata)
 
     @field_validator("text")
