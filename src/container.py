@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 from src.domain_models import PipelineConfig
 from src.interfaces import (
     ActiveLearningService,
@@ -8,37 +10,39 @@ from src.interfaces import (
 
 
 class ProductionDIContainer:
-    """Dependency Injection container that rigorously validates component initialization."""
+    """Dependency Injection container that dynamically initializes components via factories."""
 
     def __init__(
         self,
-        config: PipelineConfig,
-        llm_gateway: LLMProtocol,
-        document_processor: DocumentProcessingService,
-        knowledge_graph: KnowledgeGraphService,
-        active_learning: ActiveLearningService,
+        config: PipelineConfig | None,
+        llm_gateway_factory: Callable[[], LLMProtocol] | None,
+        document_processor_factory: Callable[[], DocumentProcessingService] | None,
+        knowledge_graph_factory: Callable[[], KnowledgeGraphService] | None,
+        active_learning_factory: Callable[[], ActiveLearningService] | None,
     ) -> None:
-        if not config:
+        if config is None:
             msg = "PipelineConfig must be provided."
             raise ValueError(msg)
-        if not llm_gateway:
-            msg = "LLMProtocol implementation must be provided."
+        if llm_gateway_factory is None:
+            msg = "LLMProtocol factory must be provided."
             raise ValueError(msg)
-        if not document_processor:
-            msg = "DocumentProcessingService implementation must be provided."
+        if document_processor_factory is None:
+            msg = "DocumentProcessingService factory must be provided."
             raise ValueError(msg)
-        if not knowledge_graph:
-            msg = "KnowledgeGraphService implementation must be provided."
+        if knowledge_graph_factory is None:
+            msg = "KnowledgeGraphService factory must be provided."
             raise ValueError(msg)
-        if not active_learning:
-            msg = "ActiveLearningService implementation must be provided."
+        if active_learning_factory is None:
+            msg = "ActiveLearningService factory must be provided."
             raise ValueError(msg)
 
         self._config = config
-        self._llm_gateway = llm_gateway
-        self._document_processor = document_processor
-        self._knowledge_graph = knowledge_graph
-        self._active_learning = active_learning
+
+        # Initialize components eagerly from factories
+        self._llm_gateway = llm_gateway_factory()
+        self._document_processor = document_processor_factory()
+        self._knowledge_graph = knowledge_graph_factory()
+        self._active_learning = active_learning_factory()
 
     @property
     def config(self) -> PipelineConfig:

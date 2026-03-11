@@ -1,7 +1,8 @@
 import secrets
 from pathlib import Path
 
-from pydantic import SecretStr
+import pytest
+from pydantic import SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
 
 from src.domain_models import CredentialConfig, PipelineConfig, SecureString
@@ -13,31 +14,65 @@ def test_secure_string_zeroization() -> None:
 
     secure_str = SecureString(secret_value)
 
-    with secure_str as val:
-        # Check that we received a memoryview
-        assert isinstance(val, memoryview)
-        # Check that we can read from the memoryview and reconstruct the string explicitly
-        assert val.tobytes().decode("utf-8") == secret_value
+    # We must use a callback to access the string now
+    def verify_and_return(decoded: str) -> str:
+        assert decoded == secret_value
+        return decoded
 
-    # After exiting the context manager, the bytearray backing the secure string should be zeroed out
+    result = secure_str.use(verify_and_return)
+    assert result == secret_value
+
+    # After exiting the callback, the bytearray backing the secure string should be zeroed out
     assert all(b == 0 for b in secure_str._data)
+
+
+def test_credential_config_validation() -> None:
+    """Verifies that CredentialConfig validates keys before encrypting them."""
+    # Invalid length
+    with pytest.raises(ValidationError, match="API key must be at least 20 characters long"):
+        CredentialConfig(openrouter_api_key=SecretStr("sk-or-123"))
+
+    # Invalid prefix
+    with pytest.raises(ValidationError, match="API key must start with 'sk-or-'"):
+        CredentialConfig(openrouter_api_key=SecretStr("sk-ant-12345678901234567890"))
+
+    # Valid key encryption testing
+    valid_key = "sk-or-v1-12345678901234567890"
+    config = CredentialConfig(openrouter_api_key=SecretStr(valid_key))
+
+    # Assert it was erased from memory in the pydantic model
+    assert config.openrouter_api_key is None
+    # Assert it was actually encrypted
+    assert config._encrypted_api_key is not None
+    assert config._encrypted_api_key != valid_key.encode("utf-8")
+
+    # Assert we can retrieve it securely
+    decrypted_secure_str = config.get_decrypted_api_key()
+    assert decrypted_secure_str is not None
+
+    def check_match(val: str) -> bool:
+        return val == valid_key
+
+    assert decrypted_secure_str.use(check_match) is True
 
 
 def test_credential_config_loading(tmp_path: Path) -> None:
     """Verifies that CredentialConfig correctly reads .env variables using tmp_path."""
     env_file = tmp_path / ".env"
-    env_file.write_text('OPENROUTER_API_KEY="sk-or-v1-123456789"\n')
+    env_file.write_text('OPENROUTER_API_KEY="sk-or-v1-12345678901234567890"\n')
 
     # We must patch os.environ temporarily for pydantic_settings to pick up the file or env
     # Since we want to test native loading, we configure the env_file in the model
     class TestCredentialConfig(CredentialConfig):
-        model_config = SettingsConfigDict(env_file=str(env_file), extra="forbid")
+        model_config = SettingsConfigDict(
+            env_file=str(env_file),
+            extra="forbid",
+        )
 
     config = TestCredentialConfig()
 
-    assert config.openrouter_api_key is not None
-    assert isinstance(config.openrouter_api_key, SecretStr)
-    assert config.openrouter_api_key.get_secret_value() == "sk-or-v1-123456789"
+    assert config.openrouter_api_key is None
+    assert config._encrypted_api_key is not None
 
 
 def test_pipeline_config_defaults() -> None:

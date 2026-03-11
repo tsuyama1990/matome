@@ -4,10 +4,11 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: cov-7.0.0
-collected 9 items
+collected 12 items
 
-tests/unit/test_config.py ...                                            [ 33%]
-tests/unit/test_container.py ..                                          [ 55%]
+tests/unit/test_config.py ....                                           [ 33%]
+tests/unit/test_container.py ..                                          [ 50%]
+tests/unit/test_factory.py ..                                            [ 66%]
 tests/unit/test_schemas.py ....                                          [100%]
 
 ================================ tests coverage ================================
@@ -16,18 +17,20 @@ _______________ coverage: platform linux, python 3.12.12-final-0 _______________
 Name                            Stmts   Miss  Cover   Missing
 -------------------------------------------------------------
 src/__init__.py                     0      0   100%
-src/container.py                   39      0   100%
+src/container.py                   40      0   100%
 src/domain_models/__init__.py       5      0   100%
-src/domain_models/chunk.py         16      3    81%   21-23
-src/domain_models/config.py        24      0   100%
+src/domain_models/chunk.py         16      3    81%   22-24
+src/domain_models/config.py        55      1    98%   83
 src/domain_models/graph.py         16      0   100%
 src/domain_models/pivot.py         13      0   100%
+src/factory.py                     19      0   100%
 src/interfaces.py                  16      0   100%
 tests/__init__.py                   0      0   100%
 tests/unit/__init__.py              0      0   100%
-tests/unit/test_config.py          30      0   100%
-tests/unit/test_container.py       63      6    90%   44-45, 50-51, 54-55
+tests/unit/test_config.py          47      0   100%
+tests/unit/test_container.py       72      6    92%   45-46, 51-52, 55-56
+tests/unit/test_factory.py         16      0   100%
 tests/unit/test_schemas.py         39      0   100%
 -------------------------------------------------------------
-TOTAL                             261      9    97%
-============================== 9 passed in 0.68s ===============================
+TOTAL                             354     10    97%
+============================== 12 passed in 0.66s ==============================

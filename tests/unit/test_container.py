@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -55,19 +56,50 @@ class MockActiveLearningService(ActiveLearningService):
         raise ActiveLearningError(msg)
 
 
+def get_llm_factory() -> Callable[[], LLMProtocol]:
+    def factory() -> LLMProtocol:
+        return MockLLMProtocol()
+
+    return factory
+
+
+def get_doc_factory() -> Callable[[], DocumentProcessingService]:
+    def factory() -> DocumentProcessingService:
+        return MockDocumentProcessingService()
+
+    return factory
+
+
+def get_kg_factory() -> Callable[[], KnowledgeGraphService]:
+    def factory() -> KnowledgeGraphService:
+        return MockKnowledgeGraphService()
+
+    return factory
+
+
+def get_al_factory() -> Callable[[], ActiveLearningService]:
+    def factory() -> ActiveLearningService:
+        return MockActiveLearningService()
+
+    return factory
+
+
 def test_container_initialization_success() -> None:
     config = PipelineConfig()
-    llm = MockLLMProtocol()
-    doc = MockDocumentProcessingService()
-    kg = MockKnowledgeGraphService()
-    al = MockActiveLearningService()
 
-    container = ProductionDIContainer(config, llm, doc, kg, al)
+    container = ProductionDIContainer(
+        config=config,
+        llm_gateway_factory=get_llm_factory(),
+        document_processor_factory=get_doc_factory(),
+        knowledge_graph_factory=get_kg_factory(),
+        active_learning_factory=get_al_factory(),
+    )
+
     assert container.config is config
-    assert container.llm_gateway is llm
-    assert container.document_processor is doc
-    assert container.knowledge_graph is kg
-    assert container.active_learning is al
+    assert isinstance(container.llm_gateway, MockLLMProtocol)
+    assert isinstance(container.document_processor, MockDocumentProcessingService)
+    assert isinstance(container.knowledge_graph, MockKnowledgeGraphService)
+    assert isinstance(container.active_learning, MockActiveLearningService)
 
     # Optionally ensure the mock methods throw as expected now to verify they act accordingly
     with pytest.raises(LLMError):
@@ -83,24 +115,20 @@ def test_container_initialization_success() -> None:
 
 def test_container_initialization_failures() -> None:
     config = PipelineConfig()
-    llm = MockLLMProtocol()
-    doc = MockDocumentProcessingService()
-    kg = MockKnowledgeGraphService()
-    al = MockActiveLearningService()
 
     with pytest.raises(ValueError, match="PipelineConfig must be provided."):
-        ProductionDIContainer(None, llm, doc, kg, al)  # type: ignore[arg-type]
+        ProductionDIContainer(
+            None, get_llm_factory(), get_doc_factory(), get_kg_factory(), get_al_factory()
+        )
 
-    with pytest.raises(ValueError, match="LLMProtocol implementation must be provided."):
-        ProductionDIContainer(config, None, doc, kg, al)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="LLMProtocol factory must be provided."):
+        ProductionDIContainer(config, None, get_doc_factory(), get_kg_factory(), get_al_factory())
 
-    with pytest.raises(
-        ValueError, match="DocumentProcessingService implementation must be provided."
-    ):
-        ProductionDIContainer(config, llm, None, kg, al)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="DocumentProcessingService factory must be provided."):
+        ProductionDIContainer(config, get_llm_factory(), None, get_kg_factory(), get_al_factory())
 
-    with pytest.raises(ValueError, match="KnowledgeGraphService implementation must be provided."):
-        ProductionDIContainer(config, llm, doc, None, al)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="KnowledgeGraphService factory must be provided."):
+        ProductionDIContainer(config, get_llm_factory(), get_doc_factory(), None, get_al_factory())
 
-    with pytest.raises(ValueError, match="ActiveLearningService implementation must be provided."):
-        ProductionDIContainer(config, llm, doc, kg, None)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="ActiveLearningService factory must be provided."):
+        ProductionDIContainer(config, get_llm_factory(), get_doc_factory(), get_kg_factory(), None)
