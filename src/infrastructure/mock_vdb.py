@@ -13,6 +13,26 @@ class MockVectorDB(VectorDBProtocol):
         self.chunks.extend(chunks)
 
     def search(self, query: str, top_k: int = 5) -> list[SemanticChunk]:
-        """Searches for chunks that contain the query string (mock similarity search)."""
-        results = [chunk for chunk in self.chunks if query in chunk.text]
-        return results[:top_k]
+        """Searches for chunks using a mock semantic similarity algorithm."""
+        # Split query into words for simple pseudo TF-IDF matching
+        query_words = set(query.lower().split())
+
+        scored_chunks: list[tuple[float, SemanticChunk]] = []
+        for chunk in self.chunks:
+            chunk_words = set(chunk.text.lower().split())
+
+            # Calculate Jaccard-like similarity as a proxy for semantic search
+            intersection = query_words.intersection(chunk_words)
+            union = query_words.union(chunk_words)
+
+            if not union:
+                continue
+
+            score = len(intersection) / len(union)
+            if score > 0:
+                scored_chunks.append((score, chunk))
+
+        # Sort by highest score first
+        scored_chunks.sort(key=lambda x: x[0], reverse=True)
+
+        return [chunk for score, chunk in scored_chunks[:top_k]]

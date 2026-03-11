@@ -8,13 +8,17 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import (
     DEFAULT_ACTIVE_LEARNING_SERVICE_PATH,
+    DEFAULT_APP_DOMAIN,
+    DEFAULT_APP_TITLE,
     DEFAULT_DOCUMENT_SERVICE_PATH,
     DEFAULT_FAST_MODEL,
     DEFAULT_GRAPH_SERVICE_PATH,
     DEFAULT_LLM_SERVICE_PATH,
     DEFAULT_MAX_CHUNK_SCAN_SIZE,
+    DEFAULT_MAX_PROMPT_LENGTH,
     DEFAULT_MULTIMODAL_MODEL,
     DEFAULT_REASONING_MODEL,
+    DEFAULT_REQUESTS_PER_MINUTE_LIMIT,
 )
 
 
@@ -87,6 +91,11 @@ class PipelineConfig(BaseSettings):
     reasoning_model: str = Field(default=DEFAULT_REASONING_MODEL)
     multimodal_model: str = Field(default=DEFAULT_MULTIMODAL_MODEL)
     trusted_model_hashes: list[str] = Field(default_factory=list)
+
+    app_domain: str = Field(default=DEFAULT_APP_DOMAIN)
+    app_title: str = Field(default=DEFAULT_APP_TITLE)
+    max_prompt_length: int = Field(default=DEFAULT_MAX_PROMPT_LENGTH)
+    requests_per_minute_limit: int = Field(default=DEFAULT_REQUESTS_PER_MINUTE_LIMIT)
 
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)
