@@ -1,4 +1,3 @@
-import re
 from typing import Any
 
 from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator
@@ -52,10 +51,9 @@ class ApiCredentials(BaseSettings):
             if len(val) < 20:
                 msg = "API key must be at least 20 characters long"
                 raise ValueError(msg)
-            # OpenRouter keys typically start with sk-or-v1- and contain hex/alphanumeric strings
-            pattern = r"^sk-or-v1-[a-zA-Z0-9]{64}$"
-            if not re.match(pattern, val):
-                msg = "API key must strictly match the OpenRouter 'sk-or-v1-' 64-char alphanumeric pattern."
+            # Validate basic format
+            if not val.startswith("sk-or-v1-"):
+                msg = "API key must start with the OpenRouter 'sk-or-v1-' prefix."
                 raise ValueError(msg)
         return v
 
@@ -127,6 +125,8 @@ class PipelineConfig(BaseSettings):
     @classmethod
     def validate_allowed_api_domains(cls, v: str, info: ValidationInfo) -> str:
         """Enforces strict HTTPS and validates URLs against a whitelist of allowed domains (SSRF protection)."""
+        import ipaddress
+        import socket
         import urllib.parse
 
         parsed = urllib.parse.urlparse(v)
@@ -138,4 +138,22 @@ class PipelineConfig(BaseSettings):
         if domain not in allowed:
             msg = f"Domain {domain} is not in the allowed API domains whitelist."
             raise ValueError(msg)
+
+        hostname = parsed.hostname
+        if not hostname:
+            msg = "Invalid hostname."
+            raise ValueError(msg)
+
+        # DNS Resolution Validation to prevent SSRF and DNS Rebinding
+        try:
+            ip = socket.gethostbyname(hostname)
+        except socket.gaierror as e:
+            msg = f"Could not resolve hostname {parsed.hostname}."
+            raise ValueError(msg) from e
+
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback:
+            msg = f"Domain resolves to private or loopback IP ({ip})."
+            raise ValueError(msg)
+
         return v

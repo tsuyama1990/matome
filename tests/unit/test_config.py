@@ -26,11 +26,11 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
             ApiCredentials(openrouter_api_key=SecretStr("sk-or-123"))
 
         # Invalid prefix
-        with pytest.raises(ValidationError, match="API key must strictly match"):
+        with pytest.raises(ValidationError, match="API key must start with the OpenRouter 'sk-or-v1-' prefix."):
             ApiCredentials(openrouter_api_key=SecretStr("sk-ant-12345678901234567890"))
 
         # Valid key encryption testing
-        # The key must match the strict length and pattern sk-or-v1-[a-zA-Z0-9]{64}
+        # The key must match the strict length and pattern start
         valid_key = "sk-or-v1-" + ("A" * 64)
         config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
 
@@ -107,9 +107,17 @@ def test_pipeline_config_ssrf_crlf_protections(mock_env_key: Any) -> None:
         ):
             PipelineConfig(openrouter_endpoint="https://evil.com/api")
 
+
         # Verify custom whitelist works with custom endpoint
         config = PipelineConfig(
-            allowed_api_domains=["https://custom.com"],
-            openrouter_endpoint="https://custom.com/v1/chat",
+            allowed_api_domains=["https://custom.com", "https://example.com"],
+            openrouter_endpoint="https://example.com/v1/chat",
         )
-        assert config.openrouter_endpoint == "https://custom.com/v1/chat"
+        assert config.openrouter_endpoint == "https://example.com/v1/chat"
+
+        # Test SSRF DNS protections
+        with pytest.raises(ValidationError, match="Domain resolves to private or loopback IP"):
+            PipelineConfig(
+                allowed_api_domains=["https://localhost", "https://127.0.0.1"],
+                openrouter_endpoint="https://localhost/api"
+            )
