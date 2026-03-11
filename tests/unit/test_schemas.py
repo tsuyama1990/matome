@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.domain_models import (
+    GraphState,
     KnowledgeNode,
     NodeState,
     PivotResponse,
@@ -33,7 +34,7 @@ def test_semantic_chunk_validation() -> None:
     # Extra forbid
     with pytest.raises(ValidationError):
         # We need to intentionally type ignore to test runtime forbid logic without mypy complaining
-        SemanticChunk(id="c4", text="Test", extra_field="should fail") # type: ignore[call-arg]
+        SemanticChunk(id="c4", text="Test", extra_field="should fail")  # type: ignore[call-arg]
 
     # Malformed Unicode (Surrogate characters are not strict UTF-8)
     with pytest.raises(ValidationError):
@@ -42,7 +43,7 @@ def test_semantic_chunk_validation() -> None:
     # Test strict metadata typing
     invalid_metadata: dict[str, Any] = {"page_number": -1}
     with pytest.raises(ValidationError):
-        SemanticChunk(id="c6", text="Valid", metadata=invalid_metadata) # type: ignore[arg-type]
+        SemanticChunk(id="c6", text="Valid", metadata=invalid_metadata)  # type: ignore[arg-type]
 
 
 def test_knowledge_node_validation() -> None:
@@ -59,7 +60,10 @@ def test_knowledge_node_validation() -> None:
     # Invalid state
     # We test that invalid enum values raise validation errors properly
     invalid_data: dict[str, Any] = {
-        "id": "n3", "title": "Chap 3", "summary": "Bar", "state": "Pending"
+        "id": "n3",
+        "title": "Chap 3",
+        "summary": "Bar",
+        "state": "Pending",
     }
     with pytest.raises(ValidationError):
         KnowledgeNode(**invalid_data)
@@ -80,9 +84,7 @@ def test_pivot_response_validation() -> None:
     # Valid
     restructured_node = RestructuredNode(id="n1", title="Title", position_data={"position": "past"})
     response = PivotResponse(
-        axis="Time",
-        restructured_nodes=[restructured_node],
-        mermaid_diagram="graph TD; A-->B;"
+        axis="Time", restructured_nodes=[restructured_node], mermaid_diagram="graph TD; A-->B;"
     )
     assert response.axis == "Time"
     assert response.restructured_nodes[0].id == "n1"
@@ -91,7 +93,26 @@ def test_pivot_response_validation() -> None:
     # We use Any typing on dict definition to verify validation safely without typing complaining
     invalid_data: dict[str, Any] = {
         "axis": "Time",
-        "restructured_nodes": [{"id": "n1", "title": "Title", "position_data": {"position": "past"}}]
+        "restructured_nodes": [
+            {"id": "n1", "title": "Title", "position_data": {"position": "past"}}
+        ],
     }
     with pytest.raises(ValidationError):
         PivotResponse(**invalid_data)
+
+
+def test_graph_state_validation() -> None:
+    """Validates that GraphState enforces strict state typing and extra='forbid'."""
+    # Valid initialization
+    state = GraphState(file_path="foo.txt")
+    assert state.file_path == "foo.txt"
+    assert state.chunks == []
+    assert state.tree is None
+    assert state.active_node_id is None
+    assert state.pivot_axis is None
+    assert state.pivot_response is None
+    assert state.error is None
+
+    # Invalid initialization (extra field)
+    with pytest.raises(ValidationError):
+        GraphState(file_path="foo.txt", invalid_field="this should fail")  # type: ignore[call-arg]

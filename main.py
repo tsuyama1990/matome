@@ -70,9 +70,12 @@ def main() -> int:
     if args.ingest:
         sys.stdout.write(f"Starting ingestion process for: {args.ingest}\n")
         try:
+            from src.domain_models import GraphState
+
             # We call the process through the DI container interface
-            chunks = container.document_processor.process(args.ingest)
-            sys.stdout.write(f"Successfully processed {len(chunks)} chunks.\n")
+            initial_state = GraphState(file_path=args.ingest)
+            final_state = container.document_processor.process(initial_state)
+            sys.stdout.write(f"Successfully processed {len(final_state.chunks)} chunks.\n")
         except Exception as e:
             sys.stderr.write(f"Ingestion failed: {e}\n")
             return 1

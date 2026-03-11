@@ -16,9 +16,10 @@ class ProductionDIContainer:
         self,
         config: PipelineConfig,
         llm_gateway_factory: LLMProtocol | Callable[[], LLMProtocol],
-        document_processor_factory: DocumentProcessingService | Callable[[], DocumentProcessingService],
+        document_processor_factory: DocumentProcessingService
+        | Callable[[], DocumentProcessingService],
         knowledge_graph_factory: KnowledgeGraphService | Callable[[], KnowledgeGraphService],
-        active_learning_factory: ActiveLearningService | Callable[[], ActiveLearningService]
+        active_learning_factory: ActiveLearningService | Callable[[], ActiveLearningService],
     ) -> None:
         # Pydantic handles null-safety for config if typing is strict, but we can double check defensively.
         if config is None:
@@ -40,10 +41,24 @@ class ProductionDIContainer:
         self._config = config
 
         # Initialize components eagerly from factories, or use direct instances if passed
-        self._llm_gateway = llm_gateway_factory() if callable(llm_gateway_factory) else llm_gateway_factory
-        self._document_processor = document_processor_factory() if callable(document_processor_factory) else document_processor_factory
-        self._knowledge_graph = knowledge_graph_factory() if callable(knowledge_graph_factory) else knowledge_graph_factory
-        self._active_learning = active_learning_factory() if callable(active_learning_factory) else active_learning_factory
+        self._llm_gateway = (
+            llm_gateway_factory() if callable(llm_gateway_factory) else llm_gateway_factory
+        )
+        self._document_processor = (
+            document_processor_factory()
+            if callable(document_processor_factory)
+            else document_processor_factory
+        )
+        self._knowledge_graph = (
+            knowledge_graph_factory()
+            if callable(knowledge_graph_factory)
+            else knowledge_graph_factory
+        )
+        self._active_learning = (
+            active_learning_factory()
+            if callable(active_learning_factory)
+            else active_learning_factory
+        )
 
     @property
     def config(self) -> PipelineConfig:
