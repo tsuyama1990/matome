@@ -63,7 +63,7 @@ def test_api_credentials_loading(mock_env_key: Any, tmp_path: Path) -> None:
     env_file.write_text(f"OPENROUTER_API_KEY={valid_key}")
 
     with mock_env_key:
-        config = ApiCredentials(_env_file=str(env_file))
+        config = ApiCredentials(_env_file=str(env_file))  # type: ignore[call-arg]
 
         assert config.openrouter_api_key is None
         assert config._encrypted_api_key is not None
@@ -113,7 +113,13 @@ def test_pipeline_config_ssrf_crlf_protections(mock_env_key: Any) -> None:
             allowed_api_domains=["https://custom.com", "https://example.com"],
             openrouter_endpoint="https://example.com/v1/chat",
         )
-        assert config.openrouter_endpoint == "https://example.com/v1/chat"
+        # Example.com resolves to an IP, so we assert the structure rather than exact IP due to changing DNS
+        import urllib.parse
+        parsed = urllib.parse.urlparse(config.openrouter_endpoint)
+        assert parsed.hostname is not None
+        import re as re_mod
+        assert re_mod.match(r"^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$", parsed.hostname)
+        assert parsed.path == "/v1/chat"
 
         # Test SSRF DNS protections
         with pytest.raises(ValidationError, match="Domain resolves to private or loopback IP"):

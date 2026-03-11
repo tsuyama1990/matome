@@ -1,6 +1,5 @@
-from typing import Any
 
-from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator
+from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import (
@@ -57,18 +56,15 @@ class ApiCredentials(BaseSettings):
                 raise ValueError(msg)
         return v
 
-    def __init__(self, **data: Any) -> None:
-        super().__init__(**data)
-
-        from src.infrastructure.crypto import CryptoService
-
-        # Encrypt the API key at rest upon instantiation using transient key from OS environment
+    @model_validator(mode="after")
+    def encrypt_api_key(self) -> "ApiCredentials":
+        # Ensure encryption only happens after all validations pass
         if self.openrouter_api_key is not None:
+            from src.infrastructure.crypto import CryptoService
             crypto_service = CryptoService(self.crypto_config)
             self._encrypted_api_key = crypto_service.encrypt(self.openrouter_api_key)
-
-            # Erase the raw SecretStr entirely to prevent memory inspection
             self.openrouter_api_key = None
+        return self
 
     def get_decrypted_api_key(self) -> SecretStr | None:
         """Returns the decrypted API key securely wrapped in Pydantic's SecretStr."""
@@ -156,4 +152,8 @@ class PipelineConfig(BaseSettings):
             msg = f"Domain resolves to private or loopback IP ({ip})."
             raise ValueError(msg)
 
-        return v
+        # Implement DNS pinning to prevent DNS Rebinding by modifying the endpoint to use the resolved IP directly
+        port = f":{parsed.port}" if parsed.port else ""
+        path = parsed.path or ""
+        query = f"?{parsed.query}" if parsed.query else ""
+        return f"{parsed.scheme}://{ip}{port}{path}{query}"

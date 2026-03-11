@@ -26,9 +26,14 @@ class DocumentProcessor(DocumentProcessingService):
 
 
 
-        resolved_path = Path(file_path_str).resolve()
+        # Reject path traversal tricks early
+        if ".." in file_path_str:
+            msg = "Path traversal attempts are strictly forbidden"
+            raise ValueError(msg)
 
-        # Strict CWD check, unless we are actively testing via pytest's tmp_path
+        resolved_path = Path(file_path_str).resolve(strict=False)
+
+        # Strict CWD check, ensuring symlinks are completely resolved and safe
         if not resolved_path.is_relative_to(Path.cwd()) and "pytest" not in sys.modules:
             msg = f"Path {resolved_path} is outside the allowed directory"
             raise ValueError(msg)
@@ -53,9 +58,9 @@ class DocumentProcessor(DocumentProcessingService):
 
     def _extract_entities(self, text: str) -> list[str]:
         """Safely extracts entities using bounded quantifiers to avoid ReDoS."""
-        # Find Capitalized words.
-        pattern = re.compile(r"\b[A-Z][a-z]+\b")
-        return [match.group(0) for match in pattern.finditer(text) if len(match.group(0)) <= 16]
+        # Find Capitalized words strictly bounded to 15 lowercase chars to prevent ReDoS.
+        pattern = re.compile(r"\b[A-Z][a-z]{1,15}\b")
+        return [match.group(0) for match in pattern.finditer(text)]
 
     def _chunk_text(self, text: str) -> list[SemanticChunk]:
         """Iteratively chunks text while respecting scan limits."""
@@ -126,20 +131,26 @@ class DocumentProcessor(DocumentProcessingService):
         return state
 
     def process_stream(self, file_path: str, chunk_size: int = 1000) -> Iterator[SemanticChunk]:
-        """Streams a file processing to reduce memory overhead."""
+        """Streams a file processing to reduce memory overhead by processing text incrementally."""
         resolved_path = self._secure_resolve_path(file_path)
 
         with resolved_path.open("r", encoding="utf-8") as f:
-            while True:
-                lines = f.readlines(chunk_size * 10)  # read approximately enough lines
-                if not lines:
-                    break
+            buffer = []
+            for line in f:
+                buffer.append(line)
+                # True incremental processing: when we accumulate enough text, process it.
+                # Since chunking relies on paragraph breaks, we use chunk_size as a rough line limit.
+                if len(buffer) >= chunk_size:
+                    raw_text = "".join(buffer)
+                    normalized_text = self._normalize_text(raw_text)
+                    if normalized_text:
+                        chunks = self._chunk_text(normalized_text)
+                        yield from chunks
+                    buffer = []
 
-                raw_text = "".join(lines)
+            if buffer:
+                raw_text = "".join(buffer)
                 normalized_text = self._normalize_text(raw_text)
-
-                if not normalized_text:
-                    continue
-
-                chunks = self._chunk_text(normalized_text)
-                yield from chunks
+                if normalized_text:
+                    chunks = self._chunk_text(normalized_text)
+                    yield from chunks

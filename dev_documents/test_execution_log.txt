@@ -20,10 +20,10 @@ Name                                   Stmts   Miss  Cover   Missing
 main.py                                   30     13    57%   31-33, 36-46, 55
 src/__init__.py                            0      0   100%
 src/container.py                          79      8    90%   58-59, 61-62, 64-65, 83-84
-src/document.py                           88     27    69%   24-25, 37-38, 71, 79-88, 109-110, 116-117, 121-122, 130-145
+src/document.py                           97     35    64%   24-25, 31-32, 42-43, 76, 84-93, 114-115, 121-122, 126-127, 135-156
 src/domain_models/__init__.py              6      0   100%
 src/domain_models/chunk.py                11      0   100%
-src/domain_models/config.py               92      5    95%   144-145, 150-152
+src/domain_models/config.py               95      5    95%   140-141, 146-148
 src/domain_models/constants.py            16      0   100%
 src/domain_models/graph.py                16      0   100%
 src/domain_models/pivot.py                13      0   100%
@@ -35,11 +35,11 @@ src/infrastructure/openrouter.py          87      6    93%   86, 88, 124-125, 13
 src/interfaces.py                         24      0   100%
 tests/__init__.py                          0      0   100%
 tests/unit/__init__.py                     0      0   100%
-tests/unit/test_config.py                 68      0   100%
+tests/unit/test_config.py                 73      0   100%
 tests/unit/test_container.py              89     12    87%   41, 50, 53-54, 59-60, 63-64, 67-68, 71-72
 tests/unit/test_infrastructure.py        116      0   100%
 tests/unit/test_main.py                   96      1    99%   45
 tests/unit/test_schemas.py                54      0   100%
 --------------------------------------------------------------------
-TOTAL                                    972     75    92%
-============================== 34 passed in 4.59s ==============================
+TOTAL                                    989     83    92%
+============================== 34 passed in 4.95s ==============================
