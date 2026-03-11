@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -11,37 +12,47 @@ from src.domain_models import (
     SummaryTree,
 )
 from src.interfaces import (
+    ActiveLearningError,
     ActiveLearningService,
     DocumentProcessingService,
+    GraphError,
     KnowledgeGraphService,
+    LLMError,
     LLMProtocol,
+    ProcessingError,
 )
 
 
 class MockLLMProtocol(LLMProtocol):
     def invoke(self, prompt: str, **kwargs: Any) -> str:
-        return ""
+        msg = "LLM invocation timeout simulated"
+        raise LLMError(msg)
 
 
 class MockDocumentProcessingService(DocumentProcessingService):
     def process(self, file_path: str) -> list[SemanticChunk]:
-        return []
+        msg = f"Cannot process file {file_path}: invalid format"
+        raise ProcessingError(msg)
 
 
 class MockKnowledgeGraphService(KnowledgeGraphService):
     def generate_raptor_tree(self, chunks: list[SemanticChunk]) -> SummaryTree:
-        return SummaryTree(root_node_id="r1")
+        msg = "Failed to cluster chunks: not enough data"
+        raise GraphError(msg)
 
     def pivot_kj(self, tree: SummaryTree, axis: str) -> PivotResponse:
-        return PivotResponse(axis="a", restructured_nodes=[], mermaid_diagram="")
+        msg = f"Invalid pivot axis '{axis}' provided"
+        raise GraphError(msg)
 
 
 class MockActiveLearningService(ActiveLearningService):
     def evaluate_answer(self, node: KnowledgeNode, answer: str) -> bool:
-        return False
+        msg = "Failed to evaluate answer safely"
+        raise ActiveLearningError(msg)
 
     def generate_question(self, node: KnowledgeNode) -> str:
-        return ""
+        msg = "Could not generate contextually appropriate question"
+        raise ActiveLearningError(msg)
 
 
 def test_container_initialization_success() -> None:
@@ -57,6 +68,17 @@ def test_container_initialization_success() -> None:
     assert container.document_processor is doc
     assert container.knowledge_graph is kg
     assert container.active_learning is al
+
+    # Optionally ensure the mock methods throw as expected now to verify they act accordingly
+    with pytest.raises(LLMError):
+        container.llm_gateway.invoke("hello")
+
+    test_path = str(Path.cwd() / "test.txt")
+    with pytest.raises(ProcessingError):
+        container.document_processor.process(test_path)
+
+    with pytest.raises(GraphError):
+        container.knowledge_graph.generate_raptor_tree([])
 
 
 def test_container_initialization_failures() -> None:

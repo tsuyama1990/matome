@@ -1,4 +1,13 @@
+from enum import StrEnum
+
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class NodeState(StrEnum):
+    """The valid states for a KnowledgeNode."""
+
+    LOCKED = "Locked"
+    UNLOCKED = "Unlocked"
 
 
 class KnowledgeNode(BaseModel):
@@ -9,7 +18,7 @@ class KnowledgeNode(BaseModel):
     id: str
     title: str
     summary: str
-    state: str = Field(pattern="^(Locked|Unlocked)$", default="Locked")
+    state: NodeState = Field(default=NodeState.LOCKED)
     children_ids: list[str] = Field(default_factory=list)
 
 

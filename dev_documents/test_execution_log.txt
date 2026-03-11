@@ -18,14 +18,16 @@ Name                            Stmts   Miss  Cover   Missing
 src/__init__.py                     0      0   100%
 src/container.py                   39      0   100%
 src/domain_models/__init__.py       5      0   100%
-src/domain_models/chunk.py          7      0   100%
+src/domain_models/chunk.py         16      3    81%   21-23
 src/domain_models/config.py        24      0   100%
-src/domain_models/graph.py         12      0   100%
-src/domain_models/pivot.py          7      0   100%
-src/interfaces.py                  12      0   100%
-tests/unit/test_config.py          29      0   100%
-tests/unit/test_container.py       49      6    88%   23, 28, 33, 36, 41, 44
-tests/unit/test_schemas.py         32      0   100%
+src/domain_models/graph.py         16      0   100%
+src/domain_models/pivot.py         13      0   100%
+src/interfaces.py                  16      0   100%
+tests/__init__.py                   0      0   100%
+tests/unit/__init__.py              0      0   100%
+tests/unit/test_config.py          30      0   100%
+tests/unit/test_container.py       63      6    90%   44-45, 50-51, 54-55
+tests/unit/test_schemas.py         39      0   100%
 -------------------------------------------------------------
-TOTAL                             216      6    97%
-============================== 9 passed in 0.70s ===============================
+TOTAL                             261      9    97%
+============================== 9 passed in 0.68s ===============================

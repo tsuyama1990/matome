@@ -14,13 +14,12 @@ def test_secure_string_zeroization() -> None:
     secure_str = SecureString(secret_value)
 
     with secure_str as val:
-        assert val == secret_value
+        # Check that we received a memoryview
+        assert isinstance(val, memoryview)
+        # Check that we can read from the memoryview and reconstruct the string explicitly
+        assert val.tobytes().decode("utf-8") == secret_value
 
     # After exiting the context manager, the bytearray backing the secure string should be zeroed out
-    # Since we can't directly check the internal memory easily without ctypes hackery we just test it doesn't crash
-    # and we can check the length and that the decoded string is empty
-
-    # To test memory zeroization explicitly we can access the protected member for the test
     assert all(b == 0 for b in secure_str._data)
 
 

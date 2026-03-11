@@ -12,8 +12,9 @@ class SecureString:
         self._data = bytearray(data.encode("utf-8"))
         self._length = len(self._data)
 
-    def __enter__(self) -> str:
-        return self._data.decode("utf-8")
+    def __enter__(self) -> memoryview:
+        # Returning a memoryview ensures no strings are created implicitly.
+        return memoryview(self._data)
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         buffer = (ctypes.c_char * self._length).from_buffer(self._data)
