@@ -11,7 +11,7 @@
 
 Whether you are a Product Manager deconstructing legacy manuals into modern workflows, or a consultant synthesizing numerous market reports into a novel strategy matrix, matome provides the "Aha!" moment instantly.
 
-## Key Features
+## Features
 
 1.  **Frictionless Active Learning (SQ3R Automation)**: The system visually structures documents into a progressive hierarchical tree. To read details, users must interact by answering AI-generated reasoning prompts. Correct answers provide immediate visual rewards and highly dense summaries, ensuring deep long-term retention.
 2.  **Semantic Zooming UI**: Drown no more in walls of text. matome starts with a high-level mind map. As you zoom in, resolution increases specifically for your area of interest (Progressive Disclosure) while maintaining your global context via minimaps and breadcrumbs.
@@ -19,7 +19,55 @@ Whether you are a Product Manager deconstructing legacy manuals into modern work
 4.  **Automated Diagram Generation**: Transform unstructured text into structured, standard formats immediately. Export restructured knowledge clusters directly into valid Markdown Product Requirements Documents (PRDs) and interactive Mermaid.js architecture diagrams (Sequence, Flowcharts, State Machines).
 5.  **Multi-Modal Ingestion & AI Routing**: Process PDFs, EPUBs, and raw text seamlessly. The backend securely chunks data using semantic boundaries and dynamically routes queries to the optimal Large Language Model (LLM) via an OpenRouter gateway, balancing speed and reasoning capabilities.
 
-## Architecture Overview
+## Requirements
+
+To run this project, ensure you have the following installed on your system:
+
+*   Python 3.12 or higher
+*   `uv` (The extremely fast Python package and project manager)
+*   A valid OpenRouter API Key (Optional for Mock Mode)
+
+## Installation
+
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/yourusername/matome.git
+    cd matome
+    ```
+
+2.  **Initialize the environment and sync dependencies using `uv`:**
+    ```bash
+    uv sync
+    ```
+
+3.  **Configure environment variables:**
+    Copy the example environment file and insert your API keys.
+    ```bash
+    cp .env.example .env
+    # Edit .env and add OPENROUTER_API_KEY="your_api_key_here"
+    ```
+
+## Usage
+
+### Quick Start with Interactive Tutorial
+
+The best way to experience matome's capabilities and verify the User Acceptance Tests (UAT) is through our interactive Marimo notebook.
+
+1.  Run the notebook using `uv`:
+    ```bash
+    PYTHONPATH=. uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
+    ```
+2.  Follow the interactive steps within the notebook to simulate uploading a document, viewing the RAPTOR tree, interacting with the active learning prompts, and executing a Pivot KJ analysis to generate a Mermaid diagram.
+
+### Starting the API Server
+
+To start the FastAPI server for production or frontend integration:
+
+```bash
+PYTHONPATH=. uv run uvicorn src.main:app --reload
+```
+
+## Architecture
 
 matome strictly adheres to Domain-Driven Design principles, ensuring maximum security, testability, and separation of concerns via a robust Dependency Injection container.
 
@@ -74,89 +122,12 @@ graph TD
     DI --> API : Injects Dependencies
 ```
 
-## Prerequisites
+## Roadmap
 
-To run this project, ensure you have the following installed on your system:
-
-*   Python 3.12 or higher
-*   `uv` (The extremely fast Python package and project manager)
-*   A valid OpenRouter API Key (Optional for Mock Mode)
-
-## Installation & Setup
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/yourusername/matome.git
-    cd matome
-    ```
-
-2.  **Initialize the environment and sync dependencies using `uv`:**
-    ```bash
-    uv sync
-    ```
-
-3.  **Configure environment variables:**
-    Copy the example environment file and insert your API keys.
-    ```bash
-    cp .env.example .env
-    # Edit .env and add OPENROUTER_API_KEY="your_api_key_here"
-    ```
-
-## Usage
-
-### Quick Start with Interactive Tutorial
-
-The best way to experience matome's capabilities and verify the User Acceptance Tests (UAT) is through our interactive Marimo notebook.
-
-1.  Run the notebook using `uv`:
-    ```bash
-    PYTHONPATH=. uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
-    ```
-2.  Follow the interactive steps within the notebook to simulate uploading a document, viewing the RAPTOR tree, interacting with the active learning prompts, and executing a Pivot KJ analysis to generate a Mermaid diagram.
-
-### Starting the API Server
-
-To start the FastAPI server for production or frontend integration:
-
-```bash
-PYTHONPATH=. uv run uvicorn src.main:app --reload
-```
-
-## Development Workflow
-
-matome uses a phased, 6-cycle implementation strategy. Code quality is strictly enforced.
-
-*   **Running Tests:**
-    Execute the full test suite with coverage reporting.
-    ```bash
-    uv run pytest
-    ```
-
-*   **Running Linters and Type Checking:**
-    We utilize `ruff` for extremely fast linting and formatting, and `mypy` for strict static type checking.
-    ```bash
-    uv run ruff check .
-    uv run ruff format .
-    uv run mypy .
-    ```
-
-## Project Structure
-
-```text
-matome/
-├── src/
-│   ├── api/                  # FastAPI endpoints and presentation layer
-│   ├── application/          # Service layer orchestrating logic
-│   ├── domain_models/        # Pure Pydantic domain models (extra="forbid")
-│   ├── infrastructure/       # Concrete adapters (OpenRouter, DI Container)
-│   └── main.py               # Application entry point
-├── tests/                    # Comprehensive unit and E2E tests
-├── tutorials/                # Interactive Marimo notebooks (UAT)
-│   └── UAT_AND_TUTORIAL.py
-├── dev_documents/            # System Architecture and Product Spec
-├── pyproject.toml            # Project configuration and linter rules
-└── README.md                 # This file
-```
+Future developments will focus on:
+*   Integration with Local inference for highly secure on-premise deployments.
+*   More expansive frontend customizations for complex diagram generations.
+*   Further expansion of supported multimodal inputs (Video analysis).
 
 ## License
 

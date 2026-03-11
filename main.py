@@ -1,5 +1,8 @@
-def main():
-    print("Hello from matome!")
+import sys
+
+
+def main() -> None:
+    sys.stdout.write("Hello from matome!\n")
 
 
 if __name__ == "__main__":
