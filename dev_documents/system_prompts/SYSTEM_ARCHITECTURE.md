@@ -3,16 +3,16 @@
 ## 1. Summary
 matome (meaning "summary" in Japanese) is a completely novel, paradigm-shifting active learning and intelligence-generation platform meticulously engineered to alleviate the massive cognitive load humans face when deciphering lengthy, unstructured text data. Rather than merely shrinking long documents into uninspired bullet points, matome seamlessly integrates rigorous learning principles sourced from cognitive psychology (including the SQ3R method, Cognitive Load Theory, and the Spacing Effect) with advanced generative AI. This provides users with an immersive, frictionless environment where information is intuitively structured and dynamically presented to facilitate an interactive learning experience that feels less like studying and more like an exhilarating intellectual game.
 
-The core approach is treating learning and insight generation as an interactive game of territory acquisition. The system transforms static text—like hundreds of pages of complex business manuals, dense market reports, and arcane academic papers—into dynamic, multi-dimensional knowledge networks using cutting-edge AI technologies such as the RAPTOR technique (Retrieval-Augmented Parsing and Tree-Organized Reasoning) and Multi-Dimensional Semantic KJ. Users can effortlessly zoom in and out to reveal more details (Semantic Zooming), solve active recall prompts to unlock new, highly dense content, and re-arrange information along novel axes to generate actionable outputs. matome aims to serve Product Managers, Business Developers, Researchers, and Students by saving their valuable time and significantly reducing the risk of cognitive saturation, allowing them to focus purely on high-level strategic thinking and insight generation rather than mere data ingestion.
+The core approach is treating learning and insight generation as an interactive game of territory acquisition. The system transforms static text—like hundreds of pages of complex business manuals, dense market reports, and arcane academic papers—into dynamic, multi-dimensional knowledge networks using cutting-edge AI technologies such as the RAPTOR technique (Retrieval-Augmented Parsing and Tree-Organized Reasoning), GraphRAG, and Multi-Dimensional Semantic KJ. Users can effortlessly zoom in and out to reveal more details (Semantic Zooming), solve active recall prompts to unlock new, highly dense content, and re-arrange information along novel axes to generate actionable outputs. matome aims to serve Product Managers, Business Developers, Researchers, and Students by saving their valuable time and significantly reducing the risk of cognitive saturation, allowing them to focus purely on high-level strategic thinking and insight generation rather than mere data ingestion.
 
-We are integrating this completely new requirement strictly with existing capabilities. The main architecture must maintain strict separation of concerns utilizing a modernized implementation of domain-driven design principles. We treat the existing input file (`ALL_SPEC.md`) purely as an additive source of truth, ensuring that the legacy system serves as a robust foundation upon which these expansive new features will be flawlessly orchestrated.
+We are integrating this completely new requirement strictly with existing capabilities. The main architecture must maintain strict separation of concerns utilizing a modernized implementation of domain-driven design principles. We treat the existing input file (`ALL_SPEC.md`) purely as an additive source of truth, ensuring that the legacy system serves as a robust foundation upon which these expansive new features will be flawlessly orchestrated, completely preventing the need for a brittle, ground-up rewrite.
 
 ## 2. System Design Objectives
 
 ### Primary Goals
 Our absolute primary goal is the frictionless integration of active learning into the professional workspace. We must achieve **Frictionless Active Learning Integration**. The system must implement mechanisms like the SQ3R method (Survey, Question, Read, Recite, Review) and spacing effects directly into the core user interface loop without feeling intrusive. We must strictly avoid presenting the user with an overwhelming wall of text initially. Instead, the interface must present a high-level visual representation—a mind map or conceptual tree—and exclusively utilize progressive disclosure to allow the user to dive deeper only when their cognitive load capacity permits. This prevents the "information fatigue syndrome" that immediately deters users when opening a 50-page PDF.
 
-Secondly, the system requires **Robust Semantic Comprehension**. We must build a highly resilient backend ingestion pipeline that effortlessly consumes a multitude of diverse document formats (including PDF, EPUB, Markdown, web URLs, and Images). The system must semantically chunk this incoming data. This means it absolutely must not divide text arbitrarily by character count (which destroys context and causes the Lost-in-the-Middle phenomenon), but rather by analyzing the cosine similarity between adjacent sentences to detect natural propositional turning points. After chunking, the system must apply sophisticated hierarchical clustering via the RAPTOR method (utilizing UMAP and GMM) to synthesize summaries at multiple, dynamic levels of abstraction, ensuring no data is left behind.
+Secondly, the system requires **Robust Semantic Comprehension and State Management**. We must build a highly resilient backend ingestion pipeline that effortlessly consumes a multitude of diverse document formats (including PDF, EPUB, Markdown, web URLs, and Images). The system must semantically chunk this incoming data. This means it absolutely must not divide text arbitrarily by character count (which destroys context and causes the Lost-in-the-Middle phenomenon), but rather by analyzing the cosine similarity between adjacent sentences to detect natural propositional turning points. Because this process is highly complex and error-prone (especially when relying on external LLMs for chunking, embedding, or extraction), the entire backend orchestration must be modeled as a highly resilient state machine (utilizing LangGraph) rather than fragile procedural Python functions.
 
 Thirdly, we aim for **Dynamic Insight Reconstruction**. The platform must empower advanced users to execute what we call "Pivot KJ" logic. The user should be able to dismantle existing narrative flows, completely breaking free from the original author's status quo bias or structural limitations. The system must automatically and dynamically arrange the embedded information across newly defined analytical dimensions provided by the user. These dimensions could be a SWOT analysis, chronological timelines, actor-state transition matrices, or custom system workflows, allowing the immediate generation of fresh insights and highly actionable structural diagrams (like Mermaid.js sequence diagrams).
 
@@ -34,21 +34,21 @@ Finally, we enforce **Strict Component Decoupling**. We will maintain a high sep
 
 ## 3. System Architecture
 
-The matome system will implement a clean, multi-layered architecture utilizing the Dependency Injection pattern to achieve total, absolute separation of concerns and maximum testability across the entire software lifecycle. The primary architecture flow is segregated strictly into the Presentation/Interface Layer, Application Service Layer, Core Domain Layer, and Infrastructure Layer.
+The matome system will implement a clean, multi-layered architecture utilizing the Dependency Injection pattern to achieve total, absolute separation of concerns and maximum testability across the entire software lifecycle. The primary architecture flow is segregated strictly into the Presentation/Interface Layer, Application Service Layer, Core Domain Layer, and Infrastructure Layer, with LangGraph acting as the primary orchestrator within the Application Service layer.
 
 ### Components and Separation of Concerns
 
 *   **Presentation Layer (API / CLI / UI)**: This layer is strictly and exclusively responsible for handling external user input, routing incoming HTTP requests, managing WebSocket connections for streaming AI responses, and returning formatted output. FastAPI routes, Marimo notebooks, or potential future GraphQL endpoints live solely here. Absolutely no core business logic, validation rules beyond structural schema checking, or database interaction may exist in this layer. It acts purely as a thin gateway.
-*   **Application Service Layer**: This layer orchestrates the high-level business logic and transaction management. It utilizes multiple external components through strictly injected interfaces to accomplish complex, high-level use cases like "Ingest Document," "Execute Active Learning Loop," or "Run Pivot KJ Analysis." Core components here include the `DocumentProcessingService`, the `KnowledgeGraphService`, and the `ActiveLearningService`. Heavy component interfaces must implement synchronized rate-limiting utilizing an injected `RateLimiter` instance to prevent system overload. Furthermore, any external service call must be aggressively wrapped in error-handling protocols to provide graceful degradation and prevent complete system failure during downstream outages.
-*   **Core Domain Layer**: This is the absolute heart of the system. It contains pure, untainted business rules, data schemas defined via Pydantic models, and fundamental domain logic. We enforce exceptionally strict schema validation here, explicitly defining attributes and rigorously utilizing `extra="forbid"` on all Pydantic models to prevent arbitrary, potentially malicious data pollution. We completely externalize any hard-coded numbers, magical thresholds (like chunk sizes or circuit breaker limits), and structural constants to centralized domain files (e.g., `PipelineConfig`). Absolutely no infrastructure code, external API logic, database specific ORM bindings, or web frameworks may contaminate this pure layer. It must be testable in complete isolation without mocking any network calls.
-*   **Infrastructure Layer**: This layer handles the concrete, highly complex implementation of external dependencies. This includes the high-performance Vector Database adapter (e.g., Pinecone or a local HNSW implementation), the OpenRouter LLM Gateway adapter, the scalable file storage system (local or S3), and highly secure credential managers. These concrete components will implement the Protocol interfaces explicitly defined in the Application or Domain layer, adhering strictly to the Dependency Inversion Principle.
+*   **Application Service Layer**: This layer orchestrates the high-level business logic and transaction management. Rather than brittle procedural code, it utilizes LangGraph to orchestrate complex workflows (like parsing -> chunking -> embedding -> clustering) as resilient, stateful directed graphs. It utilizes multiple external components through strictly injected interfaces to accomplish high-level use cases. Core components here include the `DocumentProcessingService`, the `KnowledgeGraphService`, and the `ActiveLearningService`. Heavy component interfaces must implement synchronized rate-limiting utilizing an injected `RateLimiter` instance to prevent system overload. Furthermore, any external service call must be aggressively wrapped in error-handling protocols to provide graceful degradation and prevent complete system failure during downstream outages.
+*   **Core Domain Layer**: This is the absolute heart of the system. It contains pure, untainted business rules, data schemas defined via Pydantic models, and fundamental domain logic. The Pydantic models here serve exactly as the rigidly typed `State` object that flows between the LangGraph nodes in the layer above. We enforce exceptionally strict schema validation here, explicitly defining attributes and rigorously utilizing `extra="forbid"` on all Pydantic models to prevent arbitrary, potentially malicious data pollution. We completely externalize any hard-coded numbers, magical thresholds (like chunk sizes or circuit breaker limits), and structural constants to centralized domain files (e.g., `PipelineConfig`). Absolutely no infrastructure code, external API logic, database specific ORM bindings, or web frameworks may contaminate this pure layer. It must be testable in complete isolation without mocking any network calls.
+*   **Infrastructure Layer**: This layer handles the concrete, highly complex implementation of external dependencies. This includes the high-performance Vector Database adapter (e.g., Pinecone or a local HNSW implementation), the OpenRouter LLM Gateway adapter, the scalable file storage system (local or S3), and highly secure credential managers. These concrete components will implement the Protocol interfaces explicitly defined in the Application or Domain layer, adhering strictly to the Dependency Inversion Principle. The LangGraph nodes call upon these adapters to perform actual work.
 
 ### Data Flow Overview
-1.  **Ingestion**: A user securely uploads a complex, multi-modal file via the Presentation Layer. The API layer delegates this immediately to the `DocumentProcessingService`. The service utilizes an injected `IngestionEngine` to read and parse the format, applying advanced context-preserving noise normalization to scrub headers, footers, and table of contents pages safely.
-2.  **Semantic Chunking & Embedding**: The parsed, clean text is sent to the `SemanticChunker`. Instead of arbitrary length cuts, it breaks the document down intelligently by sentence similarity, assigning entities. The chunks are then passed to an injected `EmbedderService` to be transformed into high-dimensional vectors.
-3.  **RAPTOR Tree Construction**: The vectorized chunks undergo complex dimensionality reduction and soft clustering utilizing Gaussian Mixture Models. Hierarchical nodes are instantiated from these clusters, and summaries are generated dynamically via the OpenRouter gateway using dense summarization prompts, creating a cohesive, multi-level knowledge tree.
+1.  **Ingestion**: A user securely uploads a complex, multi-modal file via the Presentation Layer. The API layer delegates this immediately to the `DocumentProcessingService`, initiating the main LangGraph state machine. The service utilizes an injected `IngestionEngine` node to read and parse the format, applying advanced context-preserving noise normalization to scrub headers, footers, and table of contents pages safely.
+2.  **Semantic Chunking & Embedding**: The parsed, clean text state flows to the `SemanticChunker` node. Instead of arbitrary length cuts, it breaks the document down intelligently by sentence similarity, assigning entities. The chunks are then passed to an injected `EmbedderService` node to be transformed into high-dimensional vectors.
+3.  **RAPTOR Tree Construction**: The vectorized chunks undergo complex dimensionality reduction and soft clustering utilizing Gaussian Mixture Models within specialized graph nodes. Hierarchical nodes are instantiated from these clusters, and summaries are generated dynamically via the OpenRouter gateway using dense summarization prompts, creating a cohesive, multi-level knowledge tree.
 4.  **Interaction Flow**: When a user queries a visibly locked node on the frontend, the Application Layer pulls the underlying node details, generates a highly targeted question via a reasoning model, and rigorously evaluates the user's semantic response to grant access.
-5.  **Reconstruction**: During a Pivot KJ request, the `KnowledgeGraphService` dynamically queries the vector database for relevant nodes across the entire document corpus, passes them to a high-reasoning LLM to categorize them based on the newly requested axes, and outputs an updated layout model along with optional, structurally validated Mermaid diagrams.
+5.  **Reconstruction**: During a Pivot KJ request, the `KnowledgeGraphService` dynamically queries the vector database for relevant nodes across the entire document corpus, passes them to a high-reasoning LLM to categorize them based on the newly requested axes, and outputs an updated layout model along with optional, structurally validated Mermaid diagrams. If the validation fails, a self-correction loop in the graph re-prompts the LLM.
 
 ### Architecture Diagram
 
@@ -61,14 +61,19 @@ graph TD
     end
 
     subgraph Application Service Layer
+        LangGraph[LangGraph State Machine Orchestrator]
         DPS[Document Processing Service]
         KGS[Knowledge Graph Service]
         ALS[Active Learning Service]
         DI[Production DI Container]
+
+        LangGraph --> DPS
+        LangGraph --> KGS
+        LangGraph --> ALS
     end
 
     subgraph Core Domain Layer
-        Entities[Pydantic Domain Models]
+        Entities[Pydantic Domain Models / Graph State]
         Constants[System Constants & Enums]
         Config[Pipeline Config & Credentials]
         Interfaces[Protocols / Interfaces]
@@ -83,9 +88,7 @@ graph TD
 
     UI --> API
     Marimo --> API
-    API --> DPS
-    API --> KGS
-    API --> ALS
+    API --> LangGraph
 
     DPS --> Interfaces
     KGS --> Interfaces
@@ -105,7 +108,7 @@ graph TD
 
 ## 4. Design Architecture
 
-To ensure a truly evolutionary and additive approach that respects existing code while preparing for massive scale, we will design a highly modernized, modular codebase. The file structure cleanly and perfectly separates concerns, and the robust domain objects provide a steadfast foundation for all complex data flowing through the highly parallelized system. We rigorously ensure that our system extends the current foundational `matome` functionality rather than tearing it down or initiating a risky rewrite. The entire design centers around type safety, configurability, and testability.
+To ensure a truly evolutionary and additive approach that respects existing code while preparing for massive scale, we will design a highly modernized, modular codebase. The file structure cleanly and perfectly separates concerns, and the robust domain objects provide a steadfast foundation for all complex data flowing through the highly parallelized system. We rigorously ensure that our system extends the current foundational `matome` functionality rather than tearing it down or initiating a risky rewrite. The entire design centers around type safety, configurability, testability, and resilient state machines.
 
 ### File Structure Overview
 
@@ -116,9 +119,10 @@ matome/
 │   ├── application/          # Service layer orchestrating complex business logic
 │   │   ├── document_service.py # Orchestrates parsing, chunking, and embedding pipelines
 │   │   ├── graph_service.py    # Manages tree generation and Pivot KJ logic
-│   │   └── learning_service.py # Handles the SQ3R loop, questioning, and evaluation
+│   │   ├── learning_service.py # Handles the SQ3R loop, questioning, and evaluation
+│   │   └── workflow.py         # Defines the LangGraph state machines tying services together
 │   ├── domain_models/        # Pure, unadulterated Pydantic domain models
-│   │   ├── schemas.py          # Core entities: SemanticChunk, KnowledgeNode, etc.
+│   │   ├── schemas.py          # Core entities: SemanticChunk, KnowledgeNode, State objects
 │   │   ├── constants.py        # Centralized system constants, thresholds, and enums
 │   │   └── config.py           # Pipeline configuration and strictly validated credentials
 │   ├── infrastructure/       # Concrete, complex adapters for external system interaction
@@ -136,11 +140,11 @@ matome/
 
 ### Class and Function Definitions Overview
 *   **Configuration (`src/domain_models/config.py`)**: The `PipelineConfig` and `CredentialConfig` classes utilize `pydantic_settings.BaseSettings` with highly strict environment variable parsing configurations. These explicitly enforce validation on all required external API keys securely during the initialization phase, preventing downstream crashes.
-*   **Domain Schemas (`src/domain_models/schemas.py`)**: Models like `SemanticChunk`, `KnowledgeNode`, `SummaryTree`, and `PivotResponse`. All these core models strictly utilize `extra="forbid"` to absolutely ensure data integrity and prevent arbitrary data injection from external sources. These models form the contract between all internal services.
-*   **Application Services**:
-    *   `DocumentProcessingService.process_document(file_path: Path)`: This function orchestrates the entire ingestion pipeline: secure file parsing, semantic chunking based on cosine similarity, and passing chunks to the embedder.
-    *   `KnowledgeGraphService.generate_raptor_tree(chunks: List[SemanticChunk])`: Implements the highly complex UMAP dimensionality reduction and GMM soft-clustering pipeline to generate the hierarchical tree.
-    *   `KnowledgeGraphService.pivot_kj(axis: str)`: Executes the multidimensional rearrangement logic, passing data to the LLM and receiving updated structures.
+*   **Domain Schemas (`src/domain_models/schemas.py`)**: Models like `SemanticChunk`, `KnowledgeNode`, `SummaryTree`, and `PivotResponse`. All these core models strictly utilize `extra="forbid"` to absolutely ensure data integrity and prevent arbitrary data injection from external sources. These models form the rigid contract between all internal services and the internal `State` definition for LangGraph workflows.
+*   **Application Services and Workflows**:
+    *   `DocumentProcessingWorkflow` (LangGraph): This explicitly defines the nodes (parse, chunk, embed) and edges (transitions, conditional routing, error retries) for the entire ingestion process.
+    *   `KnowledgeGraphService.generate_raptor_tree(chunks: List[SemanticChunk])`: Implements the highly complex UMAP dimensionality reduction and GMM soft-clustering algorithm to group chunks.
+    *   `KnowledgeGraphService.pivot_kj(axis: str)`: Executes the multidimensional rearrangement logic, passing data to the LLM and receiving updated structures via a graph that includes self-correction for malformed Mermaid diagrams.
     *   `ActiveLearningService.generate_question(node_id: str)` and `evaluate_answer(node_id: str, answer: str)`: Securely handles the SQ3R logic flow, generating prompts and providing corrective feedback.
 *   **Infrastructure Adapters**:
     *   `ProductionDIContainer`: Intelligently initializes all required services and rigorously verifies that all dependencies are fully functional and correctly configured before allowing the application to start.
@@ -151,56 +155,56 @@ The current system acts as a skeletal but vital starting point. We will incremen
 
 ## 5. Implementation Plan
 
-To systematically and securely build out the complex matome platform while completely avoiding massive, unreviewable pull requests and ensuring exceptionally high code quality at every single step, we strictly and definitively divide the overall development into exactly 6 distinct implementation cycles. This phased, highly disciplined approach guarantees a rock-solid foundation is established before advancing to complex user-facing features or advanced AI integrations.
+To systematically and securely build out the complex matome platform while completely avoiding massive, unreviewable pull requests, ensuring exceptionally high code quality at every single step, and strictly adhering to logical dependency resolution, we decisively divide the overall development into exactly 6 distinct implementation cycles. This phased, highly disciplined approach guarantees a rock-solid foundation is established before advancing to complex user-facing features or advanced AI integrations. Crucially, we build infrastructure before attempting to utilize it in higher-level services.
 
 ### Cycle 1: Robust Foundation and Core Domain Modeling
-This cycle is focused entirely on establishing the core structural integrity of the application. It guarantees that data entering the system is strictly validated and that configuration is handled securely before any complex logic is written.
+This cycle is focused entirely on establishing the core structural integrity of the application. It guarantees that data entering the system is strictly validated and that configuration is handled securely before any complex logic is written. We establish the `State` objects for future graph orchestration.
 **Detailed Tasks**:
 *   Define the highly robust `PipelineConfig` and `CredentialConfig` classes utilizing `pydantic-settings` to manage API keys and system thresholds securely. We must ensure secrets are strictly handled, correctly typed, and validated explicitly on startup to fail-fast.
-*   Create the core domain entity models (`SemanticChunk`, `KnowledgeNode`, `SummaryTree`, `PivotResponse`) strictly inside `src/domain_models/schemas.py`. We must enforce strict structural validations (`extra='forbid'`) to guarantee unpolluted data pipelines.
+*   Create the core domain entity models (`SemanticChunk`, `KnowledgeNode`, `SummaryTree`, `PivotResponse`) strictly inside `src/domain_models/schemas.py`. We must enforce strict structural validations (`extra='forbid'`) to guarantee unpolluted data pipelines. These models will act as the `State` dictionary schema for LangGraph.
 *   Establish the baseline Python interfaces/protocols for all future services and external infrastructure adapters to guarantee strict architectural decoupling from day one.
 *   Implement the initial structural skeleton of the `ProductionDIContainer` to manage dependency injection properly, ensuring components can be swapped effortlessly in testing environments.
 *   Ensure all these foundational components strictly pass the rigorous Linter configuration (`ruff`) and static typing rules (`mypy` in strict mode) established in the `pyproject.toml`.
 
-### Cycle 2: Secure Ingestion and Semantic Preprocessing Pipeline
-This cycle shifts focus to securely handling external files and intelligently breaking them down into meaningful semantic units without triggering vulnerabilities.
+### Cycle 2: Resilient External Infrastructure Adapters
+This cycle strictly focuses on building the complex bridges to the external AI and database world. We must build these adapters *first* so that the application services in Cycle 3 can actually utilize them without cyclical dependencies.
+**Detailed Tasks**:
+*   Implement the `OpenRouterGateway` infrastructure adapter, meticulously ensuring it strictly handles explicit header validations to prevent HTTP injection, manages HTTP connection limits, and implements highly graceful fallback mechanics for transient API failures.
+*   Develop the specific adapter for the Vector Database (or a highly efficient mock/local substitute specifically designed for the development environment) to securely store and retrieve dense vector embeddings.
+*   Integrate proper, robust cryptographic validations for all external HTTP requests to categorically prevent Server-Side Request Forgery (SSRF) or advanced injection vulnerabilities.
+*   Ensure all API keys, bearer tokens, and sensitive inputs are masked perfectly and completely when logging the LLM interactions to proactively prevent devastating data leaks in production logs.
+
+### Cycle 3: Secure Ingestion and LangGraph State Machine Core
+With the infrastructure adapters complete, this cycle shifts focus to securely handling external files, chunking them, and executing the embedding process utilizing a highly resilient LangGraph state machine.
 **Detailed Tasks**:
 *   Implement the robust, secure raw file parsing engine to carefully handle `.txt` and basic markdown files, applying exceptionally strict path traversal validation by canonicalizing all incoming file paths.
 *   Develop the advanced semantic chunking logic that dynamically breaks down documents intelligently using sentence-similarity evaluation rather than naive, arbitrary text limits, preserving the crucial context of the text.
 *   Implement the basic Named Entity Recognition (NER) schemas and integrate them seamlessly into the chunking pipeline to extract high-value metadata early in the process.
 *   Set up robust, configurable bounded quantifiers and explicit length limiters on all chunk parsers and regex operations to proactively and completely mitigate ReDOS vulnerabilities and prevent memory exhaustion attacks.
-*   Securely connect these tested sub-components within the cohesive `DocumentProcessingService`.
-
-### Cycle 3: The Resilient LLM Gateway and Vector Database Connectors
-This cycle focuses entirely on building the complex bridges to the external AI world, ensuring these connections are resilient, secure, and fail gracefully.
-**Detailed Tasks**:
-*   Implement the `OpenRouterGateway` infrastructure adapter, meticulously ensuring it strictly handles explicit header validations to prevent HTTP injection, manages HTTP connection limits, and implements highly graceful fallback mechanics for transient API failures.
-*   Develop the specific adapter for the Vector Database (or a highly efficient mock/local substitute specifically designed for the development environment) to securely store and retrieve the dense chunks generated in Cycle 2.
-*   Integrate proper, robust cryptographic validations for all external HTTP requests to categorically prevent Server-Side Request Forgery (SSRF) or advanced injection vulnerabilities.
-*   Ensure all API keys, bearer tokens, and sensitive inputs are masked perfectly and completely when logging the LLM interactions to proactively prevent devastating data leaks in production logs.
+*   Orchestrate these components into the `DocumentProcessingWorkflow` using LangGraph. This graph will securely manage the state transitions from `raw_text` -> `cleaned_text` -> `semantic_chunks` -> `embedded_chunks`, natively handling retries if the `OpenRouterGateway` from Cycle 2 experiences a transient failure.
 
 ### Cycle 4: RAPTOR Graph Construction and Orchestration
-This cycle focuses on the core AI intelligence—building the multi-dimensional, hierarchical knowledge tree utilizing advanced mathematical clustering algorithms.
+This cycle focuses on the core AI intelligence—building the multi-dimensional, hierarchical knowledge tree utilizing advanced mathematical clustering algorithms and integrating them into the workflow.
 **Detailed Tasks**:
-*   Implement the highly complex core RAPTOR algorithm meticulously inside the `KnowledgeGraphService`. This entails executing sophisticated dimensionality reduction over the newly embedded semantic chunks.
+*   Implement the highly complex core RAPTOR algorithm meticulously inside the `KnowledgeGraphService`. This entails executing sophisticated dimensionality reduction over the newly embedded semantic chunks created in Cycle 3.
 *   Perform precise Gaussian Mixture Model (GMM) soft-clustering to dynamically define the nuanced hierarchical parent-child relationships between disparate chunks.
 *   Design and heavily refine the prompts for the Information Super-Densification (Chain of Density) process, and utilize the robust `OpenRouterGateway` to reliably generate high-density, low-cognitive-load summaries for the newly formed nodes.
-*   Carefully and structurally stitch the generated clusters and summaries back into the pristine domain models to complete the finalized, robust hierarchical Summary Tree representation.
+*   Carefully and structurally stitch the generated clusters and summaries back into the pristine domain models to complete the finalized, robust hierarchical Summary Tree representation. Extend the LangGraph workflow to incorporate these clustering nodes.
 
 ### Cycle 5: Frictionless Interactive Learning and SQ3R Loop Integration
-This cycle shifts the focus to the user experience, implementing the core educational mechanics, gamification hooks, and the question/answer flows for active user engagement.
+This cycle shifts the focus to the user experience, implementing the core educational mechanics, gamification hooks, and the question/answer flows for active user engagement against the generated graph.
 **Detailed Tasks**:
-*   Build the specialized `ActiveLearningService` responsible for intelligently generating context-specific, highly relevant reasoning questions for nodes that are currently locked to the user.
+*   Build the specialized `ActiveLearningService` responsible for intelligently generating context-specific, highly relevant reasoning questions for nodes that are currently locked to the user based on the summaries generated in Cycle 4.
 *   Implement the sophisticated logic to securely evaluate incoming user responses (both text and simulated voice transcripts) and automatically generate appropriate "Sandwich Feedback" based on cognitive load principles.
 *   Rigorously manage the read/unread/locked state of nodes within the domain and strictly enforce the unlock progression mechanics securely within the application layer, preventing user bypasses.
-*   Ensure all generative outputs related to user feedback are rigorously sanitized before being prepared for presentation.
+*   Ensure all generative outputs related to user feedback are rigorously sanitized before being prepared for presentation to mitigate prompt injection.
 
 ### Cycle 6: Multi-Dimensional Pivot KJ and Complex Export Functionality
 The final cycle focuses on the platform's ultimate value proposition: the high-level insight reconstruction, multidimensional pivoting, and artifact generation capabilities.
 **Detailed Tasks**:
-*   Implement the complex "Pivot KJ" algorithm within the `KnowledgeGraphService`. This algorithm takes a user-defined axis string, queries relevant chunks dynamically from the graph, and orchestrates an LLM to smartly rearrange them into entirely new, highly logical clusters.
+*   Implement the complex "Pivot KJ" algorithm within the `KnowledgeGraphService`. This algorithm takes a user-defined axis string, queries relevant chunks dynamically from the vector database, and orchestrates an LLM to smartly rearrange them into entirely new, highly logical clusters.
 *   Integrate an automated verification step (the Web-Grounding simulation) to intelligently cross-reference the newly reconstructed logic and suggest bias removals.
-*   Implement the sophisticated exporter utility that safely and accurately translates the new node arrangement into valid Markdown requirements documents and syntactically flawless Mermaid.js diagram code.
+*   Implement the sophisticated exporter utility that safely and accurately translates the new node arrangement into valid Markdown requirements documents and syntactically flawless Mermaid.js diagram code. Crucially, implement a self-correction loop in LangGraph that intercepts malformed Mermaid code and re-prompts the LLM before exposing it to the user.
 *   Finalize, thoroughly test, and highly polish the single `tutorials/UAT_AND_TUTORIAL.py` Marimo notebook to ensure it effortlessly and beautifully demonstrates the entire complex sequence from start to finish.
 
 ## 6. Test Strategy
@@ -209,20 +213,20 @@ Every single implementation cycle will be accompanied by an exceptionally rigoro
 
 ### Cycle 1 Testing Strategy (Foundation and Models)
 This testing phase is critical for establishing confidence in our core data structures before any logic touches them.
-*   **Comprehensive Unit Tests**: Validate all attributes of the Pydantic schemas. We will write aggressive boundary tests explicitly injecting invalid data types, excessively long string values, and severely malformed JSON inputs to absolutely guarantee `ValueError` or `ValidationError` is correctly and immediately thrown, proving the `extra='forbid'` logic works.
+*   **Comprehensive Unit Tests**: Validate all attributes of the Pydantic schemas. We will write aggressive boundary tests explicitly injecting invalid data types, excessively long string values, and severely malformed JSON inputs to absolutely guarantee `ValueError` or `ValidationError` is correctly and immediately thrown, proving the `extra='forbid'` logic works perfectly as the bedrock of the LangGraph state.
 *   **Secure Configuration Tests**: Verify `pydantic-settings` correctly reads `.env` variables using `tmp_path` fixtures to dynamically write temporary configuration files. This ensures absolutely no global environment state is ever polluted during the test suite execution.
 *   **Security Validation Checks**: Mathematically guarantee that sensitive credentials properly and effectively utilize the secure memory encapsulation logic, verifying that the `SecureString` objects cannot be accidentally printed or leaked via standard tracebacks.
 
-### Cycle 2 Testing Strategy (Secure Ingestion Pipeline)
-This phase focuses heavily on preventing common web vulnerabilities while ensuring our chunking math is solid.
+### Cycle 2 Testing Strategy (External Adapters and Gateways)
+This testing phase ensures our system remains robust even when external APIs fail, timeout, or return garbage data, guaranteeing stability for the workflows built in Cycle 3.
+*   **Header Injection Unit Tests**: Explicitly test the outgoing HTTP client headers to confirm that dangerous Carriage Return/Line Feed (CRLF) characters are actively stripped or structurally rejected to completely prevent HTTP Header Injection vulnerabilities.
+*   **Thoroughly Mocked Integrations**: Use established libraries like `responses` or `respx` to safely and completely mock the external OpenRouter HTTP endpoints. We will rigorously verify that the `OpenRouterGateway` accurately processes standard 200 OK responses, but more importantly, accurately and gracefully handles simulated 429 Too Many Requests, simulated connection timeouts, and 500 Internal Server Error fallbacks without ever crashing the main system.
+
+### Cycle 3 Testing Strategy (Secure Ingestion and Workflows)
+This phase focuses heavily on preventing common web vulnerabilities while ensuring our chunking math and LangGraph state transitions are solid.
 *   **Algorithmic Unit Tests**: Exhaustively test the highly complex semantic chunking algorithms with numerous pathological edge case strings (completely empty strings, extremely long uninterrupted blocks of text without punctuation, highly complex nested Unicode characters, right-to-left language segments).
 *   **Vulnerability Security Tests**: Aggressively validate the directory traversal protections by passing known malicious payloads (like `../../../../etc/passwd` or null-byte injections) directly to the file ingestion endpoint functions to ensure an immediate, highly secure rejection and canonicalization failure.
-*   **End-to-End Integration Tests**: Run a completely standardized sample text document through the `DocumentProcessingService` using localized, controlled test files to strictly ensure the mathematically correct number of chunks and entities are consistently yielded.
-
-### Cycle 3 Testing Strategy (External Adapters and Gateways)
-This testing phase ensures our system remains robust even when external APIs fail, timeout, or return garbage data.
-*   **Header Injection Unit Tests**: Explicity test the outgoing HTTP client headers to confirm that dangerous Carriage Return/Line Feed (CRLF) characters are actively stripped or structurally rejected to completely prevent HTTP Header Injection vulnerabilities.
-*   **Thoroughly Mocked Integrations**: Use established libraries like `responses` or `respx` to safely and completely mock the external OpenRouter HTTP endpoints. We will rigorously verify that the `OpenRouterGateway` accurately processes standard 200 OK responses, but more importantly, accurately and gracefully handles simulated 429 Too Many Requests, simulated connection timeouts, and 500 Internal Server Error fallbacks without ever crashing the main system.
+*   **State Machine Logic Tests**: Pass predefined inputs into the `DocumentProcessingWorkflow` (LangGraph) and rigidly assert that the graph transitions through the exact expected nodes (`parse` -> `chunk` -> `embed`) and that the output state exactly matches the mathematically expected domain model representation.
 
 ### Cycle 4 Testing Strategy (Graph Construction and Mathematics)
 This phase tests the core intelligence and mathematical stability of the RAPTOR implementation.
@@ -237,7 +241,8 @@ This testing phase ensures the gamification loop is completely logically sound a
 *   **State Machine Integration Tests**: Systematically verify the complex state machine transitions flawlessly from 'Locked' to 'Unlocked' statuses and explicitly verify that only valid, cryptographically verified actions can ever trigger these specific state transitions in the domain model.
 
 ### Cycle 6 Testing Strategy (Pivot KJ and Complete E2E Verification)
-The final testing phase proves the entire system works cohesively from the user's perspective.
+The final testing phase proves the entire system works cohesively from the user's perspective, including self-correction logic.
 *   **Exporter Logic Unit Tests**: Meticulously validate that the Markdown and Mermaid.js exporter logic safely and effectively escapes all arbitrary strings derived from the AI to completely prevent rendering injections when viewed in a web frontend or external Markdown renderer.
+*   **Graph Self-Correction Tests**: Pass intentionally malformed Mermaid syntax mock responses to the Pivot KJ LangGraph workflow and assert that the graph correctly detects the syntax error and loops back to the generator node for correction, successfully producing a valid diagram on the second pass.
 *   **Comprehensive E2E Tests**: Run the full, unmodified `tutorials/UAT_AND_TUTORIAL.py` script strictly in Mock Mode using Pytest. This is to absolutely guarantee the entire complex user journey (Secure Ingestion -> RAPTOR Tree Generation -> Question Answering Loop -> Pivot KJ Reorganization -> Diagram Output Generation) succeeds flawlessly and deterministically from start to finish without a single exception.
 *   **Final Quality Review**: Execute a final, automated validation script checking for overall test coverage (must be strictly >85%) and execute a complete, rigorous static analysis sweep to ensure absolutely zero linter warnings or type ignoring comments remain in the final codebase.
