@@ -1,45 +1,27 @@
-import os
-
 from src.container import ProductionDIContainer
 from src.domain_models.config import PipelineConfig
+from src.services.document import DefaultDocumentProcessingService
+from src.services.graph import DefaultKnowledgeGraphService
+from src.services.learning import DefaultActiveLearningService
+from src.services.llm import DefaultLLMProtocol
 
 
 def init_container() -> ProductionDIContainer:
     """Initialize the configuration and DI container for the application."""
     config = PipelineConfig()
 
-    # Since production services aren't built in Cycle 1, we use a placeholder factory.
-    # We will raise NotImplementedError unless MOCKS are explicitly enabled in environment
-    # for testing purposes only. No test imports are present in the global scope.
+    # Define factories for production services
+    def llm_factory() -> DefaultLLMProtocol:
+        return DefaultLLMProtocol()
 
-    use_mocks = os.environ.get("USE_MOCKS") == "1"
+    def doc_factory() -> DefaultDocumentProcessingService:
+        return DefaultDocumentProcessingService()
 
-    if use_mocks:
-        # We only import mocks if explicitly running in mock mode to prevent
-        # production dependency on test code.
-        from tests.unit.test_container import (
-            MockActiveLearningService,
-            MockDocumentProcessingService,
-            MockKnowledgeGraphService,
-            MockLLMProtocol,
-        )
+    def kg_factory() -> DefaultKnowledgeGraphService:
+        return DefaultKnowledgeGraphService()
 
-        def llm_factory() -> MockLLMProtocol:
-            return MockLLMProtocol()
-
-        def doc_factory() -> MockDocumentProcessingService:
-            return MockDocumentProcessingService()
-
-        def kg_factory() -> MockKnowledgeGraphService:
-            return MockKnowledgeGraphService()
-
-        def al_factory() -> MockActiveLearningService:
-            return MockActiveLearningService()
-    else:
-        # In a real environment, we'd inject concrete classes here.
-        # Since this is Cycle 01, we cannot load what doesn't exist yet.
-        msg = "Production implementations for services are not yet built. Set USE_MOCKS=1 to run dummy implementations."
-        raise NotImplementedError(msg)
+    def al_factory() -> DefaultActiveLearningService:
+        return DefaultActiveLearningService()
 
     return ProductionDIContainer(
         config=config,

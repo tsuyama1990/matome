@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from typing import Any, Protocol
 
 from src.domain_models import KnowledgeNode, PivotResponse, SemanticChunk, SummaryTree
@@ -22,8 +23,8 @@ class ActiveLearningError(Exception):
 class LLMProtocol(Protocol):
     """Protocol for LLM interactions like OpenRouterGateway."""
 
-    def invoke(self, prompt: str, **kwargs: Any) -> str:
-        """Invokes the LLM with a prompt and returns the string response.
+    def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
+        """Invokes the LLM with a prompt, timeout, and retry logic.
 
         Raises:
             LLMError: If the underlying model API fails or returns invalid responses.
@@ -43,6 +44,10 @@ class DocumentProcessingService(Protocol):
         """
         ...
 
+    def process_stream(self, file_path: str, chunk_size: int = 1000) -> Iterator[SemanticChunk]:
+        """Streams a file processing to reduce memory overhead."""
+        ...
+
 
 class KnowledgeGraphService(Protocol):
     """Protocol for the KnowledgeGraphService."""
@@ -53,6 +58,12 @@ class KnowledgeGraphService(Protocol):
         Raises:
             GraphError: If the graph generation algorithms fail or the input chunks are invalid.
         """
+        ...
+
+    def generate_raptor_tree_batch(
+        self, chunks: list[SemanticChunk], batch_size: int = 100
+    ) -> SummaryTree:
+        """Processes massive chunk lists in batches safely."""
         ...
 
     def pivot_kj(self, tree: SummaryTree, axis: str) -> PivotResponse:
@@ -75,10 +86,18 @@ class ActiveLearningService(Protocol):
         """
         ...
 
-    def generate_question(self, node: KnowledgeNode) -> str:
-        """Generates a question for a locked node.
+    def generate_question(self, node: KnowledgeNode, difficulty: str = "normal") -> str:
+        """Generates an adaptive question for a locked node.
 
         Raises:
             ActiveLearningError: If prompt generation fails.
         """
+        ...
+
+    def track_progress(self, user_id: str, node_id: str, success: bool) -> None:
+        """Records progress analytics."""
+        ...
+
+    def get_feedback(self, node: KnowledgeNode, answer: str) -> str:
+        """Generates constructive, targeted feedback."""
         ...

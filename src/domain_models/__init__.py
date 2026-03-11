@@ -1,5 +1,5 @@
 from .chunk import SemanticChunk
-from .config import CredentialConfig, PipelineConfig, SecureString
+from .config import CredentialConfig, PipelineConfig
 from .graph import KnowledgeNode, NodeState, SummaryTree
 from .pivot import PivotResponse, RestructuredNode
 
@@ -10,7 +10,6 @@ __all__ = [
     "PipelineConfig",
     "PivotResponse",
     "RestructuredNode",
-    "SecureString",
     "SemanticChunk",
     "SummaryTree",
 ]

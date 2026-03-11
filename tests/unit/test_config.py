@@ -1,29 +1,10 @@
-import secrets
 from pathlib import Path
 
 import pytest
 from pydantic import SecretStr, ValidationError
 from pydantic_settings import SettingsConfigDict
 
-from src.domain_models import CredentialConfig, PipelineConfig, SecureString
-
-
-def test_secure_string_zeroization() -> None:
-    """Mathematically guarantees that sensitive credentials utilize the secure memory encapsulation logic."""
-    secret_value = secrets.token_hex(16)
-
-    secure_str = SecureString(secret_value)
-
-    # We must use a callback to access the string now
-    def verify_and_return(decoded: str) -> str:
-        assert decoded == secret_value
-        return decoded
-
-    result = secure_str.use(verify_and_return)
-    assert result == secret_value
-
-    # After exiting the callback, the bytearray backing the secure string should be zeroed out
-    assert all(b == 0 for b in secure_str._data)
+from src.domain_models import CredentialConfig, PipelineConfig
 
 
 def test_credential_config_validation() -> None:
@@ -47,13 +28,9 @@ def test_credential_config_validation() -> None:
     assert config._encrypted_api_key != valid_key.encode("utf-8")
 
     # Assert we can retrieve it securely
-    decrypted_secure_str = config.get_decrypted_api_key()
-    assert decrypted_secure_str is not None
-
-    def check_match(val: str) -> bool:
-        return val == valid_key
-
-    assert decrypted_secure_str.use(check_match) is True
+    decrypted_secret = config.get_decrypted_api_key()
+    assert decrypted_secret is not None
+    assert decrypted_secret.get_secret_value() == valid_key
 
 
 def test_credential_config_loading(tmp_path: Path) -> None:
@@ -62,7 +39,6 @@ def test_credential_config_loading(tmp_path: Path) -> None:
     env_file.write_text('OPENROUTER_API_KEY="sk-or-v1-12345678901234567890"\n')
 
     # We must patch os.environ temporarily for pydantic_settings to pick up the file or env
-    # Since we want to test native loading, we configure the env_file in the model
     class TestCredentialConfig(CredentialConfig):
         model_config = SettingsConfigDict(
             env_file=str(env_file),
