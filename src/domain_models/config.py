@@ -1,9 +1,21 @@
 import os
+import re
 from typing import Any
 
 from cryptography.fernet import Fernet
 from pydantic import Field, PrivateAttr, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.domain_models.constants import (
+    DEFAULT_ACTIVE_LEARNING_SERVICE_PATH,
+    DEFAULT_DOCUMENT_SERVICE_PATH,
+    DEFAULT_FAST_MODEL,
+    DEFAULT_GRAPH_SERVICE_PATH,
+    DEFAULT_LLM_SERVICE_PATH,
+    DEFAULT_MAX_CHUNK_SCAN_SIZE,
+    DEFAULT_MULTIMODAL_MODEL,
+    DEFAULT_REASONING_MODEL,
+)
 
 
 class CredentialConfig(BaseSettings):
@@ -20,14 +32,16 @@ class CredentialConfig(BaseSettings):
     @field_validator("openrouter_api_key")
     @classmethod
     def validate_api_key(cls, v: SecretStr | None) -> SecretStr | None:
-        """Validates API key format and length."""
+        """Validates API key strictly against standard OpenRouter formats."""
         if v is not None:
             val = v.get_secret_value()
             if len(val) < 20:
                 msg = "API key must be at least 20 characters long"
                 raise ValueError(msg)
-            if not val.startswith("sk-or-"):
-                msg = "API key must start with 'sk-or-'"
+            # OpenRouter keys typically start with sk-or-v1- and contain hex/alphanumeric strings
+            pattern = r"^sk-or-v1-[a-zA-Z0-9]{64}$"
+            if not re.match(pattern, val):
+                msg = "API key must strictly match the OpenRouter 'sk-or-v1-' 64-char alphanumeric pattern."
                 raise ValueError(msg)
         return v
 
@@ -67,14 +81,15 @@ class PipelineConfig(BaseSettings):
     model_config = SettingsConfigDict(env_nested_delimiter="__", extra="forbid")
 
     credentials: CredentialConfig = Field(default_factory=CredentialConfig)
-    max_chunk_scan_size: int = 10000
-    fast_model: str = "google/gemini-2.5-flash"
-    reasoning_model: str = "anthropic/claude-3.7-sonnet"
-    multimodal_model: str = "openai/gpt-4o"
+
+    max_chunk_scan_size: int = Field(default=DEFAULT_MAX_CHUNK_SCAN_SIZE)
+    fast_model: str = Field(default=DEFAULT_FAST_MODEL)
+    reasoning_model: str = Field(default=DEFAULT_REASONING_MODEL)
+    multimodal_model: str = Field(default=DEFAULT_MULTIMODAL_MODEL)
     trusted_model_hashes: list[str] = Field(default_factory=list)
 
     # Dynamic import paths for DI resolution in production without hardcoding imports
-    llm_service_path: str = "src.interfaces.LLMProtocol"
-    document_service_path: str = "src.interfaces.DocumentProcessingService"
-    graph_service_path: str = "src.interfaces.KnowledgeGraphService"
-    active_learning_service_path: str = "src.interfaces.ActiveLearningService"
+    llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)
+    document_service_path: str = Field(default=DEFAULT_DOCUMENT_SERVICE_PATH)
+    graph_service_path: str = Field(default=DEFAULT_GRAPH_SERVICE_PATH)
+    active_learning_service_path: str = Field(default=DEFAULT_ACTIVE_LEARNING_SERVICE_PATH)

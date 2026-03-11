@@ -1,12 +1,10 @@
 import os
-from pathlib import Path
 from typing import Any
 from unittest import mock
 
 import pytest
 from cryptography.fernet import Fernet
 from pydantic import SecretStr, ValidationError
-from pydantic_settings import SettingsConfigDict
 
 from src.domain_models import CredentialConfig, PipelineConfig
 
@@ -27,11 +25,12 @@ def test_credential_config_validation(mock_env_key: Any) -> None:
             CredentialConfig(openrouter_api_key=SecretStr("sk-or-123"))
 
         # Invalid prefix
-        with pytest.raises(ValidationError, match="API key must start with 'sk-or-'"):
+        with pytest.raises(ValidationError, match="API key must strictly match"):
             CredentialConfig(openrouter_api_key=SecretStr("sk-ant-12345678901234567890"))
 
         # Valid key encryption testing
-        valid_key = "sk-or-v1-12345678901234567890"
+        # The key must match the strict length and pattern sk-or-v1-[a-zA-Z0-9]{64}
+        valid_key = "sk-or-v1-" + ("A" * 64)
         config = CredentialConfig(openrouter_api_key=SecretStr(valid_key))
 
         # Assert it was erased from memory in the pydantic model
@@ -54,22 +53,20 @@ def test_credential_config_missing_key() -> None:
         CredentialConfig()
 
 
-def test_credential_config_loading(tmp_path: Path, mock_env_key: Any) -> None:
-    """Verifies that CredentialConfig correctly reads .env variables using tmp_path."""
-    with mock_env_key:
-        env_file = tmp_path / ".env"
-        env_file.write_text('OPENROUTER_API_KEY="sk-or-v1-12345678901234567890"\n')
-
-        class TestCredentialConfig(CredentialConfig):
-            model_config = SettingsConfigDict(
-                env_file=str(env_file),
-                extra="forbid",
-            )
-
-        config = TestCredentialConfig()
+def test_credential_config_loading(mock_env_key: Any) -> None:
+    """Verifies that CredentialConfig correctly reads .env variables natively."""
+    valid_key = "sk-or-v1-" + ("B" * 64)
+    with mock_env_key, mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": valid_key}):
+        # Directly instantiate the unmodified production class, relying on os.environ directly
+        # rather than dynamically altering `model_config` settings in a subclass.
+        config = CredentialConfig()
 
         assert config.openrouter_api_key is None
         assert config._encrypted_api_key is not None
+
+        decrypted = config.get_decrypted_api_key()
+        assert decrypted is not None
+        assert decrypted.get_secret_value() == valid_key
 
 
 def test_pipeline_config_defaults(mock_env_key: Any) -> None:

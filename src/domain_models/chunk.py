@@ -1,6 +1,15 @@
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+
+class ChunkMetadata(BaseModel):
+    """Strictly validated metadata payload for SemanticChunks."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page_number: int = Field(default=1, ge=1)
+    source_document: str = Field(default="unknown")
+    entities_extracted: list[str] = Field(default_factory=list)
 
 
 class SemanticChunk(BaseModel):
@@ -10,7 +19,7 @@ class SemanticChunk(BaseModel):
 
     id: str
     text: str = Field(min_length=1, max_length=100000)
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: ChunkMetadata = Field(default_factory=ChunkMetadata)
 
     @field_validator("text")
     @classmethod

@@ -1,6 +1,5 @@
 import argparse
 import importlib
-import os
 import sys
 from collections.abc import Callable
 from typing import Any
@@ -27,23 +26,20 @@ def resolve_class(import_path: str) -> Callable[..., Any]:
     module_path, class_name = import_path.rsplit(".", 1)
     try:
         module = importlib.import_module(module_path)
-        cls = getattr(module, class_name)
-        if not callable(cls):
-            msg = f"Resolved object {class_name} is not callable."
-            raise ValueError(msg)
-        return cls # type: ignore[no-any-return]
     except Exception as e:
-        msg = f"Failed to dynamically import {import_path}: {e}"
+        msg = f"Failed to dynamically import module {module_path}: {e}"
         raise ImportError(msg) from e
+
+    cls = getattr(module, class_name)
+    if not callable(cls):
+        msg = f"Resolved object {class_name} is not callable."
+        raise TypeError(msg)
+
+    return cls  # type: ignore[no-any-return]
 
 
 def init_container() -> ProductionDIContainer:
     """Initialize the configuration and dynamically bind DI container using configured paths."""
-    # Ensure a secure key is present for startup in production
-    if "MATOME_ENCRYPTION_KEY" not in os.environ:
-        from cryptography.fernet import Fernet
-        os.environ["MATOME_ENCRYPTION_KEY"] = Fernet.generate_key().decode('utf-8')
-
     config = PipelineConfig()
 
     # Resolve the factory Callables directly from the string paths in config

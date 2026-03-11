@@ -20,7 +20,7 @@ def test_resolve_class() -> None:
     assert cls is ProductionDIContainer
 
     # Test not a callable
-    with pytest.raises(ImportError, match="Failed to dynamically import"):
+    with pytest.raises(TypeError, match="Resolved object __name__ is not callable."):
         main.resolve_class("main.__name__")
 
     # Test invalid module
@@ -41,10 +41,14 @@ def test_init_container(mock_env_key: Any) -> None:
 
         # Setup the mock to return specific classes based on the string passed
         def side_effect(path: str) -> Any:
-            if "LLMProtocol" in path: return MockLLMProtocol
-            if "DocumentProcessingService" in path: return MockDocumentProcessingService
-            if "KnowledgeGraphService" in path: return MockKnowledgeGraphService
-            if "ActiveLearningService" in path: return MockActiveLearningService
+            if "LLMProtocol" in path:
+                return MockLLMProtocol
+            if "DocumentProcessingService" in path:
+                return MockDocumentProcessingService
+            if "KnowledgeGraphService" in path:
+                return MockKnowledgeGraphService
+            if "ActiveLearningService" in path:
+                return MockActiveLearningService
             raise ValueError(path)
 
         mock_resolve.side_effect = side_effect
