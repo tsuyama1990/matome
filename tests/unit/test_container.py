@@ -9,11 +9,10 @@ from cryptography.fernet import Fernet
 
 from src.container import ProductionDIContainer
 from src.domain_models import (
+    GraphState,
     KnowledgeNode,
     PipelineConfig,
-    PivotResponse,
     SemanticChunk,
-    SummaryTree,
 )
 from src.interfaces import (
     ActiveLearningError,
@@ -33,23 +32,23 @@ class MockLLMProtocol(LLMProtocol):
         raise LLMError(msg)
 
 class MockDocumentProcessingService(DocumentProcessingService):
-    def process(self, file_path: str) -> list[SemanticChunk]:
-        msg = f"Cannot process file {file_path}: invalid format"
+    def process(self, state: GraphState) -> GraphState:
+        msg = f"Cannot process file {state.file_path}: invalid format"
         raise ProcessingError(msg)
 
     def process_stream(self, file_path: str, chunk_size: int = 1000) -> Iterator[SemanticChunk]:
         yield SemanticChunk(id="1", text="test")
 
 class MockKnowledgeGraphService(KnowledgeGraphService):
-    def generate_raptor_tree(self, chunks: list[SemanticChunk]) -> SummaryTree:
+    def generate_raptor_tree(self, state: GraphState) -> GraphState:
         msg = "Failed to cluster chunks: not enough data"
         raise GraphError(msg)
 
-    def generate_raptor_tree_batch(self, chunks: list[SemanticChunk], batch_size: int = 100) -> SummaryTree:
-        return self.generate_raptor_tree(chunks)
+    def generate_raptor_tree_batch(self, state: GraphState, batch_size: int = 100) -> GraphState:
+        return self.generate_raptor_tree(state)
 
-    def pivot_kj(self, tree: SummaryTree, axis: str) -> PivotResponse:
-        msg = f"Invalid pivot axis '{axis}' provided"
+    def pivot_kj(self, state: GraphState) -> GraphState:
+        msg = f"Invalid pivot axis '{state.pivot_axis}' provided"
         raise GraphError(msg)
 
 class MockActiveLearningService(ActiveLearningService):
@@ -62,10 +61,12 @@ class MockActiveLearningService(ActiveLearningService):
         raise ActiveLearningError(msg)
 
     def track_progress(self, user_id: str, node_id: str, success: bool) -> None:
-        pass
+        msg = "Failed to securely track active learning progress"
+        raise ActiveLearningError(msg)
 
     def get_feedback(self, node: KnowledgeNode, answer: str) -> str:
-        return ""
+        msg = "Failed to generate targeted feedback securely"
+        raise ActiveLearningError(msg)
 
 def get_llm_factory() -> Callable[[], LLMProtocol]:
     def factory() -> LLMProtocol:
@@ -115,10 +116,10 @@ def test_container_initialization_success(mock_env_key: Any) -> None:
 
         test_path = str(Path.cwd() / "test.txt")
         with pytest.raises(ProcessingError):
-            container.document_processor.process(test_path)
+            container.document_processor.process(GraphState(file_path=test_path))
 
         with pytest.raises(GraphError):
-            container.knowledge_graph.generate_raptor_tree([])
+            container.knowledge_graph.generate_raptor_tree(GraphState(file_path="foo"))
 
 def test_container_initialization_failures(mock_env_key: Any) -> None:
     with mock_env_key:

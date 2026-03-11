@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.domain_models import (
+    GraphState,
     KnowledgeNode,
     NodeState,
     PivotResponse,
@@ -95,3 +96,20 @@ def test_pivot_response_validation() -> None:
     }
     with pytest.raises(ValidationError):
         PivotResponse(**invalid_data)
+
+
+def test_graph_state_validation() -> None:
+    """Validates that GraphState enforces strict state typing and extra='forbid'."""
+    # Valid initialization
+    state = GraphState(file_path="foo.txt")
+    assert state.file_path == "foo.txt"
+    assert state.chunks == []
+    assert state.tree is None
+    assert state.active_node_id is None
+    assert state.pivot_axis is None
+    assert state.pivot_response is None
+    assert state.error is None
+
+    # Invalid initialization (extra field)
+    with pytest.raises(ValidationError):
+        GraphState(file_path="foo.txt", invalid_field="this should fail")  # type: ignore[call-arg]

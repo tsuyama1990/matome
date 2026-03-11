@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from typing import Any, Protocol
 
-from src.domain_models import KnowledgeNode, PivotResponse, SemanticChunk, SummaryTree
+from src.domain_models import GraphState, KnowledgeNode, SemanticChunk
 
 
 class LLMError(Exception):
@@ -33,10 +33,10 @@ class LLMProtocol(Protocol):
 
 
 class DocumentProcessingService(Protocol):
-    """Protocol for the DocumentProcessingService."""
+    """Protocol for the DocumentProcessingService executing within a LangGraph state machine."""
 
-    def process(self, file_path: str) -> list[SemanticChunk]:
-        """Processes a file and returns semantic chunks.
+    def process(self, state: GraphState) -> GraphState:
+        """Processes a file referenced in state and updates state.chunks.
 
         Raises:
             ProcessingError: If the document cannot be read, parsed, or chunked securely.
@@ -50,10 +50,10 @@ class DocumentProcessingService(Protocol):
 
 
 class KnowledgeGraphService(Protocol):
-    """Protocol for the KnowledgeGraphService."""
+    """Protocol for the KnowledgeGraphService executing within a LangGraph state machine."""
 
-    def generate_raptor_tree(self, chunks: list[SemanticChunk]) -> SummaryTree:
-        """Builds a hierarchical tree from semantic chunks.
+    def generate_raptor_tree(self, state: GraphState) -> GraphState:
+        """Builds a hierarchical tree from semantic chunks in state and updates state.tree.
 
         Raises:
             GraphError: If the graph generation algorithms fail or the input chunks are invalid.
@@ -61,13 +61,13 @@ class KnowledgeGraphService(Protocol):
         ...
 
     def generate_raptor_tree_batch(
-        self, chunks: list[SemanticChunk], batch_size: int = 100
-    ) -> SummaryTree:
+        self, state: GraphState, batch_size: int = 100
+    ) -> GraphState:
         """Processes massive chunk lists in batches safely."""
         ...
 
-    def pivot_kj(self, tree: SummaryTree, axis: str) -> PivotResponse:
-        """Rearranges the tree based on an axis.
+    def pivot_kj(self, state: GraphState) -> GraphState:
+        """Rearranges the tree based on state.pivot_axis and updates state.pivot_response.
 
         Raises:
             GraphError: If the Pivot KJ engine fails to restructure the knowledge or generate artifacts.
