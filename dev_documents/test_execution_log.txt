@@ -1,0 +1,37 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0, anyio-4.12.1
+collected 19 items
+
+tests/e2e/test_main.py ..                                                [ 10%]
+tests/unit/test_config.py ......                                         [ 42%]
+tests/unit/test_dependencies.py ..                                       [ 52%]
+tests/unit/test_node.py ......                                           [ 84%]
+tests/unit/test_protocols.py ..                                          [ 94%]
+tests/unit/test_secure_string.py .                                       [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+
+Name                                 Stmts   Miss  Cover   Missing
+------------------------------------------------------------------
+main.py                                 22      2    91%   40-42
+src/__init__.py                          0      0   100%
+src/dependencies.py                     16      2    88%   27-28
+src/domain_models/__init__.py            5      0   100%
+src/domain_models/config.py             12      0   100%
+src/domain_models/node.py               15      0   100%
+src/domain_models/protocols.py          46     12    74%   10, 14, 18, 24, 30, 36, 42, 46, 52, 56, 60, 66
+src/domain_models/secure_string.py      14      0   100%
+tests/e2e/test_main.py                  25      2    92%   13-14
+tests/unit/test_config.py               28      0   100%
+tests/unit/test_dependencies.py         38      9    76%   18, 21, 24, 29, 32, 35, 40, 43, 48
+tests/unit/test_node.py                 28      0   100%
+tests/unit/test_protocols.py            12      1    92%   17
+tests/unit/test_secure_string.py         9      0   100%
+------------------------------------------------------------------
+TOTAL                                  270     28    90%
+============================== 19 passed in 2.22s ==============================
