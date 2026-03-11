@@ -1,7 +1,12 @@
 import argparse
+import importlib
+import os
 import sys
+from collections.abc import Callable
+from typing import Any
 
-from src.factory import init_container
+from src.container import ProductionDIContainer
+from src.domain_models.config import PipelineConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -17,10 +22,49 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def resolve_class(import_path: str) -> Callable[..., Any]:
+    """Dynamically resolves a class from a string path (e.g., 'src.module.ClassName')."""
+    module_path, class_name = import_path.rsplit(".", 1)
+    try:
+        module = importlib.import_module(module_path)
+        cls = getattr(module, class_name)
+        if not callable(cls):
+            msg = f"Resolved object {class_name} is not callable."
+            raise ValueError(msg)
+        return cls # type: ignore[no-any-return]
+    except Exception as e:
+        msg = f"Failed to dynamically import {import_path}: {e}"
+        raise ImportError(msg) from e
+
+
+def init_container() -> ProductionDIContainer:
+    """Initialize the configuration and dynamically bind DI container using configured paths."""
+    # Ensure a secure key is present for startup in production
+    if "MATOME_ENCRYPTION_KEY" not in os.environ:
+        from cryptography.fernet import Fernet
+        os.environ["MATOME_ENCRYPTION_KEY"] = Fernet.generate_key().decode('utf-8')
+
+    config = PipelineConfig()
+
+    # Resolve the factory Callables directly from the string paths in config
+    # This completely decouples main.py from any concrete implementations or test mocks.
+    llm_cls = resolve_class(config.llm_service_path)
+    doc_cls = resolve_class(config.document_service_path)
+    kg_cls = resolve_class(config.graph_service_path)
+    al_cls = resolve_class(config.active_learning_service_path)
+
+    return ProductionDIContainer(
+        config=config,
+        llm_gateway_factory=llm_cls,
+        document_processor_factory=doc_cls,
+        knowledge_graph_factory=kg_cls,
+        active_learning_factory=al_cls,
+    )
+
+
 def main() -> int:
     args = parse_args()
 
-    # Initialize container and config via factory
     try:
         container = init_container()
     except Exception as e:
@@ -31,7 +75,8 @@ def main() -> int:
         sys.stdout.write(f"Starting ingestion process for: {args.ingest}\n")
         try:
             # We call the process through the DI container interface
-            container.document_processor.process(args.ingest)
+            chunks = container.document_processor.process(args.ingest)
+            sys.stdout.write(f"Successfully processed {len(chunks)} chunks.\n")
         except Exception as e:
             sys.stderr.write(f"Ingestion failed: {e}\n")
             return 1

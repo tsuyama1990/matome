@@ -13,7 +13,7 @@ class CredentialConfig(BaseSettings):
 
     openrouter_api_key: SecretStr | None = None
 
-    # Use an explicitly loaded or persistent key, rather than random per-instance.
+    # Use an explicitly loaded key; no defaults allowed in production.
     _encryption_key: bytes = PrivateAttr()
     _encrypted_api_key: bytes | None = PrivateAttr(default=None)
 
@@ -34,13 +34,13 @@ class CredentialConfig(BaseSettings):
     def __init__(self, **data: Any) -> None:
         super().__init__(**data)
 
-        # Load a stable encryption key from environment or fallback for testing
+        # Load a stable encryption key strictly from environment. Fails fast if missing.
         raw_key = os.environ.get("MATOME_ENCRYPTION_KEY")
-        if raw_key:
-            self._encryption_key = raw_key.encode("utf-8")
-        else:
-            # Fallback to a static valid fernet key for development/testing if not provided
-            self._encryption_key = b"v7A9hXG_9S1Z2r4qW5c4e7n8p0L3m6T8jY1uX9V2bA4="
+        if not raw_key:
+            msg = "MATOME_ENCRYPTION_KEY environment variable must be set for secure operations."
+            raise ValueError(msg)
+
+        self._encryption_key = raw_key.encode("utf-8")
 
         # Encrypt the API key at rest upon instantiation
         if self.openrouter_api_key is not None:
@@ -72,3 +72,9 @@ class PipelineConfig(BaseSettings):
     reasoning_model: str = "anthropic/claude-3.7-sonnet"
     multimodal_model: str = "openai/gpt-4o"
     trusted_model_hashes: list[str] = Field(default_factory=list)
+
+    # Dynamic import paths for DI resolution in production without hardcoding imports
+    llm_service_path: str = "src.interfaces.LLMProtocol"
+    document_service_path: str = "src.interfaces.DocumentProcessingService"
+    graph_service_path: str = "src.interfaces.KnowledgeGraphService"
+    active_learning_service_path: str = "src.interfaces.ActiveLearningService"
