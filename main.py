@@ -1,11 +1,7 @@
 import argparse
-import importlib
 import sys
-from collections.abc import Callable
-from typing import Any
 
 from src.container import ProductionDIContainer
-from src.domain_models.config import PipelineConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,41 +17,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def resolve_class(import_path: str) -> Callable[..., Any]:
-    """Dynamically resolves a class from a string path (e.g., 'src.module.ClassName')."""
-    module_path, class_name = import_path.rsplit(".", 1)
-    try:
-        module = importlib.import_module(module_path)
-    except Exception as e:
-        msg = f"Failed to dynamically import module {module_path}: {e}"
-        raise ImportError(msg) from e
-
-    cls = getattr(module, class_name)
-    if not callable(cls):
-        msg = f"Resolved object {class_name} is not callable."
-        raise TypeError(msg)
-
-    return cls  # type: ignore[no-any-return]
-
-
 def init_container() -> ProductionDIContainer:
     """Initialize the configuration and dynamically bind DI container using configured paths."""
-    config = PipelineConfig()
-
-    # Resolve the factory Callables directly from the string paths in config
-    # This completely decouples main.py from any concrete implementations or test mocks.
-    llm_cls = resolve_class(config.llm_service_path)
-    doc_cls = resolve_class(config.document_service_path)
-    kg_cls = resolve_class(config.graph_service_path)
-    al_cls = resolve_class(config.active_learning_service_path)
-
-    return ProductionDIContainer(
-        config=config,
-        llm_gateway_factory=llm_cls,
-        document_processor_factory=doc_cls,
-        knowledge_graph_factory=kg_cls,
-        active_learning_factory=al_cls,
-    )
+    # ProductionDIContainer now self-resolves components via registry mapping to Config safely.
+    return ProductionDIContainer()
 
 
 def main() -> int:

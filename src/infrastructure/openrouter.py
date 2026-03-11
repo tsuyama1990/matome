@@ -1,11 +1,11 @@
 import logging
-import time
 from typing import Any
 
 import httpx
 from pydantic import BaseModel, SecretStr
 
 from src.domain_models import PipelineConfig
+from src.domain_models.config import ApiCredentials
 from src.interfaces import LLMError, LLMProtocol
 
 logger = logging.getLogger(__name__)
@@ -26,18 +26,15 @@ class OpenRouterResponseSchema(BaseModel):
 class OpenRouterGateway(LLMProtocol):
     """An implementation of LLMProtocol that interfaces with the OpenRouter API."""
 
-    def __init__(self, config: PipelineConfig) -> None:
+    def __init__(self, credentials: ApiCredentials, config: PipelineConfig) -> None:
+        self.credentials = credentials
         self.config = config
-        self._last_request_time = 0.0
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
         """Invokes the OpenRouter LLM with a prompt, timeout, and retry logic."""
-        prompt = self._validate_and_sanitize_prompt(prompt)
-        self._enforce_rate_limit()
-
         payload = self._prepare_payload(prompt, **kwargs)
 
-        decrypted_key: SecretStr | None = self.config.credentials.get_decrypted_api_key()
+        decrypted_key: SecretStr | None = self.credentials.get_decrypted_api_key()
         if not decrypted_key:
             msg = "Missing or invalid OpenRouter API key"
             raise LLMError(msg)
@@ -76,43 +73,6 @@ class OpenRouterGateway(LLMProtocol):
                 secret_bytes[i] = 0
             del secret_bytes
             del decrypted_key
-
-    def _validate_and_sanitize_prompt(self, prompt: str) -> str:
-        """Validates prompt length, explicitly normalizes unicode, and strictly whitelists characters."""
-        import re
-        import unicodedata
-
-        if not prompt or not prompt.strip():
-            msg = "Prompt cannot be empty"
-            raise ValueError(msg)
-
-        if len(prompt) > self.config.max_prompt_length:
-            msg = f"Prompt length exceeds maximum allowed length of {self.config.max_prompt_length}"
-            raise ValueError(msg)
-
-        # 1. Normalize Unicode to prevent homoglyph/visual spoofing attacks
-        prompt = unicodedata.normalize("NFC", prompt)
-
-        # 2. Strict Whitelist Approach:
-        # Allow alphanumeric, standard punctuation, and standard whitespaces (space, tab, newline)
-        # Any hidden control characters, ANSI escapes, or bizarre symbols are stripped.
-        # This guarantees safety against prompt injections utilizing unprintable/control tokens.
-        return re.sub(r'[^\w\s.,!?:;\'"()\[\]{}+=*/\\&%$#@~<>-]', "", prompt)
-
-    def _enforce_rate_limit(self) -> None:
-        """Enforces a simple rate limit based on configured limits."""
-        if self.config.requests_per_minute_limit <= 0:
-            return
-
-        min_interval = 60.0 / self.config.requests_per_minute_limit
-        elapsed = time.time() - self._last_request_time
-
-        if elapsed < min_interval:
-            sleep_time = min_interval - elapsed
-            logger.debug(f"Rate limiting active, sleeping for {sleep_time:.2f} seconds")
-            time.sleep(sleep_time)
-
-        self._last_request_time = time.time()
 
     def _prepare_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         model = kwargs.get("model", self.config.reasoning_model)

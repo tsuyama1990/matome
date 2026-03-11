@@ -17,22 +17,8 @@ def mock_env_key() -> Any:
     )
 
 
-def test_resolve_class() -> None:
-    # Test valid resolution
-    cls = main.resolve_class("src.container.ProductionDIContainer")
-    assert cls is ProductionDIContainer
-
-    # Test not a callable
-    with pytest.raises(TypeError, match="Resolved object __name__ is not callable."):
-        main.resolve_class("main.__name__")
-
-    # Test invalid module
-    with pytest.raises(ImportError):
-        main.resolve_class("invalid.module.Class")
-
-
 def test_init_container(mock_env_key: Any) -> None:
-    with mock_env_key, mock.patch("main.resolve_class") as mock_resolve:
+    with mock_env_key, mock.patch("src.container.resolve_class") as mock_resolve:
         # To test init_container without implementing services, we mock the resolve_class function
         # to just return our mock interfaces from test_container
         from tests.unit.test_container import (
@@ -42,10 +28,13 @@ def test_init_container(mock_env_key: Any) -> None:
             MockLLMProtocol,
         )
 
+        def llm_factory(*args: Any, **kwargs: Any) -> Any:
+            return MockLLMProtocol()
+
         # Setup the mock to return specific classes based on the string passed
         def side_effect(path: str) -> Any:
             if "LLMProtocol" in path:
-                return MockLLMProtocol
+                return llm_factory
             if "DocumentProcessingService" in path:
                 return MockDocumentProcessingService
             if "KnowledgeGraphService" in path:
