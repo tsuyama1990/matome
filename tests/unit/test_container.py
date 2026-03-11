@@ -199,7 +199,9 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
             )
 
         # Type errors for non-callables
-        with pytest.raises(TypeError, match="llm_gateway_factory must be a callable factory function."):
+        with pytest.raises(
+            TypeError, match="llm_gateway_factory must be a callable factory function."
+        ):
             ProductionDIContainer(
                 config,
                 MockLLMProtocol(),  # type: ignore[arg-type]

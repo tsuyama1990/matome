@@ -100,6 +100,14 @@ def test_pipeline_config_ssrf_crlf_protections(mock_env_key: Any) -> None:
             PipelineConfig(openrouter_endpoint="http://openrouter.ai/api")
 
         with pytest.raises(
-            ValidationError, match="Domain https://evil.com is not in the allowed API domains whitelist."
+            ValidationError,
+            match="Domain https://evil.com is not in the allowed API domains whitelist.",
         ):
             PipelineConfig(openrouter_endpoint="https://evil.com/api")
+
+        # Verify custom whitelist works with custom endpoint
+        config = PipelineConfig(
+            allowed_api_domains=["https://custom.com"],
+            openrouter_endpoint="https://custom.com/v1/chat",
+        )
+        assert config.openrouter_endpoint == "https://custom.com/v1/chat"

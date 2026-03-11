@@ -134,8 +134,12 @@ class PipelineConfig(BaseSettings):
     app_title: str = Field(default=DEFAULT_APP_TITLE)
     max_prompt_length: int = Field(default=DEFAULT_MAX_PROMPT_LENGTH)
     requests_per_minute_limit: int = Field(default=DEFAULT_REQUESTS_PER_MINUTE_LIMIT)
+
+    # Define allowed_api_domains before openrouter_endpoint so it is available in info.data
+    allowed_api_domains: list[str] = Field(
+        default_factory=lambda: list(DEFAULT_ALLOWED_API_DOMAINS)
+    )
     openrouter_endpoint: str = Field(default=DEFAULT_OPENROUTER_ENDPOINT)
-    allowed_api_domains: list[str] = Field(default=DEFAULT_ALLOWED_API_DOMAINS)
 
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)

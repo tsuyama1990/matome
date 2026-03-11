@@ -57,7 +57,9 @@ class OpenRouterGateway(LLMProtocol):
 
                 def auth_flow(self, request: httpx.Request) -> Any:
                     # Decoding creates a transient string strictly bounded to the request dispatch
-                    request.headers["Authorization"] = self.secret_bytes.decode("utf-8", errors="strict")
+                    request.headers["Authorization"] = self.secret_bytes.decode(
+                        "utf-8", errors="strict"
+                    )
                     yield request
 
             headers = {
@@ -95,7 +97,7 @@ class OpenRouterGateway(LLMProtocol):
         # Allow alphanumeric, standard punctuation, and standard whitespaces (space, tab, newline)
         # Any hidden control characters, ANSI escapes, or bizarre symbols are stripped.
         # This guarantees safety against prompt injections utilizing unprintable/control tokens.
-        return re.sub(r'[^\w\s.,!?:;\'"()\[\]{}+=*/\\&%$#@~<>-]', '', prompt)
+        return re.sub(r'[^\w\s.,!?:;\'"()\[\]{}+=*/\\&%$#@~<>-]', "", prompt)
 
     def _enforce_rate_limit(self) -> None:
         """Enforces a simple rate limit based on configured limits."""
@@ -133,7 +135,9 @@ class OpenRouterGateway(LLMProtocol):
         for attempt in range(retries):
             try:
                 logger.debug(f"Sending request to OpenRouter (Attempt {attempt + 1}/{retries})")
-                response = client.post(self.config.openrouter_endpoint, headers=headers, json=payload)
+                response = client.post(
+                    self.config.openrouter_endpoint, headers=headers, json=payload
+                )
                 response.raise_for_status()
 
                 response_json = response.json()
