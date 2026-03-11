@@ -37,41 +37,59 @@ class OpenRouterGateway(LLMProtocol):
 
         payload = self._prepare_payload(prompt, **kwargs)
 
-        # To prevent exposing the plaintext key string in memory, we dynamically
-        # supply a generator-based Auth object to the HTTPX client so the authorization
-        # header is generated securely and immediately during request transmission.
-        def auth_generator(request: httpx.Request) -> httpx.Request:
-            decrypted_key: SecretStr | None = self.config.credentials.get_decrypted_api_key()
-            if not decrypted_key:
-                msg = "Missing or invalid OpenRouter API key"
-                raise LLMError(msg)
+        from src.infrastructure.secure_cache import SecureMemoryCache
 
-            # This string exists only within the scope of this closure during transmission
-            request.headers["Authorization"] = f"Bearer {decrypted_key.get_secret_value()}"
+        decrypted_key: SecretStr | None = self.config.credentials.get_decrypted_api_key()
+        if not decrypted_key:
+            msg = "Missing or invalid OpenRouter API key"
+            raise LLMError(msg)
 
-            # Other required headers
-            request.headers["HTTP-Referer"] = self.config.app_domain
-            request.headers["X-Title"] = self.config.app_title
-            request.headers["Content-Type"] = "application/json"
-            return request
+        # We define a class to hold the reference to the cache so the closure can access it
+        # without running into UnboundLocalError or undefined name issues in Python's weird scoping
+        class RequestAuth(httpx.Auth):
+            def __init__(self, key: str, domain: str, title: str) -> None:
+                self.cache = SecureMemoryCache(key)
+                self.domain = domain
+                self.title = title
 
-        with httpx.Client(timeout=timeout, auth=auth_generator) as client:
-            return self._execute_request(client, payload, retries)
+            def auth_flow(self, request: httpx.Request) -> Any:
+                request.headers["Authorization"] = f"Bearer {self.cache.get_secret()}"
+                request.headers["HTTP-Referer"] = self.domain
+                request.headers["X-Title"] = self.title
+                request.headers["Content-Type"] = "application/json"
+                yield request
+
+            def cleanup(self) -> None:
+                self.cache.clear()
+                del self.cache
+
+        auth = RequestAuth(
+            decrypted_key.get_secret_value(),
+            self.config.app_domain,
+            self.config.app_title,
+        )
+
+        try:
+            with httpx.Client(timeout=timeout, auth=auth) as client:
+                return self._execute_request(client, payload, retries)
+        finally:
+            auth.cleanup()
 
     def _validate_and_sanitize_prompt(self, prompt: str) -> str:
-        """Validates prompt length and strips dangerous null bytes."""
-        if not prompt:
+        """Validates prompt length, removes control characters, and ensures content exists."""
+        import re
+
+        if not prompt or not prompt.strip():
             msg = "Prompt cannot be empty"
             raise ValueError(msg)
 
-        # Sanitize null bytes which could truncate C-based parsing behind the scenes
-        sanitized_prompt = prompt.replace("\x00", "")
-
-        if len(sanitized_prompt) > self.config.max_prompt_length:
+        if len(prompt) > self.config.max_prompt_length:
             msg = f"Prompt length exceeds maximum allowed length of {self.config.max_prompt_length}"
             raise ValueError(msg)
 
-        return sanitized_prompt
+        # Remove control characters except standard whitespace (newlines, tabs)
+        # This prevents terminal injection, ANSI escape sequence injection, or null-byte attacks
+        return re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', prompt)
 
     def _enforce_rate_limit(self) -> None:
         """Enforces a simple rate limit based on configured limits."""

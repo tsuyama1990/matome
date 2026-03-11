@@ -1,21 +1,7 @@
-from typing import TYPE_CHECKING
-
 from .mock_vdb import MockVectorDB
 from .openrouter import OpenRouterGateway
+from .secure_cache import SecureMemoryCache
 
-if TYPE_CHECKING:
-    from src.domain_models import PipelineConfig
-    from src.interfaces import LLMProtocol, VectorDBProtocol
-
-
-def get_openrouter_gateway(config: "PipelineConfig") -> "LLMProtocol":
-    """Factory function for OpenRouterGateway."""
-    return OpenRouterGateway(config)
-
-
-def get_mock_vector_db() -> "VectorDBProtocol":
-    """Factory function for MockVectorDB."""
-    return MockVectorDB()
-
-
-__all__ = ["get_mock_vector_db", "get_openrouter_gateway"]
+# Rely on the dynamic ProductionDIContainer in `src/container.py`
+# for resolving protocol-compliant instances instead of explicit factory bindings here.
+__all__ = ["MockVectorDB", "OpenRouterGateway", "SecureMemoryCache"]
