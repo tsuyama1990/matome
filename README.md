@@ -18,7 +18,8 @@ Whether you are a Product Manager deconstructing legacy manuals into modern work
 3.  **Pivot KJ (Multi-Dimensional Knowledge Restructuring)**: Break the "As-Is trap" and author biases. Dismantle existing narrative flows and instantly automatically rearrange information across entirely new analytical dimensions (e.g., SWOT, System Workflows, Time Axes) to generate fresh insights and actionable system requirements.
 4.  **Automated Diagram Generation**: Transform unstructured text into structured, standard formats immediately. Export restructured knowledge clusters directly into valid Markdown Product Requirements Documents (PRDs) and interactive Mermaid.js architecture diagrams (Sequence, Flowcharts, State Machines).
 5.  **Multi-Modal Ingestion & AI Routing**: Process PDFs, EPUBs, and raw text seamlessly. The backend securely chunks data using semantic boundaries and dynamically routes queries to the optimal Large Language Model (LLM) via an OpenRouter gateway (`OpenRouterGateway`), balancing speed and reasoning capabilities.
-6.  **Extensible Vector Search Architecture**: Integrated `VectorDBProtocol` ensures flexible and test-driven retrieval (including a mock database `MockVectorDB` for local and UI demonstrations).
+6.  **Secure Document Processing Engine**: Documents are rigorously parsed within a custom, secure LangGraph State Machine Workflow. It naturally protects against Path Traversal and utilizes configurable bounded quantifiers to extract entities safely, preventing catastrophic ReDoS (Regular Expression Denial of Service).
+7.  **Extensible Vector Search Architecture**: Integrated `VectorDBProtocol` ensures flexible and test-driven retrieval (including a mock database `MockVectorDB` for local and UI demonstrations).
 
 ## Requirements
 
