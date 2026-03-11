@@ -1,4 +1,6 @@
+import importlib
 from collections.abc import Callable
+from typing import Any
 
 from src.domain_models import PipelineConfig
 from src.interfaces import (
@@ -9,56 +11,102 @@ from src.interfaces import (
 )
 
 
+def resolve_class(import_path: str) -> Callable[..., Any]:
+    """Dynamically resolves a class from a string path (e.g., 'src.module.ClassName')."""
+    module_path, class_name = import_path.rsplit(".", 1)
+    try:
+        module = importlib.import_module(module_path)
+    except Exception as e:
+        msg = f"Failed to dynamically import module {module_path}: {e}"
+        raise ImportError(msg) from e
+
+    cls = getattr(module, class_name)
+    if not callable(cls):
+        msg = f"Resolved object {class_name} is not callable."
+        raise TypeError(msg)
+
+    return cls  # type: ignore[no-any-return]
+
+
 class ProductionDIContainer:
-    """Dependency Injection container that dynamically initializes components via factories or direct instances."""
+    """Dependency Injection container that automatically resolves and initializes components via factories registry."""
 
     def __init__(
         self,
-        config: PipelineConfig,
-        llm_gateway_factory: LLMProtocol | Callable[[], LLMProtocol],
-        document_processor_factory: DocumentProcessingService
-        | Callable[[], DocumentProcessingService],
-        knowledge_graph_factory: KnowledgeGraphService | Callable[[], KnowledgeGraphService],
-        active_learning_factory: ActiveLearningService | Callable[[], ActiveLearningService],
+        config: PipelineConfig | None = None,
+        llm_gateway_factory: Callable[[], LLMProtocol] | None = None,
+        document_processor_factory: Callable[[], DocumentProcessingService] | None = None,
+        knowledge_graph_factory: Callable[[], KnowledgeGraphService] | None = None,
+        active_learning_factory: Callable[[], ActiveLearningService] | None = None,
     ) -> None:
-        # Pydantic handles null-safety for config if typing is strict, but we can double check defensively.
-        if config is None:
-            msg = "PipelineConfig must be explicitly provided."
-            raise ValueError(msg)
-        if llm_gateway_factory is None:
-            msg = "LLMProtocol factory or instance must be explicitly provided."
-            raise ValueError(msg)
-        if document_processor_factory is None:
-            msg = "DocumentProcessingService factory or instance must be explicitly provided."
-            raise ValueError(msg)
-        if knowledge_graph_factory is None:
-            msg = "KnowledgeGraphService factory or instance must be explicitly provided."
-            raise ValueError(msg)
-        if active_learning_factory is None:
-            msg = "ActiveLearningService factory or instance must be explicitly provided."
-            raise ValueError(msg)
+        self._config = config or PipelineConfig()
 
-        self._config = config
+        # Resolve from configuration automatically if factories are not explicitly provided
+        self._llm_factory = llm_gateway_factory or self._build_llm_factory()
+        self._document_factory = document_processor_factory or self._build_document_factory()
+        self._knowledge_graph_factory = (
+            knowledge_graph_factory or self._build_knowledge_graph_factory()
+        )
+        self._active_learning_factory = (
+            active_learning_factory or self._build_active_learning_factory()
+        )
 
-        # Initialize components eagerly from factories, or use direct instances if passed
-        self._llm_gateway = (
-            llm_gateway_factory() if callable(llm_gateway_factory) else llm_gateway_factory
-        )
-        self._document_processor = (
-            document_processor_factory()
-            if callable(document_processor_factory)
-            else document_processor_factory
-        )
-        self._knowledge_graph = (
-            knowledge_graph_factory()
-            if callable(knowledge_graph_factory)
-            else knowledge_graph_factory
-        )
-        self._active_learning = (
-            active_learning_factory()
-            if callable(active_learning_factory)
-            else active_learning_factory
-        )
+        if not callable(self._llm_factory):
+            msg = "llm_gateway_factory must be a callable factory function."
+            raise TypeError(msg)
+        if not callable(self._document_factory):
+            msg = "document_processor_factory must be a callable factory function."
+            raise TypeError(msg)
+        if not callable(self._knowledge_graph_factory):
+            msg = "knowledge_graph_factory must be a callable factory function."
+            raise TypeError(msg)
+        if not callable(self._active_learning_factory):
+            msg = "active_learning_factory must be a callable factory function."
+            raise TypeError(msg)
+
+        # Initialize components dynamically strictly from factories
+        self._llm_gateway = self._llm_factory()
+        self._document_processor = self._document_factory()
+        self._knowledge_graph = self._knowledge_graph_factory()
+        self._active_learning = self._active_learning_factory()
+
+    def _build_llm_factory(self) -> Callable[[], LLMProtocol]:
+        def factory() -> LLMProtocol:
+            cls = resolve_class(self._config.llm_service_path)
+            # Support both architectures: with and without middleware routing dependencies
+            from src.infrastructure.openrouter import OpenRouterGateway
+
+            if (
+                self._config.llm_service_path
+                == "src.infrastructure.llm_middleware.LLMMiddlewareService"
+            ):
+                gateway = OpenRouterGateway(self._config.credentials, self._config)
+                return cls(gateway, self._config)  # type: ignore
+            # Handle standard instantiation
+            return cls(self._config.credentials, self._config)  # type: ignore
+
+        return factory
+
+    def _build_document_factory(self) -> Callable[[], DocumentProcessingService]:
+        def factory() -> DocumentProcessingService:
+            cls = resolve_class(self._config.document_service_path)
+            return cls()  # type: ignore
+
+        return factory
+
+    def _build_knowledge_graph_factory(self) -> Callable[[], KnowledgeGraphService]:
+        def factory() -> KnowledgeGraphService:
+            cls = resolve_class(self._config.graph_service_path)
+            return cls()  # type: ignore
+
+        return factory
+
+    def _build_active_learning_factory(self) -> Callable[[], ActiveLearningService]:
+        def factory() -> ActiveLearningService:
+            cls = resolve_class(self._config.active_learning_service_path)
+            return cls()  # type: ignore
+
+        return factory
 
     @property
     def config(self) -> PipelineConfig:

@@ -7,7 +7,7 @@ from unittest import mock
 import pytest
 from cryptography.fernet import Fernet
 
-from src.container import ProductionDIContainer
+from src.container import ProductionDIContainer, resolve_class
 from src.domain_models import (
     GraphState,
     KnowledgeNode,
@@ -107,6 +107,20 @@ def mock_env_key() -> Any:
     )
 
 
+def test_resolve_class() -> None:
+    # Test valid resolution
+    cls = resolve_class("src.container.ProductionDIContainer")
+    assert cls is ProductionDIContainer
+
+    # Test not a callable
+    with pytest.raises(TypeError, match="Resolved object __name__ is not callable."):
+        resolve_class("src.container.__name__")
+
+    # Test invalid module
+    with pytest.raises(ImportError):
+        resolve_class("invalid.module.Class")
+
+
 def test_container_initialization_success(mock_env_key: Any) -> None:
     with mock_env_key:
         config = PipelineConfig()
@@ -141,59 +155,14 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
     with mock_env_key:
         config = PipelineConfig()
 
-        # Test mypy overridden missing initialization values
-        with pytest.raises(ValueError, match="PipelineConfig must be explicitly provided."):
-            ProductionDIContainer(
-                None,  # type: ignore[arg-type]
-                get_llm_factory(),
-                get_doc_factory(),
-                get_kg_factory(),
-                get_al_factory(),
-            )
-
+        # Type errors for non-callables
         with pytest.raises(
-            ValueError, match="LLMProtocol factory or instance must be explicitly provided."
+            TypeError, match="llm_gateway_factory must be a callable factory function."
         ):
             ProductionDIContainer(
                 config,
-                None,  # type: ignore[arg-type]
+                MockLLMProtocol(),  # type: ignore[arg-type]
                 get_doc_factory(),
                 get_kg_factory(),
                 get_al_factory(),
-            )
-
-        with pytest.raises(
-            ValueError,
-            match="DocumentProcessingService factory or instance must be explicitly provided.",
-        ):
-            ProductionDIContainer(
-                config,
-                get_llm_factory(),
-                None,  # type: ignore[arg-type]
-                get_kg_factory(),
-                get_al_factory(),
-            )
-
-        with pytest.raises(
-            ValueError,
-            match="KnowledgeGraphService factory or instance must be explicitly provided.",
-        ):
-            ProductionDIContainer(
-                config,
-                get_llm_factory(),
-                get_doc_factory(),
-                None,  # type: ignore[arg-type]
-                get_al_factory(),
-            )
-
-        with pytest.raises(
-            ValueError,
-            match="ActiveLearningService factory or instance must be explicitly provided.",
-        ):
-            ProductionDIContainer(
-                config,
-                get_llm_factory(),
-                get_doc_factory(),
-                get_kg_factory(),
-                None,  # type: ignore[arg-type]
             )

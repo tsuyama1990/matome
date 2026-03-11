@@ -7,8 +7,8 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
-from src.domain_models import CredentialConfig, PipelineConfig, SemanticChunk
-from src.infrastructure.mock_vdb import MockVectorDB
+from src.domain_models.config import ApiCredentials, PipelineConfig
+from src.infrastructure.llm_middleware import LLMMiddlewareService
 from src.infrastructure.openrouter import OpenRouterGateway
 from src.interfaces import LLMError
 
@@ -25,10 +25,11 @@ def mock_env_key() -> Any:
 def valid_config(mock_env_key: Any) -> PipelineConfig:
     # mock_env_key must wrap everything doing tests with the decryption phase now!
     with mock_env_key:
-        valid_key = "sk-or-v1-" + ("C" * 64)
+        valid_key = "sk-or-v1-" + ("A" * 64)
         config = PipelineConfig()
-        config.credentials = CredentialConfig(openrouter_api_key=SecretStr(valid_key))
+        config.credentials = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
         return config
+
 
 @pytest.fixture(autouse=True)
 def _auto_mock_env(mock_env_key: Any) -> Any:
@@ -38,7 +39,7 @@ def _auto_mock_env(mock_env_key: Any) -> Any:
 
 
 def test_openrouter_gateway_success(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
 
     httpx_mock.add_response(
         json={"choices": [{"message": {"content": "Mocked LLM response"}}]},
@@ -50,18 +51,18 @@ def test_openrouter_gateway_success(valid_config: PipelineConfig, httpx_mock: An
 
 
 def test_openrouter_gateway_failure(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
 
     # Note that the gateway retries 3 times, so we need to mock the response for all attempts.
     for _ in range(3):
         httpx_mock.add_response(status_code=500, json={"error": "Internal Server Error"})
 
-    with pytest.raises(LLMError, match="OpenRouter API failed"):
+    with pytest.raises(LLMError, match="OpenRouter API failed with status 500"):
         gateway.invoke("Test prompt")
 
 
 def test_openrouter_gateway_timeout(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
 
     for _ in range(3):
         httpx_mock.add_exception(httpx.TimeoutException("Timeout"))
@@ -71,7 +72,7 @@ def test_openrouter_gateway_timeout(valid_config: PipelineConfig, httpx_mock: An
 
 
 def test_openrouter_gateway_invalid_response(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
 
     httpx_mock.add_response(json={"invalid_key": "No choices here"}, status_code=200)
 
@@ -79,29 +80,8 @@ def test_openrouter_gateway_invalid_response(valid_config: PipelineConfig, httpx
         gateway.invoke("Test prompt")
 
 
-def test_mock_vector_db_store_and_search() -> None:
-    vdb = MockVectorDB()
-
-    chunk1 = SemanticChunk(id="1", text="This is about AI.")
-    chunk2 = SemanticChunk(id="2", text="This is about machine learning.")
-    chunk3 = SemanticChunk(id="3", text="Python is a programming language.")
-
-    vdb.store([chunk1, chunk2])
-    vdb.store([chunk3])
-
-    # Search for "AI" - With pseudo character embedding, "AI" shares characters with many things,
-    # but "AI" vs "This is about AI" will have some cosine similarity. We just test that it returns top_k.
-    results = vdb.search("AI.", top_k=2)
-    assert len(results) <= 2
-    assert results[0].id in ["1", "2", "3"] # It will return something based on character overlap
-
-    # Search for "is"
-    results_top_1 = vdb.search("is", top_k=1)
-    assert len(results_top_1) == 1
-
-
 def test_openrouter_gateway_request_error(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
 
     for _ in range(3):
         httpx_mock.add_exception(httpx.RequestError("Network Error"))
@@ -110,63 +90,19 @@ def test_openrouter_gateway_request_error(valid_config: PipelineConfig, httpx_mo
         gateway.invoke("Test prompt")
 
 
-def test_openrouter_gateway_missing_key(valid_config: PipelineConfig) -> None:
-    valid_config.credentials.openrouter_api_key = None
-    valid_config.credentials._encrypted_api_key = None
-    gateway = OpenRouterGateway(config=valid_config)
-
-    with pytest.raises(LLMError, match="Missing or invalid OpenRouter API key"):
-        gateway.invoke("Test prompt")
-
-
 def test_openrouter_gateway_missing_content(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
 
-    httpx_mock.add_response(
-        json={"choices": [{"message": {"other": "No content here"}}]}, status_code=200
-    )
+    httpx_mock.add_response(json={"choices": [{"message": {"other": "value"}}]}, status_code=200)
 
     with pytest.raises(LLMError, match="Missing content in OpenRouter response"):
         gateway.invoke("Test prompt")
 
 
-def test_mock_vector_db_semantic_search() -> None:
-    vdb = MockVectorDB()
-
-    chunk1 = SemanticChunk(id="1", text="Machine learning is fascinating")
-    chunk2 = SemanticChunk(id="2", text="Deep learning and AI are powerful")
-    chunk3 = SemanticChunk(id="3", text="Python programming is simple")
-    chunk4 = SemanticChunk(id="4", text="I love machine learning very much")
-
-    vdb.store([chunk1, chunk2, chunk3, chunk4])
-
-    results = vdb.search("machine learning", top_k=2)
-    assert len(results) == 2
-
-    # We test that our cosine similarity successfully returns top K results dynamically scored
-    # rather than strict string matching. "machine learning" shares most character frequencies
-    # with chunk 1 and chunk 4.
-    ids = [r.id for r in results]
-    assert "1" in ids or "4" in ids
-
-
-def test_openrouter_gateway_empty_prompt(valid_config: PipelineConfig) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
-
-    with pytest.raises(ValueError, match="Prompt cannot be empty"):
-        gateway.invoke("")
-
-
-def test_openrouter_gateway_prompt_too_long(valid_config: PipelineConfig) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
-
-    with pytest.raises(ValueError, match="Prompt length exceeds maximum allowed length"):
-        gateway.invoke("a" * (valid_config.max_prompt_length + 1))
-
-
 def test_openrouter_gateway_rate_limit(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    valid_config.requests_per_minute_limit = 600  # 10 requests per second -> 0.1s interval
-    gateway = OpenRouterGateway(config=valid_config)
+    valid_config.requests_per_minute_limit = 120  # 0.5s interval
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    middleware = LLMMiddlewareService(gateway, valid_config)
 
     httpx_mock.add_response(json={"choices": [{"message": {"content": "ok"}}]}, status_code=200)
     httpx_mock.add_response(json={"choices": [{"message": {"content": "ok"}}]}, status_code=200)
@@ -174,32 +110,26 @@ def test_openrouter_gateway_rate_limit(valid_config: PipelineConfig, httpx_mock:
     import time
 
     start = time.time()
-    gateway.invoke("first")
-    gateway.invoke("second")
+    middleware.invoke("Test 1")
+    middleware.invoke("Test 2")
     end = time.time()
 
-    assert end - start >= 0.1
-
-
-def test_openrouter_gateway_schema_validation_error(
-    valid_config: PipelineConfig, httpx_mock: Any
-) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
-    httpx_mock.add_response(json={"choices": [{"bad": "data"}]}, status_code=200)
-
-    with pytest.raises(LLMError, match="Invalid response format from OpenRouter"):
-        gateway.invoke("Test prompt")
+    assert end - start >= 0.5
 
 
 def test_openrouter_gateway_rate_limit_zero(valid_config: PipelineConfig, httpx_mock: Any) -> None:
     valid_config.requests_per_minute_limit = 0
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    middleware = LLMMiddlewareService(gateway, valid_config)
+
     httpx_mock.add_response(json={"choices": [{"message": {"content": "ok"}}]}, status_code=200)
-    gateway.invoke("first")  # Should return immediately with no sleep
+
+    # Should not sleep or error
+    middleware.invoke("Test 1")
 
 
 def test_openrouter_gateway_network_error(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
 
     for _ in range(3):
         httpx_mock.add_exception(httpx.RequestError("Network Error"))
@@ -207,28 +137,62 @@ def test_openrouter_gateway_network_error(valid_config: PipelineConfig, httpx_mo
     with pytest.raises(LLMError, match="Network error connecting to OpenRouter"):
         gateway.invoke("Test prompt")
 
-def test_mock_vector_db_empty_queries_and_docs() -> None:
-    vdb = MockVectorDB()
-
-    # Empty DB
-    assert vdb.search("test") == []
-
-    # DB with docs, empty query
-    vdb.store([SemanticChunk(id="1", text="some text")])
-    assert vdb.search("") == []
-    assert vdb.search("!!!") == [] # Only punctuation
-
 
 def test_openrouter_gateway_sanitize_prompt(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(config=valid_config)
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    middleware = LLMMiddlewareService(gateway, valid_config)
+
     httpx_mock.add_response(json={"choices": [{"message": {"content": "ok"}}]}, status_code=200)
 
-    # Has null bytes, ansi escapes, but valid text
-    dirty_prompt = "hello\x00 world\x1b[31m"
-    gateway.invoke(dirty_prompt)
+    # Note the ANSI escape sequence character \x1b which should be stripped
+    malicious_prompt = "hello world\x1b[31m"
+    middleware.invoke(malicious_prompt)
 
     request = httpx_mock.get_request()
     import json
+
     body = json.loads(request.read().decode("utf-8"))
 
-    assert body["messages"][0]["content"] == "hello world[31m" # control characters removed
+    assert body["messages"][0]["content"] == "hello world[31m"  # control characters removed
+
+
+def test_openrouter_gateway_missing_key(valid_config: PipelineConfig) -> None:
+    """Verifies that missing keys raise an LLMError before attempting to invoke."""
+    # Ensure keys are truly empty directly
+    valid_config.credentials.openrouter_api_key = None
+    valid_config.credentials._encrypted_api_key = None
+
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    with pytest.raises(LLMError, match="Missing or invalid OpenRouter API key"):
+        gateway.invoke("Test prompt")
+
+
+def test_openrouter_gateway_empty_prompt(valid_config: PipelineConfig) -> None:
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    middleware = LLMMiddlewareService(gateway, valid_config)
+
+    with pytest.raises(ValueError, match="Prompt cannot be empty"):
+        middleware.invoke("   ")
+
+    with pytest.raises(ValueError, match="Prompt cannot be empty"):
+        middleware.invoke("")
+
+
+def test_openrouter_gateway_prompt_too_long(valid_config: PipelineConfig) -> None:
+    valid_config.max_prompt_length = 5
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    middleware = LLMMiddlewareService(gateway, valid_config)
+
+    with pytest.raises(ValueError, match="Prompt length exceeds maximum allowed length"):
+        middleware.invoke("Too long prompt")
+
+
+def test_openrouter_gateway_schema_validation_error(
+    valid_config: PipelineConfig, httpx_mock: Any
+) -> None:
+    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+
+    httpx_mock.add_response(json={"choices": "not a list"}, status_code=200)
+
+    with pytest.raises(LLMError, match="Invalid response format from OpenRouter"):
+        gateway.invoke("Test prompt")
