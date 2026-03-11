@@ -90,6 +90,7 @@ class PipelineConfig(BaseSettings):
     credentials: ApiCredentials = Field(default_factory=ApiCredentials)
 
     max_chunk_scan_size: int = Field(default=DEFAULT_MAX_CHUNK_SCAN_SIZE)
+    max_file_size: int = Field(default=10 * 1024 * 1024)
     fast_model: str = Field(default=DEFAULT_FAST_MODEL)
     reasoning_model: str = Field(default=DEFAULT_REASONING_MODEL)
     multimodal_model: str = Field(default=DEFAULT_MULTIMODAL_MODEL)

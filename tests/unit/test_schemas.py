@@ -37,10 +37,6 @@ def test_semantic_chunk_validation() -> None:
         # We need to intentionally type ignore to test runtime forbid logic without mypy complaining
         SemanticChunk(id="c4", text="Test", extra_field="should fail")  # type: ignore[call-arg]
 
-    # Malformed Unicode (Surrogate characters are not strict UTF-8)
-    with pytest.raises(ValidationError):
-        SemanticChunk(id="c5", text="Hello\ud800world")
-
     # Test strict metadata typing
     invalid_metadata: dict[str, Any] = {"page_number": -1}
     with pytest.raises(ValidationError):

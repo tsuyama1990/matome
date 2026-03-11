@@ -90,6 +90,8 @@ class ProductionDIContainer:
     def _build_document_factory(self) -> Callable[[], DocumentProcessingService]:
         def factory() -> DocumentProcessingService:
             cls = resolve_class(self._config.document_service_path)
+            if self._config.document_service_path == "src.document.DocumentProcessingServiceImpl":
+                return cls(self._config, self._llm_gateway)  # type: ignore
             return cls()  # type: ignore
 
         return factory

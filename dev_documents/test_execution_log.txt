@@ -19,11 +19,11 @@ Name                                   Stmts   Miss  Cover   Missing
 --------------------------------------------------------------------
 main.py                                   30     13    57%   31-33, 36-46, 55
 src/__init__.py                            0      0   100%
-src/container.py                          79      8    90%   58-59, 61-62, 64-65, 83-84
-src/document.py                           83     12    86%   43, 48-49, 68-70, 98-103, 113
+src/container.py                          81      9    89%   58-59, 61-62, 64-65, 83-84, 95
+src/document.py                           98     17    83%   47, 52-53, 70-71, 75-77, 109-114, 124, 162-165
 src/domain_models/__init__.py              6      0   100%
-src/domain_models/chunk.py                21      3    86%   32-34
-src/domain_models/config.py               78      0   100%
+src/domain_models/chunk.py                12      0   100%
+src/domain_models/config.py               79      0   100%
 src/domain_models/constants.py            15      0   100%
 src/domain_models/graph.py                16      0   100%
 src/domain_models/pivot.py                13      0   100%
@@ -38,8 +38,8 @@ tests/unit/__init__.py                     0      0   100%
 tests/unit/test_config.py                 66      0   100%
 tests/unit/test_container.py              89     12    87%   41, 50, 53-54, 59-60, 63-64, 67-68, 71-72
 tests/unit/test_infrastructure.py        116      0   100%
-tests/unit/test_main.py                  101      3    97%   50-52
-tests/unit/test_schemas.py                58      0   100%
+tests/unit/test_main.py                  134     13    90%   34, 42, 45, 50, 53, 56, 61, 64, 67, 70, 86-88
+tests/unit/test_schemas.py                56      0   100%
 --------------------------------------------------------------------
-TOTAL                                    972     60    94%
-============================== 35 passed in 4.43s ==============================
+TOTAL                                   1012     73    93%
+============================== 35 passed in 5.01s ==============================
