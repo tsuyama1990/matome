@@ -29,9 +29,13 @@ class ProductionDIContainer:
             self._llm_gateway = resolved_service
 
         if vector_repo_factory:
-            self._vector_repo: AbstractVectorRepository | None = vector_repo_factory()
+            self._vector_repo = vector_repo_factory()
         else:
-            self._vector_repo = None  # To be implemented in the future
+            resolved_repo = self._resolve_service(config.vector_repo_path, AbstractVectorRepository)
+            if not isinstance(resolved_repo, AbstractVectorRepository):
+                msg = f"Resolved service {resolved_repo} is not an instance of AbstractVectorRepository"
+                raise TypeError(msg)
+            self._vector_repo = resolved_repo
 
     def _resolve_service(self, path: str, expected_type: type) -> object:
         """Dynamically resolve a service by import path."""

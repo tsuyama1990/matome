@@ -79,6 +79,10 @@ class PipelineConfig(BaseSettings):
         default="src.infrastructure.llm_gateway.LLMGateway",
         description="Dynamic import path for LLM Gateway",
     )
+    vector_repo_path: str = Field(
+        default="src.infrastructure.vector_store.VectorDBRepository",
+        description="Dynamic import path for Vector DB Repository",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",

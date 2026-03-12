@@ -64,3 +64,4 @@ def test_pipeline_config() -> None:
     with mock.patch.dict(os.environ, clear=True):
         config = PipelineConfig()
         assert config.llm_gateway_path == "src.infrastructure.llm_gateway.LLMGateway"
+        assert config.vector_repo_path == "src.infrastructure.vector_store.VectorDBRepository"
