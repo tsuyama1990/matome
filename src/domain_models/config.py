@@ -1,4 +1,6 @@
+import contextlib
 import re
+from collections.abc import Iterator
 from typing import Any
 
 from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator
@@ -84,6 +86,14 @@ class ApiCredentials(BaseSettings):
     def clear_decrypted_key(self) -> None:
         """Securely clears the decrypted key cache."""
         self._decrypted_key = None
+
+    @contextlib.contextmanager
+    def decrypted_key_context(self, crypto_service: Any) -> Iterator[SecretStr | None]:
+        """Context manager to securely yield and automatically clear the decrypted key."""
+        try:
+            yield self.get_decrypted_api_key(crypto_service)
+        finally:
+            self.clear_decrypted_key()
 
 
 class PipelineConfig(BaseSettings):

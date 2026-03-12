@@ -53,28 +53,24 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
 def test_api_credentials_missing_key() -> None:
     """Verifies it fails fast if encryption key is missing from environment."""
     valid_key = "sk-or-v1-" + ("B" * 64)
-    with (
-        mock.patch.dict(os.environ, {}, clear=True),
-        pytest.raises(ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"),
-    ):
+    with mock.patch.dict(os.environ, {}, clear=True):
         config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
         from src.infrastructure.crypto import CryptoService
-        crypto_service = CryptoService(config.crypto_config)
-        config.encrypt_key(crypto_service)
+        with pytest.raises(ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"):
+            CryptoService(config.crypto_config)
 
 
 def test_api_credentials_loading(mock_env_key: Any, tmp_path: Path) -> None:
     """Verifies that ApiCredentials correctly reads .env variables natively via file."""
     valid_key = "sk-or-v1-" + ("B" * 64)
-    env_file = tmp_path / ".env"
-    env_file.write_text(f"OPENROUTER_API_KEY={valid_key}")
 
     with mock_env_key:
-        config = ApiCredentials(_env_file=str(env_file))
+        with mock.patch.dict(os.environ, {"OPENROUTER_API_KEY": valid_key}):
+            config = ApiCredentials()
 
-        from src.infrastructure.crypto import CryptoService
-        crypto_service = CryptoService(config.crypto_config)
-        config.encrypt_key(crypto_service)
+            from src.infrastructure.crypto import CryptoService
+            crypto_service = CryptoService(config.crypto_config)
+            config.encrypt_key(crypto_service)
 
         assert config.openrouter_api_key is None
         assert config.encrypted_key is not None
