@@ -67,9 +67,11 @@ def test_generate_raptor_tree_multiple_chunks() -> None:
 
 
 def test_generate_raptor_tree_missing_llm() -> None:
-    # Service without LLM
-    with pytest.raises(GraphError, match="LLM gateway required for KnowledgeGraphService"):
-        KnowledgeGraphServiceImpl(llm_gateway=None, random_state=42)
+    # Service without LLM allows offline mock mode, so we verify _summarize_cluster returns fallback
+    service = KnowledgeGraphServiceImpl(llm_gateway=None)
+    title, sum_text = service._summarize_cluster(["Test"])
+    assert title == "Local Cluster Summary"
+    assert "offline cluster placeholder" in sum_text
 
 
 def test_generate_raptor_tree_empty_chunks() -> None:

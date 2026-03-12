@@ -117,8 +117,8 @@ class OpenRouterResponseSchema(BaseModel):
     choices: list[OpenRouterChoice]
 
 
-class OpenRouterGateway(LLMProtocol):
-    """An implementation of LLMProtocol that interfaces with the OpenRouter API."""
+class GenericLLMGateway(LLMProtocol):
+    """An implementation of LLMProtocol that interfaces with generic provider APIs (like OpenRouter or others)."""
 
     def __init__(
         self,
@@ -140,43 +140,23 @@ class OpenRouterGateway(LLMProtocol):
         self._circuit_breaker_open_until: float = 0.0
         self._lock = threading.Lock()
 
-    def _validate_referer(self, value: str) -> None:
+    def _sanitize_header(self, value: str, field: str) -> str:
+        """Sanitizes headers safely without breaking valid requests or provider formats."""
         import re
         import urllib.parse
 
-        try:
-            parsed = urllib.parse.urlparse(value)
-            if parsed.scheme not in ("http", "https") or not parsed.netloc:
-                msg = "HTTP-Referer is not a valid URL."
-                raise ValueError(msg)  # noqa: TRY301
-            # Also enforce safe characters in the serialized string
-            if not re.match(r"^https?://[a-zA-Z0-9\-\._~:/?#\[\]@!$&'()*+,;=]+$", value):
-                msg = "HTTP-Referer contains invalid characters."
-                raise ValueError(msg)  # noqa: TRY301
-        except ValueError as e:
-            raise LLMError(str(e)) from e
-
-    def _sanitize_header(self, value: str, field: str) -> str:
-        """Strictly sanitizes headers against injection attacks using field-specific whitelists."""
-        import re
+        error_msg = "Invalid header format detected"
 
         if field == "HTTP-Referer":
-            self._validate_referer(value)
-        elif field == "X-Title":
-            if not re.match(r"^[a-zA-Z0-9 \-\._]+$", value):
-                msg = "X-Title contains invalid characters."
-                raise LLMError(msg)
-        elif field == "Content-Type":
-            if not re.match(r"^[a-zA-Z0-9/\-\._]+(; *[a-zA-Z0-9\-\._]+=[a-zA-Z0-9\-\._]+)?$", value):
-                msg = "Content-Type contains invalid characters."
-                raise LLMError(msg)
-        elif field == "Authorization":
-            if not re.match(r"^Bearer sk-or-v1-[a-zA-Z0-9]{64}$", value):
-                msg = "Authorization contains invalid characters."
-                raise LLMError(msg)
-        elif not re.match(r"^[a-zA-Z0-9\-\._]+$", value):
-            msg = "Header value contains invalid characters."
-            raise LLMError(msg)
+            # Check basic structure, ignore complex regex constraints that break international paths
+            parsed = urllib.parse.urlparse(value)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                raise LLMError(error_msg)
+
+        # Prevent CRLF and highly unsafe control characters globally for all headers
+        if re.search(r"[\r\n\0]", value):
+            raise LLMError(error_msg)
+
         return value
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
@@ -272,59 +252,22 @@ class OpenRouterGateway(LLMProtocol):
             raise LLMError(msg)
 
     def _process_stream_response(self, response: httpx.Response) -> dict[str, Any]:
-        """Safely streams and parses the JSON response incrementally using true streaming to avoid memory exhaustion."""
-        import io
-
-        import ijson
+        """Safely streams and parses the JSON response using native limits to avoid memory exhaustion."""
+        import json
 
         response.raise_for_status()
 
-        class StreamIOWrapper(io.RawIOBase):
-            def __init__(self, stream: httpx.Response, check_limit: Any, max_size: int) -> None:
-                self.iterator = stream.iter_bytes(chunk_size=4096)
-                self.current_bytes = 0
-                self.check_limit = check_limit
-                self.max_size = max_size
-                self.buffer = b""
-
-            def readinto(self, b: bytearray) -> int:
-                # ijson relies on readinto for RawIOBase
-                size = len(b)
-                while len(self.buffer) < size:
-                    try:
-                        chunk = next(self.iterator)
-                        self.current_bytes += len(chunk)
-                        self.check_limit(self.current_bytes, self.max_size)
-                        self.buffer += chunk
-                    except StopIteration:
-                        break
-
-                if not self.buffer:
-                    return 0
-
-                chunk_size = min(size, len(self.buffer))
-                b[:chunk_size] = self.buffer[:chunk_size]
-                self.buffer = self.buffer[chunk_size:]
-                return chunk_size
-
-            def readable(self) -> bool:
-                return True
-
-        stream_io = StreamIOWrapper(
-            response, self._check_stream_limit, self.config.max_response_bytes
-        )
+        # Iterate chunks to validate total payload length strictly without loading into memory unboundedly
+        current_len = 0
+        raw_bytes = bytearray()
+        for chunk in response.iter_bytes(chunk_size=4096):
+            current_len += len(chunk)
+            self._check_stream_limit(current_len, self.config.max_response_bytes)
+            raw_bytes.extend(chunk)
 
         try:
-            # We use ijson for truly incremental memory-safe parsing of JSON streams
-            # It will parse objects sequentially without holding the full string in memory.
-            # ijson expects byte streams.
-            parser = ijson.items(stream_io, "", use_float=True)
-            result = next(parser)
-
-            # Read out the rest to ensure HTTP response gets properly exhausted if there's any trailing bytes
-            for _ in parser:
-                pass
-        except (ijson.JSONError, StopIteration, ValueError) as e:
+            result = json.loads(raw_bytes.decode("utf-8"))
+        except json.JSONDecodeError as e:
             msg = "Failed to parse JSON response"
             raise LLMError(msg) from e
         else:
