@@ -7,8 +7,10 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
+from src.domain_models.chunk import SemanticChunk
 from src.domain_models.config import ApiCredentials, PipelineConfig
 from src.infrastructure.crypto import CryptoService
+from src.infrastructure.knowledge_graph import LocalVectorDB
 from src.infrastructure.llm_middleware import LLMMiddlewareService
 from src.infrastructure.openrouter import DNSResolver, OpenRouterGateway
 from src.interfaces import LLMError
@@ -133,6 +135,52 @@ def test_openrouter_gateway_invalid_response(valid_config: PipelineConfig, httpx
         pytest.raises(LLMError, match="Invalid response format from OpenRouter"),
     ):
         gateway.invoke("Test prompt")
+
+
+def test_local_vector_db_store() -> None:
+    db = LocalVectorDB()
+    chunks = [
+        SemanticChunk(id="1", text="First test chunk about apples"),
+        SemanticChunk(id="2", text="Second chunk about oranges"),
+    ]
+
+    db.store(chunks)
+
+    assert len(db.storage) == 2
+    assert db.storage["1"].text == "First test chunk about apples"
+    assert db.storage["2"].text == "Second chunk about oranges"
+    assert db.vectorizer is not None
+    assert db.embeddings is not None
+    assert db.embeddings.shape[0] == 2
+
+
+def test_local_vector_db_search() -> None:
+    db = LocalVectorDB()
+    chunks = [
+        SemanticChunk(id="1", text="The quick brown fox jumps over the lazy dog."),
+        SemanticChunk(id="2", text="Python is a great programming language."),
+        SemanticChunk(id="3", text="The fox is a clever animal."),
+        SemanticChunk(id="4", text="Learning Python can be fun and rewarding."),
+    ]
+    db.store(chunks)
+
+    # Search for something matching multiple
+    results = db.search("fox", top_k=2)
+    assert len(results) == 2
+    # both 1 and 3 should be returned
+    returned_ids = {chunk.id for chunk in results}
+    assert "1" in returned_ids
+    assert "3" in returned_ids
+
+    # Search for something specific
+    results2 = db.search("programming language", top_k=1)
+    assert len(results2) == 1
+    assert results2[0].id == "2"
+
+    # Search limiting top_k
+    results3 = db.search("dog", top_k=1)
+    assert len(results3) == 1
+    assert results3[0].id == "1"
 
 
 def test_openrouter_gateway_request_error(valid_config: PipelineConfig, httpx_mock: Any) -> None:

@@ -77,8 +77,6 @@ def test_generate_raptor_tree_empty_chunks() -> None:
     assert new_state.error is None
 
 
-
-
 def test_embed_chunks_empty_and_error() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
     with pytest.raises(GraphError, match="empty or uninformative"):
@@ -122,10 +120,13 @@ def test_pivot_kj() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
     state = GraphState()
     assert service.pivot_kj(state) == state
+
+
 def test_generate_raptor_tree_batch_empty() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
     state = GraphState(chunks=[])
     assert service.generate_raptor_tree_batch(state).chunks == []
+
 
 def test_generate_raptor_tree_batch_single() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
@@ -133,6 +134,7 @@ def test_generate_raptor_tree_batch_single() -> None:
     state = GraphState(chunks=[chunk])
     res = service.generate_raptor_tree_batch(state)
     assert res.tree is not None
+
 
 def test_generate_raptor_tree_batch_multiple() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)

@@ -131,8 +131,9 @@ class OpenRouterGateway(LLMProtocol):
     def _sanitize_header(self, value: str) -> str:
         """Strictly sanitizes headers against injection attacks using a whitelist approach."""
         import re
+
         # Validate against known safe header values (whitelist approach)
-        if not re.match(r'^[a-zA-Z0-9_ \-.:/]+$', value):
+        if not re.match(r"^[a-zA-Z0-9_ \-.:/]+$", value):
             msg = "Header value contains invalid characters."
             raise LLMError(msg)
         return value
@@ -180,11 +181,15 @@ class OpenRouterGateway(LLMProtocol):
                     transport=transport,
                     verify=True,
                     timeout=httpx.Timeout(timeout),
-                    limits=httpx.Limits(max_keepalive_connections=100, max_connections=100, keepalive_expiry=300),
+                    limits=httpx.Limits(
+                        max_keepalive_connections=100, max_connections=100, keepalive_expiry=300
+                    ),
                 )
 
             try:
-                result = self._execute_request(self._client, payload, headers, retries, timeout=timeout)
+                result = self._execute_request(
+                    self._client, payload, headers, retries, timeout=timeout
+                )
                 self._circuit_breaker_fails = 0
             except LLMError:
                 self._circuit_breaker_fails += 1
@@ -280,7 +285,8 @@ class OpenRouterGateway(LLMProtocol):
 
             # Exponential backoff with jitter
             import secrets
-            sleep_time = (2 ** attempt) + (secrets.randbelow(100) / 100.0)
+
+            sleep_time = (2**attempt) + (secrets.randbelow(100) / 100.0)
             time.sleep(sleep_time)
 
         msg = "Failed to invoke OpenRouter API after retries"
