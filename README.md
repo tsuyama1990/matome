@@ -6,65 +6,10 @@
 
 **matome** ("summary" in Japanese) is a revolutionary frictionless active learning platform and knowledge workspace. It relieves users from cognitive overload when reading exceptionally long and complex documents by intelligently generating interactive semantic knowledge graphs.
 
-## Key Features
-
-- **Semantic Zooming:** Prevents cognitive overload by displaying high-level concepts first, and dynamically revealing deeper, high-density details only when the user is ready.
-- **Frictionless SQ3R Automation:** Mandates interactive learning without slowing you down. Unlock deeper knowledge by answering AI-generated contextual questions and solidifying it through immediate voice feedback.
-- **Multi-Dimensional Semantic KJ (MD-SKJ):** Pivot standard linear documents along completely new analytical axes (e.g., timeline, system workflow) to instantly discover hidden insights and generate system requirements or structural diagrams.
-
-## Architecture Overview
-
-matome leverages a robust LangGraph state machine orchestrating interactions with OpenRouter models and local vector stores. Documents are ingested, intelligently chunked, and constructed into a RAPTOR tree. The platform strictly enforces enterprise-grade security with Zero-Data Retention policies and local key encryption.
-
-```mermaid
-graph TD
-    subgraph Client Layer
-        UI[Semantic Zoom Canvas UI]
-        Audio[Voice Input/Output]
-    end
-
-    subgraph API Gateway Layer
-        FastAPI[FastAPI Router]
-        Auth[Auth & BYOK Manager]
-    end
-
-    subgraph Orchestration & Domain Layer
-        LangGraph[LangGraph State Machine]
-        Ingest[Ingestion & Chunking]
-        Raptor[RAPTOR Tree Builder]
-        QA[SQ3R Engine]
-        Pivot[MD-SKJ Engine]
-    end
-
-    subgraph Data Layer
-        VecDB[(Vector Database)]
-        OpenRouter((OpenRouter API))
-    end
-
-    UI --> FastAPI
-    Audio --> FastAPI
-    FastAPI --> LangGraph
-    LangGraph --> Ingest
-    LangGraph --> Raptor
-    LangGraph --> QA
-    LangGraph --> Pivot
-
-    Ingest --> VecDB
-    Raptor --> VecDB
-    Pivot --> VecDB
-
-    Ingest --> OpenRouter
-    Raptor --> OpenRouter
-    QA --> OpenRouter
-    Pivot --> OpenRouter
-```
-
-## Prerequisites
-
-- Python 3.12+
-- `uv` package manager
-- Node.js (for frontend rendering, planned)
-- Valid API keys for OpenRouter (optional for mock execution)
+## Core Capabilities (Currently Verified)
+- **Zero-Data Retention Enterprise Security:** A robust Bring Your Own Key (BYOK) system natively encrypts internal API keys and OpenRouter API keys in-memory to meet stringent enterprise security constraints. All secrets are securely loaded using `pydantic-settings` via environmental variables.
+- **Architectural Flexibility:** Fully decoupled dependency injection container system capable of routing LLM connections and metadata storage through dynamically initialized interface models.
+- **Strict Configuration Enforcement:** Predictable fail-fast capabilities utilizing strict data modeling that rejects any initialization missing explicit application or database strings.
 
 ## Installation & Setup
 
@@ -80,56 +25,32 @@ graph TD
    ```
 
 3. **Configure the environment:**
+   Create an `.env` file in the root of the repository matching the required initialization keys (or copy the example).
    ```bash
    cp .env.example .env
-   # Add your OPENROUTER_API_KEY to the .env file if using Real Mode
    ```
 
 ## Usage
 
-**Quick Start Tutorial (UAT):**
-
-To experience the interactive demonstration of matome's features via a `marimo` notebook:
-
+**Execute the foundation system setup**:
 ```bash
-uv run marimo edit tutorials/UAT_AND_TUTORIAL.py
+uv run python main.py
 ```
 
-This interface will guide you through document ingestion, SQ3R unlocking, and the MD-SKJ pivot feature.
-
-## Development Workflow
-
-We utilize a strict cycle-based development workflow heavily reliant on automated testing and linting.
-
-- **Run Tests:**
-  ```bash
-  uv run pytest
-  ```
-- **Check Typing:**
-  ```bash
-  uv run mypy .
-  ```
-- **Run Linter/Formatter:**
-  ```bash
-  uv run ruff check .
-  uv run ruff format .
-  ```
+Currently, in our initial stable release, the platform exposes a hardened underlying base ready for the integration of LangGraph nodes, Semantic Zoom canvas UIs, and external model orchestrations without risking core logic instability.
 
 ## Project Structure
 
 ```text
 matome/
-├── pyproject.toml
 ├── main.py
 ├── src/
-│   ├── config/          # Pydantic Settings and Security
-│   ├── domain/          # Core Schemas (Chunks, RAPTOR Nodes)
-│   ├── application/     # LangGraph Workflows and Services
-│   ├── infrastructure/  # LLM and Vector Store Gateways
-│   └── interfaces/      # FastAPI Routers
+│   ├── config/          # Pydantic Settings and Cryptographic Security Services
+│   ├── domain_models/   # Core schemas
+│   ├── application/     # Orchestration Workflow abstractions
+│   ├── infrastructure/  # Gateway clients and logic implementation
+│   └── interfaces/      # Dependency Injection Container and Protocol definitions
 ├── tests/               # Pytest Suite
-└── tutorials/
-    └── UAT_AND_TUTORIAL.py # Marimo interactive tutorial
 ```
 
 ## License
