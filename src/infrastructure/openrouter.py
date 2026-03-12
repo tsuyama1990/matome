@@ -29,7 +29,9 @@ class DNSResolver:
                 allowed_hostnames.append(parsed.hostname)
 
         # STRICT RULE: Hostname validation MUST occur BEFORE DNS resolution to prevent DNS rebinding attacks.
-        if hostname not in allowed_hostnames:
+        # Check if hostname ends with any allowed domain (for subdomain support), or exact match
+        is_allowed = any(hostname == h or hostname.endswith("." + h) for h in allowed_hostnames)
+        if not is_allowed:
             msg = f"Hostname {hostname} is not in the allowed API domains whitelist."
             raise LLMError(msg)
 
@@ -123,15 +125,26 @@ class OpenRouterGateway(LLMProtocol):
 
         # Delay httpx client creation until the first invoke to dynamically construct the pinned transport.
         self._client: httpx.Client | None = None
+        self._circuit_breaker_fails: int = 0
+        self._circuit_breaker_open_until: float = 0.0
 
     def _sanitize_header(self, value: str) -> str:
         """Strictly sanitizes headers against injection attacks using a whitelist approach."""
         import re
-        # Only allow standard printable ASCII plus a few safe symbols. Reject CRLF explicitly.
-        return re.sub(r'[^a-zA-Z0-9_ \-.:/]', '', value)
+        # Validate against known safe header values (whitelist approach)
+        if not re.match(r'^[a-zA-Z0-9_ \-.:/]+$', value):
+            msg = "Header value contains invalid characters."
+            raise LLMError(msg)
+        return value
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
         """Invokes the OpenRouter LLM with a prompt, timeout, and retry logic."""
+        import time
+
+        if time.time() < self._circuit_breaker_open_until:
+            msg = "Circuit breaker is open. Request rejected."
+            raise LLMError(msg)
+
         payload = self._prepare_payload(prompt, **kwargs)
 
         # We use a context manager to retrieve and clear the decrypted key from cache securely
@@ -170,7 +183,17 @@ class OpenRouterGateway(LLMProtocol):
                     limits=httpx.Limits(max_keepalive_connections=100, max_connections=100, keepalive_expiry=300),
                 )
 
-            return self._execute_request(self._client, payload, headers, retries, timeout=timeout)
+            try:
+                result = self._execute_request(self._client, payload, headers, retries, timeout=timeout)
+                self._circuit_breaker_fails = 0
+            except LLMError:
+                self._circuit_breaker_fails += 1
+                if self._circuit_breaker_fails >= 5:
+                    # Open circuit for 60 seconds
+                    self._circuit_breaker_open_until = time.time() + 60
+                raise
+            else:
+                return result
 
     def _prepare_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         model = kwargs.get("model", self.config.reasoning_model)

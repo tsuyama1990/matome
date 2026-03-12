@@ -166,16 +166,19 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
 
         try:
             response = self.llm_gateway.invoke(prompt)
-            lines = response.split("\n", 1)
-            title = (
-                lines[0].replace("TITLE:", "").strip()
-                if "TITLE:" in lines[0]
-                else "Cluster Summary"
-            )
-            summary = lines[1].replace("SUMMARY:", "").strip() if len(lines) > 1 else response
 
-            # Ensure title is within reason
+            import re
+            title_match = re.search(r"TITLE:\s*(.*)", response, re.IGNORECASE)
+            summary_match = re.search(r"SUMMARY:\s*(.*)", response, re.IGNORECASE | re.DOTALL)
+
+            title = title_match.group(1).strip() if title_match else "Cluster Summary"
+            summary = summary_match.group(1).strip() if summary_match else response.strip()
+
+            # Ensure title is within reason and format validated
             title = title[:100]
+
+            if not summary:
+                summary = "Failed to parse summary from LLM."
 
         except Exception as e:
             msg = f"LLM summarization failed: {e}"
