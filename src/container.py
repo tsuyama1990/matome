@@ -33,23 +33,18 @@ class ProductionDIContainer:
 
     def __init__(
         self,
+        llm_gateway_factory: Callable[[], LLMProtocol],
+        document_processor_factory: Callable[[], DocumentProcessingService],
+        knowledge_graph_factory: Callable[[], KnowledgeGraphService],
+        active_learning_factory: Callable[[], ActiveLearningService],
         config: PipelineConfig | None = None,
-        llm_gateway_factory: Callable[[], LLMProtocol] | None = None,
-        document_processor_factory: Callable[[], DocumentProcessingService] | None = None,
-        knowledge_graph_factory: Callable[[], KnowledgeGraphService] | None = None,
-        active_learning_factory: Callable[[], ActiveLearningService] | None = None,
     ) -> None:
         self._config = config or PipelineConfig()
 
-        # Resolve from configuration automatically if factories are not explicitly provided
-        self._llm_factory = llm_gateway_factory or self._build_llm_factory()
-        self._document_factory = document_processor_factory or self._build_document_factory()
-        self._knowledge_graph_factory = (
-            knowledge_graph_factory or self._build_knowledge_graph_factory()
-        )
-        self._active_learning_factory = (
-            active_learning_factory or self._build_active_learning_factory()
-        )
+        self._llm_factory = llm_gateway_factory
+        self._document_factory = document_processor_factory
+        self._knowledge_graph_factory = knowledge_graph_factory
+        self._active_learning_factory = active_learning_factory
 
         if not callable(self._llm_factory):
             msg = "llm_gateway_factory must be a callable factory function."
@@ -70,40 +65,44 @@ class ProductionDIContainer:
         self._knowledge_graph = self._knowledge_graph_factory()
         self._active_learning = self._active_learning_factory()
 
-    def _build_llm_factory(self) -> Callable[[], LLMProtocol]:
+    @staticmethod
+    def _build_llm_factory(config: PipelineConfig) -> Callable[[], LLMProtocol]:
         def factory() -> LLMProtocol:
-            cls = resolve_class(self._config.llm_service_path)
+            cls = resolve_class(config.llm_service_path)
             # Support both architectures: with and without middleware routing dependencies
             from src.infrastructure.openrouter import OpenRouterGateway
 
             if (
-                self._config.llm_service_path
+                config.llm_service_path
                 == "src.infrastructure.llm_middleware.LLMMiddlewareService"
             ):
-                gateway = OpenRouterGateway(self._config.credentials, self._config)
-                return cls(gateway, self._config)  # type: ignore
+                gateway = OpenRouterGateway(config.credentials, config)
+                return cls(gateway, config)  # type: ignore
             # Handle standard instantiation
-            return cls(self._config.credentials, self._config)  # type: ignore
+            return cls(config.credentials, config)  # type: ignore
 
         return factory
 
-    def _build_document_factory(self) -> Callable[[], DocumentProcessingService]:
+    @staticmethod
+    def _build_document_factory(config: PipelineConfig) -> Callable[[], DocumentProcessingService]:
         def factory() -> DocumentProcessingService:
-            cls = resolve_class(self._config.document_service_path)
+            cls = resolve_class(config.document_service_path)
             return cls()  # type: ignore
 
         return factory
 
-    def _build_knowledge_graph_factory(self) -> Callable[[], KnowledgeGraphService]:
+    @staticmethod
+    def _build_knowledge_graph_factory(config: PipelineConfig) -> Callable[[], KnowledgeGraphService]:
         def factory() -> KnowledgeGraphService:
-            cls = resolve_class(self._config.graph_service_path)
+            cls = resolve_class(config.graph_service_path)
             return cls()  # type: ignore
 
         return factory
 
-    def _build_active_learning_factory(self) -> Callable[[], ActiveLearningService]:
+    @staticmethod
+    def _build_active_learning_factory(config: PipelineConfig) -> Callable[[], ActiveLearningService]:
         def factory() -> ActiveLearningService:
-            cls = resolve_class(self._config.active_learning_service_path)
+            cls = resolve_class(config.active_learning_service_path)
             return cls()  # type: ignore
 
         return factory

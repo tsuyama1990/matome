@@ -1,6 +1,4 @@
 import os
-from collections.abc import Callable, Iterator
-from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -8,96 +6,10 @@ import pytest
 from cryptography.fernet import Fernet
 
 from src.container import ProductionDIContainer, resolve_class
-from src.domain_models import (
-    GraphState,
-    KnowledgeNode,
-    PipelineConfig,
-    SemanticChunk,
-)
-from src.interfaces import (
-    ActiveLearningError,
-    ActiveLearningService,
-    DocumentProcessingService,
-    GraphError,
-    KnowledgeGraphService,
-    LLMError,
-    LLMProtocol,
-    ProcessingError,
-)
-
-
-class MockLLMProtocol(LLMProtocol):
-    def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
-        msg = "LLM invocation timeout simulated"
-        raise LLMError(msg)
-
-
-class MockDocumentProcessingService(DocumentProcessingService):
-    def process(self, state: GraphState) -> GraphState:
-        msg = f"Cannot process file {state.file_path}: invalid format"
-        raise ProcessingError(msg)
-
-    def process_stream(self, file_path: str, chunk_size: int = 1000) -> Iterator[SemanticChunk]:
-        yield SemanticChunk(id="1", text="test")
-
-
-class MockKnowledgeGraphService(KnowledgeGraphService):
-    def generate_raptor_tree(self, state: GraphState) -> GraphState:
-        msg = "Failed to cluster chunks: not enough data"
-        raise GraphError(msg)
-
-    def generate_raptor_tree_batch(self, state: GraphState, batch_size: int = 100) -> GraphState:
-        return self.generate_raptor_tree(state)
-
-    def pivot_kj(self, state: GraphState) -> GraphState:
-        msg = f"Invalid pivot axis '{state.pivot_axis}' provided"
-        raise GraphError(msg)
-
-
-class MockActiveLearningService(ActiveLearningService):
-    def evaluate_answer(self, node: KnowledgeNode, answer: str) -> bool:
-        msg = "Failed to evaluate answer safely"
-        raise ActiveLearningError(msg)
-
-    def generate_question(self, node: KnowledgeNode, difficulty: str = "normal") -> str:
-        msg = "Could not generate contextually appropriate question"
-        raise ActiveLearningError(msg)
-
-    def track_progress(self, user_id: str, node_id: str, success: bool) -> None:
-        msg = "Failed to securely track active learning progress"
-        raise ActiveLearningError(msg)
-
-    def get_feedback(self, node: KnowledgeNode, answer: str) -> str:
-        msg = "Failed to generate targeted feedback securely"
-        raise ActiveLearningError(msg)
-
-
-def get_llm_factory() -> Callable[[], LLMProtocol]:
-    def factory() -> LLMProtocol:
-        return MockLLMProtocol()
-
-    return factory
-
-
-def get_doc_factory() -> Callable[[], DocumentProcessingService]:
-    def factory() -> DocumentProcessingService:
-        return MockDocumentProcessingService()
-
-    return factory
-
-
-def get_kg_factory() -> Callable[[], KnowledgeGraphService]:
-    def factory() -> KnowledgeGraphService:
-        return MockKnowledgeGraphService()
-
-    return factory
-
-
-def get_al_factory() -> Callable[[], ActiveLearningService]:
-    def factory() -> ActiveLearningService:
-        return MockActiveLearningService()
-
-    return factory
+from src.document import DocumentProcessor
+from src.domain_models import PipelineConfig
+from src.infrastructure.openrouter import OpenRouterGateway
+from src.interfaces import BaseTestActiveLearningService, BaseTestKnowledgeGraphService
 
 
 @pytest.fixture
@@ -122,34 +34,25 @@ def test_resolve_class() -> None:
 
 
 def test_container_initialization_success(mock_env_key: Any) -> None:
-    with mock_env_key:
-        config = PipelineConfig()
+    with mock_env_key, mock.patch("socket.gethostbyname", return_value="8.8.8.8"):
+        config = PipelineConfig(
+            llm_service_path="src.infrastructure.openrouter.OpenRouterGateway",
+            document_service_path="src.document.DocumentProcessor",
+        )
 
         container = ProductionDIContainer(
+            llm_gateway_factory=ProductionDIContainer._build_llm_factory(config),
+            document_processor_factory=ProductionDIContainer._build_document_factory(config),
+            knowledge_graph_factory=ProductionDIContainer._build_knowledge_graph_factory(config),
+            active_learning_factory=ProductionDIContainer._build_active_learning_factory(config),
             config=config,
-            llm_gateway_factory=get_llm_factory(),
-            document_processor_factory=get_doc_factory(),
-            knowledge_graph_factory=get_kg_factory(),
-            active_learning_factory=get_al_factory(),
         )
 
         assert container.config is config
-        assert isinstance(container.llm_gateway, MockLLMProtocol)
-        assert isinstance(container.document_processor, MockDocumentProcessingService)
-        assert isinstance(container.knowledge_graph, MockKnowledgeGraphService)
-        assert isinstance(container.active_learning, MockActiveLearningService)
-
-        # Optionally ensure the mock methods throw as expected now to verify they act accordingly
-        with pytest.raises(LLMError):
-            container.llm_gateway.invoke("hello")
-
-        test_path = str(Path.cwd() / "test.txt")
-        with pytest.raises(ProcessingError):
-            container.document_processor.process(GraphState(file_path=test_path))
-
-        with pytest.raises(GraphError):
-            container.knowledge_graph.generate_raptor_tree(GraphState(file_path="foo"))
-
+        assert isinstance(container.llm_gateway, OpenRouterGateway)
+        assert isinstance(container.document_processor, DocumentProcessor)
+        assert isinstance(container.knowledge_graph, BaseTestKnowledgeGraphService)
+        assert isinstance(container.active_learning, BaseTestActiveLearningService)
 
 def test_container_initialization_failures(mock_env_key: Any) -> None:
     with mock_env_key:
@@ -160,9 +63,9 @@ def test_container_initialization_failures(mock_env_key: Any) -> None:
             TypeError, match="llm_gateway_factory must be a callable factory function."
         ):
             ProductionDIContainer(
+                "Not a callable factory",  # type: ignore[arg-type]
+                ProductionDIContainer._build_document_factory(config),
+                ProductionDIContainer._build_knowledge_graph_factory(config),
+                ProductionDIContainer._build_active_learning_factory(config),
                 config,
-                MockLLMProtocol(),  # type: ignore[arg-type]
-                get_doc_factory(),
-                get_kg_factory(),
-                get_al_factory(),
             )

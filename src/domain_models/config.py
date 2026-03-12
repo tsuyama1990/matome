@@ -18,6 +18,7 @@ from src.domain_models.constants import (
     DEFAULT_LLM_SERVICE_PATH,
     DEFAULT_MAX_CHUNK_SCAN_SIZE,
     DEFAULT_MAX_PROMPT_LENGTH,
+    DEFAULT_MAX_RESPONSE_BYTES,
     DEFAULT_MULTIMODAL_MODEL,
     DEFAULT_OPENROUTER_ENDPOINT,
     DEFAULT_REASONING_MODEL,
@@ -113,6 +114,7 @@ class PipelineConfig(BaseSettings):
     app_title: str = Field(default=DEFAULT_APP_TITLE)
     max_prompt_length: int = Field(default=DEFAULT_MAX_PROMPT_LENGTH)
     requests_per_minute_limit: int = Field(default=DEFAULT_REQUESTS_PER_MINUTE_LIMIT)
+    max_response_bytes: int = Field(default=DEFAULT_MAX_RESPONSE_BYTES)
 
     # Define allowed_api_domains before openrouter_endpoint so it is available in info.data
     allowed_api_domains: list[str] = Field(

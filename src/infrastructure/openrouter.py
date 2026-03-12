@@ -177,14 +177,13 @@ class OpenRouterGateway(LLMProtocol):
     def _process_stream_response(self, response: httpx.Response) -> dict[str, Any]:
         """Safely streams and parses the JSON response to avoid memory exhaustion."""
         import json
-        MAX_RESPONSE_BYTES = 1024 * 1024
 
         response.raise_for_status()
 
         raw_bytes = bytearray()
         for chunk in response.iter_bytes():
             raw_bytes.extend(chunk)
-            if len(raw_bytes) > MAX_RESPONSE_BYTES:
+            if len(raw_bytes) > self.config.max_response_bytes:
                 msg = "Response size exceeded maximum allowed limit"
                 raise LLMError(msg)
 

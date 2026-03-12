@@ -18,36 +18,25 @@ def mock_env_key() -> Any:
 
 
 def test_init_container(mock_env_key: Any) -> None:
-    with mock_env_key, mock.patch("src.container.resolve_class") as mock_resolve:
-        # To test init_container without implementing services, we mock the resolve_class function
-        # to just return our mock interfaces from test_container
-        from tests.unit.test_container import (
-            MockActiveLearningService,
-            MockDocumentProcessingService,
-            MockKnowledgeGraphService,
-            MockLLMProtocol,
+    with (
+        mock_env_key,
+        mock.patch("socket.gethostbyname", return_value="8.8.8.8"),
+        mock.patch("main.PipelineConfig") as mock_config_class,
+    ):
+        from src.domain_models.config import PipelineConfig
+
+        # Use the actual real service paths so the test uses genuine DI without mock protocols
+        mock_config = PipelineConfig(
+            llm_service_path="src.infrastructure.openrouter.OpenRouterGateway",
+            document_service_path="src.document.DocumentProcessor",
         )
-
-        def llm_factory(*args: Any, **kwargs: Any) -> Any:
-            return MockLLMProtocol()
-
-        # Setup the mock to return specific classes based on the string passed
-        def side_effect(path: str) -> Any:
-            if "LLMProtocol" in path:
-                return llm_factory
-            if "DocumentProcessingService" in path:
-                return MockDocumentProcessingService
-            if "KnowledgeGraphService" in path:
-                return MockKnowledgeGraphService
-            if "ActiveLearningService" in path:
-                return MockActiveLearningService
-            raise ValueError(path)
-
-        mock_resolve.side_effect = side_effect
+        mock_config_class.return_value = mock_config
 
         container = main.init_container()
         assert isinstance(container, ProductionDIContainer)
-        assert isinstance(container.llm_gateway, MockLLMProtocol)
+
+        from src.infrastructure.openrouter import OpenRouterGateway
+        assert isinstance(container.llm_gateway, OpenRouterGateway)
 
 
 def test_main_cli_help(capsys: pytest.CaptureFixture[str], mock_env_key: Any) -> None:
