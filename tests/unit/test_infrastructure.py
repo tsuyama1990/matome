@@ -51,7 +51,10 @@ def test_openrouter_gateway_success(valid_config: PipelineConfig, httpx_mock: An
         response = gateway.invoke("Test prompt")
     assert response == "Mocked LLM response"
 
-def test_openrouter_gateway_ssrf_dns_rebinding(valid_config: PipelineConfig, httpx_mock: Any) -> None:
+
+def test_openrouter_gateway_ssrf_dns_rebinding(
+    valid_config: PipelineConfig, httpx_mock: Any
+) -> None:
     """Verifies that private/loopback IPs are rejected during DNS resolution."""
     gateway = OpenRouterGateway(valid_config.credentials, valid_config)
 

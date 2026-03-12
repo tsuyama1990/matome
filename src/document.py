@@ -65,7 +65,9 @@ class DocumentProcessor(DocumentProcessingService):
             raise ValueError(msg)
 
         if file_stat.st_size > self.config.max_chunk_scan_size:
-            msg = f"File size exceeds maximum allowed size of {self.config.max_chunk_scan_size} bytes"
+            msg = (
+                f"File size exceeds maximum allowed size of {self.config.max_chunk_scan_size} bytes"
+            )
             raise ValueError(msg)
 
     def process_stream(self, file_path: str, chunk_size: int = 1000) -> Iterator[SemanticChunk]:
@@ -117,5 +119,5 @@ class DocumentProcessor(DocumentProcessingService):
                 source_document=source,
                 page_number=page,
                 entities_extracted=[],
-            )
+            ),
         )

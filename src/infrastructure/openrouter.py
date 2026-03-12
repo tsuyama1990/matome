@@ -77,8 +77,7 @@ class DNSResolver:
 
         ssl_context = httpx.create_ssl_context()
         pool = httpcore.ConnectionPool(
-            ssl_context=ssl_context,
-            network_backend=PinnedNetworkBackend(hostname, ip)
+            ssl_context=ssl_context, network_backend=PinnedNetworkBackend(hostname, ip)
         )
         transport = httpx.HTTPTransport(verify=True)
         # Inject the custom pool directly into the transport
@@ -140,7 +139,7 @@ class OpenRouterGateway(LLMProtocol):
                 "HTTP-Referer": safe_domain,
                 "X-Title": safe_title,
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {decrypted_key.get_secret_value()}"
+                "Authorization": f"Bearer {decrypted_key.get_secret_value()}",
             }
 
             parsed_url = urllib.parse.urlparse(self.config.openrouter_endpoint)
@@ -150,7 +149,9 @@ class OpenRouterGateway(LLMProtocol):
                 raise LLMError(msg)
 
             # Resolve once to prevent TOCTOU SSRF vulnerabilities
-            ip = self.dns_resolver.resolve_and_validate_ip(hostname, self.config.allowed_api_domains)
+            ip = self.dns_resolver.resolve_and_validate_ip(
+                hostname, self.config.allowed_api_domains
+            )
 
             if self._client is None:
                 transport = self.dns_resolver.create_pinned_transport(hostname, ip)
@@ -204,7 +205,9 @@ class OpenRouterGateway(LLMProtocol):
         for attempt in range(retries):
             try:
                 logger.debug(f"Sending request to OpenRouter (Attempt {attempt + 1}/{retries})")
-                with client.stream("POST", self.config.openrouter_endpoint, headers=headers, json=payload) as response:
+                with client.stream(
+                    "POST", self.config.openrouter_endpoint, headers=headers, json=payload
+                ) as response:
                     response_json = self._process_stream_response(response)
                     return self._parse_response(response_json)
 

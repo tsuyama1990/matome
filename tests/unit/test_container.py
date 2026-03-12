@@ -54,6 +54,7 @@ def test_container_initialization_success(mock_env_key: Any) -> None:
         assert isinstance(container.knowledge_graph, BaseTestKnowledgeGraphService)
         assert isinstance(container.active_learning, BaseTestActiveLearningService)
 
+
 def test_container_initialization_failures(mock_env_key: Any) -> None:
     with mock_env_key:
         config = PipelineConfig()

@@ -35,6 +35,7 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
         config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
 
         from src.infrastructure.crypto import CryptoService
+
         crypto_service = CryptoService(config.crypto_config)
         config.encrypt_key(crypto_service)
 
@@ -56,7 +57,10 @@ def test_api_credentials_missing_key() -> None:
     with mock.patch.dict(os.environ, {}, clear=True):
         config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
         from src.infrastructure.crypto import CryptoService
-        with pytest.raises(ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"):
+
+        with pytest.raises(
+            ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"
+        ):
             CryptoService(config.crypto_config)
 
 
@@ -69,6 +73,7 @@ def test_api_credentials_loading(mock_env_key: Any, tmp_path: Path) -> None:
             config = ApiCredentials()
 
             from src.infrastructure.crypto import CryptoService
+
             crypto_service = CryptoService(config.crypto_config)
             config.encrypt_key(crypto_service)
 

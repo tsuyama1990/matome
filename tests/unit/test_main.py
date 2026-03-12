@@ -36,6 +36,7 @@ def test_init_container(mock_env_key: Any) -> None:
         assert isinstance(container, ProductionDIContainer)
 
         from src.infrastructure.openrouter import OpenRouterGateway
+
         assert isinstance(container.llm_gateway, OpenRouterGateway)
 
 

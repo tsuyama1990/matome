@@ -72,10 +72,7 @@ class ProductionDIContainer:
             # Support both architectures: with and without middleware routing dependencies
             from src.infrastructure.openrouter import OpenRouterGateway
 
-            if (
-                config.llm_service_path
-                == "src.infrastructure.llm_middleware.LLMMiddlewareService"
-            ):
+            if config.llm_service_path == "src.infrastructure.llm_middleware.LLMMiddlewareService":
                 gateway = OpenRouterGateway(config.credentials, config)
                 return cls(gateway, config)  # type: ignore
             # Handle standard instantiation
@@ -92,7 +89,9 @@ class ProductionDIContainer:
         return factory
 
     @staticmethod
-    def _build_knowledge_graph_factory(config: PipelineConfig) -> Callable[[], KnowledgeGraphService]:
+    def _build_knowledge_graph_factory(
+        config: PipelineConfig,
+    ) -> Callable[[], KnowledgeGraphService]:
         def factory() -> KnowledgeGraphService:
             cls = resolve_class(config.graph_service_path)
             return cls()  # type: ignore
@@ -100,7 +99,9 @@ class ProductionDIContainer:
         return factory
 
     @staticmethod
-    def _build_active_learning_factory(config: PipelineConfig) -> Callable[[], ActiveLearningService]:
+    def _build_active_learning_factory(
+        config: PipelineConfig,
+    ) -> Callable[[], ActiveLearningService]:
         def factory() -> ActiveLearningService:
             cls = resolve_class(config.active_learning_service_path)
             return cls()  # type: ignore
