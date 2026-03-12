@@ -75,12 +75,20 @@ class ProductionDIContainer:
 
             if config.llm_service_path == "src.infrastructure.llm_middleware.LLMMiddlewareService":
                 gateway = OpenRouterGateway(
-                    config.credentials, config, DNSResolver(), CryptoService(config.credentials.crypto_config)
+                    config.credentials,
+                    config,
+                    DNSResolver(),
+                    CryptoService(config.credentials.crypto_config),
                 )
                 return cls(gateway, config)  # type: ignore
 
             if config.llm_service_path == "src.infrastructure.openrouter.OpenRouterGateway":
-                return cls(config.credentials, config, DNSResolver(), CryptoService(config.credentials.crypto_config))  # type: ignore[no-any-return]
+                return cls(  # type: ignore[no-any-return]
+                    config.credentials,
+                    config,
+                    DNSResolver(),
+                    CryptoService(config.credentials.crypto_config),
+                )
 
             # Handle standard instantiation safely if neither
             return cls(config.credentials, config)  # type: ignore[no-any-return]
@@ -103,6 +111,13 @@ class ProductionDIContainer:
             if not config.graph_service_path:
                 return None
             cls = resolve_class(config.graph_service_path)
+            # The knowledge graph service requires the LLM Gateway
+            if (
+                config.graph_service_path
+                == "src.infrastructure.knowledge_graph.KnowledgeGraphServiceImpl"
+            ):
+                llm_factory = ProductionDIContainer._build_llm_factory(config)
+                return cls(llm_gateway=llm_factory())  # type: ignore[no-any-return]
             return cls()  # type: ignore
 
         return factory
@@ -138,7 +153,9 @@ class ProductionDIContainer:
         if self._document_processor_instance is None:
             instance = self._document_factory()
             if not isinstance(instance, DocumentProcessingService):
-                msg = f"Factory returned invalid type for DocumentProcessingService: {type(instance)}"
+                msg = (
+                    f"Factory returned invalid type for DocumentProcessingService: {type(instance)}"
+                )
                 raise TypeError(msg)
             self._document_processor_instance = instance
         return self._document_processor_instance
