@@ -70,13 +70,20 @@ class ProductionDIContainer:
         def factory() -> LLMProtocol:
             cls = resolve_class(config.llm_service_path)
             # Support both architectures: with and without middleware routing dependencies
-            from src.infrastructure.openrouter import OpenRouterGateway
+            from src.infrastructure.crypto import CryptoService
+            from src.infrastructure.openrouter import DNSResolver, OpenRouterGateway
 
             if config.llm_service_path == "src.infrastructure.llm_middleware.LLMMiddlewareService":
-                gateway = OpenRouterGateway(config.credentials, config)
+                gateway = OpenRouterGateway(
+                    config.credentials, config, DNSResolver(), CryptoService(config.credentials.crypto_config)
+                )
                 return cls(gateway, config)  # type: ignore
-            # Handle standard instantiation
-            return cls(config.credentials, config)  # type: ignore
+
+            if config.llm_service_path == "src.infrastructure.openrouter.OpenRouterGateway":
+                return cls(config.credentials, config, DNSResolver(), CryptoService(config.credentials.crypto_config))  # type: ignore[no-any-return]
+
+            # Handle standard instantiation safely if neither
+            return cls(config.credentials, config)  # type: ignore[no-any-return]
 
         return factory
 
@@ -119,23 +126,39 @@ class ProductionDIContainer:
     @property
     def llm_gateway(self) -> LLMProtocol:
         if self._llm_gateway_instance is None:
-            self._llm_gateway_instance = self._llm_factory()
+            instance = self._llm_factory()
+            if not isinstance(instance, LLMProtocol):
+                msg = f"Factory returned invalid type for LLMProtocol: {type(instance)}"
+                raise TypeError(msg)
+            self._llm_gateway_instance = instance
         return self._llm_gateway_instance
 
     @property
     def document_processor(self) -> DocumentProcessingService:
         if self._document_processor_instance is None:
-            self._document_processor_instance = self._document_factory()
+            instance = self._document_factory()
+            if not isinstance(instance, DocumentProcessingService):
+                msg = f"Factory returned invalid type for DocumentProcessingService: {type(instance)}"
+                raise TypeError(msg)
+            self._document_processor_instance = instance
         return self._document_processor_instance
 
     @property
     def knowledge_graph(self) -> KnowledgeGraphService | None:
         if self._knowledge_graph_instance is None:
-            self._knowledge_graph_instance = self._knowledge_graph_factory()
+            instance = self._knowledge_graph_factory()
+            if instance is not None and not isinstance(instance, KnowledgeGraphService):
+                msg = f"Factory returned invalid type for KnowledgeGraphService: {type(instance)}"
+                raise TypeError(msg)
+            self._knowledge_graph_instance = instance
         return self._knowledge_graph_instance
 
     @property
     def active_learning(self) -> ActiveLearningService | None:
         if self._active_learning_instance is None:
-            self._active_learning_instance = self._active_learning_factory()
+            instance = self._active_learning_factory()
+            if instance is not None and not isinstance(instance, ActiveLearningService):
+                msg = f"Factory returned invalid type for ActiveLearningService: {type(instance)}"
+                raise TypeError(msg)
+            self._active_learning_instance = instance
         return self._active_learning_instance

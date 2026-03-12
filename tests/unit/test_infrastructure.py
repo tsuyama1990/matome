@@ -8,8 +8,9 @@ from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
 from src.domain_models.config import ApiCredentials, PipelineConfig
+from src.infrastructure.crypto import CryptoService
 from src.infrastructure.llm_middleware import LLMMiddlewareService
-from src.infrastructure.openrouter import OpenRouterGateway
+from src.infrastructure.openrouter import DNSResolver, OpenRouterGateway
 from src.interfaces import LLMError
 
 
@@ -42,8 +43,12 @@ def _auto_mock_env(mock_env_key: Any) -> Any:
         yield
 
 
+
+
 def test_openrouter_gateway_success(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     httpx_mock.add_response(
         json={"choices": [{"message": {"content": "Mocked LLM response"}}]},
@@ -60,7 +65,9 @@ def test_openrouter_gateway_ssrf_dns_rebinding(
     valid_config: PipelineConfig, httpx_mock: Any
 ) -> None:
     """Verifies that private/loopback IPs are rejected during DNS resolution."""
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     # Mock the DNS resolution to return a loopback IP
     with (
@@ -71,7 +78,9 @@ def test_openrouter_gateway_ssrf_dns_rebinding(
 
 
 def test_openrouter_gateway_failure(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     # Note that the gateway retries 3 times, so we need to mock the response for all attempts.
     for _ in range(3):
@@ -85,7 +94,9 @@ def test_openrouter_gateway_failure(valid_config: PipelineConfig, httpx_mock: An
 
 
 def test_openrouter_gateway_timeout(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     for _ in range(3):
         httpx_mock.add_exception(httpx.TimeoutException("Timeout"))
@@ -98,7 +109,9 @@ def test_openrouter_gateway_timeout(valid_config: PipelineConfig, httpx_mock: An
 
 
 def test_openrouter_gateway_invalid_response(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     httpx_mock.add_response(json={"invalid_key": "No choices here"}, status_code=200)
 
@@ -110,7 +123,9 @@ def test_openrouter_gateway_invalid_response(valid_config: PipelineConfig, httpx
 
 
 def test_openrouter_gateway_request_error(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     for _ in range(3):
         httpx_mock.add_exception(httpx.RequestError("Network Error"))
@@ -123,7 +138,9 @@ def test_openrouter_gateway_request_error(valid_config: PipelineConfig, httpx_mo
 
 
 def test_openrouter_gateway_missing_content(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     httpx_mock.add_response(json={"choices": [{"message": {"other": "value"}}]}, status_code=200)
 
@@ -136,7 +153,9 @@ def test_openrouter_gateway_missing_content(valid_config: PipelineConfig, httpx_
 
 def test_openrouter_gateway_rate_limit(valid_config: PipelineConfig, httpx_mock: Any) -> None:
     valid_config.requests_per_minute_limit = 120  # 0.5s interval
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
     middleware = LLMMiddlewareService(gateway, valid_config)
 
     httpx_mock.add_response(json={"choices": [{"message": {"content": "ok"}}]}, status_code=200)
@@ -155,7 +174,9 @@ def test_openrouter_gateway_rate_limit(valid_config: PipelineConfig, httpx_mock:
 
 def test_openrouter_gateway_rate_limit_zero(valid_config: PipelineConfig, httpx_mock: Any) -> None:
     valid_config.requests_per_minute_limit = 0
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
     middleware = LLMMiddlewareService(gateway, valid_config)
 
     httpx_mock.add_response(json={"choices": [{"message": {"content": "ok"}}]}, status_code=200)
@@ -166,7 +187,9 @@ def test_openrouter_gateway_rate_limit_zero(valid_config: PipelineConfig, httpx_
 
 
 def test_openrouter_gateway_network_error(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     for _ in range(3):
         httpx_mock.add_exception(httpx.RequestError("Network Error"))
@@ -179,7 +202,9 @@ def test_openrouter_gateway_network_error(valid_config: PipelineConfig, httpx_mo
 
 
 def test_openrouter_gateway_sanitize_prompt(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
     middleware = LLMMiddlewareService(gateway, valid_config)
 
     httpx_mock.add_response(json={"choices": [{"message": {"content": "ok"}}]}, status_code=200)
@@ -204,13 +229,17 @@ def test_openrouter_gateway_missing_key(valid_config: PipelineConfig) -> None:
     valid_config.credentials.encrypted_key = None
     valid_config.credentials._decrypted_key = None
 
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
     with pytest.raises(LLMError, match="Missing or invalid OpenRouter API key"):
         gateway.invoke("Test prompt")
 
 
 def test_openrouter_gateway_empty_prompt(valid_config: PipelineConfig) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
     middleware = LLMMiddlewareService(gateway, valid_config)
 
     with pytest.raises(ValueError, match="Prompt cannot be empty"):
@@ -222,7 +251,9 @@ def test_openrouter_gateway_empty_prompt(valid_config: PipelineConfig) -> None:
 
 def test_openrouter_gateway_prompt_too_long(valid_config: PipelineConfig) -> None:
     valid_config.max_prompt_length = 5
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
     middleware = LLMMiddlewareService(gateway, valid_config)
 
     with pytest.raises(ValueError, match="Prompt length exceeds maximum allowed length"):
@@ -232,7 +263,9 @@ def test_openrouter_gateway_prompt_too_long(valid_config: PipelineConfig) -> Non
 def test_openrouter_gateway_schema_validation_error(
     valid_config: PipelineConfig, httpx_mock: Any
 ) -> None:
-    gateway = OpenRouterGateway(valid_config.credentials, valid_config)
+    gateway = OpenRouterGateway(
+        valid_config.credentials, valid_config, DNSResolver(), CryptoService(valid_config.credentials.crypto_config)
+    )
 
     httpx_mock.add_response(json={"choices": "not a list"}, status_code=200)
 
