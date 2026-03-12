@@ -1,4 +1,3 @@
-import base64
 import os
 from unittest import mock
 
@@ -9,7 +8,8 @@ from src.config.settings import AppConfig
 def test_encryption_and_decryption_are_reversible() -> None:
     """Test encrypting and decrypting a key results in the original plain text."""
     # Setup test config with mock environment variable
-    key = base64.urlsafe_b64encode(os.urandom(32)).decode("utf-8")
+    # 32 bytes strictly expected for encryption
+    key = "a" * 32
     with mock.patch.dict(os.environ, {"DATABASE_URI": "x", "ENCRYPTION_KEY": key}, clear=True):
         config = AppConfig()  # type: ignore[call-arg]
         service = SecurityService(config)
@@ -27,7 +27,7 @@ def test_encryption_yields_different_ciphertexts() -> None:
     """Test encrypting the same text multiple times gives different ciphertexts (random IVs)."""
     # Using Fernet from cryptography library directly verifies randomized IV creation,
     # as Fernet generates a new IV for each encryption.
-    key = base64.urlsafe_b64encode(os.urandom(32)).decode("utf-8")
+    key = "b" * 32
     with mock.patch.dict(os.environ, {"DATABASE_URI": "x", "ENCRYPTION_KEY": key}, clear=True):
         config = AppConfig()  # type: ignore[call-arg]
         service = SecurityService(config)

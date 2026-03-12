@@ -11,7 +11,11 @@ class SecurityService:
 
     def __init__(self, config: AppConfig) -> None:
         key = config.encryption_key.get_secret_value()
-        self._fernet = Fernet(base64.urlsafe_b64encode(key.encode("utf-8")[:32].ljust(32, b"=")))
+        encoded_key = key.encode("utf-8")
+        if len(encoded_key) != 32:
+            msg = "Encryption key must be exactly 32 bytes."
+            raise ValueError(msg)
+        self._fernet = Fernet(base64.urlsafe_b64encode(encoded_key))
 
     def encrypt_key(self, plain_key: str) -> str:
         """Encrypts an API key."""

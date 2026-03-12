@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChunkMetadata(BaseModel):
@@ -29,6 +29,15 @@ class SemanticChunk(BaseModel):
     )
     metadata: ChunkMetadata = Field(description="Strictly typed metadata.")
 
+    @field_validator("embedding")
+    @classmethod
+    def validate_embedding_dimension(cls, v: list[float]) -> list[float]:
+        """Validates that if the embedding is provided, it matches the required dimensions."""
+        if v and len(v) not in (768, 1536):
+            msg = "Embedding must be empty or a valid length (e.g., 768 or 1536)."
+            raise ValueError(msg)
+        return v
+
     model_config = ConfigDict(extra="forbid")
 
 
@@ -47,7 +56,7 @@ class RaptorNode(BaseModel):
 class EnrichedDocument(BaseModel):
     """The complete aggregated document representing chunks and the RAPTOR tree."""
 
-    document_id: str = Field(description="The unique identifier for the document.")
+    document_id: UUID = Field(description="The unique identifier for the document.")
     original_text: str = Field(description="The raw text of the entire document.")
     chunks: list[SemanticChunk] = Field(
         default_factory=list, description="The list of semantic chunks."
