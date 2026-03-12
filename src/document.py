@@ -22,21 +22,24 @@ class DocumentProcessor(DocumentProcessingService):
 
         chunks = list(self.process_stream(state.file_path, chunk_size=1000))
 
-        # We need to manually construct a new state instead of mutating
+        import copy
+
+        # We need to manually construct a new state using deepcopy to preserve true immutability
         return GraphState(
             file_path=state.file_path,
-            chunks=state.chunks + chunks,
-            tree=state.tree,
+            chunks=copy.deepcopy(state.chunks) + chunks,
+            tree=copy.deepcopy(state.tree),
             active_node_id=state.active_node_id,
             pivot_axis=state.pivot_axis,
-            pivot_response=state.pivot_response,
+            pivot_response=copy.deepcopy(state.pivot_response),
             error=state.error,
         )
 
     def _validate_path(self, file_path: str) -> Path:
         """Validates the file path for security and existance."""
+        base_dir = Path.cwd()
         try:
-            resolved_path = Path(file_path).resolve(strict=True)
+            resolved_path = base_dir.joinpath(file_path).resolve(strict=True)
         except FileNotFoundError as e:
             msg = f"File not found: {file_path}"
             raise ValueError(msg) from e
@@ -44,8 +47,8 @@ class DocumentProcessor(DocumentProcessingService):
             msg = f"Invalid file path: {file_path}"
             raise ValueError(msg) from e
 
-        if not resolved_path.is_relative_to(Path.cwd()):
-            msg = f"Path traversal attempt blocked. File must be within {Path.cwd()}"
+        if not resolved_path.is_relative_to(base_dir):
+            msg = f"Path traversal attempt blocked. File must be within {base_dir}"
             raise ValueError(msg)
         return resolved_path
 

@@ -72,7 +72,7 @@ def test_openrouter_gateway_failure(valid_config: PipelineConfig, httpx_mock: An
 
     with (
         mock.patch("socket.gethostbyname", return_value="8.8.8.8"),
-        pytest.raises(LLMError, match="OpenRouter API failed with status 500"),
+        pytest.raises(LLMError, match="OpenRouter API request failed"),
     ):
         gateway.invoke("Test prompt")
 
@@ -85,7 +85,7 @@ def test_openrouter_gateway_timeout(valid_config: PipelineConfig, httpx_mock: An
 
     with (
         mock.patch("socket.gethostbyname", return_value="8.8.8.8"),
-        pytest.raises(LLMError, match="Timeout connecting to OpenRouter"),
+        pytest.raises(LLMError, match="OpenRouter API request failed due to timeout"),
     ):
         gateway.invoke("Test prompt")
 
@@ -110,7 +110,7 @@ def test_openrouter_gateway_request_error(valid_config: PipelineConfig, httpx_mo
 
     with (
         mock.patch("socket.gethostbyname", return_value="8.8.8.8"),
-        pytest.raises(LLMError, match="Network error connecting to OpenRouter"),
+        pytest.raises(LLMError, match="OpenRouter API request failed due to network error"),
     ):
         gateway.invoke("Test prompt")
 
@@ -166,7 +166,7 @@ def test_openrouter_gateway_network_error(valid_config: PipelineConfig, httpx_mo
 
     with (
         mock.patch("socket.gethostbyname", return_value="8.8.8.8"),
-        pytest.raises(LLMError, match="Network error connecting to OpenRouter"),
+        pytest.raises(LLMError, match="OpenRouter API request failed due to network error"),
     ):
         gateway.invoke("Test prompt")
 

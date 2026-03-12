@@ -19,17 +19,30 @@ logger = logging.getLogger(__name__)
 class DNSResolver:
     """Service dedicated to securely resolving and validating DNS, protecting against SSRF."""
 
-    def resolve_and_validate_ip(self, hostname: str) -> str:
-        """Resolves the hostname and validates it is not a private/loopback IP."""
+    def resolve_and_validate_ip(self, hostname: str, allowed_domains: list[str]) -> str:
+        """Resolves the hostname and validates it against allowed domains and private/loopback IPs."""
+        # Check hostname against whitelist before resolving
+        # Note: allowed_domains typically contain schema + netloc (e.g. "https://openrouter.ai")
+        # We need to extract just the hostname from the allowed domains for matching
+        allowed_hostnames = []
+        for domain in allowed_domains:
+            parsed = urllib.parse.urlparse(domain)
+            if parsed.hostname:
+                allowed_hostnames.append(parsed.hostname)
+
+        if hostname not in allowed_hostnames:
+            msg = f"Hostname {hostname} is not in the allowed API domains whitelist."
+            raise LLMError(msg)
+
         try:
             ip = socket.gethostbyname(hostname)
         except socket.gaierror as e:
-            msg = f"Failed to resolve hostname: {hostname}"
+            msg = "Failed to resolve hostname"
             raise LLMError(msg) from e
 
         ip_obj = ipaddress.ip_address(ip)
         if ip_obj.is_private or ip_obj.is_loopback:
-            msg = f"SSRF Attempt Blocked: Resolved IP {ip} is a private/loopback address."
+            msg = "SSRF Attempt Blocked"
             raise LLMError(msg)
 
         return ip
@@ -104,9 +117,11 @@ class OpenRouterGateway(LLMProtocol):
         self._client: httpx.Client | None = None
 
     def _sanitize_header(self, value: str) -> str:
-        """Strictly sanitizes headers against injection attacks by allowing only printable ASCII."""
-        import re
-        return re.sub(r"[^\x20-\x7E]", "", value)
+        """Strictly sanitizes headers against injection attacks."""
+        if "\r" in value or "\n" in value:
+            msg = "CRLF injection detected in header value."
+            raise LLMError(msg)
+        return value
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
         """Invokes the OpenRouter LLM with a prompt, timeout, and retry logic."""
@@ -135,7 +150,7 @@ class OpenRouterGateway(LLMProtocol):
                 raise LLMError(msg)
 
             # Resolve once to prevent TOCTOU SSRF vulnerabilities
-            ip = self.dns_resolver.resolve_and_validate_ip(hostname)
+            ip = self.dns_resolver.resolve_and_validate_ip(hostname, self.config.allowed_api_domains)
 
             if self._client is None:
                 transport = self.dns_resolver.create_pinned_transport(hostname, ip)
@@ -195,24 +210,22 @@ class OpenRouterGateway(LLMProtocol):
                     return self._parse_response(response_json)
 
             except httpx.TimeoutException as e:
-                logger.warning(f"Timeout on attempt {attempt + 1}")
+                logger.warning("OpenRouter API request timed out on attempt")
                 if attempt == retries - 1:
-                    msg = f"Timeout connecting to OpenRouter after {retries} attempts."
+                    msg = "OpenRouter API request failed due to timeout."
                     raise LLMError(msg) from e
             except httpx.HTTPStatusError as e:
-                # To prevent logging or exposing raw response content in error messages,
-                # we only log the status code.
-                logger.warning(f"HTTP Error {e.response.status_code} on attempt {attempt + 1}")
+                logger.warning("OpenRouter API request failed due to HTTP error")
                 if attempt == retries - 1:
-                    msg = f"OpenRouter API failed with status {e.response.status_code}"
+                    msg = "OpenRouter API request failed"
                     raise LLMError(msg) from e
             except httpx.RequestError as e:
-                logger.warning(f"Network Error on attempt {attempt + 1}")
+                logger.warning("OpenRouter API request encountered a network error")
                 if attempt == retries - 1:
-                    msg = "Network error connecting to OpenRouter"
+                    msg = "OpenRouter API request failed due to network error"
                     raise LLMError(msg) from e
 
-        msg = "Failed to invoke OpenRouter after retries"
+        msg = "Failed to invoke OpenRouter API after retries"
         raise LLMError(msg)
 
     def _parse_response(self, response_json: dict[str, Any]) -> str:
