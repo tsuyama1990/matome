@@ -123,7 +123,9 @@ class PipelineConfig(BaseSettings):
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)
     document_service_path: str = Field(default=DEFAULT_DOCUMENT_SERVICE_PATH)
-    graph_service_path: str | None = Field(default=None)
+    graph_service_path: str | None = Field(
+        default="src.infrastructure.knowledge_graph.KnowledgeGraphServiceImpl"
+    )
     active_learning_service_path: str | None = Field(default=None)
 
     @field_validator("app_domain", "app_title")

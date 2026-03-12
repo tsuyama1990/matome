@@ -101,7 +101,13 @@ class OpenRouterResponseSchema(BaseModel):
 class OpenRouterGateway(LLMProtocol):
     """An implementation of LLMProtocol that interfaces with the OpenRouter API."""
 
-    def __init__(self, credentials: ApiCredentials, config: PipelineConfig, dns_resolver: DNSResolver, crypto_service: CryptoService) -> None:
+    def __init__(
+        self,
+        credentials: ApiCredentials,
+        config: PipelineConfig,
+        dns_resolver: DNSResolver,
+        crypto_service: CryptoService,
+    ) -> None:
         self.credentials = credentials
         self.config = config
         self.dns_resolver = dns_resolver
@@ -154,7 +160,9 @@ class OpenRouterGateway(LLMProtocol):
 
             if self._client is None:
                 transport = self.dns_resolver.create_pinned_transport(hostname, ip)
-                self._client = httpx.Client(transport=transport, verify=True, timeout=httpx.Timeout(timeout))
+                self._client = httpx.Client(
+                    transport=transport, verify=True, timeout=httpx.Timeout(timeout)
+                )
 
             return self._execute_request(self._client, payload, headers, retries)
 

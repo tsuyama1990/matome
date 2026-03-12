@@ -17,3 +17,5 @@ DEFAULT_MAX_RESPONSE_BYTES = 1048576
 
 DEFAULT_ALLOWED_API_DOMAINS = ["https://openrouter.ai"]
 DEFAULT_CRYPTO_HASH_ALGORITHM = "sha256"
+
+DEFAULT_GRAPH_SERVICE_PATH = "src.infrastructure.knowledge_graph.KnowledgeGraphServiceImpl"

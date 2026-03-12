@@ -19,6 +19,7 @@ Whether you are a Product Manager deconstructing legacy manuals into modern work
 4.  **Automated Diagram Generation**: Transform unstructured text into structured, standard formats immediately. Export restructured knowledge clusters directly into valid Markdown Product Requirements Documents (PRDs) and interactive Mermaid.js architecture diagrams (Sequence, Flowcharts, State Machines).
 5.  **Multi-Modal Ingestion & AI Routing**: Process PDFs, EPUBs, and raw text seamlessly. The backend securely chunks data using semantic boundaries and dynamically routes queries to the optimal Large Language Model (LLM) via an OpenRouter gateway (`OpenRouterGateway`), balancing speed and reasoning capabilities.
 6.  **Extensible Vector Search Architecture**: Integrated `VectorDBProtocol` ensures flexible and test-driven retrieval (including a mock database `MockVectorDB` for local and UI demonstrations).
+7.  **RAPTOR Graph Construction**: Multi-dimensional, hierarchical knowledge trees utilizing mathematical clustering algorithms (UMAP & Gaussian Mixture Model). The generated structural clusters form mathematically sound parent-child relationships and leverage the LLM (OpenRouter) with a Chain of Density prompt for super-densified summaries.
 
 ## Requirements
 
