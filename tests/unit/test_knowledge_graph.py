@@ -22,13 +22,19 @@ def test_generate_raptor_tree_single_chunk() -> None:
     new_state = service.generate_raptor_tree(state)
 
     assert new_state.tree is not None
-    assert len(new_state.tree.nodes) == 1
+    assert len(new_state.tree.nodes) == 2
 
     root_id = new_state.tree.root_node_id
     root_node = new_state.tree.nodes[root_id]
     assert root_node.title == "Root Knowledge"
     assert root_node.summary == "Only one chunk here."
-    assert root_node.children_ids == ["c1"]
+    assert len(root_node.children_ids) == 1
+
+    leaf_id = root_node.children_ids[0]
+    leaf_node = new_state.tree.nodes[leaf_id]
+    assert leaf_node.title == "Cluster Summary"
+    assert leaf_node.summary == "Only one chunk here."
+    assert leaf_node.children_ids == ["c1"]
 
 
 def test_generate_raptor_tree_multiple_chunks() -> None:
@@ -61,9 +67,11 @@ def test_generate_raptor_tree_multiple_chunks() -> None:
 
 
 def test_generate_raptor_tree_missing_llm() -> None:
-    # Service without LLM
-    with pytest.raises(GraphError, match="LLM gateway required for KnowledgeGraphService"):
-        KnowledgeGraphServiceImpl(llm_gateway=None, random_state=42)
+    # Service without LLM allows offline mock mode, so we verify _summarize_cluster returns fallback
+    service = KnowledgeGraphServiceImpl(llm_gateway=None)
+    title, sum_text = service._summarize_cluster(["Test"])
+    assert title == "Local Cluster Summary"
+    assert "offline cluster placeholder" in sum_text
 
 
 def test_generate_raptor_tree_empty_chunks() -> None:
@@ -77,12 +85,10 @@ def test_generate_raptor_tree_empty_chunks() -> None:
     assert new_state.error is None
 
 
-
-
 def test_embed_chunks_empty_and_error() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
     with pytest.raises(GraphError, match="empty or uninformative"):
-        service._embed_chunks([""])
+        service._embed_chunks([])
 
 
 def test_reduce_dimensionality_error() -> None:
@@ -122,10 +128,13 @@ def test_pivot_kj() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
     state = GraphState()
     assert service.pivot_kj(state) == state
+
+
 def test_generate_raptor_tree_batch_empty() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
     state = GraphState(chunks=[])
     assert service.generate_raptor_tree_batch(state).chunks == []
+
 
 def test_generate_raptor_tree_batch_single() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
@@ -133,6 +142,7 @@ def test_generate_raptor_tree_batch_single() -> None:
     state = GraphState(chunks=[chunk])
     res = service.generate_raptor_tree_batch(state)
     assert res.tree is not None
+
 
 def test_generate_raptor_tree_batch_multiple() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)

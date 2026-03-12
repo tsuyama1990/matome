@@ -31,7 +31,7 @@ def test_init_container(mock_env_key: Any) -> None:
 
         # Use the actual real service paths so the test uses genuine DI without mock protocols
         mock_config = PipelineConfig(
-            llm_service_path="src.infrastructure.openrouter.OpenRouterGateway",
+            llm_service_path="src.infrastructure.openrouter.GenericLLMGateway",
             document_service_path="src.document.DocumentProcessor",
             graph_service_path="tests.mocks.services.BaseTestKnowledgeGraphService",
             active_learning_service_path="tests.mocks.services.BaseTestActiveLearningService",
@@ -41,9 +41,9 @@ def test_init_container(mock_env_key: Any) -> None:
         container = main.init_container()
         assert isinstance(container, ProductionDIContainer)
 
-        from src.infrastructure.openrouter import OpenRouterGateway
+        from src.infrastructure.openrouter import GenericLLMGateway
 
-        assert isinstance(container.llm_gateway, OpenRouterGateway)
+        assert isinstance(container.llm_gateway, GenericLLMGateway)
 
 
 def test_main_cli_help(capsys: pytest.CaptureFixture[str], mock_env_key: Any) -> None:

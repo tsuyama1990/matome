@@ -8,7 +8,7 @@ from cryptography.fernet import Fernet
 from src.container import ProductionDIContainer, resolve_class
 from src.document import DocumentProcessor
 from src.domain_models import PipelineConfig
-from src.infrastructure.openrouter import OpenRouterGateway
+from src.infrastructure.openrouter import GenericLLMGateway
 from tests.mocks.services import BaseTestActiveLearningService, BaseTestKnowledgeGraphService
 
 
@@ -40,7 +40,7 @@ def test_resolve_class() -> None:
 def test_container_initialization_success(mock_env_key: Any) -> None:
     with mock_env_key, mock.patch("socket.gethostbyname", return_value="8.8.8.8"):
         config = PipelineConfig(
-            llm_service_path="src.infrastructure.openrouter.OpenRouterGateway",
+            llm_service_path="src.infrastructure.openrouter.GenericLLMGateway",
             document_service_path="src.document.DocumentProcessor",
             graph_service_path="tests.mocks.services.BaseTestKnowledgeGraphService",
             active_learning_service_path="tests.mocks.services.BaseTestActiveLearningService",
@@ -55,7 +55,7 @@ def test_container_initialization_success(mock_env_key: Any) -> None:
         )
 
         assert container.config is config
-        assert isinstance(container.llm_gateway, OpenRouterGateway)
+        assert isinstance(container.llm_gateway, GenericLLMGateway)
         assert isinstance(container.document_processor, DocumentProcessor)
         assert isinstance(container.knowledge_graph, BaseTestKnowledgeGraphService)
         assert isinstance(container.active_learning, BaseTestActiveLearningService)

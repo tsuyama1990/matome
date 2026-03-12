@@ -4,12 +4,12 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: httpx-0.36.0, cov-7.0.0, anyio-4.12.1
-collected 47 items
+collected 49 items
 
 tests/unit/test_config.py .....                                          [ 10%]
-tests/unit/test_container.py ...                                         [ 17%]
-tests/unit/test_document.py ....                                         [ 25%]
-tests/unit/test_infrastructure.py ...............                        [ 57%]
+tests/unit/test_container.py ...                                         [ 16%]
+tests/unit/test_document.py ....                                         [ 24%]
+tests/unit/test_infrastructure.py .................                      [ 59%]
 tests/unit/test_knowledge_graph.py .............                         [ 85%]
 tests/unit/test_main.py ..                                               [ 89%]
 tests/unit/test_schemas.py .....                                         [100%]
@@ -24,8 +24,6 @@ tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
     warn(
 
 tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_multiple_chunks
-tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
-tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
   /app/.venv/lib/python3.12/site-packages/umap/spectral.py:548: UserWarning: Spectral initialisation failed! The eigenvector solver
   failed. This is likely due to too small an eigengap. Consider
   adding some noise or jitter to your data.
@@ -53,25 +51,14 @@ src/domain_models/constants.py             15      0   100%
 src/domain_models/graph.py                 16      0   100%
 src/domain_models/pivot.py                 13      0   100%
 src/domain_models/state.py                 13      0   100%
-src/infrastructure/__init__.py              4      0   100%
+src/infrastructure/__init__.py              5      0   100%
 src/infrastructure/crypto.py               23      0   100%
-src/infrastructure/knowledge_graph.py     189     35    81%   53-55, 66-76, 104, 106, 123-124, 134-135, 140-141, 147-152, 181, 227, 266-270, 319-322
+src/infrastructure/knowledge_graph.py     240     52    78%   50-52, 58, 73-75, 94-95, 126-131, 144-172, 200, 202, 219-220, 230-231, 244-249, 277, 331, 370-374, 426-429
 src/infrastructure/llm_middleware.py       36      0   100%
-src/infrastructure/openrouter.py          178     30    83%   35-36, 41-43, 71-73, 76, 79, 136-137, 145-146, 169-170, 193, 207, 209, 215-216, 233-235, 238-239, 286-287, 299-300
+src/infrastructure/openrouter.py          212     43    80%   35-36, 41-43, 50-52, 80-86, 89, 92, 154, 158, 172-173, 202-203, 229, 243, 245, 251-252, 270-272, 275-276, 324-325, 330-331, 340-343, 346-347, 351-352
 src/interfaces.py                          29      0   100%
-tests/__init__.py                           0      0   100%
-tests/mocks/__init__.py                     0      0   100%
-tests/mocks/services.py                    18      7    61%   9, 12, 15, 22, 25, 28, 31
-tests/unit/__init__.py                      0      0   100%
-tests/unit/test_config.py                  74      0   100%
-tests/unit/test_container.py               34      0   100%
-tests/unit/test_document.py                32      0   100%
-tests/unit/test_infrastructure.py         126      0   100%
-tests/unit/test_knowledge_graph.py         89      0   100%
-tests/unit/test_main.py                    26      0   100%
-tests/unit/test_schemas.py                 54      0   100%
 ---------------------------------------------------------------------
-TOTAL                                    1275    118    91%
-================== 47 passed, 9 warnings in 67.02s (0:01:07) ===================
+TOTAL                                     908    141    84%
+================== 49 passed, 7 warnings in 63.10s (0:01:03) ===================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

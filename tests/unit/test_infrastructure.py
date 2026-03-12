@@ -7,10 +7,12 @@ import pytest
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
+from src.domain_models.chunk import SemanticChunk
 from src.domain_models.config import ApiCredentials, PipelineConfig
 from src.infrastructure.crypto import CryptoService
+from src.infrastructure.knowledge_graph import LocalVectorDB
 from src.infrastructure.llm_middleware import LLMMiddlewareService
-from src.infrastructure.openrouter import DNSResolver, OpenRouterGateway
+from src.infrastructure.openrouter import DNSResolver, GenericLLMGateway
 from src.interfaces import LLMError
 
 
@@ -44,7 +46,7 @@ def _auto_mock_env(mock_env_key: Any) -> Any:
 
 
 def test_openrouter_gateway_success(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -66,7 +68,7 @@ def test_openrouter_gateway_ssrf_dns_rebinding(
     valid_config: PipelineConfig, httpx_mock: Any
 ) -> None:
     """Verifies that private/loopback IPs are rejected during DNS resolution."""
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -82,7 +84,7 @@ def test_openrouter_gateway_ssrf_dns_rebinding(
 
 
 def test_openrouter_gateway_failure(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -101,7 +103,7 @@ def test_openrouter_gateway_failure(valid_config: PipelineConfig, httpx_mock: An
 
 
 def test_openrouter_gateway_timeout(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -119,7 +121,7 @@ def test_openrouter_gateway_timeout(valid_config: PipelineConfig, httpx_mock: An
 
 
 def test_openrouter_gateway_invalid_response(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -135,8 +137,54 @@ def test_openrouter_gateway_invalid_response(valid_config: PipelineConfig, httpx
         gateway.invoke("Test prompt")
 
 
+def test_local_vector_db_store() -> None:
+    db = LocalVectorDB()
+    chunks = [
+        SemanticChunk(id="1", text="First test chunk about apples"),
+        SemanticChunk(id="2", text="Second chunk about oranges"),
+    ]
+
+    db.store(chunks)
+
+    assert len(db.storage) == 2
+    assert db.storage["1"].text == "First test chunk about apples"
+    assert db.storage["2"].text == "Second chunk about oranges"
+    assert db.vectorizer is not None
+    assert db.embeddings is not None
+    assert db.embeddings.shape[0] == 2
+
+
+def test_local_vector_db_search() -> None:
+    db = LocalVectorDB()
+    chunks = [
+        SemanticChunk(id="1", text="The quick brown fox jumps over the lazy dog."),
+        SemanticChunk(id="2", text="Python is a great programming language."),
+        SemanticChunk(id="3", text="The fox is a clever animal."),
+        SemanticChunk(id="4", text="Learning Python can be fun and rewarding."),
+    ]
+    db.store(chunks)
+
+    # Search for something matching multiple
+    results = db.search("fox", top_k=2)
+    assert len(results) == 2
+    # both 1 and 3 should be returned
+    returned_ids = {chunk.id for chunk in results}
+    assert "1" in returned_ids
+    assert "3" in returned_ids
+
+    # Search for something specific
+    results2 = db.search("programming language", top_k=1)
+    assert len(results2) == 1
+    assert results2[0].id == "2"
+
+    # Search limiting top_k
+    results3 = db.search("dog", top_k=1)
+    assert len(results3) == 1
+    assert results3[0].id == "1"
+
+
 def test_openrouter_gateway_request_error(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -154,7 +202,7 @@ def test_openrouter_gateway_request_error(valid_config: PipelineConfig, httpx_mo
 
 
 def test_openrouter_gateway_missing_content(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -172,7 +220,7 @@ def test_openrouter_gateway_missing_content(valid_config: PipelineConfig, httpx_
 
 def test_openrouter_gateway_rate_limit(valid_config: PipelineConfig, httpx_mock: Any) -> None:
     valid_config.requests_per_minute_limit = 120  # 0.5s interval
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -196,7 +244,7 @@ def test_openrouter_gateway_rate_limit(valid_config: PipelineConfig, httpx_mock:
 
 def test_openrouter_gateway_rate_limit_zero(valid_config: PipelineConfig, httpx_mock: Any) -> None:
     valid_config.requests_per_minute_limit = 0
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -212,7 +260,7 @@ def test_openrouter_gateway_rate_limit_zero(valid_config: PipelineConfig, httpx_
 
 
 def test_openrouter_gateway_network_error(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -230,7 +278,7 @@ def test_openrouter_gateway_network_error(valid_config: PipelineConfig, httpx_mo
 
 
 def test_openrouter_gateway_sanitize_prompt(valid_config: PipelineConfig, httpx_mock: Any) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -260,7 +308,7 @@ def test_openrouter_gateway_missing_key(valid_config: PipelineConfig) -> None:
     valid_config.credentials.encrypted_key = None
     valid_config.credentials._decrypted_key = None
 
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -271,7 +319,7 @@ def test_openrouter_gateway_missing_key(valid_config: PipelineConfig) -> None:
 
 
 def test_openrouter_gateway_empty_prompt(valid_config: PipelineConfig) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -288,7 +336,7 @@ def test_openrouter_gateway_empty_prompt(valid_config: PipelineConfig) -> None:
 
 def test_openrouter_gateway_prompt_too_long(valid_config: PipelineConfig) -> None:
     valid_config.max_prompt_length = 5
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),
@@ -303,7 +351,7 @@ def test_openrouter_gateway_prompt_too_long(valid_config: PipelineConfig) -> Non
 def test_openrouter_gateway_schema_validation_error(
     valid_config: PipelineConfig, httpx_mock: Any
 ) -> None:
-    gateway = OpenRouterGateway(
+    gateway = GenericLLMGateway(
         valid_config.credentials,
         valid_config,
         DNSResolver(),

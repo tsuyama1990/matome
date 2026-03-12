@@ -71,10 +71,10 @@ class ProductionDIContainer:
             cls = resolve_class(config.llm_service_path)
             # Support both architectures: with and without middleware routing dependencies
             from src.infrastructure.crypto import CryptoService
-            from src.infrastructure.openrouter import DNSResolver, OpenRouterGateway
+            from src.infrastructure.openrouter import DNSResolver, GenericLLMGateway
 
             if config.llm_service_path == "src.infrastructure.llm_middleware.LLMMiddlewareService":
-                gateway = OpenRouterGateway(
+                gateway = GenericLLMGateway(
                     config.credentials,
                     config,
                     DNSResolver(),
@@ -82,7 +82,7 @@ class ProductionDIContainer:
                 )
                 return cls(gateway, config)  # type: ignore
 
-            if config.llm_service_path == "src.infrastructure.openrouter.OpenRouterGateway":
+            if config.llm_service_path == "src.infrastructure.openrouter.GenericLLMGateway":
                 return cls(  # type: ignore[no-any-return]
                     config.credentials,
                     config,

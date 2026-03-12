@@ -35,6 +35,15 @@ class DNSResolver:
             msg = f"Hostname {hostname} is not in the allowed API domains whitelist."
             raise LLMError(msg)
 
+        # Ensure the provided hostname itself is not directly a private IP before DNS resolution
+        try:
+            ip_obj = ipaddress.ip_address(hostname)
+            if ip_obj.is_private or ip_obj.is_loopback:
+                msg = "SSRF Attempt Blocked: Hostname is a private IP"
+                raise LLMError(msg)
+        except ValueError:
+            pass  # It's a valid hostname, not an IP, proceed to resolution
+
         # Only resolve after strict validation
         try:
             ip = socket.gethostbyname(hostname)
@@ -67,9 +76,13 @@ class DNSResolver:
                 local_address: str | None = None,
                 socket_options: Any = None,
             ) -> httpcore.NetworkStream:
-                # Intercept the connection host if it matches our pinned target
-                if host == self.pinned_host:
-                    host = self.pinned_ip
+                # Reject connections that don't match the pinned host
+                if host != self.pinned_host:
+                    msg = f"Connection to {host} rejected. Only connections to {self.pinned_host} are allowed."
+                    raise RuntimeError(msg)
+
+                # Replace with pinned IP
+                host = self.pinned_ip
                 return self.backend.connect_tcp(host, port, timeout, local_address, socket_options)
 
             def connect_unix_socket(self, *args: Any, **kwargs: Any) -> httpcore.NetworkStream:
@@ -104,8 +117,8 @@ class OpenRouterResponseSchema(BaseModel):
     choices: list[OpenRouterChoice]
 
 
-class OpenRouterGateway(LLMProtocol):
-    """An implementation of LLMProtocol that interfaces with the OpenRouter API."""
+class GenericLLMGateway(LLMProtocol):
+    """An implementation of LLMProtocol that interfaces with generic provider APIs (like OpenRouter or others)."""
 
     def __init__(
         self,
@@ -119,81 +132,104 @@ class OpenRouterGateway(LLMProtocol):
         self.dns_resolver = dns_resolver
         self.crypto_service = crypto_service
 
-        # Ensure key is encrypted in memory
-        if self.credentials.openrouter_api_key is not None:
-            self.credentials.encrypt_key(self.crypto_service)
-
         # Delay httpx client creation until the first invoke to dynamically construct the pinned transport.
+        import threading
+
         self._client: httpx.Client | None = None
         self._circuit_breaker_fails: int = 0
         self._circuit_breaker_open_until: float = 0.0
+        self._lock = threading.Lock()
 
-    def _sanitize_header(self, value: str) -> str:
-        """Strictly sanitizes headers against injection attacks using a whitelist approach."""
+    def _sanitize_header(self, value: str, field: str) -> str:
+        """Sanitizes headers safely without breaking valid requests or provider formats."""
         import re
-        # Validate against known safe header values (whitelist approach)
-        if not re.match(r'^[a-zA-Z0-9_ \-.:/]+$', value):
-            msg = "Header value contains invalid characters."
-            raise LLMError(msg)
+        import urllib.parse
+
+        error_msg = "Invalid header format detected"
+
+        if field == "HTTP-Referer":
+            # Check basic structure, ignore complex regex constraints that break international paths
+            parsed = urllib.parse.urlparse(value)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                raise LLMError(error_msg)
+
+        # Prevent CRLF and highly unsafe control characters globally for all headers
+        if re.search(r"[\r\n\0]", value):
+            raise LLMError(error_msg)
+
         return value
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
         """Invokes the OpenRouter LLM with a prompt, timeout, and retry logic."""
         import time
 
-        if time.time() < self._circuit_breaker_open_until:
-            msg = "Circuit breaker is open. Request rejected."
+        with self._lock:
+            # Ensure key is encrypted in memory inside the lock before using it
+            if self.credentials.openrouter_api_key is not None:
+                self.credentials.encrypt_key(self.crypto_service)
+
+            if time.time() < self._circuit_breaker_open_until:
+                msg = "Circuit breaker is open. Request rejected."
+                raise LLMError(msg)
+
+            payload = self._prepare_payload(prompt, **kwargs)
+
+            safe_domain = self._sanitize_header(self.config.app_domain, "HTTP-Referer")
+            safe_title = self._sanitize_header(self.config.app_title, "X-Title")
+
+            # We use a context manager to retrieve and clear the decrypted key from cache securely
+            with self.credentials.decrypted_key_context(self.crypto_service) as decrypted_key:
+                if not decrypted_key:
+                    msg = "Missing or invalid OpenRouter API key"
+                    raise LLMError(msg)
+
+                api_key_str = decrypted_key.get_secret_value()
+
+                # Construct headers strictly inside the context block so we do not pass the raw decrypted key out of context unnecessarily.
+                # The Authorization header is sanitized before assignment.
+                headers = {
+                    "HTTP-Referer": safe_domain,
+                    "X-Title": safe_title,
+                    "Content-Type": self._sanitize_header("application/json", "Content-Type"),
+                    "Authorization": self._sanitize_header(
+                        f"Bearer {api_key_str}", "Authorization"
+                    ),
+                }
+
+        parsed_url = urllib.parse.urlparse(self.config.openrouter_endpoint)
+        hostname = parsed_url.hostname
+        if not hostname:
+            msg = "Invalid endpoint URL"
             raise LLMError(msg)
 
-        payload = self._prepare_payload(prompt, **kwargs)
+        # Resolve once to prevent TOCTOU SSRF vulnerabilities
+        ip = self.dns_resolver.resolve_and_validate_ip(hostname, self.config.allowed_api_domains)
 
-        # We use a context manager to retrieve and clear the decrypted key from cache securely
-        with self.credentials.decrypted_key_context(self.crypto_service) as decrypted_key:
-            if not decrypted_key:
-                msg = "Missing or invalid OpenRouter API key"
-                raise LLMError(msg)
-
-            safe_domain = self._sanitize_header(self.config.app_domain)
-            safe_title = self._sanitize_header(self.config.app_title)
-
-            headers = {
-                "HTTP-Referer": safe_domain,
-                "X-Title": safe_title,
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {decrypted_key.get_secret_value()}",
-            }
-
-            parsed_url = urllib.parse.urlparse(self.config.openrouter_endpoint)
-            hostname = parsed_url.hostname
-            if not hostname:
-                msg = "Invalid endpoint URL"
-                raise LLMError(msg)
-
-            # Resolve once to prevent TOCTOU SSRF vulnerabilities
-            ip = self.dns_resolver.resolve_and_validate_ip(
-                hostname, self.config.allowed_api_domains
-            )
-
+        with self._lock:
             if self._client is None:
                 transport = self.dns_resolver.create_pinned_transport(hostname, ip)
                 self._client = httpx.Client(
                     transport=transport,
                     verify=True,
-                    timeout=httpx.Timeout(timeout),
-                    limits=httpx.Limits(max_keepalive_connections=100, max_connections=100, keepalive_expiry=300),
+                    limits=httpx.Limits(
+                        max_keepalive_connections=100, max_connections=100, keepalive_expiry=300
+                    ),
                 )
+            client = self._client
 
-            try:
-                result = self._execute_request(self._client, payload, headers, retries, timeout=timeout)
+        try:
+            result = self._execute_request(client, payload, headers, retries, timeout=timeout)
+            with self._lock:
                 self._circuit_breaker_fails = 0
-            except LLMError:
+        except LLMError:
+            with self._lock:
                 self._circuit_breaker_fails += 1
                 if self._circuit_breaker_fails >= 5:
                     # Open circuit for 60 seconds
                     self._circuit_breaker_open_until = time.time() + 60
-                raise
-            else:
-                return result
+            raise
+        else:
+            return result
 
     def _prepare_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         model = kwargs.get("model", self.config.reasoning_model)
@@ -216,16 +252,17 @@ class OpenRouterGateway(LLMProtocol):
             raise LLMError(msg)
 
     def _process_stream_response(self, response: httpx.Response) -> dict[str, Any]:
-        """Safely streams and parses the JSON response to avoid memory exhaustion."""
+        """Safely streams and parses the JSON response using native limits to avoid memory exhaustion."""
         import json
 
         response.raise_for_status()
 
-        # To resolve complexity issues and preserve memory validation,
-        # we iterate the raw stream, aggressively checking length before accumulating.
+        # Iterate chunks to validate total payload length strictly without loading into memory unboundedly
+        current_len = 0
         raw_bytes = bytearray()
-        for chunk in response.iter_bytes():
-            self._check_stream_limit(len(raw_bytes) + len(chunk), self.config.max_response_bytes)
+        for chunk in response.iter_bytes(chunk_size=4096):
+            current_len += len(chunk)
+            self._check_stream_limit(current_len, self.config.max_response_bytes)
             raw_bytes.extend(chunk)
 
         try:
@@ -257,7 +294,7 @@ class OpenRouterGateway(LLMProtocol):
                     self.config.openrouter_endpoint,
                     headers=headers,
                     json=payload,
-                    timeout=timeout,
+                    timeout=httpx.Timeout(timeout),
                 ) as response:
                     response_json = self._process_stream_response(response)
                     return self._parse_response(response_json)
@@ -280,13 +317,23 @@ class OpenRouterGateway(LLMProtocol):
 
             # Exponential backoff with jitter
             import secrets
-            sleep_time = (2 ** attempt) + (secrets.randbelow(100) / 100.0)
+
+            sleep_time = (2**attempt) + (secrets.randbelow(100) / 100.0)
             time.sleep(sleep_time)
 
         msg = "Failed to invoke OpenRouter API after retries"
         raise LLMError(msg)
 
     def _parse_response(self, response_json: dict[str, Any]) -> str:
+        # Pre-validate structure manually before Pydantic to ensure safe property access
+        if not isinstance(response_json, dict):
+            msg = "Invalid response format from OpenRouter: Expected dictionary"
+            raise LLMError(msg)
+
+        if "choices" not in response_json or not isinstance(response_json["choices"], list):
+            msg = "Invalid response format from OpenRouter: Missing or invalid 'choices'"
+            raise LLMError(msg)
+
         try:
             # Validate against Pydantic schema
             validated_response = OpenRouterResponseSchema(**response_json)
@@ -299,7 +346,12 @@ class OpenRouterGateway(LLMProtocol):
             msg = f"Invalid response format from OpenRouter: {response_json}"
             raise LLMError(msg)
 
-        content = validated_response.choices[0].message.content
+        first_choice = validated_response.choices[0]
+        if not hasattr(first_choice, "message") or first_choice.message is None:
+            msg = "Missing message in OpenRouter response"
+            raise LLMError(msg)
+
+        content = first_choice.message.content
         if content is None:
             msg = "Missing content in OpenRouter response"
             raise LLMError(msg)
