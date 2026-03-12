@@ -1,5 +1,5 @@
 from collections.abc import Iterator
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from src.domain_models import GraphState, KnowledgeNode, SemanticChunk
 
@@ -20,6 +20,7 @@ class ActiveLearningError(Exception):
     """Exception raised when active learning evaluation or question generation fails."""
 
 
+@runtime_checkable
 class LLMProtocol(Protocol):
     """Protocol for LLM interactions like OpenRouterGateway."""
 
@@ -32,6 +33,7 @@ class LLMProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class VectorDBProtocol(Protocol):
     """Protocol for Vector Database interactions."""
 
@@ -52,11 +54,12 @@ class VectorDBProtocol(Protocol):
         ...
 
 
+@runtime_checkable
 class DocumentProcessingService(Protocol):
     """Protocol for the DocumentProcessingService executing within a LangGraph state machine."""
 
-    def process(self, state: GraphState) -> GraphState:
-        """Processes a file referenced in state and updates state.chunks.
+    def process(self, state: GraphState) -> Iterator[GraphState]:
+        """Processes a file referenced in state and yields incremental state updates to avoid memory exhaustion.
 
         Raises:
             ProcessingError: If the document cannot be read, parsed, or chunked securely.
@@ -69,6 +72,7 @@ class DocumentProcessingService(Protocol):
         ...
 
 
+@runtime_checkable
 class KnowledgeGraphService(Protocol):
     """Protocol for the KnowledgeGraphService executing within a LangGraph state machine."""
 
@@ -93,6 +97,7 @@ class KnowledgeGraphService(Protocol):
         ...
 
 
+@runtime_checkable
 class ActiveLearningService(Protocol):
     """Protocol for the ActiveLearningService."""
 

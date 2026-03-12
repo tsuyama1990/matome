@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from src.container import ProductionDIContainer
+from src.domain_models.config import PipelineConfig
 
 
 def parse_args() -> argparse.Namespace:
@@ -19,8 +20,14 @@ def parse_args() -> argparse.Namespace:
 
 def init_container() -> ProductionDIContainer:
     """Initialize the configuration and dynamically bind DI container using configured paths."""
-    # ProductionDIContainer now self-resolves components via registry mapping to Config safely.
-    return ProductionDIContainer()
+    config = PipelineConfig()
+    return ProductionDIContainer(
+        llm_gateway_factory=ProductionDIContainer._build_llm_factory(config),
+        document_processor_factory=ProductionDIContainer._build_document_factory(config),
+        knowledge_graph_factory=ProductionDIContainer._build_knowledge_graph_factory(config),
+        active_learning_factory=ProductionDIContainer._build_active_learning_factory(config),
+        config=config,
+    )
 
 
 def main() -> int:
@@ -39,8 +46,11 @@ def main() -> int:
 
             # We call the process through the DI container interface
             initial_state = GraphState(file_path=args.ingest)
-            final_state = container.document_processor.process(initial_state)
-            sys.stdout.write(f"Successfully processed {len(final_state.chunks)} chunks.\n")
+            total_chunks = 0
+            for state_update in container.document_processor.process(initial_state):
+                total_chunks += len(state_update.chunks)
+
+            sys.stdout.write(f"Successfully processed {total_chunks} chunks.\n")
         except Exception as e:
             sys.stderr.write(f"Ingestion failed: {e}\n")
             return 1

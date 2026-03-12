@@ -21,25 +21,26 @@ class DNSResolver:
 
     def resolve_and_validate_ip(self, hostname: str, allowed_domains: list[str]) -> str:
         """Resolves the hostname and validates it against allowed domains and private/loopback IPs."""
-        # Check hostname against whitelist before resolving
-        # Note: allowed_domains typically contain schema + netloc (e.g. "https://openrouter.ai")
-        # We need to extract just the hostname from the allowed domains for matching
+        # First, extract just the hostname from the allowed domains for matching
         allowed_hostnames = []
         for domain in allowed_domains:
             parsed = urllib.parse.urlparse(domain)
             if parsed.hostname:
                 allowed_hostnames.append(parsed.hostname)
 
+        # STRICT RULE: Hostname validation MUST occur BEFORE DNS resolution to prevent DNS rebinding attacks.
         if hostname not in allowed_hostnames:
             msg = f"Hostname {hostname} is not in the allowed API domains whitelist."
             raise LLMError(msg)
 
+        # Only resolve after strict validation
         try:
             ip = socket.gethostbyname(hostname)
         except socket.gaierror as e:
             msg = "Failed to resolve hostname"
             raise LLMError(msg) from e
 
+        # Ensure the resolved IP itself does not hit private internal networks
         ip_obj = ipaddress.ip_address(ip)
         if ip_obj.is_private or ip_obj.is_loopback:
             msg = "SSRF Attempt Blocked"
@@ -77,8 +78,7 @@ class DNSResolver:
 
         ssl_context = httpx.create_ssl_context()
         pool = httpcore.ConnectionPool(
-            ssl_context=ssl_context,
-            network_backend=PinnedNetworkBackend(hostname, ip)
+            ssl_context=ssl_context, network_backend=PinnedNetworkBackend(hostname, ip)
         )
         transport = httpx.HTTPTransport(verify=True)
         # Inject the custom pool directly into the transport
@@ -101,14 +101,12 @@ class OpenRouterResponseSchema(BaseModel):
 class OpenRouterGateway(LLMProtocol):
     """An implementation of LLMProtocol that interfaces with the OpenRouter API."""
 
-    def __init__(self, credentials: ApiCredentials, config: PipelineConfig) -> None:
+    def __init__(self, credentials: ApiCredentials, config: PipelineConfig, dns_resolver: DNSResolver, crypto_service: CryptoService) -> None:
         self.credentials = credentials
         self.config = config
+        self.dns_resolver = dns_resolver
+        self.crypto_service = crypto_service
 
-        self.dns_resolver = DNSResolver()
-
-        # We need CryptoService to get the key. We instantiate it here since config uses it natively.
-        self.crypto_service = CryptoService(self.config.credentials.crypto_config)
         # Ensure key is encrypted in memory
         if self.credentials.openrouter_api_key is not None:
             self.credentials.encrypt_key(self.crypto_service)
@@ -140,7 +138,7 @@ class OpenRouterGateway(LLMProtocol):
                 "HTTP-Referer": safe_domain,
                 "X-Title": safe_title,
                 "Content-Type": "application/json",
-                "Authorization": f"Bearer {decrypted_key.get_secret_value()}"
+                "Authorization": f"Bearer {decrypted_key.get_secret_value()}",
             }
 
             parsed_url = urllib.parse.urlparse(self.config.openrouter_endpoint)
@@ -150,13 +148,14 @@ class OpenRouterGateway(LLMProtocol):
                 raise LLMError(msg)
 
             # Resolve once to prevent TOCTOU SSRF vulnerabilities
-            ip = self.dns_resolver.resolve_and_validate_ip(hostname, self.config.allowed_api_domains)
+            ip = self.dns_resolver.resolve_and_validate_ip(
+                hostname, self.config.allowed_api_domains
+            )
 
             if self._client is None:
                 transport = self.dns_resolver.create_pinned_transport(hostname, ip)
-                self._client = httpx.Client(transport=transport, verify=True)
+                self._client = httpx.Client(transport=transport, verify=True, timeout=httpx.Timeout(timeout))
 
-            self._client.timeout = httpx.Timeout(timeout)
             return self._execute_request(self._client, payload, headers, retries)
 
     def _prepare_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
@@ -177,14 +176,13 @@ class OpenRouterGateway(LLMProtocol):
     def _process_stream_response(self, response: httpx.Response) -> dict[str, Any]:
         """Safely streams and parses the JSON response to avoid memory exhaustion."""
         import json
-        MAX_RESPONSE_BYTES = 1024 * 1024
 
         response.raise_for_status()
 
         raw_bytes = bytearray()
         for chunk in response.iter_bytes():
             raw_bytes.extend(chunk)
-            if len(raw_bytes) > MAX_RESPONSE_BYTES:
+            if len(raw_bytes) > self.config.max_response_bytes:
                 msg = "Response size exceeded maximum allowed limit"
                 raise LLMError(msg)
 
@@ -200,12 +198,21 @@ class OpenRouterGateway(LLMProtocol):
             return result
 
     def _execute_request(
-        self, client: httpx.Client, payload: dict[str, Any], headers: dict[str, str], retries: int
+        self,
+        client: httpx.Client,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+        retries: int,
     ) -> str:
         for attempt in range(retries):
             try:
                 logger.debug(f"Sending request to OpenRouter (Attempt {attempt + 1}/{retries})")
-                with client.stream("POST", self.config.openrouter_endpoint, headers=headers, json=payload) as response:
+                with client.stream(
+                    "POST",
+                    self.config.openrouter_endpoint,
+                    headers=headers,
+                    json=payload,
+                ) as response:
                     response_json = self._process_stream_response(response)
                     return self._parse_response(response_json)
 

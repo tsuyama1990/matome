@@ -7,17 +7,16 @@ from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_valida
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import (
-    DEFAULT_ACTIVE_LEARNING_SERVICE_PATH,
     DEFAULT_ALLOWED_API_DOMAINS,
     DEFAULT_APP_DOMAIN,
     DEFAULT_APP_TITLE,
     DEFAULT_CRYPTO_HASH_ALGORITHM,
     DEFAULT_DOCUMENT_SERVICE_PATH,
     DEFAULT_FAST_MODEL,
-    DEFAULT_GRAPH_SERVICE_PATH,
     DEFAULT_LLM_SERVICE_PATH,
     DEFAULT_MAX_CHUNK_SCAN_SIZE,
     DEFAULT_MAX_PROMPT_LENGTH,
+    DEFAULT_MAX_RESPONSE_BYTES,
     DEFAULT_MULTIMODAL_MODEL,
     DEFAULT_OPENROUTER_ENDPOINT,
     DEFAULT_REASONING_MODEL,
@@ -113,6 +112,7 @@ class PipelineConfig(BaseSettings):
     app_title: str = Field(default=DEFAULT_APP_TITLE)
     max_prompt_length: int = Field(default=DEFAULT_MAX_PROMPT_LENGTH)
     requests_per_minute_limit: int = Field(default=DEFAULT_REQUESTS_PER_MINUTE_LIMIT)
+    max_response_bytes: int = Field(default=DEFAULT_MAX_RESPONSE_BYTES)
 
     # Define allowed_api_domains before openrouter_endpoint so it is available in info.data
     allowed_api_domains: list[str] = Field(
@@ -123,8 +123,8 @@ class PipelineConfig(BaseSettings):
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)
     document_service_path: str = Field(default=DEFAULT_DOCUMENT_SERVICE_PATH)
-    graph_service_path: str = Field(default=DEFAULT_GRAPH_SERVICE_PATH)
-    active_learning_service_path: str = Field(default=DEFAULT_ACTIVE_LEARNING_SERVICE_PATH)
+    graph_service_path: str | None = Field(default=None)
+    active_learning_service_path: str | None = Field(default=None)
 
     @field_validator("app_domain", "app_title")
     @classmethod

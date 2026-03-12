@@ -13,21 +13,8 @@ class CryptoService:
 
     def __init__(self, config: CryptoConfig) -> None:
         self.config = config
-        self._salt = self._derive_salt()
+        self._salt = os.urandom(16)
         self._fernet = self._get_fernet_instance()
-
-    def _derive_salt(self) -> bytes:
-        raw_key = os.environ.get("MATOME_ENCRYPTION_KEY")
-        if not raw_key:
-            msg = "MATOME_ENCRYPTION_KEY environment variable must be set for secure operations."
-            raise ValueError(msg)
-
-        env_salt = os.environ.get("MATOME_SALT")
-        if env_salt:
-            return env_salt.encode("utf-8")
-        hasher = hashlib.new(self.config.crypto_hash_algorithm)
-        hasher.update(raw_key.encode("utf-8"))
-        return hasher.digest()[:16]
 
     def _get_fernet_instance(self) -> Fernet:
         """Derives a secure runtime key using PBKDF2 with a per-process salt."""

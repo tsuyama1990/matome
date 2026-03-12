@@ -14,26 +14,24 @@ class DocumentProcessor(DocumentProcessingService):
     def __init__(self, config: PipelineConfig | None = None) -> None:
         self.config = config or PipelineConfig()
 
-    def process(self, state: GraphState) -> GraphState:
-        """Processes a file referenced in state and updates state.chunks."""
+    def process(self, state: GraphState) -> Iterator[GraphState]:
+        """Processes a file referenced in state and yields incremental updates without deep copying memory."""
         if not state.file_path:
             msg = "No file path provided in GraphState"
             raise ValueError(msg)
 
-        chunks = list(self.process_stream(state.file_path, chunk_size=1000))
-
-        import copy
-
-        # We need to manually construct a new state using deepcopy to preserve true immutability
-        return GraphState(
-            file_path=state.file_path,
-            chunks=copy.deepcopy(state.chunks) + chunks,
-            tree=copy.deepcopy(state.tree),
-            active_node_id=state.active_node_id,
-            pivot_axis=state.pivot_axis,
-            pivot_response=copy.deepcopy(state.pivot_response),
-            error=state.error,
-        )
+        # Stream memory efficiently, yielding delta updates safely
+        # allowing for reducer node merging without DoS OOM limits on massive lists.
+        for chunk in self.process_stream(state.file_path, chunk_size=1000):
+            yield GraphState(
+                file_path=state.file_path,
+                chunks=[chunk],
+                tree=state.tree,
+                active_node_id=state.active_node_id,
+                pivot_axis=state.pivot_axis,
+                pivot_response=state.pivot_response,
+                error=state.error,
+            )
 
     def _validate_path(self, file_path: str) -> Path:
         """Validates the file path for security and existance."""
@@ -65,7 +63,9 @@ class DocumentProcessor(DocumentProcessingService):
             raise ValueError(msg)
 
         if file_stat.st_size > self.config.max_chunk_scan_size:
-            msg = f"File size exceeds maximum allowed size of {self.config.max_chunk_scan_size} bytes"
+            msg = (
+                f"File size exceeds maximum allowed size of {self.config.max_chunk_scan_size} bytes"
+            )
             raise ValueError(msg)
 
     def process_stream(self, file_path: str, chunk_size: int = 1000) -> Iterator[SemanticChunk]:
@@ -117,5 +117,5 @@ class DocumentProcessor(DocumentProcessingService):
                 source_document=source,
                 page_number=page,
                 entities_extracted=[],
-            )
+            ),
         )

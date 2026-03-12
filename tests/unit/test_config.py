@@ -14,7 +14,11 @@ from src.domain_models.config import ApiCredentials, PipelineConfig
 def mock_env_key() -> Any:
     """Fixture to safely inject a valid encryption key for tests."""
     return mock.patch.dict(
-        os.environ, {"MATOME_ENCRYPTION_KEY": Fernet.generate_key().decode("utf-8")}
+        os.environ,
+        {
+            "MATOME_ENCRYPTION_KEY": Fernet.generate_key().decode("utf-8"),
+            "MATOME_SALT": "secure_random_salt_for_testing_12345",
+        },
     )
 
 
@@ -35,6 +39,7 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
         config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
 
         from src.infrastructure.crypto import CryptoService
+
         crypto_service = CryptoService(config.crypto_config)
         config.encrypt_key(crypto_service)
 
@@ -53,10 +58,13 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
 def test_api_credentials_missing_key() -> None:
     """Verifies it fails fast if encryption key is missing from environment."""
     valid_key = "sk-or-v1-" + ("B" * 64)
-    with mock.patch.dict(os.environ, {}, clear=True):
+    with mock.patch.dict(os.environ, {"MATOME_SALT": "foo"}, clear=True):
         config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
         from src.infrastructure.crypto import CryptoService
-        with pytest.raises(ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"):
+
+        with pytest.raises(
+            ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"
+        ):
             CryptoService(config.crypto_config)
 
 
@@ -69,6 +77,7 @@ def test_api_credentials_loading(mock_env_key: Any, tmp_path: Path) -> None:
             config = ApiCredentials()
 
             from src.infrastructure.crypto import CryptoService
+
             crypto_service = CryptoService(config.crypto_config)
             config.encrypt_key(crypto_service)
 
@@ -92,7 +101,7 @@ def test_pipeline_config_defaults(mock_env_key: Any) -> None:
         assert config.credentials is not None
         assert config.credentials.openrouter_api_key is None
         assert config.credentials.crypto_config.crypto_hash_algorithm == "sha256"
-        assert config.llm_service_path == "src.interfaces.LLMProtocol"
+        assert config.llm_service_path == "src.infrastructure.openrouter.OpenRouterGateway"
         assert config.app_domain == "https://matome.test"
         assert config.app_title == "matome"
         assert config.max_prompt_length == 1000000

@@ -36,7 +36,9 @@ def test_document_processor_max_size_limit(tmp_path: Path, monkeypatch: pytest.M
         list(processor.process_stream(str(test_file)))
 
 
-def test_document_processor_successful_stream(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_document_processor_successful_stream(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = PipelineConfig()
     processor = DocumentProcessor(config=config)
 
