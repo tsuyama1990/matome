@@ -78,7 +78,11 @@ class DNSResolver:
 
         ssl_context = httpx.create_ssl_context()
         pool = httpcore.ConnectionPool(
-            ssl_context=ssl_context, network_backend=PinnedNetworkBackend(hostname, ip)
+            ssl_context=ssl_context,
+            network_backend=PinnedNetworkBackend(hostname, ip),
+            max_connections=100,
+            max_keepalive_connections=100,
+            keepalive_expiry=300.0,
         )
         transport = httpx.HTTPTransport(verify=True)
         # Inject the custom pool directly into the transport
@@ -121,9 +125,10 @@ class OpenRouterGateway(LLMProtocol):
         self._client: httpx.Client | None = None
 
     def _sanitize_header(self, value: str) -> str:
-        """Strictly sanitizes headers against injection attacks."""
+        """Strictly sanitizes headers against injection attacks using a whitelist approach."""
         import re
-        return re.sub(r'[\x00-\x1f\x7f-\x9f\x0a\x0d]', '', value)
+        # Only allow standard printable ASCII plus a few safe symbols. Reject CRLF explicitly.
+        return re.sub(r'[^a-zA-Z0-9_ \-.:/]', '', value)
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
         """Invokes the OpenRouter LLM with a prompt, timeout, and retry logic."""
@@ -182,17 +187,22 @@ class OpenRouterGateway(LLMProtocol):
 
         return payload
 
+    def _check_stream_limit(self, current_bytes: int, max_size: int) -> None:
+        if current_bytes > max_size:
+            msg = "Response size exceeded maximum allowed limit"
+            raise LLMError(msg)
+
     def _process_stream_response(self, response: httpx.Response) -> dict[str, Any]:
         """Safely streams and parses the JSON response to avoid memory exhaustion."""
         import json
 
         response.raise_for_status()
 
+        # To resolve complexity issues and preserve memory validation,
+        # we iterate the raw stream, aggressively checking length before accumulating.
         raw_bytes = bytearray()
         for chunk in response.iter_bytes():
-            if len(raw_bytes) + len(chunk) > self.config.max_response_bytes:
-                msg = "Response size exceeded maximum allowed limit"
-                raise LLMError(msg)
+            self._check_stream_limit(len(raw_bytes) + len(chunk), self.config.max_response_bytes)
             raw_bytes.extend(chunk)
 
         try:
@@ -214,6 +224,8 @@ class OpenRouterGateway(LLMProtocol):
         retries: int,
         timeout: int = 30,
     ) -> str:
+        import time
+
         for attempt in range(retries):
             try:
                 logger.debug(f"Sending request to OpenRouter (Attempt {attempt + 1}/{retries})")
@@ -242,6 +254,11 @@ class OpenRouterGateway(LLMProtocol):
                 if attempt == retries - 1:
                     msg = "OpenRouter API request failed due to network error"
                     raise LLMError(msg) from e
+
+            # Exponential backoff with jitter
+            import secrets
+            sleep_time = (2 ** attempt) + (secrets.randbelow(100) / 100.0)
+            time.sleep(sleep_time)
 
         msg = "Failed to invoke OpenRouter API after retries"
         raise LLMError(msg)

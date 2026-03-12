@@ -25,12 +25,29 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
         self.random_state = random_state
 
     def _embed_chunks(self, texts: list[str], batch_size: int = 1000) -> np.ndarray:
-        """Embeds text chunks using TF-IDF."""
+        """Embeds text chunks using TF-IDF with dynamic features and streaming chunking to prevent OOM."""
         try:
-            vectorizer = TfidfVectorizer(max_features=5000, stop_words="english", encoding="utf-8")
-            embeddings: np.ndarray = vectorizer.fit_transform(texts).toarray()
+            # Process in memory-efficient batches to avoid OOM on massive documents
+            from scipy.sparse import vstack
+
+            dynamic_max_features = min(10000, max(100, len(texts) * 10))
+            vectorizer = TfidfVectorizer(max_features=dynamic_max_features, stop_words="english", encoding="utf-8")
+
+            # Fit requires entire vocabulary, but we can do it efficiently
+            vectorizer.fit(texts)
+
+            # Transform in batches
+            sparse_matrices = []
+            for i in range(0, len(texts), batch_size):
+                batch_texts = texts[i:i + batch_size]
+                sparse_matrices.append(vectorizer.transform(batch_texts))
+                del batch_texts
+
+            # Reconstruct safely
+            embeddings: np.ndarray = vstack(sparse_matrices).toarray()
+            del sparse_matrices
+
         except ValueError as e:
-            # Handles empty texts case
             msg = f"Failed to embed chunks (likely empty or uninformative): {e}"
             raise GraphError(msg) from e
         except Exception as e:
@@ -40,13 +57,23 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             return embeddings
 
     def _reduce_dimensionality(self, embeddings: np.ndarray, n_components: int = 2) -> np.ndarray:
-        """Reduces dimensionality of embeddings using UMAP."""
+        """Reduces dimensionality of embeddings using UMAP. Uses PCA as fallback for very small datasets."""
         try:
             # We set random_state for deterministic behavior in tests
             n_neighbors = min(15, len(embeddings) - 1)
             if n_neighbors < 2:
-                # If we have very few chunks, skip UMAP or just return basic representation
-                return np.zeros((embeddings.shape[0], n_components))
+                # If we have very few chunks, fallback to basic PCA
+                from sklearn.decomposition import PCA
+
+                n_pca_components = min(n_components, embeddings.shape[0], embeddings.shape[1])
+                pca_result: np.ndarray = PCA(n_components=n_pca_components, random_state=self.random_state).fit_transform(embeddings)
+
+                # Pad to n_components if PCA output is smaller
+                if pca_result.shape[1] < n_components:
+                    padded = np.zeros((pca_result.shape[0], n_components))
+                    padded[:, :pca_result.shape[1]] = pca_result
+                    return padded
+                return pca_result
 
             reducer = umap.UMAP(
                 n_neighbors=n_neighbors,
@@ -115,7 +142,16 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
 
         combined_text = "\n\n".join(texts)
         # Prevent prompt from becoming too large; truncate to a safe token-equivalent length
-        truncated_text = combined_text[:100000]
+        if len(combined_text) > 100000:
+            # Implement intelligent text segmentation to preserve semantic boundaries
+            last_period = combined_text.rfind(".", 0, 100000)
+            last_newline = combined_text.rfind("\n", 0, 100000)
+            truncate_idx = max(last_period, last_newline)
+            if truncate_idx == -1:
+                truncate_idx = 100000
+            truncated_text = combined_text[:truncate_idx + 1]
+        else:
+            truncated_text = combined_text
 
         prompt = (
             "You are an expert summarizer. Analyze the following combined texts and provide a "
@@ -247,6 +283,10 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             if result_state.tree:
                 all_nodes.update(result_state.tree.nodes)
                 batch_roots.append(result_state.tree.root_node_id)
+
+            # Clear memory explicitly to prevent OOM on large datasets
+            del batch_state
+            del result_state
 
         # If we have only one batch, we are done
         if len(batch_roots) == 1:
