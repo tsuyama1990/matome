@@ -34,14 +34,18 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
         valid_key = "sk-or-v1-" + ("A" * 64)
         config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
 
+        from src.infrastructure.crypto import CryptoService
+        crypto_service = CryptoService(config.crypto_config)
+        config.encrypt_key(crypto_service)
+
         # Assert it was erased from memory in the pydantic model
         assert config.openrouter_api_key is None
         # Assert it was actually encrypted
-        assert config._encrypted_api_key is not None
-        assert config._encrypted_api_key != valid_key.encode("utf-8")
+        assert config.encrypted_key is not None
+        assert config.encrypted_key != valid_key.encode("utf-8")
 
         # Assert we can retrieve it securely
-        decrypted_secret = config.get_decrypted_api_key()
+        decrypted_secret = config.get_decrypted_api_key(crypto_service)
         assert decrypted_secret is not None
         assert decrypted_secret.get_secret_value() == valid_key
 
@@ -53,7 +57,10 @@ def test_api_credentials_missing_key() -> None:
         mock.patch.dict(os.environ, {}, clear=True),
         pytest.raises(ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"),
     ):
-        ApiCredentials(openrouter_api_key=SecretStr(valid_key))
+        config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
+        from src.infrastructure.crypto import CryptoService
+        crypto_service = CryptoService(config.crypto_config)
+        config.encrypt_key(crypto_service)
 
 
 def test_api_credentials_loading(mock_env_key: Any, tmp_path: Path) -> None:
@@ -65,10 +72,14 @@ def test_api_credentials_loading(mock_env_key: Any, tmp_path: Path) -> None:
     with mock_env_key:
         config = ApiCredentials(_env_file=str(env_file))
 
-        assert config.openrouter_api_key is None
-        assert config._encrypted_api_key is not None
+        from src.infrastructure.crypto import CryptoService
+        crypto_service = CryptoService(config.crypto_config)
+        config.encrypt_key(crypto_service)
 
-        decrypted = config.get_decrypted_api_key()
+        assert config.openrouter_api_key is None
+        assert config.encrypted_key is not None
+
+        decrypted = config.get_decrypted_api_key(crypto_service)
         assert decrypted is not None
         assert decrypted.get_secret_value() == valid_key
 

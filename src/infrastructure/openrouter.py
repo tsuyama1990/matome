@@ -1,4 +1,8 @@
+import ipaddress
 import logging
+import socket
+import threading
+import urllib.parse
 from typing import Any
 
 import httpx
@@ -6,9 +10,23 @@ from pydantic import BaseModel, SecretStr
 
 from src.domain_models import PipelineConfig
 from src.domain_models.config import ApiCredentials
+from src.infrastructure.crypto import CryptoService
 from src.interfaces import LLMError, LLMProtocol
 
 logger = logging.getLogger(__name__)
+
+# Thread-safe global monkey-patch for DNS pinning to prevent DNS rebinding attacks
+# while avoiding certificate mismatch errors from mutating the URL.
+_thread_local = threading.local()
+_original_getaddrinfo = socket.getaddrinfo
+
+def _safe_getaddrinfo(host: Any, port: Any, family: int = 0, type_: int = 0, proto: int = 0, flags: int = 0) -> Any:
+    overrides = getattr(_thread_local, "dns_overrides", {})
+    if host in overrides:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (overrides[host], port))]
+    return _original_getaddrinfo(host, port, family, type_, proto, flags)
+
+socket.getaddrinfo = _safe_getaddrinfo
 
 
 class OpenRouterMessage(BaseModel):
@@ -30,11 +48,32 @@ class OpenRouterGateway(LLMProtocol):
         self.credentials = credentials
         self.config = config
 
+        # We need CryptoService to get the key. We instantiate it here since config uses it natively.
+        self.crypto_service = CryptoService(self.config.credentials.crypto_config)
+        # Ensure key is encrypted in memory
+        if self.credentials.openrouter_api_key is not None:
+            self.credentials.encrypt_key(self.crypto_service)
+
+    def _resolve_and_validate_ip(self, hostname: str) -> str:
+        """Resolves the hostname and validates it is not a private/loopback IP."""
+        try:
+            ip = socket.gethostbyname(hostname)
+        except socket.gaierror as e:
+            msg = f"Failed to resolve hostname: {hostname}"
+            raise LLMError(msg) from e
+
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback:
+            msg = f"SSRF Attempt Blocked: Resolved IP {ip} is a private/loopback address."
+            raise LLMError(msg)
+
+        return ip
+
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
         """Invokes the OpenRouter LLM with a prompt, timeout, and retry logic."""
         payload = self._prepare_payload(prompt, **kwargs)
 
-        decrypted_key: SecretStr | None = self.credentials.get_decrypted_api_key()
+        decrypted_key: SecretStr | None = self.credentials.get_decrypted_api_key(self.crypto_service)
         if not decrypted_key:
             msg = "Missing or invalid OpenRouter API key"
             raise LLMError(msg)
@@ -65,9 +104,26 @@ class OpenRouterGateway(LLMProtocol):
                 "Content-Type": "application/json",
             }
 
-            with httpx.Client(timeout=timeout, auth=EphemeralAuth(secret_bytes)) as client:
-                return self._execute_request(client, payload, headers, retries)
+            parsed_url = urllib.parse.urlparse(self.config.openrouter_endpoint)
+            hostname = parsed_url.hostname
+            if not hostname:
+                msg = "Invalid endpoint URL"
+                raise LLMError(msg)
+
+            resolved_ip = self._resolve_and_validate_ip(hostname)
+
+            # Enforce the resolved IP during execution via the thread-safe global monkey-patch.
+            if not hasattr(_thread_local, "dns_overrides"):
+                _thread_local.dns_overrides = {}
+            _thread_local.dns_overrides[hostname] = resolved_ip
+
+            try:
+                with httpx.Client(timeout=timeout, auth=EphemeralAuth(secret_bytes), verify=True) as client:
+                    return self._execute_request(client, payload, headers, retries)
+            finally:
+                _thread_local.dns_overrides.pop(hostname, None)
         finally:
+            self.credentials.clear_decrypted_key()
             # Explicitly memory wipe the bytearray before GC
             for i in range(len(secret_bytes)):
                 secret_bytes[i] = 0
