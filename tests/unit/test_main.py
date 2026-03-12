@@ -13,7 +13,11 @@ from src.container import ProductionDIContainer
 def mock_env_key() -> Any:
     """Fixture to safely inject a valid encryption key for tests."""
     return mock.patch.dict(
-        os.environ, {"MATOME_ENCRYPTION_KEY": Fernet.generate_key().decode("utf-8")}
+        os.environ,
+        {
+            "MATOME_ENCRYPTION_KEY": Fernet.generate_key().decode("utf-8"),
+            "MATOME_SALT": "secure_random_salt_for_testing_12345",
+        },
     )
 
 
@@ -29,6 +33,8 @@ def test_init_container(mock_env_key: Any) -> None:
         mock_config = PipelineConfig(
             llm_service_path="src.infrastructure.openrouter.OpenRouterGateway",
             document_service_path="src.document.DocumentProcessor",
+            graph_service_path="tests.mocks.services.BaseTestKnowledgeGraphService",
+            active_learning_service_path="tests.mocks.services.BaseTestActiveLearningService",
         )
         mock_config_class.return_value = mock_config
 

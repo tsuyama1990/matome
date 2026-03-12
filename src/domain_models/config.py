@@ -7,14 +7,12 @@ from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_valida
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import (
-    DEFAULT_ACTIVE_LEARNING_SERVICE_PATH,
     DEFAULT_ALLOWED_API_DOMAINS,
     DEFAULT_APP_DOMAIN,
     DEFAULT_APP_TITLE,
     DEFAULT_CRYPTO_HASH_ALGORITHM,
     DEFAULT_DOCUMENT_SERVICE_PATH,
     DEFAULT_FAST_MODEL,
-    DEFAULT_GRAPH_SERVICE_PATH,
     DEFAULT_LLM_SERVICE_PATH,
     DEFAULT_MAX_CHUNK_SCAN_SIZE,
     DEFAULT_MAX_PROMPT_LENGTH,
@@ -125,8 +123,8 @@ class PipelineConfig(BaseSettings):
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)
     document_service_path: str = Field(default=DEFAULT_DOCUMENT_SERVICE_PATH)
-    graph_service_path: str = Field(default=DEFAULT_GRAPH_SERVICE_PATH)
-    active_learning_service_path: str = Field(default=DEFAULT_ACTIVE_LEARNING_SERVICE_PATH)
+    graph_service_path: str | None = Field(default=None)
+    active_learning_service_path: str | None = Field(default=None)
 
     @field_validator("app_domain", "app_title")
     @classmethod

@@ -46,8 +46,11 @@ def main() -> int:
 
             # We call the process through the DI container interface
             initial_state = GraphState(file_path=args.ingest)
-            final_state = container.document_processor.process(initial_state)
-            sys.stdout.write(f"Successfully processed {len(final_state.chunks)} chunks.\n")
+            total_chunks = 0
+            for state_update in container.document_processor.process(initial_state):
+                total_chunks += len(state_update.chunks)
+
+            sys.stdout.write(f"Successfully processed {total_chunks} chunks.\n")
         except Exception as e:
             sys.stderr.write(f"Ingestion failed: {e}\n")
             return 1

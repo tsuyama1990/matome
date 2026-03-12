@@ -17,7 +17,11 @@ from src.interfaces import LLMError
 def mock_env_key() -> Any:
     """Fixture to safely inject a valid encryption key for tests."""
     return mock.patch.dict(
-        os.environ, {"MATOME_ENCRYPTION_KEY": Fernet.generate_key().decode("utf-8")}
+        os.environ,
+        {
+            "MATOME_ENCRYPTION_KEY": Fernet.generate_key().decode("utf-8"),
+            "MATOME_SALT": "secure_random_salt_for_testing_12345",
+        },
     )
 
 

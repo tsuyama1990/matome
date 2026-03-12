@@ -9,13 +9,17 @@ from src.container import ProductionDIContainer, resolve_class
 from src.document import DocumentProcessor
 from src.domain_models import PipelineConfig
 from src.infrastructure.openrouter import OpenRouterGateway
-from src.interfaces import BaseTestActiveLearningService, BaseTestKnowledgeGraphService
+from tests.mocks.services import BaseTestActiveLearningService, BaseTestKnowledgeGraphService
 
 
 @pytest.fixture
 def mock_env_key() -> Any:
     return mock.patch.dict(
-        os.environ, {"MATOME_ENCRYPTION_KEY": Fernet.generate_key().decode("utf-8")}
+        os.environ,
+        {
+            "MATOME_ENCRYPTION_KEY": Fernet.generate_key().decode("utf-8"),
+            "MATOME_SALT": "secure_random_salt_for_testing_12345",
+        },
     )
 
 
@@ -38,6 +42,8 @@ def test_container_initialization_success(mock_env_key: Any) -> None:
         config = PipelineConfig(
             llm_service_path="src.infrastructure.openrouter.OpenRouterGateway",
             document_service_path="src.document.DocumentProcessor",
+            graph_service_path="tests.mocks.services.BaseTestKnowledgeGraphService",
+            active_learning_service_path="tests.mocks.services.BaseTestActiveLearningService",
         )
 
         container = ProductionDIContainer(

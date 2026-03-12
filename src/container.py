@@ -35,8 +35,8 @@ class ProductionDIContainer:
         self,
         llm_gateway_factory: Callable[[], LLMProtocol],
         document_processor_factory: Callable[[], DocumentProcessingService],
-        knowledge_graph_factory: Callable[[], KnowledgeGraphService],
-        active_learning_factory: Callable[[], ActiveLearningService],
+        knowledge_graph_factory: Callable[[], KnowledgeGraphService | None],
+        active_learning_factory: Callable[[], ActiveLearningService | None],
         config: PipelineConfig | None = None,
     ) -> None:
         self._config = config or PipelineConfig()
@@ -59,11 +59,11 @@ class ProductionDIContainer:
             msg = "active_learning_factory must be a callable factory function."
             raise TypeError(msg)
 
-        # Initialize components dynamically strictly from factories
-        self._llm_gateway = self._llm_factory()
-        self._document_processor = self._document_factory()
-        self._knowledge_graph = self._knowledge_graph_factory()
-        self._active_learning = self._active_learning_factory()
+        # Lazy initialization state
+        self._llm_gateway_instance: LLMProtocol | None = None
+        self._document_processor_instance: DocumentProcessingService | None = None
+        self._knowledge_graph_instance: KnowledgeGraphService | None = None
+        self._active_learning_instance: ActiveLearningService | None = None
 
     @staticmethod
     def _build_llm_factory(config: PipelineConfig) -> Callable[[], LLMProtocol]:
@@ -91,8 +91,10 @@ class ProductionDIContainer:
     @staticmethod
     def _build_knowledge_graph_factory(
         config: PipelineConfig,
-    ) -> Callable[[], KnowledgeGraphService]:
-        def factory() -> KnowledgeGraphService:
+    ) -> Callable[[], KnowledgeGraphService | None]:
+        def factory() -> KnowledgeGraphService | None:
+            if not config.graph_service_path:
+                return None
             cls = resolve_class(config.graph_service_path)
             return cls()  # type: ignore
 
@@ -101,8 +103,10 @@ class ProductionDIContainer:
     @staticmethod
     def _build_active_learning_factory(
         config: PipelineConfig,
-    ) -> Callable[[], ActiveLearningService]:
-        def factory() -> ActiveLearningService:
+    ) -> Callable[[], ActiveLearningService | None]:
+        def factory() -> ActiveLearningService | None:
+            if not config.active_learning_service_path:
+                return None
             cls = resolve_class(config.active_learning_service_path)
             return cls()  # type: ignore
 
@@ -114,16 +118,24 @@ class ProductionDIContainer:
 
     @property
     def llm_gateway(self) -> LLMProtocol:
-        return self._llm_gateway
+        if self._llm_gateway_instance is None:
+            self._llm_gateway_instance = self._llm_factory()
+        return self._llm_gateway_instance
 
     @property
     def document_processor(self) -> DocumentProcessingService:
-        return self._document_processor
+        if self._document_processor_instance is None:
+            self._document_processor_instance = self._document_factory()
+        return self._document_processor_instance
 
     @property
-    def knowledge_graph(self) -> KnowledgeGraphService:
-        return self._knowledge_graph
+    def knowledge_graph(self) -> KnowledgeGraphService | None:
+        if self._knowledge_graph_instance is None:
+            self._knowledge_graph_instance = self._knowledge_graph_factory()
+        return self._knowledge_graph_instance
 
     @property
-    def active_learning(self) -> ActiveLearningService:
-        return self._active_learning
+    def active_learning(self) -> ActiveLearningService | None:
+        if self._active_learning_instance is None:
+            self._active_learning_instance = self._active_learning_factory()
+        return self._active_learning_instance

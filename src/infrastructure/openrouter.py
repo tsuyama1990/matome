@@ -158,7 +158,7 @@ class OpenRouterGateway(LLMProtocol):
                 self._client = httpx.Client(transport=transport, verify=True)
 
             self._client.timeout = httpx.Timeout(timeout)
-            return self._execute_request(self._client, payload, headers, retries)
+            return self._execute_request(self._client, payload, headers, retries, timeout)
 
     def _prepare_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         model = kwargs.get("model", self.config.reasoning_model)
@@ -200,13 +200,22 @@ class OpenRouterGateway(LLMProtocol):
             return result
 
     def _execute_request(
-        self, client: httpx.Client, payload: dict[str, Any], headers: dict[str, str], retries: int
+        self,
+        client: httpx.Client,
+        payload: dict[str, Any],
+        headers: dict[str, str],
+        retries: int,
+        timeout: int,
     ) -> str:
         for attempt in range(retries):
             try:
                 logger.debug(f"Sending request to OpenRouter (Attempt {attempt + 1}/{retries})")
                 with client.stream(
-                    "POST", self.config.openrouter_endpoint, headers=headers, json=payload
+                    "POST",
+                    self.config.openrouter_endpoint,
+                    headers=headers,
+                    json=payload,
+                    timeout=httpx.Timeout(timeout),
                 ) as response:
                     response_json = self._process_stream_response(response)
                     return self._parse_response(response_json)
