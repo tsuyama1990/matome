@@ -175,62 +175,58 @@ By ensuring these models are devoid of infrastructure logic—such as database c
 
 ## 5. Implementation Plan
 
-The implementation of the matome platform will be executed strictly across 6 sequential cycles. This phased approach guarantees that foundational architecture, security, and core data models are solidly established before any complex AI orchestration or advanced user interface features are introduced.
+The implementation of the matome platform will be executed strictly across 6 sequential cycles. This phased approach guarantees that foundational architecture, security, and core data models are solidly established before any complex AI orchestration or advanced user interface features are introduced. Interface boundaries are explicit, guaranteeing independent testability.
 
 ### Cycle 01: Project Foundation and Core Domain Models
-- **Focus:** The absolute priority for Cycle 01 is establishing the strictly typed core structures, repository scaffolding, and base configuration using Pydantic V2. This cycle deliberately avoids any external integrations, focusing entirely on the internal domain logic.
-- **Features:**
+- **Focus:** The absolute priority is establishing the strictly typed core structures, repository scaffolding, and base configuration using Pydantic V2. This cycle deliberately avoids any external integrations, focusing entirely on the internal domain logic.
+- **Features & API Definitions:**
     - Define all core Pydantic domain models: `SourceDocument`, `SemanticChunk`, `GraphNode`, and `ChunkMetadata`. These models must enforce `extra="forbid"` and include comprehensive field validation.
-    - Implement the `PipelineConfig` and `CredentialConfig` using Pydantic `BaseSettings`. This ensures that no hardcoded values, API keys, or infrastructure-specific paths exist within the application logic. All configuration must be loaded explicitly from environment variables.
+    - Implement the `PipelineConfig` and `CredentialConfig` using Pydantic `BaseSettings`. This ensures that no hardcoded values exist within the application logic.
     - Set up the basic FastAPI application structure in `src/main.py`.
-    - Define the core interfaces (Abstract Base Classes) for the repository pattern, such as `AbstractVectorRepository` and `AbstractLLMGateway`.
-    - Establish the Dependency Injection (DI) container placeholders. This will initially use dynamic import strategies or simple factory functions to resolve dependencies, avoiding premature mock implementations of future services.
-    - Create custom domain exception classes (e.g., `ProcessingError`, `LLMError`, `ValidationError`) that the service layer will raise. These must be entirely decoupled from specific HTTP status codes, which are the responsibility of the presentation layer.
-    - Ensure the basic `main.py` starts correctly and all structural files are present to satisfy architectural linting (e.g., Ruff, Mypy).
+    - Define the core Abstract Base Classes for the repository pattern (`AbstractVectorRepository` and `AbstractLLMGateway`).
+    - Establish the Dependency Injection (DI) container placeholders using simple factory functions to resolve dependencies, avoiding premature mock implementations.
+    - Create custom domain exception classes (e.g., `ProcessingError`, `LLMError`, `ValidationError`).
+    - *API Endpoint:* `GET /health` - A simple unauthenticated route returning `{"status": "healthy"}`.
 
 ### Cycle 02: Infrastructure Adapters and LLM Gateway
-- **Focus:** Building the boundary layer that connects the pristine domain to external, unpredictable systems. This cycle focuses heavily on error handling, retries, and secure credential management.
-- **Features:**
-    - Implement the concrete `LLMGateway` class using `httpx`. This class must interact securely with the OpenRouter API. It is strictly responsible for handling HTTP-level concerns: setting timeouts, managing connection pooling, and implementing exponential backoff retry logic for transient network failures or rate limits.
-    - Implement securely managed, environment-backed API key retrieval. The API keys must be encrypted at rest if stored, and the system must never expose these keys in application logs or error messages.
-    - The `LLMGateway` must enforce the rule that all external JSON responses from OpenRouter are immediately parsed into Pydantic domain models before being returned to the service layer.
-    - Implement the base `VectorDBRepository` interface. For this cycle, an initial in-memory or SQLite-backed mock version will be created for early testing and local development, ensuring developers do not need active cloud credentials to verify core logic.
-    - Set up the basic logging infrastructure, ensuring that sensitive data is scrubbed before being written to output streams.
+- **Focus:** Building the boundary layer that connects the pristine domain to external, unpredictable systems, explicitly prioritizing fault tolerance and secure credential management.
+- **Features & API Definitions:**
+    - Implement the concrete `LLMGateway` class using `httpx`. This class interacts securely with the OpenRouter API, managing connection pooling, timeouts, and exponential backoff retry logic.
+    - Implement securely managed, environment-backed API key retrieval. The keys must never be exposed in application logs.
+    - The `LLMGateway` must enforce the rule that all external JSON responses are immediately parsed into Pydantic models (e.g., `OpenRouterResponse`).
+    - Implement the base `VectorDBRepository` interface using an in-memory or SQLite-backed mock version for early local development.
 
 ### Cycle 03: Document Ingestion and Semantic Chunking Engine
-- **Focus:** The first stage of the AI pipeline, responsible for transforming unstructured text into structured, context-rich chunks (FR-1.1, FR-1.2).
-- **Features:**
-    - Develop the `IngestionService`. This service will initially handle plain text and Markdown files, laying the groundwork for future PDF and multi-modal support. It must implement robust error handling for malformed input files, ensuring that the system gracefully rejects invalid data without crashing.
-    - Implement the logic for context-preserving semantic chunking. The system must move away from arbitrary character limits. It will utilise a combination of lightweight NLP techniques and fast LLM calls to detect natural language boundaries, paragraph structures, and contextual shifts.
-    - Implement basic Named Entity Recognition (NER) to automatically identify and extract key terms, actors, and concepts from each chunk. This data will be populated into the `ChunkMetadata.entities` field, forming the foundation for future search and graph linking.
-    - This cycle focuses heavily on the efficiency of the text processing algorithms. Large files must be streamed or processed in batches to prevent memory exhaustion (OOM errors) during the ingestion phase.
+- **Focus:** The first stage of the AI pipeline, responsible for synchronously transforming unstructured text into structured, context-rich chunks (FR-1.1, FR-1.2), and asynchronously initiating the RAPTOR build.
+- **Features & API Definitions:**
+    - Develop the `IngestionService` to handle plain text and Markdown files.
+    - Implement context-preserving semantic chunking logic, moving away from arbitrary character limits, and integrating basic Named Entity Recognition (NER) to populate `ChunkMetadata.entities`.
+    - Implement FastAPI's `BackgroundTasks` to decouple the slow chunking and tree generation from the initial HTTP response.
+    - *API Endpoint:* `POST /api/v1/documents/` - Accepts an `UploadFile`. Synchronously validates the file, saves metadata to the DB, enqueues the processing task via `BackgroundTasks`, and returns `202 Accepted` with a `document_id`.
+    - *API Endpoint:* `GET /api/v1/documents/{document_id}/status` - Returns the current processing state (e.g., `processing`, `completed`, `failed`).
 
 ### Cycle 04: RAPTOR Hierarchical Tree Generation
-- **Focus:** Synthesising the disparate semantic chunks into a structured, multi-layered knowledge graph using advanced clustering techniques (FR-1.3, FR-1.4).
-- **Features:**
-    - Integrate LangGraph to orchestrate the summarisation and clustering workflow. This involves defining the state machine that manages the progression of chunks through the pipeline.
-    - Implement the core mathematical logic to perform dimensionality reduction on the embedded chunks using UMAP.
-    - Implement the soft clustering logic using Gaussian Mixture Models (GMM). This allows a single semantic chunk to belong to multiple parent clusters, preventing the loss of context that occurs in strict hierarchical structures.
-    - Develop the LangGraph nodes that apply the Chain of Density (CoD) prompts via the `LLMGateway`. These nodes will iteratively refine and condense the text of parent clusters into high-density summaries.
-    - Establish the complex linkage logic that connects the child `chunk_ids` to the newly generated parent `GraphNode` instances. This completes the construction of the multi-level RAPTOR tree in memory, ready for persistence in the database.
+- **Focus:** Synthesising the disparate semantic chunks into a structured, multi-layered knowledge graph using advanced clustering techniques and LangGraph (FR-1.3, FR-1.4).
+- **Features & API Definitions:**
+    - Explicitly define the LangGraph state using Pydantic: `class GraphState(BaseModel): document_id: UUID; chunks: List[SemanticChunk]; nodes: List[GraphNode]; current_step: str; errors: List[str]`.
+    - Implement the state machine orchestrating the UMAP dimensionality reduction and Gaussian Mixture Model (GMM) soft-clustering logic.
+    - Develop LangGraph nodes applying the Chain of Density (CoD) prompts via the `LLMGateway` to iteratively refine parent cluster text into high-density summaries.
+    - Establish the linkage logic connecting child `chunk_ids` to parent `GraphNode` instances.
+    - *API Endpoint:* `GET /api/v1/documents/{document_id}/tree` - Returns the fully constructed hierarchical `GraphNode` structure (the RAPTOR graph) for frontend rendering.
 
 ### Cycle 05: Interactive Learning Engine (SQ3R)
-- **Focus:** Implementing the core active learning loop, moving from data processing to user interaction (FR-3.1, FR-3.2, FR-3.3).
-- **Features:**
-    - Develop the `StudyService`. This service governs the state of the user's progress through the RAPTOR graph.
-    - Implement the API endpoints that evaluate a user's interaction with a specific node. When a user attempts to access a locked node, the service must trigger the `LLMGateway` to dynamically generate a "Fact-recall" or "Inference" question based on the node's underlying summary.
-    - Build the evaluation logic that grades the user's submitted text or voice transcript answer. This logic must utilise an LLM to assess semantic correctness, rather than relying on exact keyword matching.
-    - If the user's answer is correct, the service must generate "Sandwich Feedback"—affirming the correct points, gently correcting any hallucinations or errors, and providing encouragement.
-    - The service must then update the target `GraphNode`'s state (e.g., `is_unlocked = True`) in the database, allowing the frontend to render the high-density Chain of Density (CoD) summary.
+- **Focus:** Implementing the core active learning loop, specifically managing the state transitions from "locked" to "unlocked" via AI-driven interactions (FR-3.1, FR-3.2, FR-3.3).
+- **Features & API Definitions:**
+    - Develop the `StudyService` governing the user's progress through the RAPTOR graph.
+    - *API Endpoint:* `GET /api/v1/study/{node_id}/question` - When a user attempts to access a locked node, this endpoint triggers the `LLMGateway` to dynamically generate a "Fact-recall" or "Inference" question based on the node's underlying (hidden) summary.
+    - *API Endpoint:* `POST /api/v1/study/{node_id}/answer` - Evaluates the user's submitted text/transcript. If the semantic evaluation is correct, it generates "Sandwich Feedback," updates the target `GraphNode`'s state (`is_unlocked = True`) in the database, and returns the high-density CoD summary.
 
 ### Cycle 06: Pivot KJ and Output Generation
-- **Focus:** Multi-dimensional knowledge restructuring and the generation of tangible, high-value artifacts (FR-5.1, FR-5.3, FR-5.5).
-- **Features:**
-    - Develop the `PivotService` which executes the Multi-Dimensional Semantic KJ logic.
-    - Implement the API endpoints that allow users to submit a custom analytical axis (e.g., "Actor vs. State Transition" or "SWOT Analysis").
-    - The service will use the `LLMGateway` (specifically targeting reasoning-heavy models) to re-evaluate the existing nodes and re-cluster them into a entirely new structural layout based on the user's defined axis. This requires complex prompt engineering to ensure the LLM correctly interprets the axis and categorises the nodes without losing the original context.
-    - Finalise the cycle by implementing the export functions. The system must be capable of generating comprehensive Markdown requirements documents from the newly pivoted node structures.
-    - Implement the logic to dynamically generate valid Mermaid.js diagram code (e.g., sequence diagrams, state machines) based on the dependencies and relationships established in the Pivot KJ phase. This completes the platform's objective of transforming raw "consumption" into high-value "production."
+- **Focus:** Multi-dimensional knowledge restructuring and the synchronous generation of tangible, high-value artifacts (FR-5.1, FR-5.3, FR-5.5).
+- **Features & API Definitions:**
+    - Develop the `PivotService` executing the Multi-Dimensional Semantic KJ logic.
+    - *API Endpoint:* `POST /api/v1/pivot/{document_id}` - Accepts a custom analytical axis payload (e.g., `{"axis": "Actor vs. State Transition"}`). The service queries the Vector Database, re-evaluates the chunks via the `LLMGateway`, and physically re-clusters them into a new structural layout. Returns the new coordinates and structure for the frontend canvas.
+    - *API Endpoint:* `GET /api/v1/pivot/{document_id}/export` - Synchronously processes the rearranged nodes and downloads a comprehensive Markdown document containing the newly formulated To-Be system requirements and a valid Mermaid.js diagram block.
 
 
 ## 6. Test Strategy
