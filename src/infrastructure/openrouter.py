@@ -140,32 +140,41 @@ class OpenRouterGateway(LLMProtocol):
         self._circuit_breaker_open_until: float = 0.0
         self._lock = threading.Lock()
 
+    def _validate_referer(self, value: str) -> None:
+        import re
+        import urllib.parse
+
+        try:
+            parsed = urllib.parse.urlparse(value)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                msg = "HTTP-Referer is not a valid URL."
+                raise ValueError(msg)  # noqa: TRY301
+            # Also enforce safe characters in the serialized string
+            if not re.match(r"^https?://[a-zA-Z0-9\-\._~:/?#\[\]@!$&'()*+,;=]+$", value):
+                msg = "HTTP-Referer contains invalid characters."
+                raise ValueError(msg)  # noqa: TRY301
+        except ValueError as e:
+            raise LLMError(str(e)) from e
+
     def _sanitize_header(self, value: str, field: str) -> str:
         """Strictly sanitizes headers against injection attacks using field-specific whitelists."""
         import re
 
         if field == "HTTP-Referer":
-            # Strict URL validation for HTTP-Referer
-            if not re.match(r"^https?://[a-zA-Z0-9.\-/:_]+$", value):
-                msg = "HTTP-Referer contains invalid characters."
-                raise LLMError(msg)
+            self._validate_referer(value)
         elif field == "X-Title":
-            # Alphanumeric and basic punctuation for titles
-            if not re.match(r"^[a-zA-Z0-9 \-.,!()]+$", value):
+            if not re.match(r"^[a-zA-Z0-9 \-\._]+$", value):
                 msg = "X-Title contains invalid characters."
                 raise LLMError(msg)
         elif field == "Content-Type":
-            # Strict validation for content-types
-            if not re.match(r"^[a-zA-Z0-9/.\-]+(; *[a-zA-Z0-9.\-]+=[a-zA-Z0-9.\-]+)?$", value):
+            if not re.match(r"^[a-zA-Z0-9/\-\._]+(; *[a-zA-Z0-9\-\._]+=[a-zA-Z0-9\-\._]+)?$", value):
                 msg = "Content-Type contains invalid characters."
                 raise LLMError(msg)
         elif field == "Authorization":
-            # Strict validation for Authorization header
             if not re.match(r"^Bearer sk-or-v1-[a-zA-Z0-9]{64}$", value):
                 msg = "Authorization contains invalid characters."
                 raise LLMError(msg)
-        # Fallback for other headers
-        elif not re.match(r"^[a-zA-Z0-9_ \-.:/]+$", value):
+        elif not re.match(r"^[a-zA-Z0-9\-\._]+$", value):
             msg = "Header value contains invalid characters."
             raise LLMError(msg)
         return value
@@ -263,25 +272,59 @@ class OpenRouterGateway(LLMProtocol):
             raise LLMError(msg)
 
     def _process_stream_response(self, response: httpx.Response) -> dict[str, Any]:
-        """Safely streams and parses the JSON response incrementally to avoid memory exhaustion."""
-        import json
+        """Safely streams and parses the JSON response incrementally using true streaming to avoid memory exhaustion."""
+        import io
+
+        import ijson
 
         response.raise_for_status()
 
-        # In a real heavy-data streaming scenario we would use `ijson` or stream parsing.
-        # But since we use an LLM API returning a single completion, building the bytearray
-        # is functionally identical but we can explicitly limit the memory buffer sizes here.
-        # This implementation ensures the stream doesn't infinitely accumulate bytes.
-        raw_bytes = bytearray()
-        current_len = 0
-        for chunk in response.iter_bytes(chunk_size=4096):
-            current_len += len(chunk)
-            self._check_stream_limit(current_len, self.config.max_response_bytes)
-            raw_bytes.extend(chunk)
+        class StreamIOWrapper(io.RawIOBase):
+            def __init__(self, stream: httpx.Response, check_limit: Any, max_size: int) -> None:
+                self.iterator = stream.iter_bytes(chunk_size=4096)
+                self.current_bytes = 0
+                self.check_limit = check_limit
+                self.max_size = max_size
+                self.buffer = b""
+
+            def readinto(self, b: bytearray) -> int:
+                # ijson relies on readinto for RawIOBase
+                size = len(b)
+                while len(self.buffer) < size:
+                    try:
+                        chunk = next(self.iterator)
+                        self.current_bytes += len(chunk)
+                        self.check_limit(self.current_bytes, self.max_size)
+                        self.buffer += chunk
+                    except StopIteration:
+                        break
+
+                if not self.buffer:
+                    return 0
+
+                chunk_size = min(size, len(self.buffer))
+                b[:chunk_size] = self.buffer[:chunk_size]
+                self.buffer = self.buffer[chunk_size:]
+                return chunk_size
+
+            def readable(self) -> bool:
+                return True
+
+        stream_io = StreamIOWrapper(
+            response, self._check_stream_limit, self.config.max_response_bytes
+        )
 
         try:
-            result = json.loads(raw_bytes.decode("utf-8"))
-        except json.JSONDecodeError as e:
+            # We use ijson for truly incremental memory-safe parsing of JSON streams
+            # It will parse objects sequentially without holding the full string in memory.
+            # ijson expects byte streams.
+            parser = ijson.items(stream_io, "", use_float=True)
+            result = next(parser)
+
+            # Read out the rest to ensure HTTP response gets properly exhausted if there's any trailing bytes
+            for _ in parser:
+                pass
+        except (ijson.JSONError, StopIteration, ValueError) as e:
             msg = "Failed to parse JSON response"
             raise LLMError(msg) from e
         else:
@@ -330,9 +373,9 @@ class OpenRouterGateway(LLMProtocol):
                     raise LLMError(msg) from e
 
             # Exponential backoff with jitter
-            import random
+            import secrets
 
-            sleep_time = (2**attempt) + random.random()  # noqa: S311
+            sleep_time = (2**attempt) + (secrets.randbelow(100) / 100.0)
             time.sleep(sleep_time)
 
         msg = "Failed to invoke OpenRouter API after retries"

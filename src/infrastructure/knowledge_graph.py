@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 import umap
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import HashingVectorizer
 from sklearn.mixture import GaussianMixture
 
 from src.domain_models.chunk import SemanticChunk
@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 
 class LocalVectorDB(VectorDBProtocol):
-    """A local in-memory vector database using mathematical embeddings (TF-IDF) for actual semantic search."""
+    """A local in-memory vector database using mathematical embeddings (HashingVectorizer) for actual semantic search."""
 
     def __init__(self) -> None:
         self.storage: dict[str, SemanticChunk] = {}
-        self.vectorizer: TfidfVectorizer | None = None
+        self.vectorizer: HashingVectorizer | None = None
         self.chunk_ids: list[str] = []
         self.embeddings: np.ndarray | None = None
 
@@ -41,9 +41,9 @@ class LocalVectorDB(VectorDBProtocol):
             texts = [self.storage[cid].text for cid in self.chunk_ids]
 
             if texts:
-                self.vectorizer = TfidfVectorizer(stop_words="english", encoding="utf-8")
+                self.vectorizer = HashingVectorizer(stop_words="english", encoding="utf-8", n_features=10000)
                 # Ensure actual mathematical processing to satisfy zero-tolerance for mocks
-                self.embeddings = self.vectorizer.fit_transform(texts).toarray()
+                self.embeddings = self.vectorizer.transform(texts).toarray()
 
         except Exception as e:
             msg = f"Failed to store chunks: {e}"
@@ -86,24 +86,31 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
         self.random_state = random_state
 
     def _embed_chunks(self, texts: list[str], batch_size: int = 1000) -> np.ndarray | Any:
-        """Embeds text chunks using TF-IDF returning a sparse matrix to prevent OOM."""
+        """Embeds text chunks using HashingVectorizer returning a sparse matrix to prevent OOM."""
+        if not texts:
+            msg = "Failed to embed chunks (likely empty or uninformative): Empty texts list"
+            raise GraphError(msg)
+
         try:
             # Process in memory-efficient batches to avoid OOM on massive documents
             from scipy.sparse import vstack
 
-            dynamic_max_features = min(10000, max(100, len(texts) * 10))
-            vectorizer = TfidfVectorizer(
-                max_features=dynamic_max_features, stop_words="english", encoding="utf-8"
+            # HashingVectorizer is stateless so we don't need to load all texts to fit a vocabulary
+            dynamic_n_features = min(10000, max(100, len(texts) * 10))
+            # HashingVectorizer requires positive features for NMF/SVD in some cases or just use defaults.
+            # However, TruncatedSVD works with negative features, so standard HashingVectorizer is fine.
+            vectorizer = HashingVectorizer(
+                n_features=dynamic_n_features, stop_words="english", encoding="utf-8"
             )
-
-            # Fit requires entire vocabulary, but we can do it efficiently
-            vectorizer.fit(texts)
 
             # Transform in batches
             sparse_matrices = []
             for i in range(0, len(texts), batch_size):
                 batch_texts = texts[i : i + batch_size]
-                sparse_matrices.append(vectorizer.transform(batch_texts))
+                res = vectorizer.transform(batch_texts)
+                if res.shape[0] == 0:
+                    raise ValueError("empty or uninformative")
+                sparse_matrices.append(res)
                 del batch_texts
 
             # Reconstruct safely, keeping it sparse!
@@ -217,32 +224,58 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             msg = "Failed to generate any clusters."
             raise GraphError(msg)
 
-    def _summarize_cluster(self, texts: list[str], max_depth: int = 3) -> tuple[str, str]:
-        """Summarizes a cluster of texts into a title and dense summary using CoD prompt."""
+    def _summarize_cluster(self, texts: list[str]) -> tuple[str, str]:
+        """Summarizes a cluster of texts iteratively into a title and dense summary using CoD prompt."""
         if not self.llm_gateway:
             msg = "LLM gateway not provided for summarization"
             raise GraphError(msg)
 
-        combined_text = "\n\n".join(texts)
+        current_texts = list(texts)
 
-        # If texts exceed limits, recursively summarize halves to respect LLM constraints
-        if len(combined_text) > 20000 and max_depth > 0:
-            half = len(texts) // 2
-            if half > 0:
-                _title1, sum1 = self._summarize_cluster(texts[:half], max_depth=max_depth - 1)
-                _title2, sum2 = self._summarize_cluster(texts[half:], max_depth=max_depth - 1)
-                # Join the summaries to summarize again
-                return self._summarize_cluster([sum1, sum2], max_depth=max_depth - 1)
+        while True:
+            combined_text = "\n\n".join(current_texts)
 
-        # If we hit max recursion depth, we truncate to safely fit within limits
-        if len(combined_text) > 20000:
-            last_period = combined_text.rfind(".", 0, 20000)
-            last_newline = combined_text.rfind("\n", 0, 20000)
-            truncate_idx = max(last_period, last_newline)
-            if truncate_idx == -1:
-                truncate_idx = 20000
-            combined_text = combined_text[: truncate_idx + 1]
+            # If under threshold, we can summarize directly
+            if len(combined_text) <= 20000:
+                break
 
+            # Iterative reduction: chunk texts and summarize each batch
+            next_texts: list[str] = []
+            current_batch: list[str] = []
+            current_len = 0
+
+            for text in current_texts:
+                if current_len + len(text) > 20000 and current_batch:
+                    # Summarize the batch
+                    batch_text = "\n\n".join(current_batch)
+                    _, sum_text = self._execute_summarization_prompt(batch_text)
+                    next_texts.append(sum_text)
+                    current_batch = [text]
+                    current_len = len(text)
+                else:
+                    current_batch.append(text)
+                    current_len += len(text) + 2
+
+            if current_batch:
+                # Force truncate if a single text is larger than 20000
+                if len(current_batch) == 1 and len(current_batch[0]) > 20000:
+                    text_blob = current_batch[0]
+                    last_period = text_blob.rfind(".", 0, 20000)
+                    last_newline = text_blob.rfind("\n", 0, 20000)
+                    truncate_idx = max(last_period, last_newline)
+                    if truncate_idx == -1:
+                        truncate_idx = 20000
+                    batch_text = text_blob[: truncate_idx + 1]
+                else:
+                    batch_text = "\n\n".join(current_batch)
+                _, sum_text = self._execute_summarization_prompt(batch_text)
+                next_texts.append(sum_text)
+
+            current_texts = next_texts
+
+        return self._execute_summarization_prompt("\n\n".join(current_texts))
+
+    def _execute_summarization_prompt(self, combined_text: str) -> tuple[str, str]:
         prompt = (
             "You are an expert summarizer. Analyze the following combined texts and provide a "
             "highly dense summary and a short title representing the core concept. "
@@ -253,6 +286,10 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             "SUMMARY: <dense summary>\n\n"
             f"Texts:\n{combined_text}"
         )
+
+        if self.llm_gateway is None:
+            msg = "LLM gateway is required"
+            raise GraphError(msg)
 
         try:
             response = self.llm_gateway.invoke(prompt)

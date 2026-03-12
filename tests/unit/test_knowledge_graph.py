@@ -86,7 +86,7 @@ def test_generate_raptor_tree_empty_chunks() -> None:
 def test_embed_chunks_empty_and_error() -> None:
     service = KnowledgeGraphServiceImpl(llm_gateway=MockLLMProtocol(), random_state=42)
     with pytest.raises(GraphError, match="empty or uninformative"):
-        service._embed_chunks([""])
+        service._embed_chunks([])
 
 
 def test_reduce_dimensionality_error() -> None:

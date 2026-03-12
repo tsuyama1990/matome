@@ -53,12 +53,12 @@ src/domain_models/pivot.py                 13      0   100%
 src/domain_models/state.py                 13      0   100%
 src/infrastructure/__init__.py              5      0   100%
 src/infrastructure/crypto.py               23      0   100%
-src/infrastructure/knowledge_graph.py     243     54    78%   48-50, 56, 71-73, 116-118, 131-159, 187, 189, 206-207, 217-218, 223-224, 230-235, 239-244, 272, 326, 365-369, 425-428
+src/infrastructure/knowledge_graph.py     269     74    72%   48-50, 56, 71-73, 112, 120-125, 138-166, 194, 196, 213-214, 224-225, 230-231, 243-274, 291-292, 309, 363, 402-406, 462-465
 src/infrastructure/llm_middleware.py       36      0   100%
-src/infrastructure/openrouter.py          223     52    77%   35-36, 41-43, 50-52, 80-86, 89, 92, 150-151, 155-156, 160-161, 165-170, 183-184, 213-214, 240, 254, 256, 262-263, 284-286, 289-290, 338-339, 344-345, 354-357, 360-361, 365-366
+src/infrastructure/openrouter.py          258     58    78%   35-36, 41-43, 50-52, 80-86, 89, 92, 150-151, 154-157, 167-168, 171-172, 175-179, 192-193, 222-223, 249, 263, 265, 271-272, 311, 326-329, 332-333, 381-382, 387-388, 397-400, 403-404, 408-409
 src/interfaces.py                          29      0   100%
 ---------------------------------------------------------------------
-TOTAL                                     922    152    84%
-================== 49 passed, 7 warnings in 63.32s (0:01:03) ===================
+TOTAL                                     983    178    82%
+================== 49 passed, 7 warnings in 64.09s (0:01:04) ===================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
