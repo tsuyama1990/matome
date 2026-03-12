@@ -1,4 +1,6 @@
+import contextlib
 import re
+from collections.abc import Iterator
 from typing import Any
 
 from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator
@@ -37,10 +39,11 @@ class ApiCredentials(BaseSettings):
     model_config = SettingsConfigDict(env_nested_delimiter="__", extra="forbid")
 
     openrouter_api_key: SecretStr | None = None
+    encrypted_key: bytes | None = None
     crypto_config: CryptoConfig = Field(default_factory=CryptoConfig)
 
-    # Use an explicitly loaded key; no defaults allowed in production.
-    _encrypted_api_key: bytes | None = PrivateAttr(default=None)
+    # Cache for the decrypted key. We must initialize it locally when needed.
+    _decrypted_key: SecretStr | None = PrivateAttr(default=None)
 
     @field_validator("openrouter_api_key")
     @classmethod
@@ -58,28 +61,39 @@ class ApiCredentials(BaseSettings):
                 raise ValueError(msg)
         return v
 
-    def __init__(self, **data: Any) -> None:
-        super().__init__(**data)
-
-        from src.infrastructure.crypto import CryptoService
-
-        # Encrypt the API key at rest upon instantiation using transient key from OS environment
+    def encrypt_key(self, crypto_service: Any) -> None:
+        """Encrypts the original API key using the provided CryptoService and clears the plain text key."""
         if self.openrouter_api_key is not None:
-            crypto_service = CryptoService(self.crypto_config)
-            self._encrypted_api_key = crypto_service.encrypt(self.openrouter_api_key)
-
-            # Erase the raw SecretStr entirely to prevent memory inspection
+            self.encrypted_key = crypto_service.encrypt(self.openrouter_api_key)
+            # Clear original key from memory
             self.openrouter_api_key = None
+            self._decrypted_key = None
 
-    def get_decrypted_api_key(self) -> SecretStr | None:
-        """Returns the decrypted API key securely wrapped in Pydantic's SecretStr."""
-        if self._encrypted_api_key is None:
+    def get_decrypted_api_key(self, crypto_service: Any) -> SecretStr | None:
+        """Returns the decrypted API key securely wrapped in Pydantic's SecretStr.
+        Uses cached decrypted key if available."""
+        if self._decrypted_key is not None:
+            return self._decrypted_key
+
+        if self.encrypted_key is None:
+            if self.openrouter_api_key is not None:
+                return self.openrouter_api_key
             return None
 
-        from src.infrastructure.crypto import CryptoService
+        self._decrypted_key = crypto_service.decrypt(self.encrypted_key)
+        return self._decrypted_key
 
-        crypto_service = CryptoService(self.crypto_config)
-        return crypto_service.decrypt(self._encrypted_api_key)
+    def clear_decrypted_key(self) -> None:
+        """Securely clears the decrypted key cache."""
+        self._decrypted_key = None
+
+    @contextlib.contextmanager
+    def decrypted_key_context(self, crypto_service: Any) -> Iterator[SecretStr | None]:
+        """Context manager to securely yield and automatically clear the decrypted key."""
+        try:
+            yield self.get_decrypted_api_key(crypto_service)
+        finally:
+            self.clear_decrypted_key()
 
 
 class PipelineConfig(BaseSettings):
