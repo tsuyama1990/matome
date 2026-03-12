@@ -1,43 +1,57 @@
 ============================= test session starts ==============================
-platform linux -- Python 3.12.12, pytest-9.0.2, pluggy-1.6.0
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
-plugins: cov-7.0.0, httpx-0.36.0, anyio-4.12.1
-collected 31 items
+plugins: httpx-0.36.0, langsmith-0.7.16, cov-7.0.0, anyio-4.12.1
+collected 36 items
 
-tests/unit/test_config.py ....                                           [ 12%]
-tests/unit/test_container.py ..                                          [ 19%]
-tests/unit/test_infrastructure.py .................                      [ 74%]
-tests/unit/test_main.py ...                                              [ 83%]
+tests/unit/test_config.py .....                                          [ 13%]
+tests/unit/test_container.py ...                                         [ 22%]
+tests/unit/test_document.py ......                                       [ 38%]
+tests/unit/test_infrastructure.py ...............                        [ 80%]
+tests/unit/test_main.py ..                                               [ 86%]
 tests/unit/test_schemas.py .....                                         [100%]
 
-================================ tests coverage ================================
-_______________ coverage: platform linux, python 3.12.12-final-0 _______________
+=============================== warnings summary ===============================
+tests/unit/test_document.py::test_generate_raptor_tree_deterministic
+tests/unit/test_document.py::test_generate_raptor_tree_batch_limits
+tests/unit/test_document.py::test_generate_raptor_tree_batch_limits
+  /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+    warn(
 
-Name                                Stmts   Miss  Cover   Missing
------------------------------------------------------------------
-main.py                                51     13    75%   66-68, 71-81, 90
-src/__init__.py                         0      0   100%
-src/container.py                       40      0   100%
-src/domain_models/__init__.py           6      0   100%
-src/domain_models/chunk.py             20      3    85%   30-32
-src/domain_models/config.py            72      3    96%   68, 106-107
-src/domain_models/constants.py         13      0   100%
-src/domain_models/graph.py             16      0   100%
-src/domain_models/pivot.py             13      0   100%
-src/domain_models/state.py             13      0   100%
-src/infrastructure/__init__.py          3      0   100%
-src/infrastructure/mock_vdb.py         39      2    95%   24, 40
-src/infrastructure/openrouter.py      108      9    92%   106-108, 121, 123, 157-158, 170-171
-src/interfaces.py                      24      0   100%
-tests/__init__.py                       0      0   100%
-tests/unit/__init__.py                  0      0   100%
-tests/unit/test_config.py              51      0   100%
-tests/unit/test_container.py           90     12    87%   41, 50, 53-54, 59-60, 63-64, 67-68, 71-72
-tests/unit/test_infrastructure.py     137      0   100%
-tests/unit/test_main.py                41      1    98%   55
-tests/unit/test_schemas.py             54      0   100%
------------------------------------------------------------------
-TOTAL                                 791     43    95%
-============================== 31 passed in 3.88s ==============================
+tests/unit/test_document.py::test_generate_raptor_tree_batch_limits
+tests/unit/test_document.py::test_generate_raptor_tree_batch_limits
+  /app/.venv/lib/python3.12/site-packages/umap/spectral.py:548: UserWarning: Spectral initialisation failed! The eigenvector solver
+  failed. This is likely due to too small an eigengap. Consider
+  adding some noise or jitter to your data.
+
+  Falling back to random initialisation!
+    warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.13-final-0 _______________
+
+Name                                   Stmts   Miss  Cover   Missing
+--------------------------------------------------------------------
+src/__init__.py                            0      0   100%
+src/container.py                         114     19    83%   53-54, 56-57, 59-60, 77-80, 86, 104, 116, 131-132, 141-142, 151-152, 161-162
+src/document.py                          199     43    78%   34-41, 59-61, 72-74, 77-78, 107, 120-125, 152, 155-157, 167-169, 175-176, 183-184, 194-196, 202-203, 212-214, 220-221, 240, 319-320
+src/domain_models/__init__.py              6      0   100%
+src/domain_models/chunk.py                20      3    85%   30-32
+src/domain_models/config.py               90      2    98%   75, 79
+src/domain_models/constants.py            14      0   100%
+src/domain_models/graph.py                16      0   100%
+src/domain_models/pivot.py                13      0   100%
+src/domain_models/state.py                16      0   100%
+src/infrastructure/__init__.py             4      0   100%
+src/infrastructure/crypto.py              23      0   100%
+src/infrastructure/llm_middleware.py      36      0   100%
+src/infrastructure/openrouter.py         156     27    83%   33-34, 39-41, 69-71, 74, 77, 120-121, 147-148, 170, 172, 186-187, 191-193, 196-197, 235-236, 248-249
+src/interfaces.py                         29      0   100%
+--------------------------------------------------------------------
+TOTAL                                    736     94    87%
+======================= 36 passed, 5 warnings in 51.54s ========================
+/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

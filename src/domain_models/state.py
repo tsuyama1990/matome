@@ -17,3 +17,8 @@ class GraphState(BaseModel):
     pivot_axis: str | None = None
     pivot_response: PivotResponse | None = None
     error: str | None = None
+
+    # Internal variables for RAPTOR state management within LangGraph
+    embeddings: list[list[float]] | None = None
+    reduced_embeddings: list[list[float]] | None = None
+    cluster_assignments: list[int] | None = None
