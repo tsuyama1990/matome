@@ -48,6 +48,21 @@ def test_semantic_chunk_instantiation() -> None:
     assert chunk.metadata.source_file == "test.txt"
 
 
+def test_semantic_chunk_empty_content_failure() -> None:
+    """Test SemanticChunk raises an error if content is empty."""
+    metadata = ChunkMetadata(source_file="test.txt")
+    chunk_id = uuid.uuid4()
+
+    with pytest.raises(ValidationError) as excinfo:
+        SemanticChunk(
+            id=chunk_id,
+            content="",
+            metadata=metadata,
+        )
+
+    assert "Chunk content cannot be empty." in str(excinfo.value)
+
+
 def test_semantic_chunk_embedding_validation_failure() -> None:
     """Test SemanticChunk raises an error if an embedding has the wrong dimensions."""
     metadata = ChunkMetadata(source_file="test.txt")
@@ -65,6 +80,18 @@ def test_semantic_chunk_embedding_validation_failure() -> None:
         )
 
     assert "Embedding must be empty or a valid length" in str(excinfo.value)
+
+
+def test_raptor_node_level_validation_failure() -> None:
+    """Test RaptorNode raises an error if level exceeds maximum depth threshold."""
+    with pytest.raises(ValidationError) as excinfo:
+        RaptorNode(
+            node_id="node-1",
+            level=11,
+            summarized_content="Root summary",
+        )
+
+    assert "Node level exceeds maximum depth threshold." in str(excinfo.value)
 
 
 def test_raptor_node_defaults() -> None:

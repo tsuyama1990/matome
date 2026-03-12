@@ -4,12 +4,12 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: langsmith-0.7.17, cov-7.0.0, anyio-4.12.1
-collected 24 items
+collected 26 items
 
-tests/unit/test_config.py ....                                           [ 16%]
-tests/unit/test_dependencies.py .........                                [ 54%]
-tests/unit/test_domain_models.py ........                                [ 87%]
-tests/unit/test_security.py ..                                           [ 95%]
+tests/unit/test_config.py ....                                           [ 15%]
+tests/unit/test_dependencies.py .........                                [ 50%]
+tests/unit/test_domain_models.py ..........                              [ 88%]
+tests/unit/test_security.py ..                                           [ 96%]
 tests/unit/test_security_errors.py .                                     [100%]
 
 ================================ tests coverage ================================
@@ -23,14 +23,14 @@ src/config/__init__.py                 3      0   100%
 src/config/security.py                18      0   100%
 src/config/settings.py                13      0   100%
 src/domain_models/__init__.py          4      0   100%
-src/domain_models/document.py         35      0   100%
+src/domain_models/document.py         49      0   100%
 src/domain_models/exceptions.py        1      0   100%
 src/domain_models/graph_state.py      26      0   100%
 src/infrastructure/__init__.py         0      0   100%
 src/interfaces/__init__.py             2      0   100%
 src/interfaces/dependencies.py        26      0   100%
 ----------------------------------------------------------------
-TOTAL                                207     16    92%
-============================== 24 passed in 1.86s ==============================
+TOTAL                                221     16    93%
+============================== 26 passed in 1.21s ==============================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
