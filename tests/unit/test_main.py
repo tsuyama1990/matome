@@ -82,7 +82,7 @@ def test_path_traversal_blocked() -> None:
             sys.modules['pytest'] = original_pytest
 
 def test_file_size_limit_enforced(tmp_path: Path) -> None:
-    config = PipelineConfig(max_file_size=10)
+    config = PipelineConfig(max_file_size=10, allowed_input_dir=str(tmp_path))
     processor = DocumentProcessor(config)
 
     large_file = tmp_path / "large.txt"
@@ -93,7 +93,7 @@ def test_file_size_limit_enforced(tmp_path: Path) -> None:
         processor.process(state)
 
 def test_text_normalization_removes_noise(tmp_path: Path) -> None:
-    config = PipelineConfig(max_file_size=1024)
+    config = PipelineConfig(max_file_size=1024, allowed_input_dir=str(tmp_path))
     processor = DocumentProcessor(config)
 
     noisy_text = (
@@ -118,7 +118,7 @@ def test_text_normalization_removes_noise(tmp_path: Path) -> None:
     assert "This is the actual content." in chunk_text
 
 def test_semantic_chunking_limits(tmp_path: Path) -> None:
-    config = PipelineConfig(max_chunk_scan_size=50)
+    config = PipelineConfig(max_chunk_scan_size=50, allowed_input_dir=str(tmp_path))
     processor = DocumentProcessor(config)
 
     long_para = "A" * 100
@@ -133,7 +133,7 @@ def test_semantic_chunking_limits(tmp_path: Path) -> None:
     assert len(chunks[0].text) == 50
 
 def test_document_processing_workflow(tmp_path: Path) -> None:
-    config = PipelineConfig(max_file_size=1024, max_chunk_scan_size=100)
+    config = PipelineConfig(max_file_size=1024, max_chunk_scan_size=100, allowed_input_dir=str(tmp_path))
     processor = DocumentProcessor(config)
 
     content = "This is a Test Document. It contains Multiple Entities. \n\nWe will see."

@@ -1,5 +1,6 @@
+from typing import Any
 
-from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator, model_validator
+from pydantic import Field, PrivateAttr, SecretStr, ValidationInfo, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.domain_models.constants import (
@@ -56,25 +57,26 @@ class ApiCredentials(BaseSettings):
                 raise ValueError(msg)
         return v
 
-    @model_validator(mode="after")
-    def encrypt_api_key(self) -> "ApiCredentials":
-        # Ensure encryption only happens after all validations pass
+
+    _decrypted_key_cache: SecretStr | None = PrivateAttr(default=None)
+
+    def encrypt_key(self, crypto_service: Any) -> None:
+        """Explicitly encrypts the API key after validation, wiping the raw string."""
         if self.openrouter_api_key is not None:
-            from src.infrastructure.crypto import CryptoService
-            crypto_service = CryptoService(self.crypto_config)
             self._encrypted_api_key = crypto_service.encrypt(self.openrouter_api_key)
             self.openrouter_api_key = None
-        return self
 
-    def get_decrypted_api_key(self) -> SecretStr | None:
-        """Returns the decrypted API key securely wrapped in Pydantic's SecretStr."""
+    def get_decrypted_api_key(self, crypto_service: Any) -> SecretStr | None:
+        """Returns the decrypted API key securely, using a cache to avoid repeated decryptions."""
         if self._encrypted_api_key is None:
             return None
+        if self._decrypted_key_cache is None:
+            self._decrypted_key_cache = crypto_service.decrypt(self._encrypted_api_key)
+        return self._decrypted_key_cache
 
-        from src.infrastructure.crypto import CryptoService
-
-        crypto_service = CryptoService(self.crypto_config)
-        return crypto_service.decrypt(self._encrypted_api_key)
+    def clear_cache(self) -> None:
+        """Clears the decrypted key cache for security."""
+        self._decrypted_key_cache = None
 
 
 class PipelineConfig(BaseSettings):
@@ -101,6 +103,8 @@ class PipelineConfig(BaseSettings):
         default_factory=lambda: list(DEFAULT_ALLOWED_API_DOMAINS)
     )
     openrouter_endpoint: str = Field(default=DEFAULT_OPENROUTER_ENDPOINT)
+    allowed_input_dir: str | None = Field(default=None)
+    openrouter_ip: str | None = Field(default=None)
 
     # Dynamic import paths for DI resolution in production without hardcoding imports
     llm_service_path: str = Field(default=DEFAULT_LLM_SERVICE_PATH)

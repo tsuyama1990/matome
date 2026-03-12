@@ -1,6 +1,5 @@
 import logging
 import re
-import sys
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -24,25 +23,30 @@ class DocumentProcessor(DocumentProcessingService):
             msg = "File path cannot be empty"
             raise ValueError(msg)
 
+        try:
+            resolved_path = Path(file_path_str).resolve(strict=True)
+        except FileNotFoundError as e:
+            msg = f"Path {file_path_str} does not exist"
+            raise ValueError(msg) from e
 
-
-        # Reject path traversal tricks early
-        if ".." in file_path_str:
-            msg = "Path traversal attempts are strictly forbidden"
+        # Strict CWD check
+        allowed_dir = Path(str(self.config.allowed_input_dir)).resolve() if getattr(self.config, 'allowed_input_dir', None) is not None else Path.cwd()
+        if not resolved_path.is_relative_to(allowed_dir):
+            msg = f"Path {resolved_path} is outside the allowed directory {allowed_dir}"
             raise ValueError(msg)
 
-        resolved_path = Path(file_path_str).resolve(strict=False)
+        try:
+            stat_result = resolved_path.stat()
+            import stat
+            if not stat.S_ISREG(stat_result.st_mode):
+                msg = f"Path {resolved_path} does not point to a regular file"
+                raise ValueError(msg)
+            file_size = stat_result.st_size
+        except FileNotFoundError as e:
+            msg = f"File {resolved_path} was removed or does not exist"
+            raise ProcessingError(msg) from e
 
-        # Strict CWD check, ensuring symlinks are completely resolved and safe
-        if not resolved_path.is_relative_to(Path.cwd()) and "pytest" not in sys.modules:
-            msg = f"Path {resolved_path} is outside the allowed directory"
-            raise ValueError(msg)
-
-        if not resolved_path.is_file():
-            msg = f"Path {resolved_path} does not point to a valid file"
-            raise ValueError(msg)
-
-        if resolved_path.stat().st_size > self.config.max_file_size:
+        if file_size > self.config.max_file_size:
             msg = f"File {resolved_path} exceeds maximum allowed size"
             raise ProcessingError(msg)
 
@@ -131,26 +135,46 @@ class DocumentProcessor(DocumentProcessingService):
         return state
 
     def process_stream(self, file_path: str, chunk_size: int = 1000) -> Iterator[SemanticChunk]:
-        """Streams a file processing to reduce memory overhead by processing text incrementally."""
+        """Streams a file processing to reduce memory overhead by processing byte chunks incrementally."""
+        import codecs
         resolved_path = self._secure_resolve_path(file_path)
 
-        with resolved_path.open("r", encoding="utf-8") as f:
-            buffer = []
-            for line in f:
-                buffer.append(line)
-                # True incremental processing: when we accumulate enough text, process it.
-                # Since chunking relies on paragraph breaks, we use chunk_size as a rough line limit.
-                if len(buffer) >= chunk_size:
-                    raw_text = "".join(buffer)
-                    normalized_text = self._normalize_text(raw_text)
+        decoder = codecs.getincrementaldecoder('utf-8')(errors='strict')
+        text_buffer = ""
+
+        with resolved_path.open("rb") as f:
+            while True:
+                # Use chunk_size as byte size limit instead of line counts
+                binary_chunk = f.read(chunk_size * 1024)
+                if not binary_chunk:
+                    break
+
+                try:
+                    decoded_text = decoder.decode(binary_chunk)
+                except UnicodeDecodeError as e:
+                    msg = "Failed to incrementally decode file as UTF-8"
+                    raise ProcessingError(msg) from e
+
+                text_buffer += decoded_text
+
+                # We need semantic breaks (paragraphs) to chunk safely
+                while "\n\n" in text_buffer:
+                    paragraph, text_buffer = text_buffer.split("\n\n", 1)
+                    normalized_text = self._normalize_text(paragraph)
                     if normalized_text:
                         chunks = self._chunk_text(normalized_text)
                         yield from chunks
-                    buffer = []
 
-            if buffer:
-                raw_text = "".join(buffer)
-                normalized_text = self._normalize_text(raw_text)
-                if normalized_text:
-                    chunks = self._chunk_text(normalized_text)
-                    yield from chunks
+        # Process remaining buffer
+        try:
+            final_text = decoder.decode(b"", final=True)
+            text_buffer += final_text
+        except UnicodeDecodeError as e:
+            msg = "Failed to incrementally decode file as UTF-8 at EOF"
+            raise ProcessingError(msg) from e
+
+        if text_buffer:
+            normalized_text = self._normalize_text(text_buffer)
+            if normalized_text:
+                chunks = self._chunk_text(normalized_text)
+                yield from chunks

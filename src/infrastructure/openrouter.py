@@ -26,15 +26,16 @@ class OpenRouterResponseSchema(BaseModel):
 class OpenRouterGateway(LLMProtocol):
     """An implementation of LLMProtocol that interfaces with the OpenRouter API."""
 
-    def __init__(self, credentials: ApiCredentials, config: PipelineConfig) -> None:
+    def __init__(self, credentials: ApiCredentials, config: PipelineConfig, crypto_service: Any) -> None:
         self.credentials = credentials
         self.config = config
+        self.crypto_service = crypto_service
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
         """Invokes the OpenRouter LLM with a prompt, timeout, and retry logic."""
         payload = self._prepare_payload(prompt, **kwargs)
 
-        decrypted_key: SecretStr | None = self.credentials.get_decrypted_api_key()
+        decrypted_key: SecretStr | None = self.credentials.get_decrypted_api_key(self.crypto_service)
         if not decrypted_key:
             msg = "Missing or invalid OpenRouter API key"
             raise LLMError(msg)
@@ -65,7 +66,7 @@ class OpenRouterGateway(LLMProtocol):
                 "Content-Type": "application/json",
             }
 
-            with httpx.Client(timeout=timeout, auth=EphemeralAuth(secret_bytes)) as client:
+            with httpx.Client(timeout=timeout, auth=EphemeralAuth(secret_bytes), verify=True) as client:
                 return self._execute_request(client, payload, headers, retries)
         finally:
             # Explicitly memory wipe the bytearray before GC
@@ -73,6 +74,7 @@ class OpenRouterGateway(LLMProtocol):
                 secret_bytes[i] = 0
             del secret_bytes
             del decrypted_key
+            self.credentials.clear_cache()
 
     def _prepare_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         model = kwargs.get("model", self.config.reasoning_model)
@@ -89,40 +91,58 @@ class OpenRouterGateway(LLMProtocol):
 
         return payload
 
+    def _validate_dns_rebinding(self) -> None:
+        import ipaddress
+        import socket
+        import urllib.parse
+        parsed = urllib.parse.urlparse(self.config.openrouter_endpoint)
+        hostname = parsed.hostname
+        if not hostname:
+            return
+        try:
+            current_ip = socket.gethostbyname(hostname)
+            if self.config.openrouter_ip and current_ip != self.config.openrouter_ip:
+                msg = "DNS Rebinding detected: IP does not match pinned IP."
+                raise LLMError(msg)
+            ip_obj = ipaddress.ip_address(current_ip)
+            if ip_obj.is_private or ip_obj.is_loopback:
+                msg = "DNS Rebinding detected: IP resolved to private/loopback."
+                raise LLMError(msg)
+        except socket.gaierror as e:
+            msg = "Failed to resolve hostname for endpoint."
+            raise LLMError(msg) from e
+
     def _execute_request(
         self, client: httpx.Client, payload: dict[str, Any], headers: dict[str, str], retries: int
     ) -> str:
+        self._validate_dns_rebinding()
         for attempt in range(retries):
             try:
-                logger.debug(f"Sending request to OpenRouter (Attempt {attempt + 1}/{retries})")
-                response = client.post(
-                    self.config.openrouter_endpoint, headers=headers, json=payload
-                )
-                response.raise_for_status()
-
-                response_json = response.json()
-                return self._parse_response(response_json)
-
-            except httpx.TimeoutException as e:
-                logger.warning(f"Timeout on attempt {attempt + 1}: {e}")
-                if attempt == retries - 1:
-                    msg = f"Timeout connecting to OpenRouter after {retries} attempts."
-                    raise LLMError(msg) from e
-            except httpx.HTTPStatusError as e:
-                logger.warning(
-                    f"HTTP Error {e.response.status_code} on attempt {attempt + 1}: {e.response.text}"
-                )
-                if attempt == retries - 1:
-                    msg = f"OpenRouter API failed with status {e.response.status_code}: {e.response.text}"
-                    raise LLMError(msg) from e
-            except httpx.RequestError as e:
-                logger.warning(f"Network Error on attempt {attempt + 1}: {e}")
-                if attempt == retries - 1:
-                    msg = f"Network error connecting to OpenRouter: {e}"
-                    raise LLMError(msg) from e
-
+                return self._attempt_request(client, payload, headers)
+            except Exception as e:
+                self._handle_request_exception(e, attempt, retries)
         msg = "Failed to invoke OpenRouter after retries"
         raise LLMError(msg)
+
+    def _attempt_request(self, client: httpx.Client, payload: dict[str, Any], headers: dict[str, str]) -> str:
+        logger.debug("Sending request to OpenRouter")
+        response = client.post(self.config.openrouter_endpoint, headers=headers, json=payload)
+        response.raise_for_status()
+        return self._parse_response(response.json())
+
+    def _handle_request_exception(self, e: Exception, attempt: int, retries: int) -> None:
+        logger.warning(f"Error on attempt {attempt + 1}: {e}")
+        if attempt == retries - 1:
+            if isinstance(e, httpx.TimeoutException):
+                msg = f"Timeout connecting to OpenRouter after {retries} attempts."
+                raise LLMError(msg) from e
+            if isinstance(e, httpx.HTTPStatusError):
+                msg = f"OpenRouter API failed with status {e.response.status_code}: {e.response.text}"
+                raise LLMError(msg) from e
+            if isinstance(e, httpx.RequestError):
+                msg = f"Network error connecting to OpenRouter: {e}"
+                raise LLMError(msg) from e
+            raise e
 
     def _parse_response(self, response_json: dict[str, Any]) -> str:
         try:

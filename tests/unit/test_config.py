@@ -33,6 +33,9 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
         # The key must match the strict length and pattern start
         valid_key = "sk-or-v1-" + ("A" * 64)
         config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
+        from src.infrastructure.crypto import CryptoService
+        crypto_service = CryptoService(config.crypto_config)
+        config.encrypt_key(crypto_service)
 
         # Assert it was erased from memory in the pydantic model
         assert config.openrouter_api_key is None
@@ -41,7 +44,10 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
         assert config._encrypted_api_key != valid_key.encode("utf-8")
 
         # Assert we can retrieve it securely
-        decrypted_secret = config.get_decrypted_api_key()
+        from src.infrastructure.crypto import CryptoService
+        crypto_service = CryptoService(config.crypto_config)
+        config.encrypt_key(crypto_service)
+        decrypted_secret = config.get_decrypted_api_key(crypto_service)
         assert decrypted_secret is not None
         assert decrypted_secret.get_secret_value() == valid_key
 
@@ -49,11 +55,11 @@ def test_api_credentials_validation(mock_env_key: Any) -> None:
 def test_api_credentials_missing_key() -> None:
     """Verifies it fails fast if encryption key is missing from environment."""
     valid_key = "sk-or-v1-" + ("B" * 64)
-    with (
-        mock.patch.dict(os.environ, {}, clear=True),
-        pytest.raises(ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"),
-    ):
-        ApiCredentials(openrouter_api_key=SecretStr(valid_key))
+    with mock.patch.dict(os.environ, {}, clear=True):
+        config = ApiCredentials(openrouter_api_key=SecretStr(valid_key))
+        from src.infrastructure.crypto import CryptoService
+        with pytest.raises(ValueError, match="MATOME_ENCRYPTION_KEY environment variable must be set"):
+            CryptoService(config.crypto_config)
 
 
 def test_api_credentials_loading(mock_env_key: Any, tmp_path: Path) -> None:
@@ -64,11 +70,17 @@ def test_api_credentials_loading(mock_env_key: Any, tmp_path: Path) -> None:
 
     with mock_env_key:
         config = ApiCredentials(_env_file=str(env_file))  # type: ignore[call-arg]
+        from src.infrastructure.crypto import CryptoService
+        crypto_service = CryptoService(config.crypto_config)
+        config.encrypt_key(crypto_service)
 
         assert config.openrouter_api_key is None
+        from src.infrastructure.crypto import CryptoService
+        crypto_service = CryptoService(config.crypto_config)
+        config.encrypt_key(crypto_service)
         assert config._encrypted_api_key is not None
 
-        decrypted = config.get_decrypted_api_key()
+        decrypted = config.get_decrypted_api_key(crypto_service)
         assert decrypted is not None
         assert decrypted.get_secret_value() == valid_key
 

@@ -41,6 +41,11 @@ class ProductionDIContainer:
     ) -> None:
         self._config = config or PipelineConfig()
 
+        # Initialize crypto service explicitly and trigger credential encryption securely
+        from src.infrastructure.crypto import CryptoService
+        self._crypto_service = CryptoService(self._config.credentials.crypto_config)
+        self._config.credentials.encrypt_key(self._crypto_service)
+
         # Resolve from configuration automatically if factories are not explicitly provided
         self._llm_factory = llm_gateway_factory or self._build_llm_factory()
         self._document_factory = document_processor_factory or self._build_document_factory()
@@ -80,10 +85,10 @@ class ProductionDIContainer:
                 self._config.llm_service_path
                 == "src.infrastructure.llm_middleware.LLMMiddlewareService"
             ):
-                gateway = OpenRouterGateway(self._config.credentials, self._config)
+                gateway = OpenRouterGateway(self._config.credentials, self._config, self._crypto_service)
                 return cls(gateway, self._config)  # type: ignore
             # Handle standard instantiation
-            return cls(self._config.credentials, self._config)  # type: ignore
+            return cls(self._config.credentials, self._config, self._crypto_service)  # type: ignore
 
         return factory
 
