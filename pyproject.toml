@@ -23,6 +23,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.15.5",
     "pytest-httpx>=0.36.0",
+    "ijson>=3.5.0",
 ]
 
 [tool.ruff]

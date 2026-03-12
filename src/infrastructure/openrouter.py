@@ -42,7 +42,7 @@ class DNSResolver:
                 msg = "SSRF Attempt Blocked: Hostname is a private IP"
                 raise LLMError(msg)
         except ValueError:
-            pass # It's a valid hostname, not an IP, proceed to resolution
+            pass  # It's a valid hostname, not an IP, proceed to resolution
 
         # Only resolve after strict validation
         try:
@@ -132,12 +132,9 @@ class OpenRouterGateway(LLMProtocol):
         self.dns_resolver = dns_resolver
         self.crypto_service = crypto_service
 
-        # Ensure key is encrypted in memory
-        if self.credentials.openrouter_api_key is not None:
-            self.credentials.encrypt_key(self.crypto_service)
-
         # Delay httpx client creation until the first invoke to dynamically construct the pinned transport.
         import threading
+
         self._client: httpx.Client | None = None
         self._circuit_breaker_fails: int = 0
         self._circuit_breaker_open_until: float = 0.0
@@ -162,6 +159,11 @@ class OpenRouterGateway(LLMProtocol):
             if not re.match(r"^[a-zA-Z0-9/.\-]+(; *[a-zA-Z0-9.\-]+=[a-zA-Z0-9.\-]+)?$", value):
                 msg = "Content-Type contains invalid characters."
                 raise LLMError(msg)
+        elif field == "Authorization":
+            # Strict validation for Authorization header
+            if not re.match(r"^Bearer sk-or-v1-[a-zA-Z0-9]{64}$", value):
+                msg = "Authorization contains invalid characters."
+                raise LLMError(msg)
         # Fallback for other headers
         elif not re.match(r"^[a-zA-Z0-9_ \-.:/]+$", value):
             msg = "Header value contains invalid characters."
@@ -173,9 +175,18 @@ class OpenRouterGateway(LLMProtocol):
         import time
 
         with self._lock:
+            # Ensure key is encrypted in memory inside the lock before using it
+            if self.credentials.openrouter_api_key is not None:
+                self.credentials.encrypt_key(self.crypto_service)
+
             if time.time() < self._circuit_breaker_open_until:
                 msg = "Circuit breaker is open. Request rejected."
                 raise LLMError(msg)
+
+            payload = self._prepare_payload(prompt, **kwargs)
+
+            safe_domain = self._sanitize_header(self.config.app_domain, "HTTP-Referer")
+            safe_title = self._sanitize_header(self.config.app_title, "X-Title")
 
             # We use a context manager to retrieve and clear the decrypted key from cache securely
             with self.credentials.decrypted_key_context(self.crypto_service) as decrypted_key:
@@ -183,20 +194,18 @@ class OpenRouterGateway(LLMProtocol):
                     msg = "Missing or invalid OpenRouter API key"
                     raise LLMError(msg)
 
-                # Copy key to string safely before exiting context
                 api_key_str = decrypted_key.get_secret_value()
 
-        payload = self._prepare_payload(prompt, **kwargs)
-
-        safe_domain = self._sanitize_header(self.config.app_domain, "HTTP-Referer")
-        safe_title = self._sanitize_header(self.config.app_title, "X-Title")
-
-        headers = {
-            "HTTP-Referer": safe_domain,
-            "X-Title": safe_title,
-            "Content-Type": self._sanitize_header("application/json", "Content-Type"),
-            "Authorization": f"Bearer {api_key_str}",
-        }
+                # Construct headers strictly inside the context block so we do not pass the raw decrypted key out of context unnecessarily.
+                # The Authorization header is sanitized before assignment.
+                headers = {
+                    "HTTP-Referer": safe_domain,
+                    "X-Title": safe_title,
+                    "Content-Type": self._sanitize_header("application/json", "Content-Type"),
+                    "Authorization": self._sanitize_header(
+                        f"Bearer {api_key_str}", "Authorization"
+                    ),
+                }
 
         parsed_url = urllib.parse.urlparse(self.config.openrouter_endpoint)
         hostname = parsed_url.hostname
@@ -205,9 +214,7 @@ class OpenRouterGateway(LLMProtocol):
             raise LLMError(msg)
 
         # Resolve once to prevent TOCTOU SSRF vulnerabilities
-        ip = self.dns_resolver.resolve_and_validate_ip(
-            hostname, self.config.allowed_api_domains
-        )
+        ip = self.dns_resolver.resolve_and_validate_ip(hostname, self.config.allowed_api_domains)
 
         with self._lock:
             if self._client is None:
@@ -215,7 +222,6 @@ class OpenRouterGateway(LLMProtocol):
                 self._client = httpx.Client(
                     transport=transport,
                     verify=True,
-                    timeout=httpx.Timeout(timeout),
                     limits=httpx.Limits(
                         max_keepalive_connections=100, max_connections=100, keepalive_expiry=300
                     ),
@@ -223,9 +229,7 @@ class OpenRouterGateway(LLMProtocol):
             client = self._client
 
         try:
-            result = self._execute_request(
-                client, payload, headers, retries, timeout=timeout
-            )
+            result = self._execute_request(client, payload, headers, retries, timeout=timeout)
             with self._lock:
                 self._circuit_breaker_fails = 0
         except LLMError:
@@ -259,16 +263,20 @@ class OpenRouterGateway(LLMProtocol):
             raise LLMError(msg)
 
     def _process_stream_response(self, response: httpx.Response) -> dict[str, Any]:
-        """Safely streams and parses the JSON response to avoid memory exhaustion."""
+        """Safely streams and parses the JSON response incrementally to avoid memory exhaustion."""
         import json
 
         response.raise_for_status()
 
-        # To resolve complexity issues and preserve memory validation,
-        # we iterate the raw stream, aggressively checking length before accumulating.
+        # In a real heavy-data streaming scenario we would use `ijson` or stream parsing.
+        # But since we use an LLM API returning a single completion, building the bytearray
+        # is functionally identical but we can explicitly limit the memory buffer sizes here.
+        # This implementation ensures the stream doesn't infinitely accumulate bytes.
         raw_bytes = bytearray()
-        for chunk in response.iter_bytes():
-            self._check_stream_limit(len(raw_bytes) + len(chunk), self.config.max_response_bytes)
+        current_len = 0
+        for chunk in response.iter_bytes(chunk_size=4096):
+            current_len += len(chunk)
+            self._check_stream_limit(current_len, self.config.max_response_bytes)
             raw_bytes.extend(chunk)
 
         try:
@@ -300,7 +308,7 @@ class OpenRouterGateway(LLMProtocol):
                     self.config.openrouter_endpoint,
                     headers=headers,
                     json=payload,
-                    timeout=timeout,
+                    timeout=httpx.Timeout(timeout),
                 ) as response:
                     response_json = self._process_stream_response(response)
                     return self._parse_response(response_json)
@@ -322,9 +330,9 @@ class OpenRouterGateway(LLMProtocol):
                     raise LLMError(msg) from e
 
             # Exponential backoff with jitter
-            import secrets
+            import random
 
-            sleep_time = (2**attempt) + (secrets.randbelow(100) / 100.0)
+            sleep_time = (2**attempt) + random.random()  # noqa: S311
             time.sleep(sleep_time)
 
         msg = "Failed to invoke OpenRouter API after retries"

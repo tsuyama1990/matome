@@ -85,7 +85,7 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
         self.llm_gateway = llm_gateway
         self.random_state = random_state
 
-    def _embed_chunks(self, texts: list[str], batch_size: int = 1000) -> Any:
+    def _embed_chunks(self, texts: list[str], batch_size: int = 1000) -> np.ndarray | Any:
         """Embeds text chunks using TF-IDF returning a sparse matrix to prevent OOM."""
         try:
             # Process in memory-efficient batches to avoid OOM on massive documents
@@ -119,7 +119,9 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
         else:
             return embeddings
 
-    def _reduce_dimensionality(self, embeddings: Any, n_components: int = 2) -> np.ndarray:
+    def _reduce_dimensionality(
+        self, embeddings: np.ndarray | Any, n_components: int = 2
+    ) -> np.ndarray:
         """Reduces dimensionality of sparse embeddings using UMAP. Uses TruncatedSVD as fallback."""
         try:
             # We set random_state for deterministic behavior in tests
@@ -134,7 +136,11 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
                 # SVD components must be < n_features and < n_samples
                 if n_svd_components < 1:
                     # If matrix is too small, just return a dummy zero array or pad existing
-                    dense_emb = embeddings.toarray()
+                    dense_emb = (
+                        embeddings.toarray()
+                        if hasattr(embeddings, "toarray")
+                        else np.array(embeddings)
+                    )
                     if dense_emb.shape[1] < n_components:
                         padded = np.zeros((dense_emb.shape[0], n_components))
                         padded[:, : dense_emb.shape[1]] = dense_emb
@@ -211,7 +217,7 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             msg = "Failed to generate any clusters."
             raise GraphError(msg)
 
-    def _summarize_cluster(self, texts: list[str]) -> tuple[str, str]:
+    def _summarize_cluster(self, texts: list[str], max_depth: int = 3) -> tuple[str, str]:
         """Summarizes a cluster of texts into a title and dense summary using CoD prompt."""
         if not self.llm_gateway:
             msg = "LLM gateway not provided for summarization"
@@ -220,13 +226,22 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
         combined_text = "\n\n".join(texts)
 
         # If texts exceed limits, recursively summarize halves to respect LLM constraints
-        if len(combined_text) > 20000:
+        if len(combined_text) > 20000 and max_depth > 0:
             half = len(texts) // 2
             if half > 0:
-                title1, sum1 = self._summarize_cluster(texts[:half])
-                title2, sum2 = self._summarize_cluster(texts[half:])
+                _title1, sum1 = self._summarize_cluster(texts[:half], max_depth=max_depth - 1)
+                _title2, sum2 = self._summarize_cluster(texts[half:], max_depth=max_depth - 1)
                 # Join the summaries to summarize again
-                return self._summarize_cluster([sum1, sum2])
+                return self._summarize_cluster([sum1, sum2], max_depth=max_depth - 1)
+
+        # If we hit max recursion depth, we truncate to safely fit within limits
+        if len(combined_text) > 20000:
+            last_period = combined_text.rfind(".", 0, 20000)
+            last_newline = combined_text.rfind("\n", 0, 20000)
+            truncate_idx = max(last_period, last_newline)
+            if truncate_idx == -1:
+                truncate_idx = 20000
+            combined_text = combined_text[: truncate_idx + 1]
 
         prompt = (
             "You are an expert summarizer. Analyze the following combined texts and provide a "
@@ -360,10 +375,14 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
 
         all_nodes: dict[str, KnowledgeNode] = {}
         batch_roots = []
+        import gc
 
-        # Process chunks in batches
-        for i in range(0, len(state.chunks), batch_size):
-            batch_chunks = state.chunks[i : i + batch_size]
+        # Process chunks in batches using an iterator approach
+        def get_batches(chunks: list[SemanticChunk], batch_size: int) -> Any:
+            for i in range(0, len(chunks), batch_size):
+                yield chunks[i : i + batch_size]
+
+        for batch_chunks in get_batches(state.chunks, batch_size):
             batch_state = GraphState(chunks=batch_chunks)
             result_state = self.generate_raptor_tree(batch_state)
 
@@ -374,6 +393,7 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             # Clear memory explicitly to prevent OOM on large datasets
             del batch_state
             del result_state
+            gc.collect()
 
         # If we have only one batch, we are done
         if len(batch_roots) == 1:
