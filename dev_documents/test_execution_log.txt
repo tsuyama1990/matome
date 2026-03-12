@@ -1,0 +1,30 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
+rootdir: /app
+configfile: pyproject.toml
+testpaths: tests
+plugins: cov-7.0.0, anyio-4.12.1
+collected 13 items
+
+tests/unit/test_config.py ......                                         [ 46%]
+tests/unit/test_di_container.py ....                                     [ 76%]
+tests/unit/test_document.py ..                                           [ 92%]
+tests/unit/test_main.py .                                                [100%]
+
+================================ tests coverage ================================
+_______________ coverage: platform linux, python 3.12.13-final-0 _______________
+
+Name                               Stmts   Miss  Cover   Missing
+----------------------------------------------------------------
+src/di_container.py                   25      0   100%
+src/domain_models/__init__.py          3      0   100%
+src/domain_models/config.py           33      0   100%
+src/domain_models/document.py          7      0   100%
+src/infrastructure/__init__.py         2      0   100%
+src/infrastructure/interfaces.py       9      2    78%   7, 13
+src/main.py                           12      2    83%   16, 19
+----------------------------------------------------------------
+TOTAL                                 91      4    96%
+============================== 13 passed in 2.19s ==============================
+/app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
+  self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
