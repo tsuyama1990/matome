@@ -122,10 +122,8 @@ class OpenRouterGateway(LLMProtocol):
 
     def _sanitize_header(self, value: str) -> str:
         """Strictly sanitizes headers against injection attacks."""
-        if "\r" in value or "\n" in value:
-            msg = "CRLF injection detected in header value."
-            raise LLMError(msg)
-        return value
+        import re
+        return re.sub(r'[\x00-\x1f\x7f-\x9f\x0a\x0d]', '', value)
 
     def invoke(self, prompt: str, timeout: int = 30, retries: int = 3, **kwargs: Any) -> str:
         """Invokes the OpenRouter LLM with a prompt, timeout, and retry logic."""
@@ -161,10 +159,13 @@ class OpenRouterGateway(LLMProtocol):
             if self._client is None:
                 transport = self.dns_resolver.create_pinned_transport(hostname, ip)
                 self._client = httpx.Client(
-                    transport=transport, verify=True, timeout=httpx.Timeout(timeout)
+                    transport=transport,
+                    verify=True,
+                    timeout=httpx.Timeout(timeout),
+                    limits=httpx.Limits(max_keepalive_connections=100, max_connections=100, keepalive_expiry=300),
                 )
 
-            return self._execute_request(self._client, payload, headers, retries)
+            return self._execute_request(self._client, payload, headers, retries, timeout=timeout)
 
     def _prepare_payload(self, prompt: str, **kwargs: Any) -> dict[str, Any]:
         model = kwargs.get("model", self.config.reasoning_model)
@@ -189,10 +190,10 @@ class OpenRouterGateway(LLMProtocol):
 
         raw_bytes = bytearray()
         for chunk in response.iter_bytes():
-            raw_bytes.extend(chunk)
-            if len(raw_bytes) > self.config.max_response_bytes:
+            if len(raw_bytes) + len(chunk) > self.config.max_response_bytes:
                 msg = "Response size exceeded maximum allowed limit"
                 raise LLMError(msg)
+            raw_bytes.extend(chunk)
 
         try:
             result = json.loads(raw_bytes.decode("utf-8"))
@@ -211,6 +212,7 @@ class OpenRouterGateway(LLMProtocol):
         payload: dict[str, Any],
         headers: dict[str, str],
         retries: int,
+        timeout: int = 30,
     ) -> str:
         for attempt in range(retries):
             try:
@@ -220,6 +222,7 @@ class OpenRouterGateway(LLMProtocol):
                     self.config.openrouter_endpoint,
                     headers=headers,
                     json=payload,
+                    timeout=timeout,
                 ) as response:
                     response_json = self._process_stream_response(response)
                     return self._parse_response(response_json)
@@ -247,7 +250,7 @@ class OpenRouterGateway(LLMProtocol):
         try:
             # Validate against Pydantic schema
             validated_response = OpenRouterResponseSchema(**response_json)
-        except Exception as e:
+        except (TypeError, ValueError) as e:
             logger.exception("Failed to validate OpenRouter response schema")
             msg = f"Invalid response format from OpenRouter: {response_json}"
             raise LLMError(msg) from e

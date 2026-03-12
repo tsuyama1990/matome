@@ -83,12 +83,12 @@ class ProductionDIContainer:
                 return cls(gateway, config)  # type: ignore
 
             if config.llm_service_path == "src.infrastructure.openrouter.OpenRouterGateway":
-                return cls(
+                return cls(  # type: ignore[no-any-return]
                     config.credentials,
                     config,
                     DNSResolver(),
                     CryptoService(config.credentials.crypto_config),
-                )  # type: ignore[no-any-return]
+                )
 
             # Handle standard instantiation safely if neither
             return cls(config.credentials, config)  # type: ignore[no-any-return]

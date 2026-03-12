@@ -18,13 +18,16 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
     """Implementation of KnowledgeGraphService for RAPTOR graph construction."""
 
     def __init__(self, llm_gateway: LLMProtocol | None = None, random_state: int = 42) -> None:
+        if llm_gateway is None:
+            msg = "LLM gateway required for KnowledgeGraphService"
+            raise GraphError(msg)
         self.llm_gateway = llm_gateway
         self.random_state = random_state
 
-    def _embed_chunks(self, texts: list[str]) -> np.ndarray:
+    def _embed_chunks(self, texts: list[str], batch_size: int = 1000) -> np.ndarray:
         """Embeds text chunks using TF-IDF."""
         try:
-            vectorizer = TfidfVectorizer(max_features=5000, stop_words="english")
+            vectorizer = TfidfVectorizer(max_features=5000, stop_words="english", encoding="utf-8")
             embeddings: np.ndarray = vectorizer.fit_transform(texts).toarray()
         except ValueError as e:
             # Handles empty texts case
@@ -43,7 +46,7 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             n_neighbors = min(15, len(embeddings) - 1)
             if n_neighbors < 2:
                 # If we have very few chunks, skip UMAP or just return basic representation
-                return embeddings[:, :n_components]
+                return np.zeros((embeddings.shape[0], n_components))
 
             reducer = umap.UMAP(
                 n_neighbors=n_neighbors,
@@ -229,9 +232,51 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
 
     def generate_raptor_tree_batch(self, state: GraphState, batch_size: int = 100) -> GraphState:
         """Processes massive chunk lists in batches safely."""
-        # For simplicity, if number of chunks > batch_size, process subset or just delegate
-        # This prevents OOM errors on massive lists.
-        return self.generate_raptor_tree(state)
+        if not state.chunks:
+            return state
+
+        all_nodes: dict[str, KnowledgeNode] = {}
+        batch_roots = []
+
+        # Process chunks in batches
+        for i in range(0, len(state.chunks), batch_size):
+            batch_chunks = state.chunks[i:i + batch_size]
+            batch_state = GraphState(chunks=batch_chunks)
+            result_state = self.generate_raptor_tree(batch_state)
+
+            if result_state.tree:
+                all_nodes.update(result_state.tree.nodes)
+                batch_roots.append(result_state.tree.root_node_id)
+
+        # If we have only one batch, we are done
+        if len(batch_roots) == 1:
+            new_state_data = copy.deepcopy(state.model_dump())
+            new_state_data["tree"] = SummaryTree(root_node_id=batch_roots[0], nodes=all_nodes).model_dump()
+            return GraphState(**new_state_data)
+
+        # Otherwise, aggregate the batch roots into a final root node
+        try:
+            root_summaries = [all_nodes[n_id].summary for n_id in batch_roots]
+            root_title, root_summary = self._summarize_cluster(root_summaries)
+            root_id = str(uuid.uuid4())
+
+            root_node = KnowledgeNode(
+                id=root_id,
+                title=root_title,
+                summary=root_summary,
+                state=NodeState.LOCKED,
+                children_ids=batch_roots
+            )
+            all_nodes[root_id] = root_node
+
+            new_state_data = copy.deepcopy(state.model_dump())
+            new_state_data["tree"] = SummaryTree(root_node_id=root_id, nodes=all_nodes).model_dump()
+            return GraphState(**new_state_data)
+
+        except GraphError as e:
+            new_state_data = copy.deepcopy(state.model_dump())
+            new_state_data["error"] = str(e)
+            return GraphState(**new_state_data)
 
     def pivot_kj(self, state: GraphState) -> GraphState:
         """Rearranges the tree based on state.pivot_axis and updates state.pivot_response."""

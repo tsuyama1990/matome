@@ -4,22 +4,28 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: httpx-0.36.0, cov-7.0.0, anyio-4.12.1
-collected 44 items
+collected 47 items
 
-tests/unit/test_config.py .....                                          [ 11%]
-tests/unit/test_container.py ...                                         [ 18%]
-tests/unit/test_document.py ....                                         [ 27%]
-tests/unit/test_infrastructure.py ...............                        [ 61%]
-tests/unit/test_knowledge_graph.py ..........                            [ 84%]
-tests/unit/test_main.py ..                                               [ 88%]
+tests/unit/test_config.py .....                                          [ 10%]
+tests/unit/test_container.py ...                                         [ 17%]
+tests/unit/test_document.py ....                                         [ 25%]
+tests/unit/test_infrastructure.py ...............                        [ 57%]
+tests/unit/test_knowledge_graph.py .............                         [ 85%]
+tests/unit/test_main.py ..                                               [ 89%]
 tests/unit/test_schemas.py .....                                         [100%]
 
 =============================== warnings summary ===============================
 tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_multiple_chunks
+tests/unit/test_knowledge_graph.py::test_reduce_dimensionality_error
+tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
+tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
+tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
   /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
     warn(
 
 tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_multiple_chunks
+tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
+tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
   /app/.venv/lib/python3.12/site-packages/umap/spectral.py:548: UserWarning: Spectral initialisation failed! The eigenvector solver
   failed. This is likely due to too small an eigengap. Consider
   adding some noise or jitter to your data.
@@ -27,9 +33,9 @@ tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_multiple_chunks
   Falling back to random initialisation!
     warn(
 
-tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_missing_llm
-  /app/.venv/lib/python3.12/site-packages/sklearn/base.py:1336: ConvergenceWarning: Number of distinct clusters (1) found smaller than n_clusters (2). Possibly due to duplicate points in X.
-    return fit_method(estimator, *args, **kwargs)
+tests/unit/test_knowledge_graph.py::test_reduce_dimensionality_error
+  /app/.venv/lib/python3.12/site-packages/umap/spectral.py:519: RuntimeWarning: k >= N for N * N square matrix. Attempting to use scipy.linalg.eigh instead.
+    eigenvalues, eigenvectors = scipy.sparse.linalg.eigsh(
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 ================================ tests coverage ================================
@@ -49,9 +55,9 @@ src/domain_models/pivot.py                 13      0   100%
 src/domain_models/state.py                 13      0   100%
 src/infrastructure/__init__.py              4      0   100%
 src/infrastructure/crypto.py               23      0   100%
-src/infrastructure/knowledge_graph.py     130     10    92%   33-35, 74, 76, 93-94, 104-105, 185
+src/infrastructure/knowledge_graph.py     160     21    87%   36-38, 49, 77, 79, 96-97, 107-108, 113-114, 188, 227-231, 276-279
 src/infrastructure/llm_middleware.py       36      0   100%
-src/infrastructure/openrouter.py          156     27    83%   33-34, 39-41, 69-71, 74, 77, 126-127, 153-154, 178, 180, 194-195, 199-201, 204-205, 243-244, 256-257
+src/infrastructure/openrouter.py          154     25    84%   33-34, 39-41, 69-71, 74, 77, 151-152, 179, 181, 194-195, 200-202, 205-206, 246-247, 259-260
 src/interfaces.py                          29      0   100%
 tests/__init__.py                           0      0   100%
 tests/mocks/__init__.py                     0      0   100%
@@ -61,11 +67,11 @@ tests/unit/test_config.py                  74      0   100%
 tests/unit/test_container.py               34      0   100%
 tests/unit/test_document.py                32      0   100%
 tests/unit/test_infrastructure.py         126      0   100%
-tests/unit/test_knowledge_graph.py         79      0   100%
+tests/unit/test_knowledge_graph.py         89      0   100%
 tests/unit/test_main.py                    26      0   100%
 tests/unit/test_schemas.py                 54      0   100%
 ---------------------------------------------------------------------
-TOTAL                                    1184     90    92%
-======================= 44 passed, 3 warnings in 50.62s ========================
+TOTAL                                    1222     99    92%
+======================= 47 passed, 9 warnings in 48.88s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
