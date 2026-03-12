@@ -1,6 +1,7 @@
 import copy
 import logging
 import uuid
+from typing import Any
 
 import numpy as np
 import umap
@@ -84,8 +85,8 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
         self.llm_gateway = llm_gateway
         self.random_state = random_state
 
-    def _embed_chunks(self, texts: list[str], batch_size: int = 1000) -> np.ndarray:
-        """Embeds text chunks using TF-IDF with dynamic features and streaming chunking to prevent OOM."""
+    def _embed_chunks(self, texts: list[str], batch_size: int = 1000) -> Any:
+        """Embeds text chunks using TF-IDF returning a sparse matrix to prevent OOM."""
         try:
             # Process in memory-efficient batches to avoid OOM on massive documents
             from scipy.sparse import vstack
@@ -105,8 +106,8 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
                 sparse_matrices.append(vectorizer.transform(batch_texts))
                 del batch_texts
 
-            # Reconstruct safely
-            embeddings: np.ndarray = vstack(sparse_matrices).toarray()
+            # Reconstruct safely, keeping it sparse!
+            embeddings = vstack(sparse_matrices)
             del sparse_matrices
 
         except ValueError as e:
@@ -118,26 +119,38 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
         else:
             return embeddings
 
-    def _reduce_dimensionality(self, embeddings: np.ndarray, n_components: int = 2) -> np.ndarray:
-        """Reduces dimensionality of embeddings using UMAP. Uses PCA as fallback for very small datasets."""
+    def _reduce_dimensionality(self, embeddings: Any, n_components: int = 2) -> np.ndarray:
+        """Reduces dimensionality of sparse embeddings using UMAP. Uses TruncatedSVD as fallback."""
         try:
             # We set random_state for deterministic behavior in tests
-            n_neighbors = min(15, len(embeddings) - 1)
+            n_neighbors = min(15, embeddings.shape[0] - 1)
             if n_neighbors < 2:
-                # If we have very few chunks, fallback to basic PCA
-                from sklearn.decomposition import PCA
+                # If we have very few chunks, fallback to TruncatedSVD which handles sparse matrices natively
+                from sklearn.decomposition import TruncatedSVD
 
-                n_pca_components = min(n_components, embeddings.shape[0], embeddings.shape[1])
-                pca_result: np.ndarray = PCA(
-                    n_components=n_pca_components, random_state=self.random_state
+                n_svd_components = min(
+                    n_components, embeddings.shape[0] - 1, embeddings.shape[1] - 1
+                )
+                # SVD components must be < n_features and < n_samples
+                if n_svd_components < 1:
+                    # If matrix is too small, just return a dummy zero array or pad existing
+                    dense_emb = embeddings.toarray()
+                    if dense_emb.shape[1] < n_components:
+                        padded = np.zeros((dense_emb.shape[0], n_components))
+                        padded[:, : dense_emb.shape[1]] = dense_emb
+                        return padded
+                    return np.array(dense_emb[:, :n_components])
+
+                svd_result: np.ndarray = TruncatedSVD(
+                    n_components=n_svd_components, random_state=self.random_state
                 ).fit_transform(embeddings)
 
-                # Pad to n_components if PCA output is smaller
-                if pca_result.shape[1] < n_components:
-                    padded = np.zeros((pca_result.shape[0], n_components))
-                    padded[:, : pca_result.shape[1]] = pca_result
+                # Pad to n_components if SVD output is smaller
+                if svd_result.shape[1] < n_components:
+                    padded = np.zeros((svd_result.shape[0], n_components))
+                    padded[:, : svd_result.shape[1]] = svd_result
                     return padded
-                return pca_result
+                return svd_result
 
             reducer = umap.UMAP(
                 n_neighbors=n_neighbors,
@@ -205,17 +218,15 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             raise GraphError(msg)
 
         combined_text = "\n\n".join(texts)
-        # Prevent prompt from becoming too large; truncate to a safe token-equivalent length
-        if len(combined_text) > 100000:
-            # Implement intelligent text segmentation to preserve semantic boundaries
-            last_period = combined_text.rfind(".", 0, 100000)
-            last_newline = combined_text.rfind("\n", 0, 100000)
-            truncate_idx = max(last_period, last_newline)
-            if truncate_idx == -1:
-                truncate_idx = 100000
-            truncated_text = combined_text[: truncate_idx + 1]
-        else:
-            truncated_text = combined_text
+
+        # If texts exceed limits, recursively summarize halves to respect LLM constraints
+        if len(combined_text) > 20000:
+            half = len(texts) // 2
+            if half > 0:
+                title1, sum1 = self._summarize_cluster(texts[:half])
+                title2, sum2 = self._summarize_cluster(texts[half:])
+                # Join the summaries to summarize again
+                return self._summarize_cluster([sum1, sum2])
 
         prompt = (
             "You are an expert summarizer. Analyze the following combined texts and provide a "
@@ -225,7 +236,7 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
             "Format your response EXACTLY as:\n"
             "TITLE: <short title>\n"
             "SUMMARY: <dense summary>\n\n"
-            f"Texts:\n{truncated_text}"
+            f"Texts:\n{combined_text}"
         )
 
         try:
@@ -256,17 +267,25 @@ class KnowledgeGraphServiceImpl(KnowledgeGraphService):
         if not state.chunks:
             return state
 
-        # If there's only one chunk, it becomes the root directly
+        # If there's only one chunk, wrap it in a root node to ensure consistent hierarchy
         if len(state.chunks) == 1:
             chunk = state.chunks[0]
-            node = KnowledgeNode(
+            leaf_node = KnowledgeNode(
                 id=str(uuid.uuid4()),
-                title="Root Knowledge",
+                title="Cluster Summary",
                 summary=chunk.text,
                 state=NodeState.LOCKED,
                 children_ids=[chunk.id],
             )
-            tree = SummaryTree(root_node_id=node.id, nodes={node.id: node})
+            root_node = KnowledgeNode(
+                id=str(uuid.uuid4()),
+                title="Root Knowledge",
+                summary=chunk.text,
+                state=NodeState.LOCKED,
+                children_ids=[leaf_node.id],
+            )
+            tree_nodes = {leaf_node.id: leaf_node, root_node.id: root_node}
+            tree = SummaryTree(root_node_id=root_node.id, nodes=tree_nodes)
             new_state_data = copy.deepcopy(state.model_dump())
             new_state_data["tree"] = tree.model_dump()
             return GraphState(**new_state_data)

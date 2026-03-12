@@ -24,8 +24,6 @@ tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
     warn(
 
 tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_multiple_chunks
-tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
-tests/unit/test_knowledge_graph.py::test_generate_raptor_tree_batch_multiple
   /app/.venv/lib/python3.12/site-packages/umap/spectral.py:548: UserWarning: Spectral initialisation failed! The eigenvector solver
   failed. This is likely due to too small an eigengap. Consider
   adding some noise or jitter to your data.
@@ -55,12 +53,12 @@ src/domain_models/pivot.py                 13      0   100%
 src/domain_models/state.py                 13      0   100%
 src/infrastructure/__init__.py              5      0   100%
 src/infrastructure/crypto.py               23      0   100%
-src/infrastructure/knowledge_graph.py     224     42    81%   47-49, 55, 70-72, 115-117, 128-140, 168, 170, 187-188, 198-199, 204-205, 211-216, 246, 292, 331-335, 386-389
+src/infrastructure/knowledge_graph.py     232     48    79%   48-50, 56, 71-73, 116-118, 129-153, 181, 183, 200-201, 211-212, 217-218, 224-229, 257, 311, 350-354, 405-408
 src/infrastructure/llm_middleware.py       36      0   100%
-src/infrastructure/openrouter.py          178     30    83%   35-36, 41-43, 71-73, 76, 79, 137-138, 146-147, 170-171, 198, 212, 214, 220-221, 238-240, 243-244, 292-293, 305-306
+src/infrastructure/openrouter.py          217     50    77%   35-36, 41-43, 50-52, 80-86, 89, 92, 153-154, 158-159, 163-168, 177-178, 204-205, 236, 250, 252, 258-259, 276-278, 281-282, 330-331, 336-337, 346-349, 352-353, 357-358
 src/interfaces.py                          29      0   100%
 ---------------------------------------------------------------------
-TOTAL                                     858    118    86%
-================== 49 passed, 9 warnings in 63.80s (0:01:03) ===================
+TOTAL                                     905    144    84%
+================== 49 passed, 7 warnings in 68.60s (0:01:08) ===================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

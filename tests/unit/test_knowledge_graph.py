@@ -22,13 +22,19 @@ def test_generate_raptor_tree_single_chunk() -> None:
     new_state = service.generate_raptor_tree(state)
 
     assert new_state.tree is not None
-    assert len(new_state.tree.nodes) == 1
+    assert len(new_state.tree.nodes) == 2
 
     root_id = new_state.tree.root_node_id
     root_node = new_state.tree.nodes[root_id]
     assert root_node.title == "Root Knowledge"
     assert root_node.summary == "Only one chunk here."
-    assert root_node.children_ids == ["c1"]
+    assert len(root_node.children_ids) == 1
+
+    leaf_id = root_node.children_ids[0]
+    leaf_node = new_state.tree.nodes[leaf_id]
+    assert leaf_node.title == "Cluster Summary"
+    assert leaf_node.summary == "Only one chunk here."
+    assert leaf_node.children_ids == ["c1"]
 
 
 def test_generate_raptor_tree_multiple_chunks() -> None:
