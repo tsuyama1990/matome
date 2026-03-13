@@ -4,10 +4,10 @@ rootdir: /app
 configfile: pyproject.toml
 testpaths: tests
 plugins: langsmith-0.7.17, cov-7.0.0, anyio-4.12.1
-collected 26 items
+collected 25 items
 
-tests/unit/test_config.py ....                                           [ 15%]
-tests/unit/test_dependencies.py .........                                [ 50%]
+tests/unit/test_config.py ....                                           [ 16%]
+tests/unit/test_dependencies.py ........                                 [ 48%]
 tests/unit/test_domain_models.py ..........                              [ 88%]
 tests/unit/test_security.py ..                                           [ 96%]
 tests/unit/test_security_errors.py .                                     [100%]
@@ -15,22 +15,24 @@ tests/unit/test_security_errors.py .                                     [100%]
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
-Name                               Stmts   Miss  Cover   Missing
-----------------------------------------------------------------
-src/__init__.py                        0      0   100%
-src/application/__init__.py           79     16    80%   29-31, 61-62, 69-72, 85-87, 97, 111-113
-src/config/__init__.py                 3      0   100%
-src/config/security.py                18      0   100%
-src/config/settings.py                13      0   100%
-src/domain_models/__init__.py          4      0   100%
-src/domain_models/document.py         49      0   100%
-src/domain_models/exceptions.py        1      0   100%
-src/domain_models/graph_state.py      26      0   100%
-src/infrastructure/__init__.py         0      0   100%
-src/interfaces/__init__.py             2      0   100%
-src/interfaces/dependencies.py        26      0   100%
-----------------------------------------------------------------
-TOTAL                                221     16    93%
-============================== 26 passed in 1.21s ==============================
+Name                                Stmts   Miss  Cover   Missing
+-----------------------------------------------------------------
+src/__init__.py                         0      0   100%
+src/application/__init__.py           228     54    76%   37-38, 45-47, 67, 121, 128-132, 141-159, 174, 191-192, 199-202, 231-233, 243, 270-272, 285-286, 304, 319, 331-333, 342-344, 354, 368-370
+src/application/di.py                   2      0   100%
+src/config/__init__.py                  3      0   100%
+src/config/security.py                 18      0   100%
+src/config/settings.py                 14      0   100%
+src/domain_models/__init__.py           4      0   100%
+src/domain_models/document.py          49      0   100%
+src/domain_models/exceptions.py         1      0   100%
+src/domain_models/graph_state.py       27      0   100%
+src/infrastructure/__init__.py          0      0   100%
+src/infrastructure/llm_gateway.py      23     23     0%   1-46
+src/interfaces/__init__.py              2      0   100%
+src/interfaces/dependencies.py         26      0   100%
+-----------------------------------------------------------------
+TOTAL                                 397     77    81%
+======================== 25 passed in 75.52s (0:01:15) =========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

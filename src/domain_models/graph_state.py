@@ -23,6 +23,9 @@ class GraphState(BaseModel):
     current_document: EnrichedDocument | None = Field(
         default=None, description="The document being processed."
     )
+    source_filepath: str | None = Field(
+        default=None, description="The original filepath of the uploaded document."
+    )
     processing_status: ProcessingStatus = Field(
         default=ProcessingStatus.INITIAL, description="The current status of the workflow."
     )

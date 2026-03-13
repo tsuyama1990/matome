@@ -22,7 +22,7 @@ class VectorStoreProtocol(Protocol):
 class DocumentParserProtocol(Protocol):
     """Protocol for parsing raw files into strings."""
 
-    def parse(self, filepath: str) -> str: ...
+    def parse(self, filename: str) -> str: ...
 
 
 class ChunkingProtocol(Protocol):

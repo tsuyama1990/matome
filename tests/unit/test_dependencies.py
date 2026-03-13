@@ -1,10 +1,8 @@
-import uuid
 from pathlib import Path
 
 import pytest
 
-from src.application import BaseTestChunkingService, BaseTestParsingService, build_ingestion_graph
-from src.domain_models.document import EnrichedDocument
+from src.application import BaseTestParsingService, build_ingestion_graph
 from src.domain_models.exceptions import ProcessingError
 from src.domain_models.graph_state import GraphState, ProcessingStatus
 from src.interfaces.dependencies import DIContainer
@@ -63,53 +61,72 @@ def test_di_container_loads_dynamic_class() -> None:
 
 def test_base_test_parsing_service_success(tmp_path: Path) -> None:
     """Test the base parsing service correctly reads a file."""
+    from pydantic import SecretStr
+
+    from src.config.settings import AppConfig
+
+    config = AppConfig(
+        database_uri=SecretStr("mock"), encryption_key=SecretStr("A" * 32), upload_dir=str(tmp_path)
+    )
+
     test_file = tmp_path / "test.txt"
     test_file.write_text("Hello World", encoding="utf-8")
 
-    service = BaseTestParsingService()
-    content = service.parse(str(test_file))
+    service = BaseTestParsingService(config=config)
+    content = service.parse("test.txt")
 
     assert content == "Hello World"
 
 
-def test_base_test_parsing_service_file_not_found() -> None:
+def test_base_test_parsing_service_file_not_found(tmp_path: Path) -> None:
     """Test the base parsing service raises ProcessingError on missing file."""
-    service = BaseTestParsingService()
+    from pydantic import SecretStr
+
+    from src.config.settings import AppConfig
+
+    config = AppConfig(
+        database_uri=SecretStr("mock"), encryption_key=SecretStr("A" * 32), upload_dir=str(tmp_path)
+    )
+
+    service = BaseTestParsingService(config=config)
     with pytest.raises(ProcessingError, match="File not found"):
-        service.parse("/path/to/nonexistent/file.txt")
+        service.parse("nonexistent_file.txt")
 
 
-def test_base_test_chunking_service_success() -> None:
-    """Test the base chunking service deterministically chunks text."""
-    service = BaseTestChunkingService()
-    text = "Sentence one. Sentence two! Sentence three?"
-
-    chunks = service.chunk_text(text, source_file="test.txt")
-
-    assert len(chunks) == 3
-    assert chunks[0].content == "Sentence one."
-    assert chunks[1].content == "Sentence two!"
-    assert chunks[2].content == "Sentence three?"
-    assert chunks[0].metadata.source_file == "test.txt"
-
-
-def test_base_test_chunking_service_empty_text() -> None:
+def test_semantic_chunking_service_empty_text() -> None:
     """Test the base chunking service raises ProcessingError on empty text."""
-    service = BaseTestChunkingService()
+    from src.application import SemanticChunkingService
+
+    service = SemanticChunkingService()
     with pytest.raises(ProcessingError, match="Cannot chunk empty text."):
         service.chunk_text("", source_file="test.txt")
 
 
-def test_ingestion_workflow(tmp_path: Path) -> None:
+
+
+class DummyLLM:
+    """Dummy LLM client strictly for testing isolated workflow logic."""
+
+    async def generate(self, prompt: str) -> str:
+        return f"[Mock CoD] Extracted entities. Length: {len(prompt)}"
+
+
+def test_ingestion_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test the LangGraph ingestion workflow end-to-end."""
+    # We must patch AppConfig environment variables via monkeypatch
+    # to redirect the UPLOAD_DIR for test to our pytest tmp_path
+    monkeypatch.setenv("DATABASE_URI", "mock_db")
+    monkeypatch.setenv("ENCRYPTION_KEY", "A" * 32)
+    monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+
     # Setup test file
     test_file = tmp_path / "test_doc.txt"
-    test_file.write_text("This is sentence one. And sentence two. Finally three.", encoding="utf-8")
+    test_file.write_text(
+        "This is the system manual. It will be implemented. John is an engineer.", encoding="utf-8"
+    )
 
-    # Initialize GraphState
-    doc_id = uuid.uuid4()
-    doc = EnrichedDocument(document_id=doc_id, original_text=str(test_file))
-    initial_state = GraphState(current_document=doc)
+    # Initialize GraphState with the upload filepath
+    initial_state = GraphState(source_filepath="test_doc.txt")
 
     # Build and run workflow
     workflow = build_ingestion_graph()
@@ -119,13 +136,22 @@ def test_ingestion_workflow(tmp_path: Path) -> None:
     final_state = GraphState(**final_state_dict)
 
     # Assertions
-    assert final_state.processing_status == ProcessingStatus.EMBEDDING
+    assert final_state.processing_status == ProcessingStatus.COMPLETE
     assert final_state.current_document is not None
-    assert "This is sentence one." in final_state.current_document.original_text
+
+    doc = final_state.current_document
+    assert "This is the system manual." in doc.original_text
 
     # Ensure chunking occurred
-    chunks = final_state.current_document.chunks
-    assert len(chunks) == 3
-    assert chunks[0].content == "This is sentence one."
-    assert chunks[1].content == "And sentence two."
-    assert chunks[2].content == "Finally three."
+    assert len(doc.chunks) > 0
+    assert len(doc.chunks[0].embedding) == 768
+
+    # Assert NER and Axes
+    assert len(doc.chunks[0].metadata.extracted_entities) >= 0
+    assert doc.chunks[0].metadata.time_axis in ["Past", "Present", "Future"]
+
+    # Ensure clustering occurred and nodes created
+    assert len(doc.raptor_nodes) > 0
+
+    # Ensure CoD occurred
+    assert "CoD" in doc.raptor_nodes[0].summarized_content

@@ -8,6 +8,10 @@ class AppConfig(BaseSettings):
     environment: str = Field(default="production", description="The application environment.")
     database_uri: SecretStr = Field(description="The URI for the operational database.")
     encryption_key: SecretStr = Field(description="A 32-byte string for BYOK encryption.")
+    upload_dir: str = Field(
+        default="./matome_uploads",
+        description="Directory for uploaded files.",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")
 
