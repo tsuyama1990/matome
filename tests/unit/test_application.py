@@ -10,7 +10,7 @@ from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
 def test_nlp_service_load_success() -> None:
     with mock.patch("spacy.load") as mock_load:
         mock_load.return_value = mock.MagicMock()
-        service = NLPService()
+        service = NLPService(model_name="en_core_web_sm")
         assert service.nlp is not None
 
 
@@ -19,7 +19,7 @@ def test_nlp_service_load_import_error() -> None:
         mock.patch.dict("sys.modules", {"spacy": None}),
         pytest.raises(NLPModelLoadError, match="Spacy library is not installed."),
     ):
-        NLPService()
+        NLPService(model_name="en_core_web_sm")
 
 
 def test_nlp_service_load_os_error() -> None:
@@ -29,11 +29,11 @@ def test_nlp_service_load_os_error() -> None:
             NLPModelLoadError, match="Spacy model 'en_core_web_sm' is missing. Please install it."
         ),
     ):
-        NLPService()
+        NLPService(model_name="en_core_web_sm")
 
 
 def test_nlp_service_tag_entities() -> None:
-    service = NLPService()
+    service = NLPService(model_name="en_core_web_sm")
     chunk = SemanticChunk(
         id=uuid.uuid4(),
         content="Apple is looking at buying U.K. startup for $1 billion today.",
@@ -53,14 +53,14 @@ def test_nlp_service_tag_entities() -> None:
 def test_nlp_service_tag_entities_not_loaded() -> None:
     with mock.patch("spacy.load") as mock_load:
         mock_load.return_value = mock.MagicMock()
-        service = NLPService()
+        service = NLPService(model_name="en_core_web_sm")
         service.nlp = None
         with pytest.raises(RuntimeError, match="NLP model is not loaded."):
             service.tag_entities_and_axes([])
 
 
 def test_nlp_service_malicious_input() -> None:
-    service = NLPService()
+    service = NLPService(model_name="en_core_web_sm")
     chunk = SemanticChunk(
         id=uuid.uuid4(),
         content="<script>alert('XSS')</script> SELECT * FROM users;",
@@ -145,7 +145,7 @@ async def test_sq3r_engine() -> None:
 
 
 def test_pivot_kj_engine() -> None:
-    engine = PivotKJEngine()
+    engine = PivotKJEngine(allowed_axes=frozenset({"actor", "time", "entities"}))
 
     chunks = [
         SemanticChunk(

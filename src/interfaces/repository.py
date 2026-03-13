@@ -1,8 +1,18 @@
+from collections.abc import Generator
+from contextlib import contextmanager
 from typing import Protocol
 
-from src.domain_models.document import RaptorNode
+from src.domain_models.document import EnrichedDocument, RaptorNode
 
 
 class DocumentRepositoryProtocol(Protocol):
     def get_node_by_id(self, node_id: str) -> RaptorNode: ...
     def save_node(self, node: RaptorNode) -> None: ...
+    def save_nodes_batch(self, nodes: list[RaptorNode]) -> None: ...
+    def get_document_by_id(self, document_id: str) -> EnrichedDocument: ...
+    def save_document(self, document: EnrichedDocument) -> None: ...
+
+    @contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        """Provides a transactional context for batch operations."""
+        ...

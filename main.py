@@ -1,61 +1,31 @@
 import logging
-import sys
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 
-from pydantic import ValidationError
+import uvicorn
+from fastapi import FastAPI
 
-from src.config.security import SecurityService
-from src.config.settings import AppConfig, ModelConfig
-from src.interfaces.dependencies import DIContainer
+from src.interfaces.api_router import router
+from src.interfaces.dependencies import DIContainer, bootstrap_application_services
 
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 
-def init_di_container(app_config: AppConfig, model_config: ModelConfig) -> DIContainer:
-    """Initializes the dependency injection container."""
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    # Startup
+    logger.info("Initializing DI Container and Bootstrapping Services.")
     container = DIContainer()
+    # In a real setup, we would ensure required environment variables are set.
+    # Here, bootstrap_application_services will check what it needs and degrade otherwise.
+    bootstrap_application_services(container)
+    app.state.container = container
+    yield
+    # Shutdown
+    logger.info("Shutting down application.")
 
-    # Register configs and core services
-    container.register(AppConfig, lambda: app_config)
-    container.register(ModelConfig, lambda: model_config)
-
-    def security_service_factory() -> SecurityService:
-        return SecurityService()
-
-    container.register(SecurityService, security_service_factory)
-
-    # Example placeholder resolution for future LLM and VectorStore integration
-    # These will be explicitly wired when the actual infrastructure implementation occurs.
-
-    return container
-
-
-def main() -> None:
-    """Application entrypoint. Initializes services and orchestrates workflow."""
-    logger.info("Starting matome application...")
-
-    try:
-        app_config = AppConfig()
-        model_config = ModelConfig()  # type: ignore[call-arg]
-        logger.info(f"Loaded configuration for environment: {app_config.environment}")
-    except ValidationError:
-        logger.exception("Failed to load configurations. Missing environment variables.")
-        sys.exit(1)
-
-    container = init_di_container(app_config, model_config)
-
-    # Securely instantiate security service to ensure the encryption keys are valid
-    try:
-        container.resolve(SecurityService)
-        logger.info("Security service initialized securely.")
-    except Exception:
-        logger.exception("Security service initialization failed.")
-        sys.exit(1)
-
-    # Note: In future cycles, the LangGraph processing workflow
-    # (Document Ingestion -> RAPTOR -> UI) will be triggered from here.
-    logger.info("Application initialized successfully. Awaiting tasks.")
-
+app = FastAPI(title="matome", lifespan=lifespan)
+app.include_router(router)
 
 if __name__ == "__main__":
-    main()
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)  # noqa: S104
