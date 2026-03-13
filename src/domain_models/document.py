@@ -1,6 +1,7 @@
+from typing import Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ChunkMetadata(BaseModel):
@@ -33,6 +34,10 @@ class SemanticChunk(BaseModel):
         """Validates that the embedding matches the required dimensions and contains valid floats."""
         import math
 
+        if not v:
+            msg = "Embedding cannot be empty."
+            raise ValueError(msg)
+
         valid_dimensions = {256, 384, 512, 768, 1024, 1536, 2048, 3072}
         if len(v) not in valid_dimensions:
             msg = f"Embedding length {len(v)} is invalid. Must be one of: {sorted(valid_dimensions)}."
@@ -45,8 +50,8 @@ class SemanticChunk(BaseModel):
             if math.isnan(val) or math.isinf(val):
                 msg = "Embedding elements cannot be NaN or Inf."
                 raise ValueError(msg)
-            if not (-1.0 <= val <= 1.0):
-                msg = "Embedding elements must be between -1.0 and 1.0."
+            if not (-1e10 < val < 1e10):
+                msg = "Embedding values out of reasonable range."
                 raise ValueError(msg)
 
         return v
@@ -70,12 +75,25 @@ class EnrichedDocument(BaseModel):
     """The complete aggregated document representing chunks and the RAPTOR tree."""
 
     document_id: UUID = Field(description="The unique identifier for the document.")
-    original_text: str = Field(description="The raw text of the entire document.")
+    original_text: str = Field(max_length=10_000_000, description="The raw text of the entire document.")
     chunks: list[SemanticChunk] = Field(
         default_factory=list, description="The list of semantic chunks."
     )
     raptor_nodes: list[RaptorNode] = Field(
         default_factory=list, description="The root nodes of the RAPTOR tree."
     )
+
+    @model_validator(mode="after")
+    def validate_embedding_consistency(self) -> Self:
+        """Validates that all chunk embeddings within the document share the exact same dimensionality."""
+        if not self.chunks:
+            return self
+
+        first_dim = len(self.chunks[0].embedding)
+        for i, chunk in enumerate(self.chunks[1:], start=1):
+            if len(chunk.embedding) != first_dim:
+                msg = f"Inconsistent embedding dimensions detected. Chunk 0 has dimension {first_dim}, but chunk {i} has dimension {len(chunk.embedding)}."
+                raise ValueError(msg)
+        return self
 
     model_config = ConfigDict(extra="forbid")

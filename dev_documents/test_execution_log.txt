@@ -2,40 +2,55 @@
 platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 configfile: pyproject.toml
-plugins: cov-7.0.0, asyncio-1.3.0, anyio-4.12.1
+plugins: cov-7.0.0, asyncio-1.3.0, anyio-4.12.1, bdd-8.1.0
 asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 40 items
+collected 52 items
 
-tests/unit/test_application.py .....                                     [ 12%]
-tests/unit/test_config.py ....                                           [ 22%]
-tests/unit/test_dependencies.py ....                                     [ 32%]
-tests/unit/test_domain_models.py .........                               [ 55%]
+tests/e2e/test_uat.py .                                                  [  1%]
+tests/unit/test_application.py ..........                                [ 21%]
+tests/unit/test_config.py ....                                           [ 28%]
+tests/unit/test_dependencies.py ....                                     [ 36%]
+tests/unit/test_domain_models.py .............                           [ 61%]
 tests/unit/test_llm_gateway.py ..........                                [ 80%]
-tests/unit/test_security.py ..                                           [ 85%]
-tests/unit/test_security_errors.py ..                                    [ 90%]
-tests/unit/test_services.py ....                                         [100%]
+tests/unit/test_security.py ..                                           [ 84%]
+tests/unit/test_security_errors.py ..                                    [ 88%]
+tests/unit/test_services.py ......                                       [100%]
 
+=============================== warnings summary ===============================
+tests/unit/test_application.py::test_raptor_engine_cluster_chunks
+  /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+    warn(
+
+tests/unit/test_application.py::test_raptor_engine_cluster_chunks
+  /app/.venv/lib/python3.12/site-packages/sklearn/mixture/_base.py:293: ConvergenceWarning: Best performing initialization did not converge. Try different init parameters, or increase max_iter, tol, or check for degenerate data.
+    warnings.warn(
+
+tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
+  /app/.venv/lib/python3.12/site-packages/sklearn/base.py:1336: ConvergenceWarning: Number of distinct clusters (1) found smaller than n_clusters (2). Possibly due to duplicate points in X.
+    return fit_method(estimator, *args, **kwargs)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py              32      0   100%
+src/application/__init__.py             208     46    78%   23-24, 91-92, 101-102, 105-106, 117-119, 123-125, 128-130, 135, 157-162, 167-169, 172-174, 197, 219-220, 223-226, 235, 253, 305-307, 324-326, 342, 360-361
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   38      4    89%   13-14, 42-43
 src/config/settings.py                   34      2    94%   37-38
 src/domain_models/__init__.py             4      0   100%
-src/domain_models/document.py            47      2    96%   43-44
-src/domain_models/exceptions.py           1      0   100%
-src/domain_models/graph_state.py         26      0   100%
+src/domain_models/document.py            61      2    97%   48-49
+src/domain_models/exceptions.py           2      0   100%
+src/domain_models/graph_state.py         33      0   100%
 src/infrastructure/__init__.py            0      0   100%
 src/infrastructure/llm_gateway.py       126     28    78%   58, 111-141, 155-156, 159-160, 184-185, 190-191, 209-210, 223-226, 231-235, 237-239
-src/infrastructure/test_services.py      46     11    76%   32-33, 43-45, 54-55, 57-60
+src/infrastructure/test_services.py      79     17    78%   63-64, 69-71, 73-75, 88-89, 94-97, 108-110
 src/interfaces/__init__.py                2      0   100%
-src/interfaces/dependencies.py           28      0   100%
+src/interfaces/dependencies.py           54     20    63%   47-48, 74-104
 -------------------------------------------------------------------
-TOTAL                                   387     47    88%
-============================== 40 passed in 4.64s ==============================
+TOTAL                                   644    119    82%
+======================= 52 passed, 3 warnings in 53.99s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
