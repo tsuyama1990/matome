@@ -20,7 +20,7 @@ def init_di_container(app_config: AppConfig, model_config: ModelConfig) -> DICon
     container.register(ModelConfig, lambda: model_config)
 
     def security_service_factory() -> SecurityService:
-        return SecurityService(app_config)
+        return SecurityService()
 
     container.register(SecurityService, security_service_factory)
 
@@ -36,7 +36,7 @@ def main() -> None:
 
     try:
         app_config = AppConfig()  # type: ignore[call-arg]
-        model_config = ModelConfig()  # type: ignore[call-arg]
+        model_config = ModelConfig()
         logger.info(f"Loaded configuration for environment: {app_config.environment}")
     except ValidationError:
         logger.exception("Failed to load configurations. Missing environment variables.")

@@ -1,21 +1,29 @@
-import base64
+import os
 
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
-
-from src.config.settings import AppConfig
 
 
 class SecurityService:
     """Service handling BYOK encryption and description."""
 
-    def __init__(self, config: AppConfig) -> None:
-        key = config.encryption_key.get_secret_value()
-        encoded_key = key.encode("utf-8")
-        if len(encoded_key) != 32:
-            msg = "Encryption key must be exactly 32 bytes."
+    def __init__(self) -> None:
+        key = os.environ.get("ENCRYPTION_KEY")
+        if not key:
+            msg = "ENCRYPTION_KEY environment variable is missing."
             raise ValueError(msg)
-        self._fernet = Fernet(base64.urlsafe_b64encode(encoded_key))
+
+        encoded_key = key.encode("utf-8")
+        if len(encoded_key) != 44:
+            msg = "Encryption key must be exactly 44 bytes (32-byte url-safe base64-encoded)."
+            raise ValueError(msg)
+
+        # Entropy check: Ensure it's not just a single repeated character
+        if len(set(encoded_key)) < 16:
+            msg = "Encryption key is too weak (low entropy)."
+            raise ValueError(msg)
+
+        self._fernet = Fernet(encoded_key)
 
     def encrypt_key(self, plain_key: str) -> str:
         """Encrypts an API key."""
@@ -25,4 +33,8 @@ class SecurityService:
     def decrypt_key(self, encrypted_key: str) -> SecretStr:
         """Decrypts an API key back into a SecretStr."""
         decrypted = self._fernet.decrypt(encrypted_key.encode("utf-8"))
-        return SecretStr(decrypted.decode("utf-8"))
+        decoded = decrypted.decode("utf-8")
+        if not decoded or len(decoded) < 8:
+            msg = "Decrypted key is invalid or too short."
+            raise ValueError(msg)
+        return SecretStr(decoded)
