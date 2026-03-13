@@ -50,9 +50,6 @@ class SemanticChunk(BaseModel):
             if math.isnan(val) or math.isinf(val):
                 msg = "Embedding elements cannot be NaN or Inf."
                 raise ValueError(msg)
-            if not (-1.0 <= val <= 1.0):
-                msg = "Embedding elements must be between -1.0 and 1.0."
-                raise ValueError(msg)
 
         return v
 

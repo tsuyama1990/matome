@@ -50,10 +50,6 @@ class FileProcessingService:
                 msg = "Resolved path is outside upload directory"
                 raise ValueError(msg)
 
-            file_size = resolved_path.stat().st_size
-            if file_size > self._max_file_size:
-                msg = "File size exceeds the allowed limit"
-                raise FileProcessingError(msg)
         except FileNotFoundError as e:
             logger.exception("File not found.")
             msg = "File not found"
@@ -63,13 +59,21 @@ class FileProcessingService:
             msg = "File resolution failed due to OS error"
             raise FileProcessingError(msg) from e
 
+        import os
+
         content_chunks = []
         total_size = 0
         try:
             with resolved_path.open(encoding="utf-8") as f:
-                # The file size is already strictly checked above against limits
-                # (via st_size). However, we continue to incrementally chunk to
-                # keep streaming limits bounded per read to respect memory limits.
+                # To prevent TOCTOU (race conditions), we check the file size AFTER opening it
+                # directly from the file descriptor.
+                fd_size = os.fstat(f.fileno()).st_size
+                if fd_size > self._max_file_size:
+                    msg = "File size exceeds the allowed limit"
+                    raise FileProcessingError(msg)
+
+                # We continue to incrementally chunk to keep streaming limits bounded
+                # per read to respect memory limits.
                 while chunk := f.read(1024 * 1024):  # 1MB chunks
                     total_size += len(chunk.encode("utf-8"))
                     if total_size > self._max_file_size:

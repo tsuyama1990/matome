@@ -164,6 +164,8 @@ class RAPTOREngine:
             if n_samples == 2:
                 # Still cluster them separately to maintain tree generation depth if allowed
                 return {0: [0], 1: [1]}
+            if n_samples == 1:
+                return {0: [0]}
             return {0: list(range(n_samples))}
 
         try:
@@ -309,8 +311,13 @@ class PivotKJEngine:
         if not chunks:
             return {}
 
-        clusters: dict[str, list[SemanticChunk]] = defaultdict(list)
         axis_lower = axis.lower()
+        if axis_lower not in ("actor", "time", "entities"):
+            msg = f"Invalid axis '{axis}'. Supported axes are 'actor', 'time', and 'entities'."
+            logger.error(msg)
+            raise ValueError(msg)
+
+        clusters: dict[str, list[SemanticChunk]] = defaultdict(list)
 
         for chunk in chunks:
             # Map dynamic axes to concrete metadata fields based on axis name
@@ -320,8 +327,7 @@ class PivotKJEngine:
                 target_value = chunk.metadata.actor_axis or "Uncategorized"
             elif "time" in axis_lower:
                 target_value = chunk.metadata.time_axis or "Uncategorized"
-            # If axis isn't strictly recognized, check extracted entities as a fallback
-            elif chunk.metadata.extracted_entities:
+            elif "entities" in axis_lower and chunk.metadata.extracted_entities:
                 target_value = chunk.metadata.extracted_entities[0]
 
             clusters[target_value].append(chunk)

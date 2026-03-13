@@ -154,3 +154,6 @@ def test_pivot_kj_engine() -> None:
     time_clusters = engine.pivot(chunks, "time")
     assert "Uncategorized" in time_clusters
     assert len(time_clusters["Uncategorized"]) == 3
+
+    with pytest.raises(ValueError, match="Invalid axis"):
+        engine.pivot(chunks, "unsupported_axis")

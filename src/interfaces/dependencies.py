@@ -61,6 +61,11 @@ def bootstrap_application_services(container: DIContainer) -> None:
     """Helper to cleanly register application services to the DI container."""
     from src.application import PivotKJEngine, RAPTOREngine, SQ3REngine
 
+    # Validate essential configurations and protocols exist prior to booting engines.
+    if LLMProtocol not in container._factories and LLMProtocol not in container._singletons:
+        msg = "LLMProtocol must be registered in the DI container before bootstrapping application services."
+        raise RuntimeError(msg)
+
     # Register RAPTOREngine
     def raptor_factory() -> RAPTOREngine:
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]

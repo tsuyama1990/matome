@@ -246,12 +246,11 @@ def test_semantic_chunk_embedding_validation_nan() -> None:
         )
     assert "Embedding elements cannot be NaN or Inf" in str(excinfo.value)
 
-    invalid_embedding_bounds = [0.1] * 767 + [1.5]
-    with pytest.raises(ValidationError) as excinfo:
-        SemanticChunk(
-            id=chunk_id,
-            content="This is a test chunk.",
-            embedding=invalid_embedding_bounds,
-            metadata=metadata,
-        )
-    assert "Embedding elements must be between -1.0 and 1.0" in str(excinfo.value)
+    valid_embedding_bounds = [0.1] * 767 + [1.5]
+    chunk = SemanticChunk(
+        id=chunk_id,
+        content="This is a test chunk.",
+        embedding=valid_embedding_bounds,
+        metadata=metadata,
+    )
+    assert chunk.embedding[-1] == 1.5
