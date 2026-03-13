@@ -40,7 +40,9 @@ class SemanticChunk(BaseModel):
 
         valid_dimensions = {256, 384, 512, 768, 1024, 1536, 2048, 3072}
         if len(v) not in valid_dimensions:
-            msg = f"Embedding length {len(v)} is invalid. Must be one of: {sorted(valid_dimensions)}."
+            msg = (
+                f"Embedding length {len(v)} is invalid. Must be one of: {sorted(valid_dimensions)}."
+            )
             raise ValueError(msg)
 
         for val in v:
@@ -75,7 +77,9 @@ class EnrichedDocument(BaseModel):
     """The complete aggregated document representing chunks and the RAPTOR tree."""
 
     document_id: UUID = Field(description="The unique identifier for the document.")
-    original_text: str = Field(max_length=10_000_000, description="The raw text of the entire document.")
+    original_text: str = Field(
+        max_length=10_000_000, description="The raw text of the entire document."
+    )
     chunks: list[SemanticChunk] = Field(
         default_factory=list, description="The list of semantic chunks."
     )

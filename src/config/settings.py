@@ -8,7 +8,9 @@ class AppConfig(BaseSettings):
     environment: str = Field(
         default="production", min_length=1, description="The application environment."
     )
-    database_uri_encrypted: str = Field(description="The encrypted URI for the operational database.")
+    database_uri_encrypted: str = Field(
+        description="The encrypted URI for the operational database."
+    )
     upload_dir: str = Field(
         default="testfiles", min_length=1, description="The directory for file uploads."
     )
@@ -20,7 +22,7 @@ class AppConfig(BaseSettings):
     )
     allowed_embedding_dimensions: list[int] = Field(
         default_factory=lambda: [256, 384, 512, 768, 1024, 1536, 2048, 3072],
-        description="Allowed embedding dimensions."
+        description="Allowed embedding dimensions.",
     )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")
@@ -54,15 +56,14 @@ class ModelConfig(BaseSettings):
             msg = "OpenRouter API URL must use HTTPS."
             raise ValueError(msg)
         return v
+
     text_fast_model: str = Field(
         description="Model for chunking and fast processing.",
     )
     text_reasoning_model: str = Field(
         description="Model for reasoning tasks.",
     )
-    multimodal_model: str = Field(
-        description="Model for multimodal tasks."
-    )
+    multimodal_model: str = Field(description="Model for multimodal tasks.")
     llm_timeout: float = Field(
         default=30.0, gt=0.0, description="The default timeout for LLM API requests in seconds."
     )

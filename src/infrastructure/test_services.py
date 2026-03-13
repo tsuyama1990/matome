@@ -30,7 +30,7 @@ class FileProcessingService:
             msg = "Filename exceeds maximum allowed length"
             raise ValueError(msg)
 
-        normalized_filename = unicodedata.normalize('NFKD', filename)
+        normalized_filename = unicodedata.normalize("NFKD", filename)
 
         # Removed space character explicitly to block evasion of traversals and URL encodings.
         if not re.match(r"^[\w\-.]+$", normalized_filename):

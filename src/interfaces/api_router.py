@@ -1,0 +1,89 @@
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic_core.core_schema import ValidationInfo
+
+from src.application.sq3r_service import SQ3RService
+from src.interfaces.dependencies import DIContainer, LLMProtocol
+from src.interfaces.repository import DocumentRepositoryProtocol
+
+router = APIRouter()
+
+
+class UserAnswerPayload(BaseModel):
+    user_answer: str = Field(..., max_length=5000, description="The user's answer.")
+
+    @field_validator("user_answer")
+    @classmethod
+    def sanitize_answer(cls, v: str, info: ValidationInfo) -> str:
+        _ = info  # use it to pass ruff argument check if needed
+        if "\r" in v or "\n" in v:
+            msg = "CRLF characters are not allowed."
+            raise ValueError(msg)
+        return v
+
+    model_config = ConfigDict(extra="forbid")
+
+
+def get_di_container(request: Request) -> DIContainer:
+    """Dependency injection container resolver from app state."""
+    return request.app.state.container  # type: ignore[no-any-return]
+
+
+def get_sq3r_service(
+    container: DIContainer = Depends(get_di_container),  # noqa: B008
+) -> SQ3RService:
+    try:
+        llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+        return SQ3RService(llm=llm)
+    except Exception as e:
+        msg = "LLM not configured."
+        raise HTTPException(status_code=500, detail=msg) from e
+
+
+def get_repository(
+    container: DIContainer = Depends(get_di_container),  # noqa: B008
+) -> DocumentRepositoryProtocol:
+    try:
+        return container.resolve(DocumentRepositoryProtocol)  # type: ignore[type-abstract]
+    except Exception as e:
+        msg = "Repository not configured."
+        raise HTTPException(status_code=500, detail=msg) from e
+
+
+@router.get("/nodes/{node_id}/question")
+async def get_node_question(
+    node_id: str,
+    service: SQ3RService = Depends(get_sq3r_service),  # noqa: B008
+    repository: DocumentRepositoryProtocol = Depends(get_repository),  # noqa: B008
+) -> dict[str, str]:
+    try:
+        node = repository.get_node_by_id(node_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Node not found.") from e
+
+    question = await service.get_question(node)
+    return {"question": question}
+
+
+@router.post("/nodes/{node_id}/unlock")
+async def unlock_node(
+    node_id: str,
+    payload: UserAnswerPayload,
+    service: SQ3RService = Depends(get_sq3r_service),  # noqa: B008
+    repository: DocumentRepositoryProtocol = Depends(get_repository),  # noqa: B008
+) -> dict[str, Any]:
+    try:
+        node = repository.get_node_by_id(node_id)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail="Node not found.") from e
+
+    feedback = await service.unlock_node(node, payload.user_answer)
+    repository.save_node(node)
+
+    return {
+        "feedback": feedback,
+        "is_unlocked": node.is_unlocked,
+        "summarized_content": node.summarized_content,
+    }

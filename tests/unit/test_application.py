@@ -77,6 +77,7 @@ class DummyLLM:
     async def generate(self, prompt: str) -> str:
         return "Dummy Summary or Question."
 
+
 @pytest.mark.asyncio
 async def test_raptor_engine_cluster_chunks() -> None:
     llm = DummyLLM()
@@ -89,7 +90,7 @@ async def test_raptor_engine_cluster_chunks() -> None:
             id=uuid.uuid4(),
             content=f"This is chunk {i}",
             embedding=[float(i) / 10.0] * 768,
-            metadata=ChunkMetadata(source_file="test.txt")
+            metadata=ChunkMetadata(source_file="test.txt"),
         )
         chunks.append(chunk)
 
@@ -145,16 +146,22 @@ def test_pivot_kj_engine() -> None:
 
     chunks = [
         SemanticChunk(
-            id=uuid.uuid4(), content="A", embedding=[0.0]*768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin")
+            id=uuid.uuid4(),
+            content="A",
+            embedding=[0.0] * 768,
+            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin"),
         ),
         SemanticChunk(
-            id=uuid.uuid4(), content="B", embedding=[0.0]*768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="User")
+            id=uuid.uuid4(),
+            content="B",
+            embedding=[0.0] * 768,
+            metadata=ChunkMetadata(source_file="f1", actor_axis="User"),
         ),
         SemanticChunk(
-            id=uuid.uuid4(), content="C", embedding=[0.0]*768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin")
+            id=uuid.uuid4(),
+            content="C",
+            embedding=[0.0] * 768,
+            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin"),
         ),
     ]
 

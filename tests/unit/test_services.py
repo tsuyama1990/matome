@@ -63,7 +63,9 @@ def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
 
 
 def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
-    config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path), max_file_size=10)
+    config = AppConfig(
+        database_uri_encrypted="encrypted", upload_dir=str(tmp_path), max_file_size=10
+    )
     service = FileProcessingService(config)
 
     test_file = tmp_path / "large_file.txt"

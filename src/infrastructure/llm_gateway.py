@@ -98,6 +98,7 @@ class SecureAsyncHTTPTransport(httpx.AsyncBaseTransport):
                 raise ValueError(msg)
 
         from httpcore._backends.anyio import AnyIOBackend
+
         original_backend = AnyIOBackend()
         protected_backend = SSRFProtectedBackend(
             original_backend=original_backend, allowed_hosts=allowed_hosts
@@ -185,7 +186,9 @@ class OpenRouterGateway:
             raise RuntimeError(msg)
 
         # Sanitize prompt
-        sanitized_prompt = "".join(char for char in prompt if char.isprintable() or char in "\n\r\t")
+        sanitized_prompt = "".join(
+            char for char in prompt if char.isprintable() or char in "\n\r\t"
+        )
         if len(sanitized_prompt) > 100000:
             msg = "Prompt exceeds maximum allowed length."
             raise ValueError(msg)

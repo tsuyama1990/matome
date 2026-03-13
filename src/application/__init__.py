@@ -19,6 +19,7 @@ try:
     import umap
     from sklearn.decomposition import PCA
     from sklearn.mixture import GaussianMixture
+
     _ML_IMPORTS_SUCCESSFUL = True
 except ImportError:
     _ML_IMPORTS_SUCCESSFUL = False
@@ -187,7 +188,8 @@ class RAPTOREngine:
         if n_samples < 3 or n_samples <= n_clusters:
             logger.warning(
                 "Sample count %d is too small for GMM clustering. "
-                "Using explicit fallback hierarchy grouping.", n_samples
+                "Using explicit fallback hierarchy grouping.",
+                n_samples,
             )
             if n_samples == 2:
                 # Still cluster them separately to maintain tree generation depth if allowed
@@ -343,7 +345,9 @@ class PivotKJEngine:
 
         axis_lower = axis.lower()
         if axis_lower not in self.ALLOWED_AXES:
-            msg = f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self.ALLOWED_AXES))}."
+            msg = (
+                f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self.ALLOWED_AXES))}."
+            )
             logger.error(msg)
             raise ValueError(msg)
 
