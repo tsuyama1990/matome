@@ -39,8 +39,8 @@ class SemanticChunk(BaseModel):
             raise ValueError(msg)
 
         for val in v:
-            if not isinstance(val, float):
-                msg = "Embedding elements must be floats."
+            if not isinstance(val, float) and not isinstance(val, int):
+                msg = "Embedding elements must be numbers."
                 raise TypeError(msg)
             if math.isnan(val) or math.isinf(val):
                 msg = "Embedding elements cannot be NaN or Inf."

@@ -1,4 +1,5 @@
 from enum import StrEnum
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -15,6 +16,29 @@ class ProcessingStatus(StrEnum):
     SUMMARIZING = "SUMMARIZING"
     COMPLETE = "COMPLETE"
     FAILED = "FAILED"
+
+
+class StateTransitionConfig:
+    """Decouples valid state transitions into an independent configuration."""
+
+    # A mapping of allowed transitions from a given state
+    VALID_TRANSITIONS: ClassVar[dict[ProcessingStatus, list[ProcessingStatus]]] = {
+        ProcessingStatus.INITIAL: [ProcessingStatus.CHUNKING, ProcessingStatus.FAILED],
+        ProcessingStatus.CHUNKING: [ProcessingStatus.EMBEDDING, ProcessingStatus.FAILED],
+        ProcessingStatus.EMBEDDING: [ProcessingStatus.CLUSTERING, ProcessingStatus.FAILED],
+        ProcessingStatus.CLUSTERING: [ProcessingStatus.SUMMARIZING, ProcessingStatus.FAILED],
+        ProcessingStatus.SUMMARIZING: [ProcessingStatus.COMPLETE, ProcessingStatus.FAILED],
+        ProcessingStatus.COMPLETE: [],
+        ProcessingStatus.FAILED: [],
+    }
+
+    @classmethod
+    def validate_transition(cls, current: ProcessingStatus, target: ProcessingStatus) -> None:
+        """Validates if a target state is accessible from the current state."""
+        allowed = cls.VALID_TRANSITIONS.get(current, [])
+        if target not in allowed:
+            msg = f"Invalid transition from {current} to {target}"
+            raise ValueError(msg)
 
 
 class GraphState(BaseModel):
@@ -36,21 +60,8 @@ class GraphState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     def transition_status(self, new_status: ProcessingStatus) -> None:
-        """Transitions to a new state explicitly, ensuring valid transition paths."""
-        valid_transitions = {
-            ProcessingStatus.INITIAL: [ProcessingStatus.CHUNKING, ProcessingStatus.FAILED],
-            ProcessingStatus.CHUNKING: [ProcessingStatus.EMBEDDING, ProcessingStatus.FAILED],
-            ProcessingStatus.EMBEDDING: [ProcessingStatus.CLUSTERING, ProcessingStatus.FAILED],
-            ProcessingStatus.CLUSTERING: [ProcessingStatus.SUMMARIZING, ProcessingStatus.FAILED],
-            ProcessingStatus.SUMMARIZING: [ProcessingStatus.COMPLETE, ProcessingStatus.FAILED],
-            ProcessingStatus.COMPLETE: [],
-            ProcessingStatus.FAILED: [],
-        }
-
-        if new_status not in valid_transitions[self.processing_status]:
-            msg = f"Invalid transition from {self.processing_status} to {new_status}"
-            raise ValueError(msg)
-
+        """Transitions to a new state explicitly, delegating to StateTransitionConfig."""
+        StateTransitionConfig.validate_transition(self.processing_status, new_status)
         self.processing_status = new_status
 
     def add_error(self, error_message: str) -> None:

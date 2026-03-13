@@ -4,17 +4,17 @@ rootdir: /app
 configfile: pyproject.toml
 plugins: cov-7.0.0, asyncio-1.3.0, anyio-4.12.1, bdd-8.1.0
 asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 46 items
+collected 48 items
 
 tests/e2e/test_uat.py .                                                  [  2%]
-tests/unit/test_application.py ........                                  [ 19%]
-tests/unit/test_config.py ....                                           [ 28%]
-tests/unit/test_dependencies.py ....                                     [ 36%]
+tests/unit/test_application.py .........                                 [ 20%]
+tests/unit/test_config.py ....                                           [ 29%]
+tests/unit/test_dependencies.py ....                                     [ 37%]
 tests/unit/test_domain_models.py ..........                              [ 58%]
-tests/unit/test_llm_gateway.py ..........                                [ 80%]
-tests/unit/test_security.py ..                                           [ 84%]
-tests/unit/test_security_errors.py ..                                    [ 89%]
-tests/unit/test_services.py .....                                        [100%]
+tests/unit/test_llm_gateway.py ..........                                [ 79%]
+tests/unit/test_security.py ..                                           [ 83%]
+tests/unit/test_security_errors.py ..                                    [ 87%]
+tests/unit/test_services.py ......                                       [100%]
 
 =============================== warnings summary ===============================
 tests/unit/test_application.py::test_raptor_engine_cluster_chunks
@@ -25,6 +25,10 @@ tests/unit/test_application.py::test_raptor_engine_cluster_chunks
   /app/.venv/lib/python3.12/site-packages/sklearn/mixture/_base.py:293: ConvergenceWarning: Best performing initialization did not converge. Try different init parameters, or increase max_iter, tol, or check for degenerate data.
     warnings.warn(
 
+tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
+  /app/.venv/lib/python3.12/site-packages/sklearn/base.py:1336: ConvergenceWarning: Number of distinct clusters (1) found smaller than n_clusters (2). Possibly due to duplicate points in X.
+    return fit_method(estimator, *args, **kwargs)
+
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 ================================ tests coverage ================================
 _______________ coverage: platform linux, python 3.12.13-final-0 _______________
@@ -32,21 +36,21 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             146     16    89%   91-93, 120, 135, 147, 165, 217-219, 236-238, 252, 266-267
+src/application/__init__.py             153     18    88%   97-99, 150-151, 154-156, 165, 183, 235-237, 254-256, 270, 284-285
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   38      4    89%   13-14, 42-43
 src/config/settings.py                   34      2    94%   37-38
 src/domain_models/__init__.py             4      0   100%
 src/domain_models/document.py            47      2    96%   43-44
 src/domain_models/exceptions.py           2      0   100%
-src/domain_models/graph_state.py         27      0   100%
+src/domain_models/graph_state.py         33      0   100%
 src/infrastructure/__init__.py            0      0   100%
 src/infrastructure/llm_gateway.py       126     28    78%   58, 111-141, 155-156, 159-160, 184-185, 190-191, 209-210, 223-226, 231-235, 237-239
-src/infrastructure/test_services.py      51     11    78%   32-33, 43-45, 54-55, 57-60
+src/infrastructure/test_services.py      53     11    79%   38-39, 49-51, 60-61, 63-66
 src/interfaces/__init__.py                2      0   100%
 src/interfaces/dependencies.py           39     10    74%   62-79
 -------------------------------------------------------------------
-TOTAL                                   519     73    86%
-======================= 46 passed, 2 warnings in 53.01s ========================
+TOTAL                                   534     75    86%
+======================= 48 passed, 3 warnings in 44.35s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

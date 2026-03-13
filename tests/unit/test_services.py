@@ -26,15 +26,35 @@ def test_file_processing_service_valid_file(tmp_path: Path) -> None:
 def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
     config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
     service = FileProcessingService(config)
-    with pytest.raises(ValueError, match="Invalid file path."):
+    with pytest.raises(ValueError, match="Invalid file path structure"):
         service.read_file("../../../etc/passwd")
+
+    # Also test null byte injection
+    with pytest.raises(ValueError, match="Invalid file path structure"):
+        service.read_file("file.txt\0.pdf")
+
+
+def test_file_processing_service_valid_unicode_filename(tmp_path: Path) -> None:
+    config = AppConfig(
+        database_uri_encrypted="encrypted", upload_dir=str(tmp_path), max_file_size=1024 * 1024
+    )
+    service = FileProcessingService(config)
+
+    # Valid unicode characters (e.g., Japanese, Cyrillic) should pass the regex
+    # if they map to \w, along with spaces and hyphens.
+    filename = "テスト_ファイル-1.txt"
+    test_file = tmp_path / filename
+    test_file.write_text("Unicode content", encoding="utf-8")
+
+    content = service.read_file(filename)
+    assert content == "Unicode content"
 
 
 def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
     config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
     service = FileProcessingService(config)
 
-    with pytest.raises(FileProcessingError, match="File processing failed."):
+    with pytest.raises(FileProcessingError, match="File not found: nonexistent.txt"):
         service.read_file("nonexistent.txt")
 
 
@@ -45,7 +65,7 @@ def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
     test_file = tmp_path / "large_file.txt"
     test_file.write_text("This file is way too large for the 10 byte limit.", encoding="utf-8")
 
-    with pytest.raises(FileProcessingError, match="File size exceeds the allowed limit."):
+    with pytest.raises(FileProcessingError, match="File size exceeds the allowed limit"):
         service.read_file("large_file.txt")
 
 

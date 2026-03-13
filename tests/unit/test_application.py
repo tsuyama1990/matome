@@ -100,6 +100,29 @@ async def test_raptor_engine_cluster_chunks() -> None:
     assert all(node.summarized_content == "Dummy Summary or Question." for node in nodes)
 
 
+def test_raptor_engine_cluster_edge_cases() -> None:
+    import numpy as np
+
+    llm = DummyLLM()
+    engine = RAPTOREngine(llm=llm, max_levels=2, max_clusters=2)
+
+    # Test empty array
+    empty = np.array([])
+    assert engine._cluster_reduced_embeddings(empty) == {}
+
+    # Test single item
+    single = np.array([[0.1, 0.2]])
+    assert engine._cluster_reduced_embeddings(single) == {0: [0]}
+
+    # Test two items
+    two = np.array([[0.1, 0.2], [0.3, 0.4]])
+    assert engine._cluster_reduced_embeddings(two) == {0: [0, 1]}
+
+    # Test identical items that would cause GMM to fail with singular covariance
+    identical = np.array([[0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2]])
+    assert engine._cluster_reduced_embeddings(identical) == {0: [0, 1, 2, 3]}
+
+
 @pytest.mark.asyncio
 async def test_sq3r_engine() -> None:
     llm = DummyLLM()

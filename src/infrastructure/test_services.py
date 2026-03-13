@@ -21,27 +21,33 @@ class FileProcessingService:
 
     def read_file(self, filename: str) -> str:
         """Securely reads a file from the upload directory."""
-        # Strictly prevent path traversal characters and limit to safe alphanumeric characters
-        if not re.match(r"^[a-zA-Z0-9_\-\.]+$", filename):
-            msg = "Invalid file path."
+        import unicodedata
+
+        # Normalize the filename to prevent Unicode-based path traversal tricks
+        normalized_filename = unicodedata.normalize('NFKD', filename)
+
+        # Allow standard word characters (including international ones), hyphens, underscores, dots, and spaces.
+        # Explicitly deny forward slashes, backslashes, or null bytes.
+        if not re.match(r"^[\w\-. ]+$", normalized_filename) or "\0" in normalized_filename:
+            msg = f"Invalid file path structure for: {filename}"
             raise ValueError(msg)
 
         try:
-            resolved_path = self._upload_dir.joinpath(filename).resolve(strict=True)
+            resolved_path = self._upload_dir.joinpath(normalized_filename).resolve(strict=True)
             if not resolved_path.is_relative_to(self._upload_dir):
-                msg = "Invalid file path."
+                msg = f"Resolved path is outside upload directory for: {filename}"
                 raise ValueError(msg)
 
             if resolved_path.stat().st_size > self._max_file_size:
-                msg = "File size exceeds the allowed limit."
+                msg = f"File size exceeds the allowed limit for: {filename}"
                 raise FileProcessingError(msg)
         except FileNotFoundError as e:
-            logger.exception("File not found.")
-            msg = "File processing failed."
+            logger.exception("File not found: %s", filename)
+            msg = f"File not found: {filename}"
             raise FileProcessingError(msg) from e
         except OSError as e:
-            logger.exception("OS error during file resolution.")
-            msg = "File processing failed."
+            logger.exception("OS error during file resolution for: %s", filename)
+            msg = f"File resolution failed due to OS error for: {filename}"
             raise FileProcessingError(msg) from e
 
         content_chunks = []

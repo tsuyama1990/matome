@@ -2,9 +2,15 @@
 Application layer containing orchestration workflows, use cases, and AI services.
 """
 
+import contextlib
 import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
+
+import numpy as np
+
+with contextlib.suppress(ImportError):
+    import umap
 
 from src.domain_models.document import RaptorNode, SemanticChunk
 from src.domain_models.exceptions import ProcessingError, RaptorError
@@ -93,8 +99,6 @@ class RAPTOREngine:
             raise RaptorError(msg) from e
 
     def _reduce_embeddings(self, embeddings: "Any") -> "Any":
-        import umap
-
         n_samples = len(embeddings)
         n_neighbors = min(15, n_samples - 1) if n_samples > 2 else 2
 
@@ -111,37 +115,51 @@ class RAPTOREngine:
         return embeddings
 
     def _cluster_reduced_embeddings(self, embeddings: "Any") -> dict[int, list[int]]:
-        import numpy as np
         from sklearn.mixture import GaussianMixture
 
         n_samples = len(embeddings)
+        if n_samples == 0:
+            return {}
+
         n_clusters = min(self._max_clusters, n_samples)
-        if n_samples < n_clusters:
+
+        # If we have very few samples, bypass GMM to avoid ill-conditioned covariance matrices
+        if n_samples < 3 or n_samples <= n_clusters:
             return {0: list(range(n_samples))}
 
-        gmm = GaussianMixture(n_components=n_clusters, random_state=42)
-        gmm.fit(embeddings)
-        probs = gmm.predict_proba(embeddings)
+        try:
+            gmm = GaussianMixture(n_components=n_clusters, random_state=42)
+            gmm.fit(embeddings)
+            probs = gmm.predict_proba(embeddings)
 
-        threshold = 0.2
-        clusters = defaultdict(list)
-        for i, prob in enumerate(probs):
-            for j, p in enumerate(prob):
-                if p > threshold:
-                    clusters[j].append(i)
+            threshold = 0.2
+            clusters = defaultdict(list)
 
-        for i, prob in enumerate(probs):
-            if not any(p > threshold for p in prob):
-                clusters[int(np.argmax(prob))].append(i)
+            # Vectorized threshold assignment
+            above_threshold = probs > threshold
+            for i in range(n_samples):
+                # Get cluster indices where prob > threshold
+                assigned_clusters = np.where(above_threshold[i])[0]
 
-        return clusters
+                # Soft clustering: assign to all clusters above threshold
+                for cluster_idx in assigned_clusters:
+                    clusters[int(cluster_idx)].append(i)
+
+                # Fallback: if no cluster meets the threshold, assign to the most probable one
+                if len(assigned_clusters) == 0:
+                    best_cluster = int(np.argmax(probs[i]))
+                    clusters[best_cluster].append(i)
+
+            return dict(clusters)
+        except Exception:
+            # Fallback if GMM fails (e.g. singular covariance matrix with duplicate points)
+            return {0: list(range(n_samples))}
 
     async def cluster_chunks(self, chunks: list[SemanticChunk]) -> list[RaptorNode]:
         """
         Builds a RAPTOR hierarchical tree from chunks.
         Strictly applies UMAP and GaussianMixture for mathematically sound clustering.
         """
-        import numpy as np
 
         if not chunks:
             return []
