@@ -48,14 +48,16 @@ class DatabaseConfig(BaseSettings):
         if parsed_uri.port:
             clean_netloc += f":{parsed_uri.port}"
 
-        clean_uri = urllib.parse.urlunparse((
-            parsed_uri.scheme,
-            clean_netloc,
-            parsed_uri.path,
-            parsed_uri.params,
-            parsed_uri.query,
-            parsed_uri.fragment,
-        ))
+        clean_uri = urllib.parse.urlunparse(
+            (
+                parsed_uri.scheme,
+                clean_netloc,
+                parsed_uri.path,
+                parsed_uri.params,
+                parsed_uri.query,
+                parsed_uri.fragment,
+            )
+        )
 
         return SecretStr(clean_uri)
 
@@ -102,7 +104,10 @@ class AppConfig(BaseSettings):
         description="List of allowed axes for Pivot KJ analysis.",
     )
     nlp_max_entities: int = Field(
-        default=50, gt=0, le=1000, description="Max entities to extract per chunk to prevent memory exhaustion."
+        default=50,
+        gt=0,
+        le=1000,
+        description="Max entities to extract per chunk to prevent memory exhaustion.",
     )
     nlp_time_axis_past_words: list[str] = Field(
         default_factory=lambda: ["yesterday", "previously", "was", "were"],

@@ -15,8 +15,6 @@ from src.interfaces.repository import DocumentRepositoryProtocol
 router = APIRouter()
 
 
-
-
 class UserAnswerPayload(BaseModel):
     user_answer: str = Field(..., max_length=5000, description="The user's answer.")
 

@@ -1,11 +1,9 @@
-from unittest import mock
-from unittest.mock import AsyncMock, patch
-
 import httpx
 import pytest
 
 from src.config.settings import ModelConfig
 from src.infrastructure.llm_gateway import LLMError, OpenRouterGateway
+from src.infrastructure.test_services import SafeTestHTTPTransport
 
 
 def setup_encryption_env(
@@ -23,50 +21,45 @@ def setup_encryption_env(
 
 
 @pytest.mark.asyncio
-@mock.patch("socket.getaddrinfo")
-async def test_llm_gateway_success(
-    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # Mock DNS resolution to return a public IP
-    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
-
+async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import AnyHttpUrl
 
+    # Since the tests do not mock getaddrinfo anymore due to anti-mocking rules,
+    # we need to use a domain that resolves natively, such as example.com
     config = ModelConfig(
-        openrouter_api_url=AnyHttpUrl("https://test.com/api"),
+        openrouter_api_url=AnyHttpUrl("https://example.com/api"),
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
-        allowed_hosts=["test.com"],
+        allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
+
     async with OpenRouterGateway(config) as gateway:
-        with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value.raise_for_status = mock.MagicMock()
-            mock_post.return_value.json = mock.MagicMock(
-                return_value={"choices": [{"message": {"content": "Hello World"}}]}
-            )
-            result = await gateway.generate("test prompt")
-            assert result == "Hello World"
+        test_transport = SafeTestHTTPTransport(
+            response_data={"choices": [{"message": {"content": "Hello World"}}]}
+        )
+        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+
+        result = await gateway.generate("test prompt")
+        assert result == "Hello World"
 
 
 @pytest.mark.asyncio
-@mock.patch("socket.getaddrinfo")
-async def test_llm_gateway_missing_api_key(
-    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
+async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import AnyHttpUrl
 
+    monkeypatch.setenv("ENCRYPTION_KEY", "abcdefghijklmnopqrstuvwxyz12345678901234567=")
+    monkeypatch.delenv("OPENROUTER_API_KEY_ENCRYPTED", raising=False)
+
+    # Validation logic will fail early, but config can be valid structurally
     config = ModelConfig(
-        openrouter_api_url=AnyHttpUrl("https://test.com/api"),
+        openrouter_api_url=AnyHttpUrl("https://example.com/api"),
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
-        allowed_hosts=["test.com"],
+        allowed_hosts=["example.com"],
     )
-    monkeypatch.setenv("ENCRYPTION_KEY", "abcdefghijklmnopqrstuvwxyz12345678901234567=")
-    monkeypatch.delenv("OPENROUTER_API_KEY_ENCRYPTED", raising=False)
     with pytest.raises(
         ValueError, match="OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
     ):
@@ -74,19 +67,15 @@ async def test_llm_gateway_missing_api_key(
 
 
 @pytest.mark.asyncio
-@mock.patch("socket.getaddrinfo")
-async def test_llm_gateway_invalid_api_key_format(
-    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
+async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import AnyHttpUrl
 
     config = ModelConfig(
-        openrouter_api_url=AnyHttpUrl("https://test.com/api"),
+        openrouter_api_url=AnyHttpUrl("https://example.com/api"),
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
-        allowed_hosts=["test.com"],
+        allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch, key="invalid-format-key")
     async with OpenRouterGateway(config) as gateway:
@@ -97,57 +86,50 @@ async def test_llm_gateway_invalid_api_key_format(
 
 
 @pytest.mark.asyncio
-@mock.patch("socket.getaddrinfo")
-async def test_llm_gateway_http_error(
-    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
+async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import AnyHttpUrl
 
     config = ModelConfig(
-        openrouter_api_url=AnyHttpUrl("https://test.com/api"),
+        openrouter_api_url=AnyHttpUrl("https://example.com/api"),
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
-        allowed_hosts=["test.com"],
+        allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
+
     async with OpenRouterGateway(config) as gateway:
-        with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.return_value.raise_for_status = mock.MagicMock(
-                side_effect=httpx.HTTPStatusError(
-                    "error", request=httpx.Request("POST", "url"), response=httpx.Response(400)
-                )
-            )
-            with pytest.raises(LLMError, match="LLM API request failed due to an HTTP error: 400."):
-                await gateway.generate("test prompt")
+        test_transport = SafeTestHTTPTransport(response_data={}, status_code=400)
+        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+
+        with pytest.raises(LLMError, match="LLM API request failed due to an HTTP error: 400."):
+            await gateway.generate("test prompt")
 
 
 @pytest.mark.asyncio
-@mock.patch("socket.getaddrinfo")
-async def test_llm_gateway_request_error(
-    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
+async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import AnyHttpUrl
 
     config = ModelConfig(
-        openrouter_api_url=AnyHttpUrl("https://test.com/api"),
+        openrouter_api_url=AnyHttpUrl("https://example.com/api"),
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
-        allowed_hosts=["test.com"],
+        allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
+
     async with OpenRouterGateway(config) as gateway:
-        with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
-            mock_post.side_effect = httpx.RequestError(
-                "error", request=httpx.Request("POST", "url")
-            )
-            with pytest.raises(
-                LLMError, match="LLM API request failed due to a network error after retries."
-            ):
-                await gateway.generate("test prompt")
+        req = httpx.Request("POST", "https://example.com/url")
+        test_transport = SafeTestHTTPTransport(
+            response_data={}, raise_exception=httpx.RequestError("error", request=req)
+        )
+        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+
+        with pytest.raises(
+            LLMError, match="LLM API request failed due to a network error after retries."
+        ):
+            await gateway.generate("test prompt")
 
 
 @pytest.mark.asyncio

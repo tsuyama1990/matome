@@ -1,6 +1,7 @@
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 from src.config.settings import AppConfig
 
@@ -137,3 +138,85 @@ class SimpleParsingService:
 
         # very basic naive splitting for test simplicity
         return [c.strip() for c in re.split(r"(?<=[.!?])\s+", content) if c.strip()]
+
+
+class SafeTestLLMService:
+    """Minimal test implementation of LLMProtocol without mocking."""
+
+    def __init__(self, raise_error: bool = False) -> None:
+        self.raise_error = raise_error
+        self.call_count = 0
+
+    async def generate(self, prompt: str) -> str:
+        self.call_count += 1
+        if self.raise_error:
+            msg = "LLM connection failed"
+            raise ValueError(msg)
+        return "Test Summary or Question."
+
+
+class SafeTestDocumentRepository:
+    """Minimal test implementation of DocumentRepositoryProtocol without mocking."""
+
+    def __init__(self, doc: Any = None, raise_error: bool = False) -> None:
+        self.doc = doc
+        self.raise_error = raise_error
+
+    def get_document_by_id(self, document_id: str) -> Any:
+        if self.raise_error:
+            msg = "DB connection failed"
+            raise ValueError(msg)
+        if not self.doc:
+            msg = "Not found"
+            raise ValueError(msg)
+        return self.doc
+
+
+class SafeTestHTTPTransport:
+    """Minimal test implementation of httpx.AsyncBaseTransport without mocking."""
+
+    def __init__(
+        self,
+        response_data: dict[str, Any],
+        status_code: int = 200,
+        raise_exception: Exception | None = None,
+    ) -> None:
+        import httpx
+
+        self.response_data = response_data
+        self.status_code = status_code
+        self.raise_exception = raise_exception
+        self.httpx = httpx
+
+    async def aclose(self) -> None:
+        pass
+
+    async def handle_async_request(self, request: Any) -> Any:
+        import json
+
+        if self.raise_exception:
+            raise self.raise_exception
+
+        body = json.dumps(self.response_data).encode("utf-8")
+
+        class AsyncIterator:
+            def __init__(self, data: bytes) -> None:
+                self.data = data
+                self.yielded = False
+
+            async def __aiter__(self) -> "AsyncIterator":
+                return self
+
+            async def __anext__(self) -> bytes:
+                if not self.yielded:
+                    self.yielded = True
+                    return self.data
+                raise StopAsyncIteration
+
+        stream = self.httpx.ByteStream(body)
+
+        return self.httpx.Response(
+            status_code=self.status_code,
+            headers=[(b"content-type", b"application/json")],
+            stream=stream,
+        )

@@ -7,6 +7,7 @@ from pydantic import SecretStr
 class DecryptionError(Exception):
     """Custom exception raised when BYOK decryption fails."""
 
+
 class SecurityService:
     """Service handling BYOK encryption and description."""
 

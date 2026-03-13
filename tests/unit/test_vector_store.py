@@ -13,7 +13,7 @@ def test_vector_store_upsert_and_search() -> None:
     # Update
     records_update = [
         {"id": "2", "embedding": [0.0, 1.0, 0.0], "text": "B updated"},
-        {"embedding": [1.0, 1.0, 1.0], "text": "no id"}
+        {"embedding": [1.0, 1.0, 1.0], "text": "no id"},
     ]
     store.upsert("test_col", records_update)
 
