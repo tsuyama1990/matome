@@ -53,7 +53,7 @@ def test_semantic_chunk_embedding_validation_failure() -> None:
     metadata = ChunkMetadata(source_file="test.txt")
     chunk_id = uuid.uuid4()
 
-    # Provide incorrect dimensions (3 elements instead of 768 or 1536)
+    # Provide incorrect dimensions (3 elements instead of common dimensions)
     invalid_embedding = [0.1, 0.2, 0.3]
 
     with pytest.raises(ValidationError) as excinfo:
@@ -64,7 +64,7 @@ def test_semantic_chunk_embedding_validation_failure() -> None:
             metadata=metadata,
         )
 
-    assert "Embedding must have a valid length" in str(excinfo.value)
+    assert "Embedding length 3 is invalid" in str(excinfo.value)
 
 
 def test_raptor_node_defaults() -> None:
@@ -166,3 +166,38 @@ def test_graph_state_invalid_transition() -> None:
 
     with pytest.raises(ValueError, match="Invalid transition from INITIAL to COMPLETE"):
         state.transition_status(ProcessingStatus.COMPLETE)
+
+def test_semantic_chunk_embedding_validation_nan() -> None:
+    """Test validation fails if embedding contains NaN or out of bounds."""
+    metadata = ChunkMetadata(source_file="test.txt")
+    chunk_id = uuid.uuid4()
+
+    invalid_embedding = [0.1] * 767 + [float('nan')]
+    with pytest.raises(ValidationError) as excinfo:
+        SemanticChunk(
+            id=chunk_id,
+            content="This is a test chunk.",
+            embedding=invalid_embedding,
+            metadata=metadata,
+        )
+    assert "Embedding elements cannot be NaN or Inf" in str(excinfo.value)
+
+    invalid_embedding_inf = [0.1] * 767 + [float('inf')]
+    with pytest.raises(ValidationError) as excinfo:
+        SemanticChunk(
+            id=chunk_id,
+            content="This is a test chunk.",
+            embedding=invalid_embedding_inf,
+            metadata=metadata,
+        )
+    assert "Embedding elements cannot be NaN or Inf" in str(excinfo.value)
+
+    invalid_embedding_bounds = [0.1] * 767 + [1.5]
+    with pytest.raises(ValidationError) as excinfo:
+        SemanticChunk(
+            id=chunk_id,
+            content="This is a test chunk.",
+            embedding=invalid_embedding_bounds,
+            metadata=metadata,
+        )
+    assert "Embedding elements must be between -1.0 and 1.0" in str(excinfo.value)

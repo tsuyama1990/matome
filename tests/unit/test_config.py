@@ -34,12 +34,28 @@ def test_model_config_success() -> None:
             "TEXT_REASONING_MODEL": "test-model-2",
             "MULTIMODAL_MODEL": "test-model-3",
             "LLM_TIMEOUT": "45.0",
+            "ALLOWED_HOSTS": '["test.openrouter.ai"]',
         },
         clear=True,
     ):
-        config = ModelConfig()
+        config = ModelConfig()  # type: ignore[call-arg]
         assert str(config.openrouter_api_url) == "https://test.openrouter.ai/api"
         assert config.text_fast_model == "test-model-1"
         assert config.text_reasoning_model == "test-model-2"
         assert config.multimodal_model == "test-model-3"
         assert config.llm_timeout == 45.0
+
+def test_model_config_invalid_url() -> None:
+    """Test ModelConfig raises an error on non-HTTPS URLs."""
+    with mock.patch.dict(
+        os.environ,
+        {
+            "OPENROUTER_API_URL": "http://test.openrouter.ai/api",
+            "TEXT_FAST_MODEL": "test",
+            "TEXT_REASONING_MODEL": "test",
+            "MULTIMODAL_MODEL": "test",
+        },
+        clear=True,
+    ):
+        with pytest.raises(ValidationError, match="must use HTTPS"):
+            ModelConfig()  # type: ignore[call-arg]

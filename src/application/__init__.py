@@ -2,9 +2,12 @@
 Application layer containing orchestration workflows, use cases, and AI services.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from src.domain_models.document import SemanticChunk
+
+if TYPE_CHECKING:
+    from spacy.language import Language
 
 
 class NLPModelLoadError(Exception):
@@ -15,7 +18,7 @@ class NLPService:
     """Service dedicated to natural language processing and entity tagging."""
 
     def __init__(self) -> None:
-        self.nlp: Any = None
+        self.nlp: Language | None = None
         self._load_model()
 
     def _load_model(self) -> None:
@@ -32,7 +35,9 @@ class NLPService:
             msg = "Spacy model 'en_core_web_sm' is missing. Please install it."
             raise NLPModelLoadError(msg) from e
 
-    def tag_entities_and_axes(self, chunks: list[SemanticChunk], embeddings: Any) -> None:
+    def tag_entities_and_axes(
+        self, chunks: list[SemanticChunk], embeddings: list[list[float]] | None = None
+    ) -> None:
         """
         Public method to tag entities and multi-dimensional axes.
         Moved out from being a complex private method to ensure Single Responsibility.

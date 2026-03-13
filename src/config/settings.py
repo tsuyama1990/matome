@@ -1,4 +1,4 @@
-from pydantic import AnyHttpUrl, Field, SecretStr
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -23,21 +23,25 @@ class ModelConfig(BaseSettings):
     """Configuration for LLMs via OpenRouter."""
 
     openrouter_api_url: AnyHttpUrl = Field(
-        default="https://openrouter.ai/api/v1/chat/completions",  # type: ignore[assignment]
         description="The OpenRouter API endpoint.",
     )
+
+    @field_validator("openrouter_api_url")
+    @classmethod
+    def validate_https_url(cls, v: AnyHttpUrl) -> AnyHttpUrl:
+        """Ensures the API URL uses HTTPS."""
+        if v.scheme != "https":
+            msg = "OpenRouter API URL must use HTTPS."
+            raise ValueError(msg)
+        return v
     text_fast_model: str = Field(
-        default="google/gemini-2.5-flash",
-        min_length=1,
         description="Model for chunking and fast processing.",
     )
     text_reasoning_model: str = Field(
-        default="anthropic/claude-3.7-sonnet",
-        min_length=1,
         description="Model for reasoning tasks.",
     )
     multimodal_model: str = Field(
-        default="openai/gpt-4o", min_length=1, description="Model for multimodal tasks."
+        description="Model for multimodal tasks."
     )
     llm_timeout: float = Field(
         default=30.0, gt=0.0, description="The default timeout for LLM API requests in seconds."
