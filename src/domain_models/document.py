@@ -24,18 +24,31 @@ class SemanticChunk(BaseModel):
 
     id: UUID = Field(description="Unique identifier for the chunk.")
     content: str = Field(description="The text content.")
-    embedding: list[float] = Field(
-        description="Vector embedding representation of the chunk."
-    )
+    embedding: list[float] = Field(description="Vector embedding representation of the chunk.")
     metadata: ChunkMetadata = Field(description="Strictly typed metadata.")
 
     @field_validator("embedding")
     @classmethod
     def validate_embedding_dimension(cls, v: list[float]) -> list[float]:
-        """Validates that the embedding matches the required dimensions."""
-        if len(v) not in (768, 1536):
-            msg = "Embedding must have a valid length (e.g., 768 or 1536)."
+        """Validates that the embedding matches the required dimensions and contains valid floats."""
+        import math
+
+        valid_dimensions = {256, 384, 512, 768, 1024, 1536, 2048, 3072}
+        if len(v) not in valid_dimensions:
+            msg = f"Embedding length {len(v)} is invalid. Must be one of: {sorted(valid_dimensions)}."
             raise ValueError(msg)
+
+        for val in v:
+            if not isinstance(val, float):
+                msg = "Embedding elements must be floats."
+                raise TypeError(msg)
+            if math.isnan(val) or math.isinf(val):
+                msg = "Embedding elements cannot be NaN or Inf."
+                raise ValueError(msg)
+            if not (-1.0 <= val <= 1.0):
+                msg = "Embedding elements must be between -1.0 and 1.0."
+                raise ValueError(msg)
+
         return v
 
     model_config = ConfigDict(extra="forbid")

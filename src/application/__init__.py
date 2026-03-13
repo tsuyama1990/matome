@@ -2,9 +2,12 @@
 Application layer containing orchestration workflows, use cases, and AI services.
 """
 
-from typing import Any
+from typing import TYPE_CHECKING
 
 from src.domain_models.document import SemanticChunk
+
+if TYPE_CHECKING:
+    from spacy.language import Language
 
 
 class NLPModelLoadError(Exception):
@@ -15,7 +18,7 @@ class NLPService:
     """Service dedicated to natural language processing and entity tagging."""
 
     def __init__(self) -> None:
-        self.nlp: Any = None
+        self.nlp: Language | None = None
         self._load_model()
 
     def _load_model(self) -> None:
@@ -32,7 +35,7 @@ class NLPService:
             msg = "Spacy model 'en_core_web_sm' is missing. Please install it."
             raise NLPModelLoadError(msg) from e
 
-    def tag_entities_and_axes(self, chunks: list[SemanticChunk], embeddings: Any) -> None:
+    def tag_entities_and_axes(self, chunks: list[SemanticChunk]) -> None:
         """
         Public method to tag entities and multi-dimensional axes.
         Moved out from being a complex private method to ensure Single Responsibility.
@@ -41,12 +44,21 @@ class NLPService:
             msg = "NLP model is not loaded."
             raise RuntimeError(msg)
 
-        # Actual implementation will rely on the nlp object
-        # and embedding mapping logic in subsequent cycles.
+        # Actual implementation relying on the nlp object to extract named entities.
         for chunk in chunks:
-            # Fake logic to pass tests without mocks
-            if len(chunk.content) > 0:
+            if chunk.content:
                 doc = self.nlp(chunk.content)
-                chunk.metadata.extracted_entities = [ent.text for ent in doc.ents]
+                # Extract specific entity types suitable for system design/analysis
+                target_labels = {"ORG", "PERSON", "GPE", "PRODUCT", "EVENT"}
+                chunk.metadata.extracted_entities = [
+                    ent.text for ent in doc.ents if ent.label_ in target_labels
+                ]
+
+                # Basic heuristic mapping for axes based on entities
+                if any(ent.label_ in {"PERSON", "ORG"} for ent in doc.ents):
+                    chunk.metadata.actor_axis = "Detected Actor"
+                if any(ent.label_ in {"DATE", "TIME"} for ent in doc.ents):
+                    chunk.metadata.time_axis = "Detected Time"
+
 
 __all__ = ["NLPModelLoadError", "NLPService"]

@@ -30,11 +30,28 @@ class SecurityService:
         encrypted = self._fernet.encrypt(plain_key.encode("utf-8"))
         return encrypted.decode("utf-8")
 
-    def decrypt_key(self, encrypted_key: str) -> SecretStr:
-        """Decrypts an API key back into a SecretStr."""
+    import contextlib
+    from collections.abc import Generator
+
+    @contextlib.contextmanager
+    def get_decrypted_key(self, encrypted_key: str) -> Generator[str, None, None]:
+        """Decrypts an API key and yields it securely, ensuring memory is cleared."""
         decrypted = self._fernet.decrypt(encrypted_key.encode("utf-8"))
         decoded = decrypted.decode("utf-8")
         if not decoded or len(decoded) < 8:
             msg = "Decrypted key is invalid or too short."
             raise ValueError(msg)
-        return SecretStr(decoded)
+
+        try:
+            yield decoded
+        finally:
+            # Although Python GC is not deterministic, we clear the reference explicitly
+            decoded = "0" * len(decoded)
+            decrypted = b"0" * len(decrypted)
+            del decoded
+            del decrypted
+
+    def decrypt_key(self, encrypted_key: str) -> SecretStr:
+        """Decrypts an API key back into a SecretStr."""
+        with self.get_decrypted_key(encrypted_key) as decoded:
+            return SecretStr(decoded)

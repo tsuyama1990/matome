@@ -36,7 +36,7 @@ def main() -> None:
 
     try:
         app_config = AppConfig()  # type: ignore[call-arg]
-        model_config = ModelConfig()
+        model_config = ModelConfig()  # type: ignore[call-arg]
         logger.info(f"Loaded configuration for environment: {app_config.environment}")
     except ValidationError:
         logger.exception("Failed to load configurations. Missing environment variables.")
