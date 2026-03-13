@@ -26,17 +26,17 @@ async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
+        allowed_hosts=["test.com"],
     )
     setup_encryption_env(monkeypatch)
-    gateway = OpenRouterGateway(config)
-    with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value.raise_for_status = mock.MagicMock()
-        mock_post.return_value.json = mock.MagicMock(
-            return_value={"choices": [{"message": {"content": "Hello World"}}]}
-        )
-        result = await gateway.generate("test prompt")
-        assert result == "Hello World"
-    await gateway.close()
+    async with OpenRouterGateway(config) as gateway:
+        with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value.raise_for_status = mock.MagicMock()
+            mock_post.return_value.json = mock.MagicMock(
+                return_value={"choices": [{"message": {"content": "Hello World"}}]}
+            )
+            result = await gateway.generate("test prompt")
+            assert result == "Hello World"
 
 
 @pytest.mark.asyncio
@@ -47,12 +47,12 @@ async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> N
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
+        allowed_hosts=["test.com"],
     )
+    monkeypatch.setenv("ENCRYPTION_KEY", "abcdefghijklmnopqrstuvwxyz12345678901234567=")
     monkeypatch.delenv("OPENROUTER_API_KEY_ENCRYPTED", raising=False)
-    gateway = OpenRouterGateway(config)
-    with pytest.raises(ValueError, match="OPENROUTER_API_KEY_ENCRYPTED environment variable is missing"):
-        await gateway.generate("test prompt")
-    await gateway.close()
+    with pytest.raises(ValueError, match="OPENROUTER_API_KEY_ENCRYPTED environment variable is missing."):
+        OpenRouterGateway(config)
 
 
 @pytest.mark.asyncio
@@ -63,12 +63,12 @@ async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatc
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
+        allowed_hosts=["test.com"],
     )
     setup_encryption_env(monkeypatch, key="invalid-format-key")
-    gateway = OpenRouterGateway(config)
-    with pytest.raises(ValueError, match="Decrypted API key does not match expected format."):
-        await gateway.generate("test prompt")
-    await gateway.close()
+    async with OpenRouterGateway(config) as gateway:
+        with pytest.raises(ValueError, match="Decrypted API key does not match expected format."):
+            await gateway.generate("test prompt")
 
 
 @pytest.mark.asyncio
@@ -79,18 +79,18 @@ async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
+        allowed_hosts=["test.com"],
     )
     setup_encryption_env(monkeypatch)
-    gateway = OpenRouterGateway(config)
-    with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
-        mock_post.return_value.raise_for_status = mock.MagicMock(
-            side_effect=httpx.HTTPStatusError(
-                "error", request=httpx.Request("POST", "url"), response=httpx.Response(400)
+    async with OpenRouterGateway(config) as gateway:
+        with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.return_value.raise_for_status = mock.MagicMock(
+                side_effect=httpx.HTTPStatusError(
+                    "error", request=httpx.Request("POST", "url"), response=httpx.Response(400)
+                )
             )
-        )
-        with pytest.raises(LLMError, match="LLM API request failed due to an HTTP error."):
-            await gateway.generate("test prompt")
-    await gateway.close()
+            with pytest.raises(LLMError, match="LLM API request failed due to an HTTP error: 400."):
+                await gateway.generate("test prompt")
 
 
 @pytest.mark.asyncio
@@ -101,16 +101,16 @@ async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> Non
         text_fast_model="test-model",
         text_reasoning_model="test-model",
         multimodal_model="test-model",
+        allowed_hosts=["test.com"],
     )
     setup_encryption_env(monkeypatch)
-    gateway = OpenRouterGateway(config)
-    with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
-        mock_post.side_effect = httpx.RequestError(
-            "error", request=httpx.Request("POST", "url")
-        )
-        with pytest.raises(LLMError, match="LLM API request failed due to a network error."):
-            await gateway.generate("test prompt")
-    await gateway.close()
+    async with OpenRouterGateway(config) as gateway:
+        with patch.object(gateway._client, "post", new_callable=AsyncMock) as mock_post:
+            mock_post.side_effect = httpx.RequestError(
+                "error", request=httpx.Request("POST", "url")
+            )
+            with pytest.raises(LLMError, match="LLM API request failed due to a network error after retries."):
+                await gateway.generate("test prompt")
 
 
 @pytest.mark.asyncio

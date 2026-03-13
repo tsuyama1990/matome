@@ -8,7 +8,7 @@ from src.infrastructure.test_services import FileProcessingError, FileProcessing
 
 def test_file_processing_service_valid_file(tmp_path: Path) -> None:
     config = AppConfig(
-        database_uri="sqlite://", upload_dir=str(tmp_path), max_file_size=1024 * 1024  # type: ignore[arg-type]
+        database_uri_encrypted="encrypted", upload_dir=str(tmp_path), max_file_size=1024 * 1024
     )
     service = FileProcessingService(config)
 
@@ -20,14 +20,14 @@ def test_file_processing_service_valid_file(tmp_path: Path) -> None:
 
 
 def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
-    config = AppConfig(database_uri="sqlite://", upload_dir=str(tmp_path))  # type: ignore[arg-type]
+    config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
     service = FileProcessingService(config)
     with pytest.raises(ValueError, match="Invalid file path."):
         service.read_file("../../../etc/passwd")
 
 
 def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
-    config = AppConfig(database_uri="sqlite://", upload_dir=str(tmp_path))  # type: ignore[arg-type]
+    config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
     service = FileProcessingService(config)
 
     with pytest.raises(FileProcessingError, match="File processing failed."):
@@ -35,7 +35,7 @@ def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
 
 
 def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
-    config = AppConfig(database_uri="sqlite://", upload_dir=str(tmp_path), max_file_size=10)  # type: ignore[arg-type]
+    config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path), max_file_size=10)
     service = FileProcessingService(config)
 
     test_file = tmp_path / "large_file.txt"
