@@ -60,3 +60,52 @@ async def test_llm_gateway_request_error() -> None:
             with pytest.raises(LLMError, match="LLM API request failed due to a network error."):
                 await gateway.generate("test prompt")
         await gateway.close()
+
+@pytest.mark.asyncio
+async def test_ssrf_dns_fail(monkeypatch: pytest.MonkeyPatch) -> None:
+    import socket
+
+    from httpcore._backends.anyio import AnyIOBackend
+
+    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    def mock_getaddrinfo(*args: object, **kwargs: object) -> list[object]:
+        msg = "dns failed"
+        raise socket.gaierror(msg)
+    monkeypatch.setattr(socket, "getaddrinfo", mock_getaddrinfo)
+    backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
+    with pytest.raises(ValueError, match="DNS resolution failed"):
+        await backend.connect_tcp("openrouter.ai", 80)
+
+@pytest.mark.asyncio
+async def test_ssrf_disallowed_host() -> None:
+    from httpcore._backends.anyio import AnyIOBackend
+
+    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
+    with pytest.raises(ValueError, match="is not in the allowed list"):
+        await backend.connect_tcp("malicious.com", 80)
+
+@pytest.mark.asyncio
+async def test_ssrf_private_ip(monkeypatch: pytest.MonkeyPatch) -> None:
+    import socket
+
+    from httpcore._backends.anyio import AnyIOBackend
+
+    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    def mock_getaddrinfo(*args: object, **kwargs: object) -> list[tuple[int, int, int, str, tuple[str, int]]]:
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('127.0.0.1', 80))]
+    monkeypatch.setattr(socket, "getaddrinfo", mock_getaddrinfo)
+    backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
+    with pytest.raises(ValueError, match="Disallowed private or loopback IP"):
+        await backend.connect_tcp("openrouter.ai", 80)
+
+@pytest.mark.asyncio
+async def test_unix_socket() -> None:
+    import contextlib
+
+    from httpcore._backends.anyio import AnyIOBackend
+
+    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
+    with contextlib.suppress(Exception):
+        await backend.connect_unix_socket("fake_path")

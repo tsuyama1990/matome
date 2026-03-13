@@ -1,6 +1,10 @@
+import ipaddress
 import logging
 import os
+import socket
+from typing import Any
 
+import httpcore
 import httpx
 
 from src.config.settings import ModelConfig
@@ -12,12 +16,79 @@ class LLMError(Exception):
     """Custom exception for LLM operations."""
 
 
+class SSRFProtectedBackend(httpcore.AsyncNetworkBackend):
+    """Custom network backend to prevent SSRF and DNS Rebinding."""
+
+    def __init__(self, original_backend: httpcore.AsyncNetworkBackend, allowed_hosts: list[str]) -> None:
+        self._original_backend = original_backend
+        self._allowed_hosts = allowed_hosts
+
+    async def connect_tcp(
+        self,
+        host: str,
+        port: int,
+        timeout: float | None = None,
+        local_address: str | None = None,
+        socket_options: Any | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        """Connects via TCP with strict IP validation."""
+        if host not in self._allowed_hosts:
+            msg = f"Host {host} is not in the allowed list."
+            raise ValueError(msg)
+
+        try:
+            addr_info = socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM)
+            ip: str = str(addr_info[0][4][0])
+        except socket.gaierror as e:
+            msg = f"DNS resolution failed for {host}"
+            raise ValueError(msg) from e
+
+        ip_obj = ipaddress.ip_address(ip)
+        if ip_obj.is_private or ip_obj.is_loopback:
+            msg = "SSRF Attempt: Disallowed private or loopback IP."
+            raise ValueError(msg)
+
+        return await self._original_backend.connect_tcp(
+            ip, port, timeout=timeout, local_address=local_address, socket_options=socket_options
+        )
+
+    async def connect_unix_socket(
+        self,
+        path: str,
+        timeout: float | None = None,
+        socket_options: Any | None = None,
+    ) -> httpcore.AsyncNetworkStream:
+        """Connects via UNIX socket."""
+        return await self._original_backend.connect_unix_socket(
+            path, timeout=timeout, socket_options=socket_options
+        )
+
+
+class SecureAsyncHTTPTransport(httpx.AsyncHTTPTransport):
+    """HTTP transport with secure network backend injection."""
+
+    def __init__(self, allowed_hosts: list[str], *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        original_backend = self._pool._network_backend
+        protected_backend = SSRFProtectedBackend(
+            original_backend=original_backend,
+            allowed_hosts=allowed_hosts
+        )
+        self._pool._network_backend = protected_backend
+
+
 class OpenRouterGateway:
     """Gateway for OpenRouter API."""
 
     def __init__(self, config: ModelConfig) -> None:
         self._config = config
-        self._client = httpx.AsyncClient(timeout=self._config.llm_timeout)
+
+        transport = SecureAsyncHTTPTransport(allowed_hosts=self._config.allowed_hosts)
+
+        self._client = httpx.AsyncClient(
+            timeout=self._config.llm_timeout,
+            transport=transport
+        )
 
     async def generate(self, prompt: str) -> str:
         """Generates text from a prompt."""

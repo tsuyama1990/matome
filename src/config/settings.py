@@ -32,5 +32,9 @@ class ModelConfig(BaseSettings):
     llm_timeout: float = Field(
         default=30.0, gt=0.0, description="The default timeout for LLM API requests in seconds."
     )
+    allowed_hosts: list[str] = Field(
+        default_factory=lambda: ["openrouter.ai"],
+        description="List of allowed hostnames for external API calls to prevent SSRF.",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")

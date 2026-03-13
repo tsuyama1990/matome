@@ -1,8 +1,11 @@
-from unittest import mock
-import pytest
-from src.application import NLPService, NLPModelLoadError
-from src.domain_models import SemanticChunk, ChunkMetadata
 import uuid
+from unittest import mock
+
+import pytest
+
+from src.application import NLPModelLoadError, NLPService
+from src.domain_models import ChunkMetadata, SemanticChunk
+
 
 def test_nlp_service_load_success() -> None:
     with mock.patch("spacy.load") as mock_load:
