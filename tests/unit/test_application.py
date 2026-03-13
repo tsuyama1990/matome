@@ -103,11 +103,10 @@ async def test_raptor_engine_cluster_chunks() -> None:
 
 def test_raptor_engine_cluster_edge_cases() -> None:
     import numpy as np
+
     from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 
-    llm = DummyLLM()
     clustering = UMAPGMMClusteringStrategy()
-    engine = RAPTOREngine(llm=llm, clustering_strategy=clustering, max_levels=2, max_clusters=2)
 
     # Test empty array (must have shape length 2 but empty size)
     empty = np.array([[]])

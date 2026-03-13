@@ -46,7 +46,7 @@ src/domain_models/exceptions.py           3      0   100%
 src/domain_models/graph_state.py         33      0   100%
 src/infrastructure/__init__.py            0      0   100%
 src/infrastructure/clustering.py         70     20    71%   15-16, 24-25, 30-31, 39, 55-62, 67-68, 96-98
-src/infrastructure/llm_gateway.py       151     38    75%   58, 112-142, 162-163, 167-168, 170-171, 173-174, 176-177, 179-180, 197-198, 201-202, 212-213, 223-224, 260-263, 268-272, 274-276
+src/infrastructure/llm_gateway.py       148     40    73%   58, 112-142, 162-163, 167-168, 170-171, 173-174, 176-177, 179-180, 196-197, 200-201, 205-206, 214-215, 226-227, 263-266, 271-275, 277-279
 src/infrastructure/test_services.py      79     17    78%   63-64, 69-71, 73-75, 88-89, 94-97, 108-110
 src/interfaces/__init__.py                2      0   100%
 src/interfaces/api_router.py             51     10    80%   40-42, 50-52, 63-64, 79-80
@@ -54,5 +54,5 @@ src/interfaces/clustering.py              2      0   100%
 src/interfaces/dependencies.py           59     25    58%   47-48, 74-115
 src/interfaces/repository.py              3      0   100%
 -------------------------------------------------------------------
-TOTAL                                   747    139    81%
-================== 56 passed, 4 warnings in 81.16s (0:01:21) ===================
+TOTAL                                   744    141    81%
+================== 56 passed, 4 warnings in 79.79s (0:01:19) ===================

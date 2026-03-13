@@ -42,7 +42,7 @@ class UMAPGMMClusteringStrategy(ClusteringStrategy):
             return arr
 
         n_neighbors = min(15, n_samples - 1)
-        n_components = min(arr.shape[1], min(10, n_samples - 2))
+        n_components = min(arr.shape[1], 10, n_samples - 2)
 
         try:
             reducer = umap.UMAP(

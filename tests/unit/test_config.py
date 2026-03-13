@@ -9,7 +9,6 @@ from src.config.settings import AppConfig, ModelConfig
 
 def test_app_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test AppConfig loads correctly when env variables are provided."""
-    from src.config.security import SecurityService
 
     with mock.patch.dict(
         os.environ,
@@ -21,8 +20,8 @@ def test_app_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_database_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test DatabaseConfig loads correctly when env variables are provided."""
-    from src.config.settings import DatabaseConfig
     from src.config.security import SecurityService
+    from src.config.settings import DatabaseConfig
 
     encryption_key = "abcdefghijklmnopqrstuvwxyz12345678901234567="
     monkeypatch.setenv("ENCRYPTION_KEY", encryption_key)

@@ -191,8 +191,7 @@ class OpenRouterGateway:
         await self.close()
 
     def _sanitize_prompt(self, prompt: str) -> str:
-        """Sanitizes input prompt string using a whitelist pattern."""
-        import re
+        """Sanitizes input prompt string using basic validation."""
         if not prompt:
             msg = "Prompt cannot be empty."
             raise ValueError(msg)
@@ -201,16 +200,20 @@ class OpenRouterGateway:
             msg = "Prompt exceeds maximum allowed length."
             raise ValueError(msg)
 
-        allowed_pattern = re.compile(r"^[a-zA-Z0-9\s\.,;:!?()\[\]\{\}\"'<>@#\$%\^&\*\-_\+=`~\\|/]+$")
-        sanitized_chars = []
-        for char in prompt:
-            if allowed_pattern.match(char) or char in "\n\r\t":
-                sanitized_chars.append(char)
-
-        sanitized_prompt = "".join(sanitized_chars)
-        if not sanitized_prompt:
-            msg = "Prompt is empty after sanitization."
+        # Block null bytes to prevent C-style string injections
+        if "\0" in prompt:
+            msg = "Prompt contains null bytes."
             raise ValueError(msg)
+
+        # Allow formatting but strip control characters other than standard whitespaces
+        sanitized_prompt = "".join(
+            char for char in prompt if char.isprintable() or char in "\n\r\t"
+        )
+
+        if not sanitized_prompt.strip():
+            msg = "Prompt is effectively empty after sanitization."
+            raise ValueError(msg)
+
         return sanitized_prompt
 
     async def generate(self, prompt: str) -> str:

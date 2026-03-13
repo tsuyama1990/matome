@@ -7,8 +7,8 @@ import uuid
 import pytest
 
 from src.application import PivotKJEngine, RAPTOREngine, SQ3REngine
-from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 from src.domain_models import ChunkMetadata, SemanticChunk
+from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 from src.infrastructure.test_services import SimpleParsingService
 
 
