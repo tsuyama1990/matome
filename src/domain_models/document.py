@@ -33,14 +33,18 @@ class SemanticChunk(BaseModel):
         """Validates that the embedding matches the required dimensions and contains valid floats."""
         import math
 
+        if not v:
+            msg = "Embedding cannot be empty."
+            raise ValueError(msg)
+
         valid_dimensions = {256, 384, 512, 768, 1024, 1536, 2048, 3072}
         if len(v) not in valid_dimensions:
             msg = f"Embedding length {len(v)} is invalid. Must be one of: {sorted(valid_dimensions)}."
             raise ValueError(msg)
 
         for val in v:
-            if not isinstance(val, float) and not isinstance(val, int):
-                msg = "Embedding elements must be numbers."
+            if not isinstance(val, float):
+                msg = "Embedding elements must be floats."
                 raise TypeError(msg)
             if math.isnan(val) or math.isinf(val):
                 msg = "Embedding elements cannot be NaN or Inf."

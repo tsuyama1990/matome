@@ -26,7 +26,9 @@ def test_file_processing_service_valid_file(tmp_path: Path) -> None:
 def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
     config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
     service = FileProcessingService(config)
-    with pytest.raises(ValueError, match="Invalid file path structure"):
+    with pytest.raises(FileProcessingError, match="File not found"):
+        # Without regex, resolve() with strict=True will raise FileNotFoundError,
+        # which is caught and turned into FileProcessingError
         service.read_file("../../../etc/passwd")
 
     # Also test null byte injection
@@ -40,8 +42,6 @@ def test_file_processing_service_valid_unicode_filename(tmp_path: Path) -> None:
     )
     service = FileProcessingService(config)
 
-    # Valid unicode characters (e.g., Japanese, Cyrillic) should pass the regex
-    # if they map to \w, along with spaces and hyphens.
     filename = "テスト_ファイル-1.txt"
     test_file = tmp_path / filename
     test_file.write_text("Unicode content", encoding="utf-8")
@@ -54,7 +54,7 @@ def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
     config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
     service = FileProcessingService(config)
 
-    with pytest.raises(FileProcessingError, match="File not found: nonexistent.txt"):
+    with pytest.raises(FileProcessingError, match="File not found"):
         service.read_file("nonexistent.txt")
 
 

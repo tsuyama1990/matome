@@ -116,7 +116,7 @@ def test_raptor_engine_cluster_edge_cases() -> None:
 
     # Test two items
     two = np.array([[0.1, 0.2], [0.3, 0.4]])
-    assert engine._cluster_reduced_embeddings(two) == {0: [0, 1]}
+    assert engine._cluster_reduced_embeddings(two) == {0: [0], 1: [1]}
 
     # Test identical items that would cause GMM to fail with singular covariance
     identical = np.array([[0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2]])

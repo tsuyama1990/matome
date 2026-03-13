@@ -21,39 +21,39 @@ class FileProcessingService:
 
     def read_file(self, filename: str) -> str:
         """Securely reads a file from the upload directory."""
-        import unicodedata
-
-        # Normalize the filename to prevent Unicode-based path traversal tricks
-        normalized_filename = unicodedata.normalize('NFKD', filename)
-
-        # Allow standard word characters (including international ones), hyphens, underscores, dots, and spaces.
-        # Explicitly deny forward slashes, backslashes, or null bytes.
-        if not re.match(r"^[\w\-. ]+$", normalized_filename) or "\0" in normalized_filename:
-            msg = f"Invalid file path structure for: {filename}"
+        # Explicitly deny null bytes to prevent C-style injection attacks.
+        if "\0" in filename:
+            msg = "Invalid file path structure"
             raise ValueError(msg)
 
         try:
-            resolved_path = self._upload_dir.joinpath(normalized_filename).resolve(strict=True)
+            # We explicitly prevent path traversal using strict resolution and
+            # checking if the target remains in the designated upload dir.
+            resolved_path = self._upload_dir.joinpath(filename).resolve(strict=True)
             if not resolved_path.is_relative_to(self._upload_dir):
-                msg = f"Resolved path is outside upload directory for: {filename}"
+                msg = "Resolved path is outside upload directory"
                 raise ValueError(msg)
 
-            if resolved_path.stat().st_size > self._max_file_size:
-                msg = f"File size exceeds the allowed limit for: {filename}"
+            file_size = resolved_path.stat().st_size
+            if file_size > self._max_file_size:
+                msg = "File size exceeds the allowed limit"
                 raise FileProcessingError(msg)
         except FileNotFoundError as e:
-            logger.exception("File not found: %s", filename)
-            msg = f"File not found: {filename}"
+            logger.exception("File not found.")
+            msg = "File not found"
             raise FileProcessingError(msg) from e
         except OSError as e:
-            logger.exception("OS error during file resolution for: %s", filename)
-            msg = f"File resolution failed due to OS error for: {filename}"
+            logger.exception("OS error during file resolution.")
+            msg = "File resolution failed due to OS error"
             raise FileProcessingError(msg) from e
 
         content_chunks = []
         total_size = 0
         try:
             with resolved_path.open(encoding="utf-8") as f:
+                # The file size is already strictly checked above against limits
+                # (via st_size). However, we continue to incrementally chunk to
+                # keep streaming limits bounded per read to respect memory limits.
                 while chunk := f.read(1024 * 1024):  # 1MB chunks
                     total_size += len(chunk.encode("utf-8"))
                     if total_size > self._max_file_size:

@@ -11,6 +11,8 @@ import numpy as np
 
 with contextlib.suppress(ImportError):
     import umap
+    from sklearn.decomposition import PCA
+    from sklearn.mixture import GaussianMixture
 
 from src.domain_models.document import RaptorNode, SemanticChunk
 from src.domain_models.exceptions import ProcessingError, RaptorError
@@ -100,31 +102,49 @@ class RAPTOREngine:
 
     def _reduce_embeddings(self, embeddings: "Any") -> "Any":
         n_samples = len(embeddings)
+
+        if n_samples == 0:
+            return embeddings
+
         n_neighbors = min(15, n_samples - 1) if n_samples > 2 else 2
+        n_components = min(2, n_samples)
 
         # Avoid running UMAP on extremely small sample sets to prevent spectral
         # initialization issues in low-dimensional space
         if n_samples > 3:
             reducer = umap.UMAP(
                 n_neighbors=n_neighbors,
-                n_components=min(2, n_samples),
+                n_components=n_components,
                 metric="cosine",
                 random_state=42,
             )
             return reducer.fit_transform(embeddings)
+
+        # Use PCA as fallback to ensure a valid 2D array is returned
+        # without spectral initialization issues.
+        if embeddings.shape[1] > n_components:
+            pca = PCA(n_components=n_components, random_state=42)
+            return pca.fit_transform(embeddings)
+
         return embeddings
 
     def _cluster_reduced_embeddings(self, embeddings: "Any") -> dict[int, list[int]]:
-        from sklearn.mixture import GaussianMixture
-
         n_samples = len(embeddings)
         if n_samples == 0:
             return {}
 
         n_clusters = min(self._max_clusters, n_samples)
 
-        # If we have very few samples, bypass GMM to avoid ill-conditioned covariance matrices
+        # Verify embedding dimension consistency
+        if len(embeddings.shape) != 2:
+            return {0: list(range(n_samples))}
+
+        # If we have very few samples, explicitly group them to form a hierarchy
+        # instead of dumping them all into a single flat cluster
         if n_samples < 3 or n_samples <= n_clusters:
+            if n_samples == 2:
+                # Still cluster them separately to maintain tree generation depth if allowed
+                return {0: [0], 1: [1]}
             return {0: list(range(n_samples))}
 
         try:
