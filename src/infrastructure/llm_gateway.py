@@ -17,19 +17,17 @@ class OpenRouterGateway:
 
     def __init__(self, config: ModelConfig) -> None:
         self._config = config
-        self._client = httpx.AsyncClient(timeout=30.0)
+        self._client = httpx.AsyncClient(timeout=self._config.llm_timeout)
 
     async def generate(self, prompt: str) -> str:
         """Generates text from a prompt."""
         api_key = os.environ.get("OPENROUTER_API_KEY")
-        if not api_key:
-            msg = "OPENROUTER_API_KEY environment variable is missing"
+        if not api_key or len(api_key.strip()) < 10:
+            msg = "OPENROUTER_API_KEY environment variable is missing or invalid."
             raise ValueError(msg)
 
         headers = {
-            "Authorization": f"Bearer {api_key}",
-            "HTTP-Referer": "https://github.com/matome",
-            "X-Title": "matome",
+            "Authorization": f"Bearer {api_key.strip()}",
         }
 
         payload = {
@@ -39,7 +37,7 @@ class OpenRouterGateway:
 
         try:
             response = await self._client.post(
-                self._config.openrouter_api_url,
+                str(self._config.openrouter_api_url),
                 json=payload,
                 headers=headers,
             )

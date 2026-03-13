@@ -17,7 +17,7 @@ async def test_llm_gateway_success() -> None:
         text_reasoning_model="test-model",
         multimodal_model="test-model"
     )
-    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test_key"}, clear=True):
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "valid_test_api_key_longer_than_10_chars"}, clear=True):
         gateway = OpenRouterGateway(config)
         with patch.object(gateway._client, 'post', new_callable=AsyncMock) as mock_post:
             mock_post.return_value.raise_for_status = mock.MagicMock()
@@ -40,7 +40,7 @@ async def test_llm_gateway_missing_api_key() -> None:
 @pytest.mark.asyncio
 async def test_llm_gateway_http_error() -> None:
     config = ModelConfig()
-    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test_key"}, clear=True):
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "valid_test_api_key_longer_than_10_chars"}, clear=True):
         gateway = OpenRouterGateway(config)
         with patch.object(gateway._client, 'post', new_callable=AsyncMock) as mock_post:
             mock_post.return_value.raise_for_status = mock.MagicMock(side_effect=httpx.HTTPStatusError(
@@ -53,7 +53,7 @@ async def test_llm_gateway_http_error() -> None:
 @pytest.mark.asyncio
 async def test_llm_gateway_request_error() -> None:
     config = ModelConfig()
-    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test_key"}, clear=True):
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "valid_test_api_key_longer_than_10_chars"}, clear=True):
         gateway = OpenRouterGateway(config)
         with patch.object(gateway._client, 'post', new_callable=AsyncMock) as mock_post:
             mock_post.side_effect = httpx.RequestError("error", request=httpx.Request("POST", "url"))

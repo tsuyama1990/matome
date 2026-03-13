@@ -2,6 +2,8 @@ import logging
 import re
 from pathlib import Path
 
+from src.config.settings import AppConfig
+
 logger = logging.getLogger(__name__)
 
 
@@ -12,14 +14,15 @@ class FileProcessingError(Exception):
 class FileProcessingService:
     """Service for securely processing local files."""
 
-    def __init__(self) -> None:
-        self._upload_dir = Path("testfiles").resolve(strict=False)
+    def __init__(self, config: AppConfig) -> None:
+        self._upload_dir = Path(config.upload_dir).resolve(strict=False)
         self._upload_dir.mkdir(parents=True, exist_ok=True)
-        self._max_file_size = 50 * 1024 * 1024  # 50 MB
+        self._max_file_size = config.max_file_size
 
     def read_file(self, filename: str) -> str:
         """Securely reads a file from the upload directory."""
-        if not re.match(r"^[\w\-. ]+$", filename):
+        # Strictly prevent path traversal characters and limit to safe alphanumeric characters
+        if not re.match(r"^[a-zA-Z0-9_\-\.]+$", filename):
             msg = "Invalid file path."
             raise ValueError(msg)
 
@@ -42,13 +45,15 @@ class FileProcessingService:
             raise FileProcessingError(msg) from e
 
         content_chunks = []
+        total_size = 0
         try:
             with resolved_path.open(encoding="utf-8") as f:
                 while chunk := f.read(1024 * 1024):  # 1MB chunks
-                    content_chunks.append(chunk)
-                    if len(content_chunks) * 1024 * 1024 > self._max_file_size:
+                    total_size += len(chunk.encode("utf-8"))
+                    if total_size > self._max_file_size:
                         msg = "File size exceeds memory limits during read."
                         raise FileProcessingError(msg)
+                    content_chunks.append(chunk)
         except OSError as e:
             logger.exception("Error reading file.")
             msg = "File processing failed."

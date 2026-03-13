@@ -2,13 +2,13 @@ from pathlib import Path
 
 import pytest
 
+from src.config.settings import AppConfig
 from src.infrastructure.test_services import FileProcessingError, FileProcessingService
 
 
 def test_file_processing_service_valid_file(tmp_path: Path) -> None:
-    service = FileProcessingService()
-    service._upload_dir = tmp_path
-    service._max_file_size = 1024 * 1024
+    config = AppConfig(database_uri="sqlite://", upload_dir=str(tmp_path), max_file_size=1024 * 1024)  # type: ignore[arg-type]
+    service = FileProcessingService(config)
 
     test_file = tmp_path / "valid_file.txt"
     test_file.write_text("Hello, world!", encoding="utf-8")
@@ -16,22 +16,22 @@ def test_file_processing_service_valid_file(tmp_path: Path) -> None:
     content = service.read_file("valid_file.txt")
     assert content == "Hello, world!"
 
-def test_file_processing_service_invalid_path() -> None:
-    service = FileProcessingService()
+def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
+    config = AppConfig(database_uri="sqlite://", upload_dir=str(tmp_path))  # type: ignore[arg-type]
+    service = FileProcessingService(config)
     with pytest.raises(ValueError, match="Invalid file path."):
         service.read_file("../../../etc/passwd")
 
 def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
-    service = FileProcessingService()
-    service._upload_dir = tmp_path
+    config = AppConfig(database_uri="sqlite://", upload_dir=str(tmp_path))  # type: ignore[arg-type]
+    service = FileProcessingService(config)
 
     with pytest.raises(FileProcessingError, match="File processing failed."):
         service.read_file("nonexistent.txt")
 
 def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
-    service = FileProcessingService()
-    service._upload_dir = tmp_path
-    service._max_file_size = 10  # 10 bytes
+    config = AppConfig(database_uri="sqlite://", upload_dir=str(tmp_path), max_file_size=10)  # type: ignore[arg-type]
+    service = FileProcessingService(config)
 
     test_file = tmp_path / "large_file.txt"
     test_file.write_text("This file is way too large for the 10 byte limit.", encoding="utf-8")

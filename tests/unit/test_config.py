@@ -33,11 +33,13 @@ def test_model_config_success() -> None:
             "TEXT_FAST_MODEL": "test-model-1",
             "TEXT_REASONING_MODEL": "test-model-2",
             "MULTIMODAL_MODEL": "test-model-3",
+            "LLM_TIMEOUT": "45.0",
         },
         clear=True,
     ):
         config = ModelConfig()
-        assert config.openrouter_api_url == "https://test.openrouter.ai/api"
+        assert str(config.openrouter_api_url) == "https://test.openrouter.ai/api"
         assert config.text_fast_model == "test-model-1"
         assert config.text_reasoning_model == "test-model-2"
         assert config.multimodal_model == "test-model-3"
+        assert config.llm_timeout == 45.0
