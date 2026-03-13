@@ -1,41 +1,21 @@
-"""
-Application layer containing orchestration workflows, use cases, and AI services.
-"""
-
 import logging
 import uuid
 from collections import defaultdict
-from typing import TYPE_CHECKING
+from typing import Any
 
-import numpy as np
-
-from src.domain_models.document import RaptorNode, SemanticChunk
-from src.domain_models.exceptions import ProcessingError, RaptorError
+from src.domain_models import RaptorNode, SemanticChunk
+from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
+from src.interfaces.clustering import ClusteringStrategy
 from src.interfaces.dependencies import LLMProtocol
 
 logger = logging.getLogger(__name__)
-
-try:
-    import umap
-    from sklearn.decomposition import PCA
-    from sklearn.mixture import GaussianMixture
-    _ML_IMPORTS_SUCCESSFUL = True
-except ImportError:
-    _ML_IMPORTS_SUCCESSFUL = False
-
-if TYPE_CHECKING:
-    from spacy.language import Language
-
-
-class NLPModelLoadError(Exception):
-    """Custom exception when NLP models fail to load."""
 
 
 class NLPService:
     """Service dedicated to natural language processing and entity tagging."""
 
     def __init__(self, model_name: str = "en_core_web_sm") -> None:
-        self.nlp: Language | None = None
+        self.nlp: Any | None = None
         self.model_name = model_name
         self._load_model()
 
@@ -62,36 +42,47 @@ class NLPService:
             msg = "NLP model is not loaded."
             raise RuntimeError(msg)
 
-        # Actual implementation relying on the nlp object to extract named entities.
         for chunk in chunks:
-            if chunk.content:
-                doc = self.nlp(chunk.content)
-                # Extract specific entity types suitable for system design/analysis
-                target_labels = {"ORG", "PERSON", "GPE", "PRODUCT", "EVENT"}
-                chunk.metadata.extracted_entities = [
-                    ent.text for ent in doc.ents if ent.label_ in target_labels
-                ]
+            doc = self.nlp(chunk.content)
+            extracted_entities = []
 
-                # Basic heuristic mapping for axes based on entities
-                if any(ent.label_ in {"PERSON", "ORG"} for ent in doc.ents):
-                    chunk.metadata.actor_axis = "Detected Actor"
-                if any(ent.label_ in {"DATE", "TIME"} for ent in doc.ents):
-                    chunk.metadata.time_axis = "Detected Time"
+            # ReDoS protection: Limit maximum entities extracted per chunk to prevent memory bloat
+            for ent in doc.ents[:50]:
+                # XSS protection: Ignore any entity that looks like script injection
+                if "<script" in ent.text.lower() or "javascript:" in ent.text.lower():
+                    continue
+
+                if ent.label_ in ("PERSON", "ORG", "GPE", "PRODUCT"):
+                    extracted_entities.append(ent.text)
+
+            chunk.metadata.extracted_entities = list(set(extracted_entities))
+
+            # Basic deterministic heuristic for Time Axis (Past, Present, Future)
+            content_lower = chunk.content.lower()
+            if any(word in content_lower for word in ["yesterday", "previously", "was", "were"]):
+                chunk.metadata.time_axis = "Past"
+            elif any(word in content_lower for word in ["tomorrow", "will", "future", "next"]):
+                chunk.metadata.time_axis = "Future"
+            else:
+                chunk.metadata.time_axis = "Present"
 
 
 class RAPTOREngine:
     """
-    Engine to orchestrate UMAP and GMM clustering to form a RAPTOR tree.
+    Engine to orchestrate clustering to form a RAPTOR tree.
     Builds the tree bottom-up by clustering chunks, summarising them, and recursively
     clustering the summaries until a single root remains (or max depth is reached).
     """
 
-    def __init__(self, llm: LLMProtocol, max_levels: int = 3, max_clusters: int = 5) -> None:
-        if not _ML_IMPORTS_SUCCESSFUL:
-            msg = "Missing required ML dependencies (umap-learn, scikit-learn). Please install them to use RAPTOREngine."
-            raise RaptorError(msg)
-
+    def __init__(
+        self,
+        llm: LLMProtocol,
+        clustering_strategy: ClusteringStrategy,
+        max_levels: int = 3,
+        max_clusters: int = 5,
+    ) -> None:
         self._llm = llm
+        self._clustering_strategy = clustering_strategy
         self._max_levels = max_levels
         self._max_clusters = max_clusters
 
@@ -118,117 +109,10 @@ class RAPTOREngine:
             msg = "Failed to summarize cluster."
             raise RaptorError(msg) from e
 
-    def _reduce_embeddings(self, embeddings: np.ndarray) -> np.ndarray:
-        if not isinstance(embeddings, np.ndarray):
-            msg = f"Expected embeddings to be a numpy array, got {type(embeddings)}."
-            logger.error(msg)
-            raise TypeError(msg)
-
-        if embeddings.ndim != 2:
-            msg = f"Expected embeddings to be a 2D numpy array, got shape {embeddings.shape}."
-            logger.error(msg)
-            raise ValueError(msg)
-
-        n_samples = len(embeddings)
-
-        if n_samples == 0:
-            return embeddings
-
-        n_neighbors = min(15, n_samples - 1) if n_samples > 2 else 2
-        n_components = min(2, n_samples)
-
-        try:
-            # Avoid running UMAP on extremely small sample sets to prevent spectral
-            # initialization issues in low-dimensional space
-            if n_samples > 3:
-                reducer = umap.UMAP(
-                    n_neighbors=n_neighbors,
-                    n_components=n_components,
-                    metric="cosine",
-                    random_state=42,
-                )
-                return reducer.fit_transform(embeddings)  # type: ignore[no-any-return]
-
-            # Use PCA as fallback to ensure a valid 2D array is returned
-            # without spectral initialization issues.
-            if embeddings.shape[1] > n_components:
-                pca = PCA(n_components=n_components, random_state=42)
-                return pca.fit_transform(embeddings)  # type: ignore[no-any-return]
-        except Exception as e:
-            msg = f"Dimensionality reduction failed: {e}"
-            logger.exception(msg)
-            raise RaptorError(msg) from e
-
-        return embeddings
-
-    def _validate_embeddings_type_and_shape(self, embeddings: np.ndarray) -> None:
-        """Helper to ensure embeddings are valid 2D numpy arrays before processing."""
-        if not isinstance(embeddings, np.ndarray):
-            msg = f"Expected embeddings to be a numpy array, got {type(embeddings)}."
-            logger.error(msg)
-            raise TypeError(msg)
-
-        if len(embeddings.shape) != 2:
-            msg = f"Invalid embedding dimensions. Expected 2D array, got shape {embeddings.shape}."
-            logger.error(msg)
-            raise ValueError(msg)
-
-    def _cluster_reduced_embeddings(self, embeddings: np.ndarray) -> dict[int, list[int]]:
-        self._validate_embeddings_type_and_shape(embeddings)
-
-        n_samples = len(embeddings)
-        if n_samples == 0 or (n_samples == 1 and embeddings.shape[1] == 0):
-            return {}
-
-        n_clusters = min(self._max_clusters, n_samples)
-
-        # If we have very few samples, explicitly group them to form a hierarchy
-        # instead of dumping them all into a single flat cluster
-        if n_samples < 3 or n_samples <= n_clusters:
-            logger.warning(
-                "Sample count %d is too small for GMM clustering. "
-                "Using explicit fallback hierarchy grouping.", n_samples
-            )
-            if n_samples == 2:
-                # Still cluster them separately to maintain tree generation depth if allowed
-                return {0: [0], 1: [1]}
-            if n_samples == 1:
-                return {0: [0]}
-            return {0: list(range(n_samples))}
-
-        try:
-            gmm = GaussianMixture(n_components=n_clusters, random_state=42)
-            gmm.fit(embeddings)
-            probs = gmm.predict_proba(embeddings)
-
-            threshold = 0.2
-            clusters = defaultdict(list)
-
-            # Vectorized threshold assignment
-            above_threshold = probs > threshold
-            for i in range(n_samples):
-                # Get cluster indices where prob > threshold
-                assigned_clusters = np.where(above_threshold[i])[0]
-
-                # Soft clustering: assign to all clusters above threshold
-                for cluster_idx in assigned_clusters:
-                    clusters[int(cluster_idx)].append(i)
-
-                # Fallback: if no cluster meets the threshold, assign to the most probable one
-                if len(assigned_clusters) == 0:
-                    best_cluster = int(np.argmax(probs[i]))
-                    clusters[best_cluster].append(i)
-
-            return dict(clusters)
-        except Exception:
-            # Fallback if GMM fails (e.g. singular covariance matrix with duplicate points)
-            logger.exception("GMM clustering failed. Falling back to singular cluster.")
-            return {0: list(range(n_samples))}
-
     async def cluster_chunks(self, chunks: list[SemanticChunk]) -> list[RaptorNode]:
         """
         Builds a RAPTOR hierarchical tree from chunks.
-        Strictly applies UMAP and GaussianMixture for mathematically sound clustering.
+        Strictly applies clustering strategy for mathematically sound clustering.
         """
 
         if not chunks:
@@ -236,13 +120,15 @@ class RAPTOREngine:
 
         all_nodes: list[RaptorNode] = []
         current_level_texts = [c.content for c in chunks]
-        current_level_embeddings = np.array([c.embedding for c in chunks])
+        current_level_embeddings = [c.embedding for c in chunks]
         current_level_ids = [str(c.id) for c in chunks]
 
         level = 0
         while level < self._max_levels and len(current_level_texts) > 1:
-            reduced_embeddings = self._reduce_embeddings(current_level_embeddings)
-            clusters = self._cluster_reduced_embeddings(reduced_embeddings)
+            reduced_embeddings = self._clustering_strategy.reduce_dimensions(
+                current_level_embeddings
+            )
+            clusters = self._clustering_strategy.cluster(reduced_embeddings, self._max_clusters)
 
             next_level_texts = []
             next_level_embeddings = []
@@ -270,11 +156,16 @@ class RAPTOREngine:
                 next_level_texts.append(summary)
                 next_level_ids.append(node_id)
 
-                cluster_embs = np.array([current_level_embeddings[i] for i in indices])
-                next_level_embeddings.append(cluster_embs.mean(axis=0).tolist())
+                # Mean pooling for embeddings list fallback
+                cluster_embs = [current_level_embeddings[i] for i in indices]
+                if cluster_embs:
+                    mean_emb = [
+                        sum(x) / len(cluster_embs) for x in zip(*cluster_embs, strict=False)
+                    ]
+                    next_level_embeddings.append(mean_emb)
 
             current_level_texts = next_level_texts
-            current_level_embeddings = np.array(next_level_embeddings)
+            current_level_embeddings = next_level_embeddings
             current_level_ids = next_level_ids
             level += 1
 
@@ -343,7 +234,9 @@ class PivotKJEngine:
 
         axis_lower = axis.lower()
         if axis_lower not in self.ALLOWED_AXES:
-            msg = f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self.ALLOWED_AXES))}."
+            msg = (
+                f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self.ALLOWED_AXES))}."
+            )
             logger.error(msg)
             raise ValueError(msg)
 

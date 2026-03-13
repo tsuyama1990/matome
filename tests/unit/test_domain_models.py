@@ -66,6 +66,7 @@ def test_semantic_chunk_embedding_validation_failure() -> None:
 
     assert "Embedding length 3 is invalid" in str(excinfo.value)
 
+
 def test_semantic_chunk_embedding_validation_empty() -> None:
     """Test SemanticChunk raises an error if an embedding is empty."""
     metadata = ChunkMetadata(source_file="test.txt")
@@ -80,6 +81,7 @@ def test_semantic_chunk_embedding_validation_empty() -> None:
         )
 
     assert "Embedding cannot be empty" in str(excinfo.value)
+
 
 def test_enriched_document_embedding_consistency() -> None:
     """Test EnrichedDocument validates consistent embedding lengths across all chunks."""
@@ -101,14 +103,12 @@ def test_enriched_document_embedding_consistency() -> None:
         metadata=metadata,
     )
 
-    with pytest.raises(ValidationError) as excinfo:
-        EnrichedDocument(
-            document_id=uuid.uuid4(),
-            original_text="Test",
-            chunks=[chunk1, chunk2]
-        )
+    from src.domain_models.document import DocumentFactory
 
-    assert "Inconsistent embedding dimensions detected" in str(excinfo.value)
+    with pytest.raises(ValueError, match="Inconsistent embedding dimensions detected"):
+        DocumentFactory.create(
+            document_id=uuid.uuid4(), original_text="Test", chunks=[chunk1, chunk2], raptor_nodes=[]
+        )
 
 
 def test_raptor_node_defaults() -> None:
@@ -221,12 +221,13 @@ def test_graph_state_invalid_transition() -> None:
     with pytest.raises(ValueError, match="Invalid transition from INITIAL to COMPLETE"):
         state.transition_status(ProcessingStatus.COMPLETE)
 
+
 def test_semantic_chunk_embedding_validation_nan() -> None:
     """Test validation fails if embedding contains NaN or out of bounds."""
     metadata = ChunkMetadata(source_file="test.txt")
     chunk_id = uuid.uuid4()
 
-    invalid_embedding = [0.1] * 767 + [float('nan')]
+    invalid_embedding = [0.1] * 767 + [float("nan")]
     with pytest.raises(ValidationError) as excinfo:
         SemanticChunk(
             id=chunk_id,
@@ -236,7 +237,7 @@ def test_semantic_chunk_embedding_validation_nan() -> None:
         )
     assert "Embedding elements cannot be NaN or Inf" in str(excinfo.value)
 
-    invalid_embedding_inf = [0.1] * 767 + [float('inf')]
+    invalid_embedding_inf = [0.1] * 767 + [float("inf")]
     with pytest.raises(ValidationError) as excinfo:
         SemanticChunk(
             id=chunk_id,
@@ -254,6 +255,7 @@ def test_semantic_chunk_embedding_validation_nan() -> None:
         metadata=metadata,
     )
     assert chunk.embedding[-1] == 1.5
+
 
 def test_semantic_chunk_embedding_validation_overflow() -> None:
     """Test validation fails if embedding floats exceed safe overflow ranges."""

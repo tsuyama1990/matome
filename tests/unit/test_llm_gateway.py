@@ -8,9 +8,13 @@ from src.config.settings import ModelConfig
 from src.infrastructure.llm_gateway import LLMError, OpenRouterGateway
 
 
-def setup_encryption_env(monkeypatch: pytest.MonkeyPatch, key: str = "sk-valid-key-longer-than-8-chars") -> None:
+def setup_encryption_env(
+    monkeypatch: pytest.MonkeyPatch,
+    key: str = "sk-valid-key-longer-than-50-characters-for-testing-12345",
+) -> None:
     """Helper to setup encrypted API key and encryption key."""
     from src.config.security import SecurityService
+
     encryption_key = "abcdefghijklmnopqrstuvwxyz12345678901234567="
     monkeypatch.setenv("ENCRYPTION_KEY", encryption_key)
     service = SecurityService()
@@ -19,8 +23,15 @@ def setup_encryption_env(monkeypatch: pytest.MonkeyPatch, key: str = "sk-valid-k
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_success(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Mock DNS resolution to return a public IP
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
+
     from pydantic import AnyHttpUrl
+
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://test.com/api"),
         text_fast_model="test-model",
@@ -40,8 +51,13 @@ async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_missing_api_key(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
     from pydantic import AnyHttpUrl
+
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://test.com/api"),
         text_fast_model="test-model",
@@ -51,13 +67,20 @@ async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> N
     )
     monkeypatch.setenv("ENCRYPTION_KEY", "abcdefghijklmnopqrstuvwxyz12345678901234567=")
     monkeypatch.delenv("OPENROUTER_API_KEY_ENCRYPTED", raising=False)
-    with pytest.raises(ValueError, match="OPENROUTER_API_KEY_ENCRYPTED environment variable is missing."):
+    with pytest.raises(
+        ValueError, match="OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
+    ):
         OpenRouterGateway(config)
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_invalid_api_key_format(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
     from pydantic import AnyHttpUrl
+
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://test.com/api"),
         text_fast_model="test-model",
@@ -67,13 +90,20 @@ async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatc
     )
     setup_encryption_env(monkeypatch, key="invalid-format-key")
     async with OpenRouterGateway(config) as gateway:
-        with pytest.raises(ValueError, match="Decrypted API key does not match expected format."):
+        with pytest.raises(
+            ValueError, match="Decrypted API key does not match expected OpenRouter format."
+        ):
             await gateway.generate("test prompt")
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_http_error(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
     from pydantic import AnyHttpUrl
+
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://test.com/api"),
         text_fast_model="test-model",
@@ -94,8 +124,13 @@ async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_request_error(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
     from pydantic import AnyHttpUrl
+
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://test.com/api"),
         text_fast_model="test-model",
@@ -109,7 +144,9 @@ async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> Non
             mock_post.side_effect = httpx.RequestError(
                 "error", request=httpx.Request("POST", "url")
             )
-            with pytest.raises(LLMError, match="LLM API request failed due to a network error after retries."):
+            with pytest.raises(
+                LLMError, match="LLM API request failed due to a network error after retries."
+            ):
                 await gateway.generate("test prompt")
 
 
@@ -119,7 +156,7 @@ async def test_ssrf_dns_fail(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from httpcore._backends.anyio import AnyIOBackend
 
-    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    from src.infrastructure.network import SSRFProtectedBackend
 
     def mock_getaddrinfo(*args: object, **kwargs: object) -> list[object]:
         msg = "dns failed"
@@ -135,7 +172,7 @@ async def test_ssrf_dns_fail(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_ssrf_disallowed_host() -> None:
     from httpcore._backends.anyio import AnyIOBackend
 
-    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    from src.infrastructure.network import SSRFProtectedBackend
 
     backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
     with pytest.raises(ValueError, match="is not in the allowed list"):
@@ -148,7 +185,7 @@ async def test_ssrf_private_ip(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from httpcore._backends.anyio import AnyIOBackend
 
-    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    from src.infrastructure.network import SSRFProtectedBackend
 
     def mock_getaddrinfo(
         *args: object, **kwargs: object
@@ -167,17 +204,20 @@ async def test_unix_socket() -> None:
 
     from httpcore._backends.anyio import AnyIOBackend
 
-    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    from src.infrastructure.network import SSRFProtectedBackend
 
     backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
     with contextlib.suppress(Exception):
         await backend.connect_unix_socket("fake_path")
 
+
 @pytest.mark.asyncio
 async def test_secure_transport_allowed_hosts_validation() -> None:
-    from src.infrastructure.llm_gateway import SecureAsyncHTTPTransport
+    from src.infrastructure.network import SecureAsyncHTTPTransport
 
-    with pytest.raises(ValueError, match="Invalid domain name in allowed_hosts: http://invalid-domain.com"):
+    with pytest.raises(
+        ValueError, match="Invalid domain name in allowed_hosts: http://invalid-domain.com"
+    ):
         SecureAsyncHTTPTransport(allowed_hosts=["http://invalid-domain.com"])
 
     with pytest.raises(ValueError, match="Invalid domain name in allowed_hosts: 127.0.0.1"):

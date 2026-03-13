@@ -29,7 +29,7 @@ class DIContainer:
     def __init__(self) -> None:
         self._factories: dict[type[Any], Callable[[], Any]] = {}
         self._singletons: dict[type[Any], Any] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._resolving: set[type[Any]] = set()
 
     def register(self, interface: type[T], factory: Callable[[], T]) -> None:
@@ -69,36 +69,64 @@ class DIContainer:
         return getattr(module, class_name)  # type: ignore[no-any-return]
 
 
-def bootstrap_application_services(container: DIContainer) -> None:
-    """Helper to cleanly register application services to the DI container."""
-    from src.application import NLPService, PivotKJEngine, RAPTOREngine, SQ3REngine
-    from src.config.settings import AppConfig
-
-    # Validate essential configurations and protocols exist prior to booting engines.
+def validate_container(container: DIContainer) -> None:
+    """Validates that necessary protocols are registered."""
     if LLMProtocol not in container._factories and LLMProtocol not in container._singletons:
         msg = "LLMProtocol must be registered in the DI container before bootstrapping application services."
         raise RuntimeError(msg)
 
-    # Register RAPTOREngine
+
+def register_raptor_engine(container: DIContainer) -> None:
+    from src.application import RAPTOREngine
+
     def raptor_factory() -> RAPTOREngine:
+        from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+        from src.interfaces.clustering import ClusteringStrategy
+
+        if (
+            ClusteringStrategy not in container._factories
+            and ClusteringStrategy not in container._singletons
+        ):
+            container.register(ClusteringStrategy, UMAPGMMClusteringStrategy)  # type: ignore[type-abstract]
+
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
-        return RAPTOREngine(llm=llm)
+        clustering_strategy = container.resolve(ClusteringStrategy)  # type: ignore[type-abstract]
+        return RAPTOREngine(llm=llm, clustering_strategy=clustering_strategy)
 
     container.register(RAPTOREngine, raptor_factory)
 
-    # Register SQ3REngine
+
+def register_sq3r_engine(container: DIContainer) -> None:
+    from src.application import SQ3REngine
+
     def sq3r_factory() -> SQ3REngine:
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
         return SQ3REngine(llm=llm)
 
     container.register(SQ3REngine, sq3r_factory)
 
-    # Register PivotKJEngine
+
+def register_pivot_kj_engine(container: DIContainer) -> None:
+    from src.application import PivotKJEngine
+
     container.register(PivotKJEngine, PivotKJEngine)
 
-    # Register NLPService
+
+def register_nlp_service(container: DIContainer) -> None:
+    from src.application import NLPService
+    from src.config.settings import AppConfig
+
     def nlp_factory() -> NLPService:
         config = container.resolve(AppConfig)
         return NLPService(model_name=config.spacy_model)
 
     container.register(NLPService, nlp_factory)
+
+
+def bootstrap_application_services(container: DIContainer) -> None:
+    """Helper to cleanly register application services to the DI container."""
+    validate_container(container)
+    register_raptor_engine(container)
+    register_sq3r_engine(container)
+    register_pivot_kj_engine(container)
+    register_nlp_service(container)

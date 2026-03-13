@@ -1,17 +1,20 @@
 """
 End-to-End tests mapping to the entire user journey.
 """
+
 import uuid
 
 import pytest
 
 from src.application import PivotKJEngine, RAPTOREngine, SQ3REngine
 from src.domain_models import ChunkMetadata, SemanticChunk
+from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 from src.infrastructure.test_services import SimpleParsingService
 
 
 class MockE2ELLM:
     """Mock LLM for E2E tests."""
+
     async def generate(self, prompt: str) -> str:
         if "feedback" in prompt.lower():
             return "Good job. Correct."
@@ -21,6 +24,7 @@ class MockE2ELLM:
             return "Executive approval is strictly needed if the budget exceeds 5000."
 
         raise ValueError("Unexpected prompt without context: " + prompt)
+
 
 @pytest.mark.asyncio
 async def test_uat_01_quick_start() -> None:
@@ -38,12 +42,17 @@ async def test_uat_01_quick_start() -> None:
                 id=uuid.uuid4(),
                 content=content,
                 embedding=[float(i) / 10.0] * 768,
-                metadata=ChunkMetadata(source_file="testfiles/test_text.txt", actor_axis="Executive" if "Executive" in content else "System")
+                metadata=ChunkMetadata(
+                    source_file="testfiles/test_text.txt",
+                    actor_axis="Executive" if "Executive" in content else "System",
+                ),
             )
         )
 
     llm = MockE2ELLM()
-    raptor = RAPTOREngine(llm=llm, max_levels=2, max_clusters=2)
+    raptor = RAPTOREngine(
+        llm=llm, clustering_strategy=UMAPGMMClusteringStrategy(), max_levels=2, max_clusters=2
+    )
 
     nodes = await raptor.cluster_chunks(chunks)
     assert len(nodes) > 0
@@ -65,5 +74,8 @@ async def test_uat_01_quick_start() -> None:
 
     assert "Executive" in clusters
     assert len(clusters["Executive"]) == 1
-    assert clusters["Executive"][0].content == "Executive approval is strictly needed if the budget exceeds 5000."
+    assert (
+        clusters["Executive"][0].content
+        == "Executive approval is strictly needed if the budget exceeds 5000."
+    )
     assert "System" in clusters

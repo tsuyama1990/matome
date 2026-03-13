@@ -4,3 +4,7 @@ class ProcessingError(Exception):
 
 class RaptorError(Exception):
     """Exception raised when an error occurs during RAPTOR generation."""
+
+
+class NLPModelLoadError(Exception):
+    """Exception raised when the NLP model fails to load."""
