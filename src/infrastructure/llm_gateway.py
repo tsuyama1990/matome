@@ -19,7 +19,9 @@ class LLMError(Exception):
 class SSRFProtectedBackend(httpcore.AsyncNetworkBackend):
     """Custom network backend to prevent SSRF and DNS Rebinding."""
 
-    def __init__(self, original_backend: httpcore.AsyncNetworkBackend, allowed_hosts: list[str]) -> None:
+    def __init__(
+        self, original_backend: httpcore.AsyncNetworkBackend, allowed_hosts: list[str]
+    ) -> None:
         self._original_backend = original_backend
         self._allowed_hosts = allowed_hosts
 
@@ -71,8 +73,7 @@ class SecureAsyncHTTPTransport(httpx.AsyncHTTPTransport):
         super().__init__(*args, **kwargs)
         original_backend = self._pool._network_backend
         protected_backend = SSRFProtectedBackend(
-            original_backend=original_backend,
-            allowed_hosts=allowed_hosts
+            original_backend=original_backend, allowed_hosts=allowed_hosts
         )
         self._pool._network_backend = protected_backend
 
@@ -85,10 +86,7 @@ class OpenRouterGateway:
 
         transport = SecureAsyncHTTPTransport(allowed_hosts=self._config.allowed_hosts)
 
-        self._client = httpx.AsyncClient(
-            timeout=self._config.llm_timeout,
-            transport=transport
-        )
+        self._client = httpx.AsyncClient(timeout=self._config.llm_timeout, transport=transport)
 
     async def generate(self, prompt: str) -> str:
         """Generates text from a prompt."""
@@ -103,7 +101,7 @@ class OpenRouterGateway:
 
         payload = {
             "model": self._config.text_reasoning_model,
-            "messages": [{"role": "user", "content": prompt}]
+            "messages": [{"role": "user", "content": prompt}],
         }
 
         try:

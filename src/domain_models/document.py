@@ -24,9 +24,7 @@ class SemanticChunk(BaseModel):
 
     id: UUID = Field(description="Unique identifier for the chunk.")
     content: str = Field(description="The text content.")
-    embedding: list[float] = Field(
-        description="Vector embedding representation of the chunk."
-    )
+    embedding: list[float] = Field(description="Vector embedding representation of the chunk.")
     metadata: ChunkMetadata = Field(description="Strictly typed metadata.")
 
     @field_validator("embedding")

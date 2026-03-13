@@ -49,4 +49,5 @@ class NLPService:
                 doc = self.nlp(chunk.content)
                 chunk.metadata.extracted_entities = [ent.text for ent in doc.ents]
 
+
 __all__ = ["NLPModelLoadError", "NLPService"]
