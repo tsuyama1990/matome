@@ -149,6 +149,11 @@ class OpenRouterGateway:
         self._config = config
         self._client: httpx.AsyncClient | None = None
 
+        self._validate_environment()
+        self._validate_allowed_hosts()
+        self._validate_api_url()
+        self._validate_models()
+
         # Security: strictly validate the encrypted API key before assigning it
         encrypted_key = os.environ.get("OPENROUTER_API_KEY_ENCRYPTED")
         if not encrypted_key or not encrypted_key.strip():
@@ -156,28 +161,80 @@ class OpenRouterGateway:
             raise ValueError(msg)
         self._encrypted_api_key = encrypted_key
 
-        # Verify ENCRYPTION_KEY exists
+    def _validate_environment(self) -> None:
+        # Verify ENCRYPTION_KEY exists FIRST
         enc_key = os.environ.get("ENCRYPTION_KEY")
         if not enc_key or len(enc_key.strip()) < 44:
             msg = "ENCRYPTION_KEY environment variable is missing or invalid format."
             raise ValueError(msg)
 
-        # Validate all required ModelConfig fields
-        if not self._config.openrouter_api_url:
-            msg = "Invalid ModelConfig: openrouter_api_url is required."
+    def _validate_allowed_hosts(self) -> None:
+        # Validate allowed_hosts first for SSRF protection
+        if not self._config.allowed_hosts or not isinstance(self._config.allowed_hosts, list):
+            msg = "Invalid ModelConfig: allowed_hosts is required and must be a non-empty list."
             raise ValueError(msg)
-        if not self._config.text_reasoning_model:
-            msg = "Invalid ModelConfig: text_reasoning_model is required."
+
+        import re
+
+        domain_regex = re.compile(
+            r"^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,6}\.?$"
+        )
+        for host in self._config.allowed_hosts:
+            if not domain_regex.match(host) and host != "localhost":
+                msg = f"Invalid domain name in allowed_hosts: {host}"
+                raise ValueError(msg)
+
+    def _validate_api_url(self) -> None:
+        # Validate openrouter_api_url is HTTPS and matches allowed hosts
+        api_url = str(self._config.openrouter_api_url)
+        if not api_url or not api_url.startswith("https://"):
+            msg = "Invalid ModelConfig: openrouter_api_url must be a valid HTTPS URL."
             raise ValueError(msg)
-        if not self._config.text_fast_model:
-            msg = "Invalid ModelConfig: text_fast_model is required."
+
+        from urllib.parse import urlparse
+
+        parsed_url = urlparse(api_url)
+        host_lower = parsed_url.hostname.lower() if parsed_url.hostname else ""
+        is_allowed = any(
+            host_lower == allowed.lower() or host_lower.endswith(f".{allowed.lower()}")
+            for allowed in self._config.allowed_hosts
+        )
+        if not is_allowed:
+            msg = f"API URL host {host_lower} is not in allowed_hosts."
             raise ValueError(msg)
-        if not self._config.multimodal_model:
-            msg = "Invalid ModelConfig: multimodal_model is required."
+
+    def _validate_models(self) -> None:
+        # Validate models
+        if (
+            not self._config.text_reasoning_model
+            or not isinstance(self._config.text_reasoning_model, str)
+            or not self._config.text_reasoning_model.strip()
+        ):
+            msg = "Invalid ModelConfig: text_reasoning_model must be a non-empty string."
             raise ValueError(msg)
-        if not self._config.allowed_hosts:
-            msg = "Invalid ModelConfig: allowed_hosts is required and must not be empty."
+
+        if (
+            not self._config.text_fast_model
+            or not isinstance(self._config.text_fast_model, str)
+            or not self._config.text_fast_model.strip()
+        ):
+            msg = "Invalid ModelConfig: text_fast_model must be a non-empty string."
             raise ValueError(msg)
+
+        if (
+            not self._config.multimodal_model
+            or not isinstance(self._config.multimodal_model, str)
+            or not self._config.multimodal_model.strip()
+        ):
+            msg = "Invalid ModelConfig: multimodal_model must be a non-empty string."
+            raise ValueError(msg)
+
+        # Security: strictly validate the encrypted API key before assigning it
+        encrypted_key = os.environ.get("OPENROUTER_API_KEY_ENCRYPTED")
+        if not encrypted_key or not encrypted_key.strip():
+            msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
+            raise ValueError(msg)
+        self._encrypted_api_key = encrypted_key
 
     async def __aenter__(self) -> "OpenRouterGateway":
         transport = SecureAsyncHTTPTransport(allowed_hosts=self._config.allowed_hosts)
@@ -222,9 +279,13 @@ class OpenRouterGateway:
 
         from src.config.security import SecurityService
 
-        if not self._client:
+        if self._client is None:
             msg = "Client not initialized. Use async context manager."
             raise RuntimeError(msg)
+
+        if not prompt or not isinstance(prompt, str) or not prompt.strip():
+            msg = "Prompt cannot be empty or non-string."
+            raise ValueError(msg)
 
         sanitized_prompt = self._sanitize_prompt(prompt)
 

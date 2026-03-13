@@ -80,6 +80,7 @@ class DummyLLM:
 @pytest.mark.asyncio
 async def test_raptor_engine_cluster_chunks() -> None:
     from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+
     llm = DummyLLM()
     clustering = UMAPGMMClusteringStrategy()
     engine = RAPTOREngine(llm=llm, clustering_strategy=clustering, max_levels=2, max_clusters=2)

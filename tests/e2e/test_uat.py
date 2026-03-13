@@ -50,7 +50,9 @@ async def test_uat_01_quick_start() -> None:
         )
 
     llm = MockE2ELLM()
-    raptor = RAPTOREngine(llm=llm, clustering_strategy=UMAPGMMClusteringStrategy(), max_levels=2, max_clusters=2)
+    raptor = RAPTOREngine(
+        llm=llm, clustering_strategy=UMAPGMMClusteringStrategy(), max_levels=2, max_clusters=2
+    )
 
     nodes = await raptor.cluster_chunks(chunks)
     assert len(nodes) > 0

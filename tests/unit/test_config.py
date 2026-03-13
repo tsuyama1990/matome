@@ -18,6 +18,7 @@ def test_app_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
         config = AppConfig()
         assert config.environment == "production"
 
+
 def test_database_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test DatabaseConfig loads correctly when env variables are provided."""
     from src.config.security import SecurityService

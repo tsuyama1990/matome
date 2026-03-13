@@ -11,9 +11,7 @@ from src.infrastructure.test_services import (
 
 
 def test_file_processing_service_valid_file(tmp_path: Path) -> None:
-    config = AppConfig(
-        upload_dir=str(tmp_path), max_file_size=1024 * 1024
-    )
+    config = AppConfig(upload_dir=str(tmp_path), max_file_size=1024 * 1024)
     service = FileProcessingService(config)
 
     test_file = tmp_path / "valid_file.txt"
@@ -41,9 +39,7 @@ def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
 
 
 def test_file_processing_service_valid_unicode_filename(tmp_path: Path) -> None:
-    config = AppConfig(
-        upload_dir=str(tmp_path), max_file_size=1024 * 1024
-    )
+    config = AppConfig(upload_dir=str(tmp_path), max_file_size=1024 * 1024)
     service = FileProcessingService(config)
 
     filename = "テスト_ファイル-1.txt"
@@ -63,9 +59,7 @@ def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
 
 
 def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
-    config = AppConfig(
-        upload_dir=str(tmp_path), max_file_size=10
-    )
+    config = AppConfig(upload_dir=str(tmp_path), max_file_size=10)
     service = FileProcessingService(config)
 
     test_file = tmp_path / "large_file.txt"

@@ -54,9 +54,10 @@ class UMAPGMMClusteringStrategy(ClusteringStrategy):
             return reducer.fit_transform(arr)
         except Exception as e:
             from sklearn.decomposition import PCA
+
             if arr.shape[1] > 2:
-                 pca = PCA(n_components=min(arr.shape[1], 2), random_state=42)
-                 return pca.fit_transform(arr)
+                pca = PCA(n_components=min(arr.shape[1], 2), random_state=42)
+                return pca.fit_transform(arr)
             logger.exception("Failed to reduce embeddings dimensions.")
             msg = "Failed to reduce embeddings dimensions."
             raise RuntimeError(msg) from e
