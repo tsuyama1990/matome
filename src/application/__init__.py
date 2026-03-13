@@ -27,8 +27,18 @@ class NLPService:
         self.nlp: Any | None = None
         self.model_name = model_name
         self.max_entities = max_entities
-        self.time_axis_past_words = time_axis_past_words or ["yesterday", "previously", "was", "were"]
-        self.time_axis_future_words = time_axis_future_words or ["tomorrow", "will", "future", "next"]
+        self.time_axis_past_words = time_axis_past_words or [
+            "yesterday",
+            "previously",
+            "was",
+            "were",
+        ]
+        self.time_axis_future_words = time_axis_future_words or [
+            "tomorrow",
+            "will",
+            "future",
+            "next",
+        ]
         self._load_model()
 
     def _load_model(self) -> None:
@@ -69,7 +79,7 @@ class NLPService:
             extracted_entities = []
 
             # Prevent memory bloat and DoS via massive entity injections
-            for ent in doc.ents[:self.max_entities]:
+            for ent in doc.ents[: self.max_entities]:
                 if ent.label_ in ("PERSON", "ORG", "GPE", "PRODUCT"):
                     extracted_entities.append(ent.text)
 
@@ -245,9 +255,7 @@ class PivotKJEngine:
 
         axis_lower = axis.lower()
         if axis_lower not in self._allowed_axes:
-            msg = (
-                f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self._allowed_axes))}."
-            )
+            msg = f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self._allowed_axes))}."
             logger.exception(msg)
             raise ValueError(msg)
 

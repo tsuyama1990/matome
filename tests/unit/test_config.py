@@ -1,4 +1,3 @@
-
 import pytest
 from pydantic import ValidationError
 
@@ -28,7 +27,9 @@ def test_database_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("DATABASE_URI_ENCRYPTED", encrypted_uri)
     config = DatabaseConfig()  # type: ignore[call-arg]
-    with pytest.raises(ValueError, match="Local database connections are not permitted by security policy."):
+    with pytest.raises(
+        ValueError, match="Local database connections are not permitted by security policy."
+    ):
         config.get_decrypted_database_uri.get_secret_value()
 
     # Test valid external URI
@@ -37,8 +38,10 @@ def test_database_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     config_valid = DatabaseConfig()  # type: ignore[call-arg]
     # Userinfo stripped check
-    assert config_valid.get_decrypted_database_uri.get_secret_value() == "postgresql://external.db.com/db"
-
+    assert (
+        config_valid.get_decrypted_database_uri.get_secret_value()
+        == "postgresql://external.db.com/db"
+    )
 
 
 def test_model_config_success(monkeypatch: pytest.MonkeyPatch) -> None:

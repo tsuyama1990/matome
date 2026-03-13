@@ -36,7 +36,9 @@ async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
     setup_encryption_env(monkeypatch)
 
     async with OpenRouterGateway(config) as gateway:
-        test_transport = SafeTestHTTPTransport(response_data={"choices": [{"message": {"content": "Hello World"}}]})
+        test_transport = SafeTestHTTPTransport(
+            response_data={"choices": [{"message": {"content": "Hello World"}}]}
+        )
         gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
 
         result = await gateway.generate("test prompt")
@@ -119,7 +121,9 @@ async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> Non
 
     async with OpenRouterGateway(config) as gateway:
         req = httpx.Request("POST", "https://example.com/url")
-        test_transport = SafeTestHTTPTransport(response_data={}, raise_exception=httpx.RequestError("error", request=req))
+        test_transport = SafeTestHTTPTransport(
+            response_data={}, raise_exception=httpx.RequestError("error", request=req)
+        )
         gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
 
         with pytest.raises(

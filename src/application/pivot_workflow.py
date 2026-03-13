@@ -76,12 +76,16 @@ class PivotWorkflow:
         try:
             markdown = await generate_artifact(markdown_prompt)
         except Exception:
-            logger.exception("Failed to generate markdown artifact, continuing with partial success.")
+            logger.exception(
+                "Failed to generate markdown artifact, continuing with partial success."
+            )
 
         try:
             mermaid = await generate_artifact(mermaid_prompt)
         except Exception:
-            logger.exception("Failed to generate mermaid artifact, continuing with partial success.")
+            logger.exception(
+                "Failed to generate mermaid artifact, continuing with partial success."
+            )
 
         serialized_clusters = {}
         for key, value in clusters.items():

@@ -81,7 +81,9 @@ def validate_container(container: DIContainer) -> None:
             missing.append(protocol.__name__)
 
     if missing:
-        msg = f"Critical dependencies missing: {', '.join(missing)}. Please check App initialization."
+        msg = (
+            f"Critical dependencies missing: {', '.join(missing)}. Please check App initialization."
+        )
         logger.error(msg)
         raise RuntimeError(msg)
 
@@ -158,6 +160,7 @@ def register_vector_store(container: DIContainer) -> None:
         api_key = os.environ.get("PINECONE_API_KEY")
         if not api_key:
             from src.infrastructure.vector_store import InMemoryVectorStore
+
             logger.warning("PINECONE_API_KEY not found, falling back to InMemoryVectorStore.")
             return InMemoryVectorStore()
 
@@ -207,17 +210,23 @@ def bootstrap_application_services(container: DIContainer) -> None:
     try:
         register_raptor_engine(container)
     except Exception:
-        logger.exception("RAPTOREngine failed to register. Document summarizing will be unavailable.")
+        logger.exception(
+            "RAPTOREngine failed to register. Document summarizing will be unavailable."
+        )
 
     try:
         register_sq3r_engine(container)
     except Exception:
-        logger.exception("SQ3REngine failed to register. Interactive questioning will be unavailable.")
+        logger.exception(
+            "SQ3REngine failed to register. Interactive questioning will be unavailable."
+        )
 
     try:
         register_pivot_kj_engine(container)
     except Exception:
-        logger.exception("PivotKJEngine failed to register. Pivot KJ clustering will be unavailable.")
+        logger.exception(
+            "PivotKJEngine failed to register. Pivot KJ clustering will be unavailable."
+        )
 
     try:
         register_pivot_workflow(container)

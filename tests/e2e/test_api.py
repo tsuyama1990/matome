@@ -67,6 +67,7 @@ def test_unlock_node_invalid_crlf(client: TestClient) -> None:
     data = response.json()
     assert "Answer cannot be empty" in data["detail"][0]["msg"]
 
+
 def test_unlock_node_too_long(client: TestClient) -> None:
     response = client.post("/nodes/test-node-123/unlock", json={"user_answer": "A" * 5001})
     assert response.status_code == 422

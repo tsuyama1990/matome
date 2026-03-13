@@ -35,6 +35,7 @@ class PineconeVectorStore(VectorStoreProtocol):
 
     def _validate_collection_name(self, collection_name: str) -> None:
         import re
+
         # Extremely strict whitelist: alphanumeric and underscores/hyphens only, tight length constraint
         if not re.match(r"^[a-zA-Z0-9_-]{3,63}$", collection_name):
             msg = "Invalid collection name"
@@ -46,6 +47,7 @@ class PineconeVectorStore(VectorStoreProtocol):
 
         formatted_records = []
         import html
+
         for r in records:
             if "id" not in r or "embedding" not in r:
                 msg = "Record missing required fields 'id' or 'embedding'."
@@ -64,11 +66,13 @@ class PineconeVectorStore(VectorStoreProtocol):
                 else:
                     sanitized_metadata[k] = v
 
-            formatted_records.append({
-                "id": r["id"],
-                "values": r["embedding"],
-                "metadata": sanitized_metadata,
-            })
+            formatted_records.append(
+                {
+                    "id": r["id"],
+                    "values": r["embedding"],
+                    "metadata": sanitized_metadata,
+                }
+            )
 
         response = self.client.post(
             "/vectors/upsert",
@@ -87,7 +91,7 @@ class PineconeVectorStore(VectorStoreProtocol):
         """Searches Pinecone index."""
         self._validate_collection_name(collection_name)
         if len(query_vector) > 3072:
-            msg = 'Embedding too large'
+            msg = "Embedding too large"
             raise ValueError(msg)
 
         response = self.client.post(
@@ -121,8 +125,6 @@ class PineconeVectorStore(VectorStoreProtocol):
         self.client.close()
 
 
-
-
 class InMemoryVectorStore(VectorStoreProtocol):
     """An in-memory implementation of VectorStoreProtocol for testing/foundational use."""
 
@@ -138,6 +140,7 @@ class InMemoryVectorStore(VectorStoreProtocol):
 
     def _validate_collection_name(self, collection_name: str) -> None:
         import re
+
         if not re.match(r"^[a-zA-Z0-9_-]{3,63}$", collection_name):
             msg = "Invalid collection name"
             raise ValueError(msg)
@@ -170,7 +173,7 @@ class InMemoryVectorStore(VectorStoreProtocol):
     ) -> list[dict[str, Any]]:
         self._validate_collection_name(collection_name)
         if len(query_vector) > 3072:
-            msg = 'Embedding too large'
+            msg = "Embedding too large"
             raise ValueError(msg)
 
         if collection_name not in self._collections:

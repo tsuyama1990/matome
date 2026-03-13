@@ -15,6 +15,7 @@ def test_nlp_service_load_success() -> None:
 
 def test_nlp_service_load_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     import sys
+
     monkeypatch.delitem(sys.modules, "spacy", raising=False)
     # Actually monkeypatching sys.modules to None is how it was done:
     monkeypatch.setitem(sys.modules, "spacy", None)

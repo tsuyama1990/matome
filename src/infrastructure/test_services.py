@@ -175,8 +175,14 @@ class SafeTestDocumentRepository:
 class SafeTestHTTPTransport:
     """Minimal test implementation of httpx.AsyncBaseTransport without mocking."""
 
-    def __init__(self, response_data: dict[str, Any], status_code: int = 200, raise_exception: Exception | None = None) -> None:
+    def __init__(
+        self,
+        response_data: dict[str, Any],
+        status_code: int = 200,
+        raise_exception: Exception | None = None,
+    ) -> None:
         import httpx
+
         self.response_data = response_data
         self.status_code = status_code
         self.raise_exception = raise_exception
@@ -197,8 +203,10 @@ class SafeTestHTTPTransport:
             def __init__(self, data: bytes) -> None:
                 self.data = data
                 self.yielded = False
+
             async def __aiter__(self) -> "AsyncIterator":
                 return self
+
             async def __anext__(self) -> bytes:
                 if not self.yielded:
                     self.yielded = True
