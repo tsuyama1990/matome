@@ -112,6 +112,30 @@ def register_pivot_kj_engine(container: DIContainer) -> None:
     container.register(PivotKJEngine, PivotKJEngine)
 
 
+def register_pivot_workflow(container: DIContainer) -> None:
+    from src.application.pivot_workflow import PivotWorkflow
+    from src.interfaces.repository import DocumentRepositoryProtocol
+
+    def pivot_workflow_factory() -> PivotWorkflow:
+        from src.application import PivotKJEngine
+
+        repository = container.resolve(DocumentRepositoryProtocol)  # type: ignore[type-abstract]
+        pivot_engine = container.resolve(PivotKJEngine)
+        llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+        return PivotWorkflow(repository=repository, pivot_engine=pivot_engine, llm=llm)
+
+    container.register(PivotWorkflow, pivot_workflow_factory)
+
+
+def register_vector_store(container: DIContainer) -> None:
+    from src.infrastructure.vector_store import InMemoryVectorStore
+
+    def vector_store_factory() -> VectorStoreProtocol:
+        return InMemoryVectorStore()
+
+    container.register(VectorStoreProtocol, vector_store_factory)  # type: ignore[type-abstract]
+
+
 def register_nlp_service(container: DIContainer) -> None:
     from src.application import NLPService
     from src.config.settings import AppConfig
@@ -126,7 +150,9 @@ def register_nlp_service(container: DIContainer) -> None:
 def bootstrap_application_services(container: DIContainer) -> None:
     """Helper to cleanly register application services to the DI container."""
     validate_container(container)
+    register_vector_store(container)
     register_raptor_engine(container)
     register_sq3r_engine(container)
     register_pivot_kj_engine(container)
+    register_pivot_workflow(container)
     register_nlp_service(container)

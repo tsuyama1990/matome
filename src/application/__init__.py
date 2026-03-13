@@ -3,6 +3,7 @@ import uuid
 from collections import defaultdict
 from typing import Any
 
+from src.application.pivot_workflow import PivotWorkflow
 from src.domain_models import RaptorNode, SemanticChunk
 from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
 from src.interfaces.clustering import ClusteringStrategy
@@ -259,4 +260,11 @@ class PivotKJEngine:
         return dict(clusters)
 
 
-__all__ = ["NLPModelLoadError", "NLPService", "PivotKJEngine", "RAPTOREngine", "SQ3REngine"]
+__all__ = [
+    "NLPModelLoadError",
+    "NLPService",
+    "PivotKJEngine",
+    "PivotWorkflow",
+    "RAPTOREngine",
+    "SQ3REngine",
+]

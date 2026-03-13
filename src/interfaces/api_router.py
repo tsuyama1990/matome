@@ -4,7 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_core.core_schema import ValidationInfo
 
+from src.application.pivot_workflow import PivotWorkflow
 from src.application.sq3r_service import SQ3RService
+from src.domain_models.pivot import PivotRequestPayload
 from src.interfaces.dependencies import DIContainer, LLMProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
 
@@ -87,3 +89,29 @@ async def unlock_node(
         "is_unlocked": node.is_unlocked,
         "summarized_content": node.summarized_content,
     }
+
+
+def get_pivot_workflow(
+    container: Annotated[DIContainer, Depends(get_di_container)],
+) -> PivotWorkflow:
+    try:
+        return container.resolve(PivotWorkflow)
+    except Exception as e:
+        msg = "Pivot workflow not configured."
+        raise HTTPException(status_code=500, detail=msg) from e
+
+
+@router.post("/documents/{document_id}/pivot")
+async def pivot_document(
+    document_id: str,
+    payload: PivotRequestPayload,
+    workflow: Annotated[PivotWorkflow, Depends(get_pivot_workflow)],
+) -> dict[str, Any]:
+    try:
+        result = await workflow.execute(document_id, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    else:
+        return result
