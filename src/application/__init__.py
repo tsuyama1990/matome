@@ -10,11 +10,13 @@ import numpy as np
 import spacy
 import umap
 from langgraph.graph import StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from sentence_transformers import SentenceTransformer
 from sklearn.mixture import GaussianMixture
 
+from src.config.settings import ModelConfig
 from src.domain_models.document import ChunkMetadata, RaptorNode, SemanticChunk
-from src.domain_models.exceptions import ProcessingError
+from src.domain_models.exceptions import DependencyError, ProcessingError
 from src.domain_models.graph_state import GraphState, ProcessingStatus
 from src.interfaces.dependencies import ChunkingProtocol, DocumentParserProtocol, LLMProtocol
 
@@ -22,8 +24,8 @@ from src.interfaces.dependencies import ChunkingProtocol, DocumentParserProtocol
 class SemanticChunkingService:
     """A real semantic chunking service using cosine similarity."""
 
-    def __init__(self) -> None:
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+    def __init__(self, config: ModelConfig) -> None:
+        self.model = SentenceTransformer(config.embedding_model)
 
     def chunk_text(
         self, text: str, source_file: str, threshold: float = 0.5
@@ -84,8 +86,17 @@ class SemanticChunkingService:
 class EmbeddingAndClusteringService:
     """Service to generate embeddings and cluster chunks using UMAP and GMM."""
 
-    def __init__(self) -> None:
-        self.model = SentenceTransformer("all-MiniLM-L6-v2")
+    def __init__(self, config: ModelConfig) -> None:
+        self.model = SentenceTransformer(config.embedding_model)
+
+        # Load spacy strictly once during singleton initialization to prevent massive memory leaks
+        try:
+            self.nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            from spacy.cli.download import download
+
+            download("en_core_web_sm")
+            self.nlp = spacy.load("en_core_web_sm")
 
     def embed_and_cluster(self, chunks: list[SemanticChunk]) -> dict[int, list[str]]:
         """Embeds chunks, reduces dimensionality via UMAP, and clusters with GMM."""
@@ -95,15 +106,7 @@ class EmbeddingAndClusteringService:
         contents = [c.content for c in chunks]
         embeddings = self.model.encode(contents)
 
-        try:
-            nlp = spacy.load("en_core_web_sm")
-        except OSError:
-            from spacy.cli.download import download
-
-            download("en_core_web_sm")
-            nlp = spacy.load("en_core_web_sm")
-
-        self._tag_entities_and_axes(chunks, embeddings, nlp)
+        self._tag_entities_and_axes(chunks, embeddings, self.nlp)
 
         # We need at least 4 samples for UMAP to avoid spectral embedding errors in small test sets
         if len(embeddings) < 4:
@@ -139,15 +142,28 @@ class EmbeddingAndClusteringService:
             doc = nlp(chunk.content)
             chunk.metadata.extracted_entities = list({ent.text for ent in doc.ents})
 
-            # Mock axes tagging deterministically based on simple logic
-            if "will" in chunk.content.lower() or "future" in chunk.content.lower():
+            # Real axis tagging based on NLP part-of-speech (POS) and dependency parsing
+            # Time axis: Find verb tenses to define temporal axis
+            past_verbs = sum(1 for token in doc if token.tag_ in ("VBD", "VBN"))
+            future_verbs = sum(
+                1
+                for token in doc
+                if token.tag_ == "MD" and token.text.lower() in ("will", "shall", "would")
+            )
+
+            if future_verbs > past_verbs:
                 chunk.metadata.time_axis = "Future"
-            elif "was" in chunk.content.lower() or "past" in chunk.content.lower():
+            elif past_verbs > future_verbs:
                 chunk.metadata.time_axis = "Past"
             else:
                 chunk.metadata.time_axis = "Present"
 
-            chunk.metadata.actor_axis = "System" if "system" in chunk.content.lower() else "User"
+            # Actor axis: Find the main subject (nsubj) to define the actor
+            subjects = [token.text for token in doc if token.dep_ == "nsubj"]
+            if subjects:
+                chunk.metadata.actor_axis = subjects[0].capitalize()
+            else:
+                chunk.metadata.actor_axis = "System"
 
             emb = [float(x) for x in embeddings[i]]
             chunk.embedding = emb
@@ -177,7 +193,7 @@ def parse_file_node(state: GraphState) -> GraphState:
             parser = container.resolve(DocumentParserProtocol)  # type: ignore[type-abstract]
         except RuntimeError:
             msg = "DocumentParserProtocol not registered in DI container."
-            raise ProcessingError(msg) from None
+            raise DependencyError(msg) from None
 
         content = parser.parse(state.source_filepath)
 
@@ -205,7 +221,15 @@ def embedding_and_clustering_node(state: GraphState) -> GraphState:
     try:
         _validate_document_presence(state)
 
-        service = EmbeddingAndClusteringService()
+        try:
+            from src.application.di import global_container
+
+            container = global_container
+            model_config = container.resolve(ModelConfig)
+        except RuntimeError:
+            model_config = ModelConfig()  # type: ignore[call-arg]
+
+        service = EmbeddingAndClusteringService(model_config)
         if state.current_document is not None:
             # Note: embed_and_cluster handles both generating embeddings and the UMAP/GMM clustering logic
             # to keep the pipeline tight. It directly mutates chunks embedding vectors.
@@ -234,28 +258,6 @@ def embedding_and_clustering_node(state: GraphState) -> GraphState:
     return state
 
 
-def _resolve_llm_protocol() -> LLMProtocol:
-    from src.interfaces.dependencies import DIContainer
-
-    container = DIContainer()
-    try:
-        from src.application.di import global_container
-
-        container = global_container
-    except ImportError:
-        pass
-
-    try:
-        return container.resolve(LLMProtocol)  # type: ignore[type-abstract]
-    except RuntimeError:
-
-        class DummyLLM:
-            async def generate(self, prompt: str) -> str:
-                return f"[Mock CoD] Extracted entities. Length: {len(prompt)}"
-
-        return DummyLLM()
-
-
 async def summarization_node(state: GraphState) -> GraphState:
     """Node that runs Chain of Density (CoD) prompting on clusters."""
     if state.processing_status != ProcessingStatus.SUMMARIZING:
@@ -264,9 +266,14 @@ async def summarization_node(state: GraphState) -> GraphState:
     try:
         _validate_document_presence(state)
 
-        # Normally DI resolves this. Here we pass a basic fallback logic if DI fails or is absent.
-        # But we strictly implement the structure via the protocol abstraction.
-        llm = _resolve_llm_protocol()
+        try:
+            from src.application.di import global_container
+
+            container = global_container
+            llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+        except RuntimeError:
+            msg = "LLMProtocol not registered in DI container."
+            raise DependencyError(msg) from None
 
         if state.current_document is not None:
             for node in state.current_document.raptor_nodes:
@@ -312,7 +319,7 @@ def chunk_text_node(state: GraphState) -> GraphState:
             chunker = container.resolve(ChunkingProtocol)  # type: ignore[type-abstract]
         except RuntimeError:
             msg = "ChunkingProtocol not registered in DI container."
-            raise ProcessingError(msg) from None
+            raise DependencyError(msg) from None
 
         if state.current_document is not None:
             text = state.current_document.original_text
@@ -329,7 +336,7 @@ def chunk_text_node(state: GraphState) -> GraphState:
     return state
 
 
-def build_ingestion_graph() -> Any:
+def build_ingestion_graph() -> CompiledStateGraph:  # type: ignore[type-arg]
     """Builds and compiles the ingestion workflow graph."""
     workflow = StateGraph(GraphState)
 

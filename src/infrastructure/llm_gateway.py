@@ -5,7 +5,7 @@ import httpx
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from src.config.settings import ModelConfig
-from src.domain_models.exceptions import ProcessingError
+from src.domain_models.exceptions import LLMAPIError, ProcessingError
 from src.interfaces.dependencies import LLMProtocol
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class OpenRouterClient(LLMProtocol):
     """Concrete implementation of LLMProtocol using OpenRouter."""
 
     def __init__(self, config: ModelConfig) -> None:
-        self._api_key = config.openrouter_api_key.get_secret_value()
+        self._api_key = config.openrouter_api_key
         self._model = config.text_fast_model
         # Use connection pooling
         self._client = httpx.AsyncClient(timeout=30.0)
@@ -43,11 +43,24 @@ class OpenRouterClient(LLMProtocol):
         return response
 
     async def generate(self, prompt: str) -> str:
-        """Generates text from OpenRouter with retry logic."""
+        """Generates text from OpenRouter with retry logic and prompt sanitization."""
+        # Basic sanitization
+        if not prompt or not prompt.strip():
+            msg = "Empty prompt provided to LLM."
+            raise ProcessingError(msg)
+
+        if len(prompt) > 50000:
+            msg = "Prompt exceeds maximum allowed length."
+            raise ProcessingError(msg)
+
+        if "\x00" in prompt:
+            msg = "Prompt contains invalid null characters."
+            raise ProcessingError(msg)
+
         correlation_id = str(uuid.uuid4())
 
         headers = {
-            "Authorization": f"Bearer {self._api_key}",
+            "Authorization": f"Bearer {self._api_key.get_secret_value()}",
             "Content-Type": "application/json",
         }
 
@@ -67,13 +80,13 @@ class OpenRouterClient(LLMProtocol):
             )
 
             # Sanitize error to prevent infrastructure leakage
-            msg = f"LLM request failed with status {status_code}. (Trace: {correlation_id})"
-            raise ProcessingError(msg) from e
+            msg = "LLM request failed with an HTTP error."
+            raise LLMAPIError(msg) from e
         except httpx.RequestError as e:
             logger.exception("LLM network request error. Correlation ID: %s", correlation_id)
-            msg = f"LLM connection failed. (Trace: {correlation_id})"
-            raise ProcessingError(msg) from e
+            msg = "LLM connection failed."
+            raise LLMAPIError(msg) from e
         except Exception as e:
             logger.exception("Unexpected LLM error. Correlation ID: %s", correlation_id)
-            msg = f"LLM unexpected failure. (Trace: {correlation_id})"
-            raise ProcessingError(msg) from e
+            msg = "LLM unexpected failure."
+            raise LLMAPIError(msg) from e

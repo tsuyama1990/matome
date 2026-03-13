@@ -94,11 +94,14 @@ def test_base_test_parsing_service_file_not_found(tmp_path: Path) -> None:
         service.parse("nonexistent_file.txt")
 
 
-def test_semantic_chunking_service_empty_text() -> None:
+def test_semantic_chunking_service_empty_text(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test the base chunking service raises ProcessingError on empty text."""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "mock_key")
     from src.application import SemanticChunkingService
+    from src.config.settings import ModelConfig
 
-    service = SemanticChunkingService()
+    config = ModelConfig()  # type: ignore[call-arg]
+    service = SemanticChunkingService(config)
     with pytest.raises(ProcessingError, match="Cannot chunk empty text."):
         service.chunk_text("", source_file="test.txt")
 
@@ -118,6 +121,7 @@ async def test_ingestion_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("DATABASE_URI", "mock_db")
     monkeypatch.setenv("ENCRYPTION_KEY", "A" * 32)
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "mock_key")
 
     # Setup test file
     test_file = tmp_path / "test_doc.txt"
@@ -130,13 +134,14 @@ async def test_ingestion_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     from src.application import SemanticChunkingService
     from src.application.di import global_container
-    from src.config.settings import AppConfig
+    from src.config.settings import AppConfig, ModelConfig
     from src.interfaces.dependencies import ChunkingProtocol, DocumentParserProtocol, LLMProtocol
 
     # We must register the implementation protocols for testing inside the test environment DI container
     global_container.register(AppConfig, AppConfig)  # type: ignore[arg-type]
+    global_container.register(ModelConfig, ModelConfig)  # type: ignore[arg-type]
     global_container.register(DocumentParserProtocol, lambda: SimpleParsingService(AppConfig()))  # type: ignore[type-abstract,call-arg]
-    global_container.register(ChunkingProtocol, SemanticChunkingService)  # type: ignore[type-abstract]
+    global_container.register(ChunkingProtocol, lambda: SemanticChunkingService(ModelConfig()))  # type: ignore[type-abstract,call-arg]
     global_container.register(LLMProtocol, DummyLLM)  # type: ignore[type-abstract]
 
     # Build and run workflow
@@ -155,7 +160,7 @@ async def test_ingestion_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
     # Ensure chunking occurred
     assert len(doc.chunks) > 0
-    assert len(doc.chunks[0].embedding) == 384
+    assert len(doc.chunks[0].embedding) == 768
 
     # Assert NER and Axes
     assert len(doc.chunks[0].metadata.extracted_entities) >= 0

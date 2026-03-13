@@ -29,5 +29,8 @@ class ModelConfig(BaseSettings):
     multimodal_model: str = Field(
         default="openai/gpt-4o", description="Model for multimodal tasks."
     )
+    embedding_model: str = Field(
+        default="multi-qa-mpnet-base-dot-v1", description="Model for generating vector embeddings."
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")
