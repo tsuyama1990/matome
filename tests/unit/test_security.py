@@ -2,7 +2,6 @@ import os
 from unittest import mock
 
 from src.config.security import SecurityService
-from src.config.settings import AppConfig
 
 
 def test_encryption_and_decryption_are_reversible() -> None:
@@ -10,9 +9,8 @@ def test_encryption_and_decryption_are_reversible() -> None:
     # Setup test config with mock environment variable
     # 32 bytes strictly expected for encryption
     key = "a" * 32
-    with mock.patch.dict(os.environ, {"DATABASE_URI": "x", "ENCRYPTION_KEY": key}, clear=True):
-        config = AppConfig()  # type: ignore[call-arg]
-        service = SecurityService(config)
+    with mock.patch.dict(os.environ, {"ENCRYPTION_KEY": key}, clear=True):
+        service = SecurityService()
 
     plain_key = "my-super-secret-api-key"
 
@@ -28,9 +26,8 @@ def test_encryption_yields_different_ciphertexts() -> None:
     # Using Fernet from cryptography library directly verifies randomized IV creation,
     # as Fernet generates a new IV for each encryption.
     key = "b" * 32
-    with mock.patch.dict(os.environ, {"DATABASE_URI": "x", "ENCRYPTION_KEY": key}, clear=True):
-        config = AppConfig()  # type: ignore[call-arg]
-        service = SecurityService(config)
+    with mock.patch.dict(os.environ, {"ENCRYPTION_KEY": key}, clear=True):
+        service = SecurityService()
 
     plain_key = "some-key"
 

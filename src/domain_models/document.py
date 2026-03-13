@@ -25,16 +25,16 @@ class SemanticChunk(BaseModel):
     id: UUID = Field(description="Unique identifier for the chunk.")
     content: str = Field(description="The text content.")
     embedding: list[float] = Field(
-        default_factory=list, description="Vector embedding representation of the chunk."
+        description="Vector embedding representation of the chunk."
     )
     metadata: ChunkMetadata = Field(description="Strictly typed metadata.")
 
     @field_validator("embedding")
     @classmethod
     def validate_embedding_dimension(cls, v: list[float]) -> list[float]:
-        """Validates that if the embedding is provided, it matches the required dimensions."""
-        if v and len(v) not in (768, 1536):
-            msg = "Embedding must be empty or a valid length (e.g., 768 or 1536)."
+        """Validates that the embedding matches the required dimensions."""
+        if len(v) not in (768, 1536):
+            msg = "Embedding must have a valid length (e.g., 768 or 1536)."
             raise ValueError(msg)
         return v
 

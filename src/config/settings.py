@@ -7,7 +7,6 @@ class AppConfig(BaseSettings):
 
     environment: str = Field(default="production", description="The application environment.")
     database_uri: SecretStr = Field(description="The URI for the operational database.")
-    encryption_key: SecretStr = Field(description="A 32-byte string for BYOK encryption.")
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")
 
@@ -15,7 +14,10 @@ class AppConfig(BaseSettings):
 class ModelConfig(BaseSettings):
     """Configuration for LLMs via OpenRouter."""
 
-    openrouter_api_key: SecretStr = Field(description="The OpenRouter API key.")
+    openrouter_api_url: str = Field(
+        default="https://openrouter.ai/api/v1/chat/completions",
+        description="The OpenRouter API endpoint.",
+    )
     text_fast_model: str = Field(
         default="google/gemini-2.5-flash", description="Model for chunking and fast processing."
     )

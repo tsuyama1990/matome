@@ -64,7 +64,7 @@ def test_semantic_chunk_embedding_validation_failure() -> None:
             metadata=metadata,
         )
 
-    assert "Embedding must be empty or a valid length" in str(excinfo.value)
+    assert "Embedding must have a valid length" in str(excinfo.value)
 
 
 def test_raptor_node_defaults() -> None:
@@ -95,6 +95,7 @@ def test_graph_state_serialization() -> None:
     chunk = SemanticChunk(
         id=uuid.uuid4(),
         content="Test content",
+        embedding=[0.0] * 768,
         metadata=metadata,
     )
 

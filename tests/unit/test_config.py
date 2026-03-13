@@ -17,18 +17,11 @@ def test_app_config_success() -> None:
     """Test AppConfig loads correctly when env variables are provided."""
     with mock.patch.dict(
         os.environ,
-        {"DATABASE_URI": "test_uri", "ENCRYPTION_KEY": "test_key"},
+        {"DATABASE_URI": "test_uri"},
         clear=True,
     ):
         config = AppConfig()  # type: ignore[call-arg]
         assert config.database_uri.get_secret_value() == "test_uri"
-        assert config.encryption_key.get_secret_value() == "test_key"
-
-
-def test_model_config_missing_variables() -> None:
-    """Test ModelConfig raises ValidationError when required variables are missing."""
-    with mock.patch.dict(os.environ, {}, clear=True), pytest.raises(ValidationError):
-        ModelConfig()  # type: ignore[call-arg]
 
 
 def test_model_config_success() -> None:
@@ -36,15 +29,15 @@ def test_model_config_success() -> None:
     with mock.patch.dict(
         os.environ,
         {
-            "OPENROUTER_API_KEY": "test_api_key",
+            "OPENROUTER_API_URL": "https://test.openrouter.ai/api",
             "TEXT_FAST_MODEL": "test-model-1",
             "TEXT_REASONING_MODEL": "test-model-2",
             "MULTIMODAL_MODEL": "test-model-3",
         },
         clear=True,
     ):
-        config = ModelConfig()  # type: ignore[call-arg]
-        assert config.openrouter_api_key.get_secret_value() == "test_api_key"
+        config = ModelConfig()
+        assert config.openrouter_api_url == "https://test.openrouter.ai/api"
         assert config.text_fast_model == "test-model-1"
         assert config.text_reasoning_model == "test-model-2"
         assert config.multimodal_model == "test-model-3"

@@ -1,16 +1,15 @@
 import base64
+import os
 
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
-
-from src.config.settings import AppConfig
 
 
 class SecurityService:
     """Service handling BYOK encryption and description."""
 
-    def __init__(self, config: AppConfig) -> None:
-        key = config.encryption_key.get_secret_value()
+    def __init__(self) -> None:
+        key = os.environ.get("ENCRYPTION_KEY", "")
         encoded_key = key.encode("utf-8")
         if len(encoded_key) != 32:
             msg = "Encryption key must be exactly 32 bytes."
