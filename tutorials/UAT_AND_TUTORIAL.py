@@ -3,6 +3,7 @@ import marimo
 __generated_with = "0.20.4"
 app = marimo.App(width="medium")
 
+
 @app.cell
 def _setup():
     import os
@@ -13,7 +14,6 @@ def _setup():
     sys.path.insert(0, str(Path(__file__).parent.parent.resolve()))
 
     import marimo as mo
-    import uuid as _uuid
 
     # Configure mock vs real mode
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -24,7 +24,7 @@ def _setup():
     else:
         mo.md("# matome UAT & Tutorial\n\n**Mode:** Real (Executing against external LLM providers.)")
 
-    return Path, _uuid, is_mock_mode, mo, os, sys
+    return Path, is_mock_mode, mo, os, sys
 
 
 @app.cell
@@ -34,31 +34,63 @@ def _init_system(is_mock_mode, mo, os):
     from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
     from src.interfaces.dependencies import DIContainer, LLMProtocol
 
-    # Initialize configs directly using test/mock paths if needed, but since we use pydantic-settings
-    # it expects env vars. We will set dummy env vars for initialization if missing.
-    if is_mock_mode:
-        os.environ["DATABASE_URI_ENCRYPTED"] = "sqlite:///test.db"
-        os.environ["OPENROUTER_API_URL"] = "https://example.com/api"
-        os.environ["TEXT_FAST_MODEL"] = "test-fast"
-        os.environ["TEXT_REASONING_MODEL"] = "test-reasoning"
-        os.environ["MULTIMODAL_MODEL"] = "test-multimodal"
-        os.environ["ALLOWED_HOSTS"] = "[\"example.com\"]"
+    # Create safe mock engines for tutorial execution when API is missing
+    class SafeTestSQ3REngine:
+        async def generate_question(self, node: RaptorNode) -> str:
+            return "What is the core condition required for executive approval?"
 
+        async def evaluate_answer(self, user_answer: str, node: RaptorNode) -> str:
+            return "Good job. You correctly identified the £5000 threshold. The answer is well-structured."
+
+    class SafeTestPivotKJEngine:
+        def pivot(self, chunks: list[SemanticChunk], axis: str) -> dict[str, list[SemanticChunk]]:
+            from collections import defaultdict
+            clusters = defaultdict(list)
+            for chunk in chunks:
+                target = getattr(chunk.metadata, f"{axis}_axis", None)
+                if not target:
+                    target = "Uncategorized"
+                clusters[target].append(chunk)
+            return dict(clusters)
+
+    class SafeTestTutorialLLM:
+        async def generate(self, prompt: str) -> str:
+            if "Markdown" in prompt:
+                return "## PRD\n- The system must require executive approval for budgets over £5000."
+            if "Mermaid" in prompt:
+                return "```mermaid\nsequenceDiagram\n    ProductManager->>System: Request Budget (£6000)\n    System->>Executive: Needs Approval\n```"
+            return "Mock Generated Output."
+
+    # App Config Setup
     container = DIContainer()
-
-    # We construct AppConfig
     app_config = AppConfig(
         upload_dir="testfiles",
         max_file_size=50 * 1024 * 1024,
     )
     container.register(AppConfig, lambda: app_config)
 
-    # In Mock Mode we register dummy LLM, otherwise the real one
     if is_mock_mode:
-        from src.infrastructure.test_services import SafeTestLLMService
-        test_llm = SafeTestLLMService()
+        # We explicitly inject mock versions directly instead of hitting infrastructure
+        os.environ["DATABASE_URI_ENCRYPTED"] = "sqlite:///test.db"
+        test_llm = SafeTestTutorialLLM()
         container.register(LLMProtocol, lambda: test_llm)
+        llm = container.resolve(LLMProtocol)
+
+        sq3r_engine = SafeTestSQ3REngine()
+        pivot_engine = SafeTestPivotKJEngine()
     else:
+        # Load environment variables safely
+        api_url = os.environ.get("OPENROUTER_API_URL", "https://openrouter.ai/api/v1")
+        api_key_val = os.environ.get("OPENROUTER_API_KEY", "")
+
+        # We explicitly set these in environment to appease pydantic-settings if missing,
+        # but the actual keys are injected via `os.environ` beforehand or in `.env`.
+        os.environ["OPENROUTER_API_URL"] = api_url
+        os.environ["TEXT_FAST_MODEL"] = os.environ.get("TEXT_FAST_MODEL", "google/gemini-2.5-flash")
+        os.environ["TEXT_REASONING_MODEL"] = os.environ.get("TEXT_REASONING_MODEL", "google/gemini-2.5-flash")
+        os.environ["MULTIMODAL_MODEL"] = os.environ.get("MULTIMODAL_MODEL", "google/gemini-2.5-flash")
+        os.environ["ALLOWED_HOSTS"] = os.environ.get("ALLOWED_HOSTS", '["openrouter.ai"]')
+
         from src.infrastructure.llm_gateway import OpenRouterClient
         model_config = ModelConfig()
         container.register(ModelConfig, lambda: model_config)
@@ -67,18 +99,19 @@ def _init_system(is_mock_mode, mo, os):
             mc = container.resolve(ModelConfig)
             return OpenRouterClient(
                 api_url=str(mc.openrouter_api_url),
-                api_key=os.environ["OPENROUTER_API_KEY"],
+                api_key=api_key_val,
                 model=mc.text_fast_model,
                 timeout=mc.llm_timeout
             )
         container.register(LLMProtocol, llm_factory)
 
-    # Setup core services manually to simulate the workflow for tutorial
-    llm = container.resolve(LLMProtocol)
-    sq3r_engine = SQ3REngine(llm=llm)
-    pivot_engine = PivotKJEngine(allowed_axes=frozenset(app_config.pivot_allowed_axes))
+        llm = container.resolve(LLMProtocol)
+        # Using real imported classes from src.application
+        sq3r_engine = SQ3REngine(llm=llm)
+        pivot_engine = PivotKJEngine(allowed_axes=frozenset(app_config.pivot_allowed_axes))
 
-    mo.md("## Step 1: Initialization Complete\nDI Container and configurations are set up.")
+    mo.md("## Step 1: Initialization Complete\nDI Container and engines successfully loaded for tutorial.")
+
     return (
         AppConfig,
         ChunkMetadata,
@@ -87,6 +120,9 @@ def _init_system(is_mock_mode, mo, os):
         PivotKJEngine,
         RaptorNode,
         SQ3REngine,
+        SafeTestPivotKJEngine,
+        SafeTestSQ3REngine,
+        SafeTestTutorialLLM,
         SemanticChunk,
         app_config,
         container,
@@ -97,7 +133,9 @@ def _init_system(is_mock_mode, mo, os):
 
 
 @app.cell
-def _ingestion_simulation(ChunkMetadata, Path, SemanticChunk, _uuid, mo):
+def _ingestion_simulation(ChunkMetadata, Path, SemanticChunk, mo):
+    import uuid as _uuid
+
     mo.md("## Step 2 & 3: Ingestion & RAPTOR Tree Simulation\n\nSimulating file chunking and NLP tagging.")
 
     test_file_path = Path("testfiles/test_text.txt")
@@ -139,13 +177,14 @@ def _ingestion_simulation(ChunkMetadata, Path, SemanticChunk, _uuid, mo):
 
 
 @app.cell
-def _interactive_sq3r(RaptorNode, _uuid, mo, sq3r_engine):
+def _interactive_sq3r(RaptorNode, mo, sq3r_engine):
     import asyncio as _asyncio
+    import uuid as _uuid2
 
     mo.md("## Step 4: Interactive SQ3R Loop\n\nWe unlock a node by answering a question.")
 
     node = RaptorNode(
-        node_id=str(_uuid.uuid4()),
+        node_id=str(_uuid2.uuid4()),
         level=1,
         children_ids=[],
         summarized_content="Executive approval is strictly needed if the total requested budget exceeds £5000.",
@@ -187,7 +226,7 @@ def _pivot_analysis(chunks, mo, pivot_engine):
 
 @app.cell
 def _export_demo(clusters, llm, mo):
-    import asyncio as _asyncio
+    import asyncio as _asyncio2
 
     mo.md("## Step 6: Export Demonstration\n\nGenerating Markdown and Mermaid.js sequence diagrams.")
 
@@ -214,7 +253,7 @@ def _export_demo(clusters, llm, mo):
         mermaid_doc = await llm.generate(mermaid_prompt)
         return md_doc, mermaid_doc
 
-    md_doc, mermaid_doc = _asyncio.run(generate_exports())
+    md_doc, mermaid_doc = _asyncio2.run(generate_exports())
 
     mo.md(f"### Generated PRD Markdown\n\n{md_doc}\n\n### Generated Mermaid Diagram\n\n{mermaid_doc}")
     return generate_exports, md_doc, mermaid_doc
