@@ -8,6 +8,10 @@ class AppConfig(BaseSettings):
     environment: str = Field(default="production", description="The application environment.")
     database_uri: SecretStr = Field(description="The URI for the operational database.")
     encryption_key: SecretStr = Field(description="A 32-byte string for BYOK encryption.")
+    upload_dir: str = Field(
+        default="./matome_uploads",
+        description="Directory for uploaded files.",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")
 
@@ -24,6 +28,9 @@ class ModelConfig(BaseSettings):
     )
     multimodal_model: str = Field(
         default="openai/gpt-4o", description="Model for multimodal tasks."
+    )
+    embedding_model: str = Field(
+        default="multi-qa-mpnet-base-dot-v1", description="Model for generating vector embeddings."
     )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")

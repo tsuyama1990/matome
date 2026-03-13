@@ -19,6 +19,18 @@ class VectorStoreProtocol(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+class DocumentParserProtocol(Protocol):
+    """Protocol for parsing raw files into strings."""
+
+    def parse(self, filename: str) -> str: ...
+
+
+class ChunkingProtocol(Protocol):
+    """Protocol for breaking text into semantic chunks."""
+
+    def chunk_text(self, text: str, source_file: str) -> list[Any]: ...
+
+
 T = TypeVar("T")
 
 

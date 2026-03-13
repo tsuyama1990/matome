@@ -23,6 +23,9 @@ class GraphState(BaseModel):
     current_document: EnrichedDocument | None = Field(
         default=None, description="The document being processed."
     )
+    source_filepath: str | None = Field(
+        default=None, description="The original filepath of the uploaded document."
+    )
     processing_status: ProcessingStatus = Field(
         default=ProcessingStatus.INITIAL, description="The current status of the workflow."
     )
@@ -34,6 +37,10 @@ class GraphState(BaseModel):
 
     def transition_status(self, new_status: ProcessingStatus) -> None:
         """Transitions to a new state explicitly, ensuring valid transition paths."""
+        if not isinstance(self.processing_status, ProcessingStatus):
+            msg = "Current processing status is invalid or uninitialized."
+            raise TypeError(msg)
+
         valid_transitions = {
             ProcessingStatus.INITIAL: [ProcessingStatus.CHUNKING, ProcessingStatus.FAILED],
             ProcessingStatus.CHUNKING: [ProcessingStatus.EMBEDDING, ProcessingStatus.FAILED],
@@ -44,7 +51,14 @@ class GraphState(BaseModel):
             ProcessingStatus.FAILED: [],
         }
 
-        if new_status not in valid_transitions[self.processing_status]:
+        # Allow self-transition to FAILED to ensure error conditions can easily fail state multiple times
+        if (
+            new_status == ProcessingStatus.FAILED
+            and self.processing_status == ProcessingStatus.FAILED
+        ):
+            return
+
+        if new_status not in valid_transitions.get(self.processing_status, []):
             msg = f"Invalid transition from {self.processing_status} to {new_status}"
             raise ValueError(msg)
 
