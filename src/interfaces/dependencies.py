@@ -29,7 +29,7 @@ class DIContainer:
     def __init__(self) -> None:
         self._factories: dict[type[Any], Callable[[], Any]] = {}
         self._singletons: dict[type[Any], Any] = {}
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._resolving: set[type[Any]] = set()
 
     def register(self, interface: type[T], factory: Callable[[], T]) -> None:
@@ -108,6 +108,7 @@ def register_sq3r_engine(container: DIContainer) -> None:
 
 def register_pivot_kj_engine(container: DIContainer) -> None:
     from src.application import PivotKJEngine
+
     container.register(PivotKJEngine, PivotKJEngine)
 
 

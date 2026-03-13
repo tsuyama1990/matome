@@ -107,10 +107,7 @@ def test_enriched_document_embedding_consistency() -> None:
 
     with pytest.raises(ValueError, match="Inconsistent embedding dimensions detected"):
         DocumentFactory.create(
-            document_id=uuid.uuid4(),
-            original_text="Test",
-            chunks=[chunk1, chunk2],
-            raptor_nodes=[]
+            document_id=uuid.uuid4(), original_text="Test", chunks=[chunk1, chunk2], raptor_nodes=[]
         )
 
 

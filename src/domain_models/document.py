@@ -113,12 +113,12 @@ class DocumentFactory:
         document_id: UUID,
         original_text: str,
         chunks: list[SemanticChunk],
-        raptor_nodes: list[RaptorNode]
+        raptor_nodes: list[RaptorNode],
     ) -> EnrichedDocument:
         DocumentValidator.validate_embedding_consistency(chunks)
         return EnrichedDocument(
             document_id=document_id,
             original_text=original_text,
             chunks=chunks,
-            raptor_nodes=raptor_nodes
+            raptor_nodes=raptor_nodes,
         )

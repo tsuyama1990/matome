@@ -23,7 +23,13 @@ def setup_encryption_env(
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_success(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Mock DNS resolution to return a public IP
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
+
     from pydantic import AnyHttpUrl
 
     config = ModelConfig(
@@ -45,7 +51,11 @@ async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_missing_api_key(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
     from pydantic import AnyHttpUrl
 
     config = ModelConfig(
@@ -64,7 +74,11 @@ async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_invalid_api_key_format(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
     from pydantic import AnyHttpUrl
 
     config = ModelConfig(
@@ -83,7 +97,11 @@ async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatc
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_http_error(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
     from pydantic import AnyHttpUrl
 
     config = ModelConfig(
@@ -106,7 +124,11 @@ async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> None:
+@mock.patch("socket.getaddrinfo")
+async def test_llm_gateway_request_error(
+    mock_getaddrinfo: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mock_getaddrinfo.return_value = [(None, None, None, None, ("93.184.216.34", 443))]
     from pydantic import AnyHttpUrl
 
     config = ModelConfig(
@@ -134,7 +156,7 @@ async def test_ssrf_dns_fail(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from httpcore._backends.anyio import AnyIOBackend
 
-    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    from src.infrastructure.network import SSRFProtectedBackend
 
     def mock_getaddrinfo(*args: object, **kwargs: object) -> list[object]:
         msg = "dns failed"
@@ -150,7 +172,7 @@ async def test_ssrf_dns_fail(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_ssrf_disallowed_host() -> None:
     from httpcore._backends.anyio import AnyIOBackend
 
-    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    from src.infrastructure.network import SSRFProtectedBackend
 
     backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
     with pytest.raises(ValueError, match="is not in the allowed list"):
@@ -163,7 +185,7 @@ async def test_ssrf_private_ip(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from httpcore._backends.anyio import AnyIOBackend
 
-    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    from src.infrastructure.network import SSRFProtectedBackend
 
     def mock_getaddrinfo(
         *args: object, **kwargs: object
@@ -182,7 +204,7 @@ async def test_unix_socket() -> None:
 
     from httpcore._backends.anyio import AnyIOBackend
 
-    from src.infrastructure.llm_gateway import SSRFProtectedBackend
+    from src.infrastructure.network import SSRFProtectedBackend
 
     backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
     with contextlib.suppress(Exception):
@@ -191,7 +213,7 @@ async def test_unix_socket() -> None:
 
 @pytest.mark.asyncio
 async def test_secure_transport_allowed_hosts_validation() -> None:
-    from src.infrastructure.llm_gateway import SecureAsyncHTTPTransport
+    from src.infrastructure.network import SecureAsyncHTTPTransport
 
     with pytest.raises(
         ValueError, match="Invalid domain name in allowed_hosts: http://invalid-domain.com"
