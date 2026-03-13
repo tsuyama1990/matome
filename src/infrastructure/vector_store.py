@@ -33,23 +33,41 @@ class PineconeVectorStore(VectorStoreProtocol):
             transport=transport,
         )
 
-    def upsert(self, collection_name: str, records: list[dict[str, Any]]) -> None:
-        """Upserts records into Pinecone. Note that collection_name usually maps to namespace in Pinecone."""
+    def _validate_collection_name(self, collection_name: str) -> None:
         import re
-        if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
-            msg = 'Invalid collection name'
+        # Extremely strict whitelist: alphanumeric and underscores/hyphens only, tight length constraint
+        if not re.match(r"^[a-zA-Z0-9_-]{3,63}$", collection_name):
+            msg = "Invalid collection name"
             raise ValueError(msg)
 
+    def upsert(self, collection_name: str, records: list[dict[str, Any]]) -> None:
+        """Upserts records into Pinecone. Note that collection_name usually maps to namespace in Pinecone."""
+        self._validate_collection_name(collection_name)
+
         formatted_records = []
+        import html
         for r in records:
             if "id" not in r or "embedding" not in r:
                 msg = "Record missing required fields 'id' or 'embedding'."
                 logger.error(msg)
                 raise ValueError(msg)
+
+            # Sanitize metadata to prevent NoSQL injection via metadata payloads
+            sanitized_metadata: dict[str, Any] = {}
+            for k, v in r.items():
+                if k in ("id", "embedding"):
+                    continue
+                if isinstance(v, str):
+                    sanitized_metadata[k] = html.escape(v)
+                elif isinstance(v, list) and all(isinstance(i, str) for i in v):
+                    sanitized_metadata[k] = [html.escape(i) for i in v]
+                else:
+                    sanitized_metadata[k] = v
+
             formatted_records.append({
                 "id": r["id"],
                 "values": r["embedding"],
-                "metadata": {k: v for k, v in r.items() if k not in ("id", "embedding")},
+                "metadata": sanitized_metadata,
             })
 
         response = self.client.post(
@@ -67,10 +85,7 @@ class PineconeVectorStore(VectorStoreProtocol):
         self, collection_name: str, query_vector: list[float], limit: int
     ) -> list[dict[str, Any]]:
         """Searches Pinecone index."""
-        import re
-        if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
-            msg = 'Invalid collection name'
-            raise ValueError(msg)
+        self._validate_collection_name(collection_name)
         if len(query_vector) > 3072:
             msg = 'Embedding too large'
             raise ValueError(msg)
@@ -121,12 +136,15 @@ class InMemoryVectorStore(VectorStoreProtocol):
             logger.warning("InMemoryVectorStore exceeded max memory limit. Clearing collections.")
             self._collections.clear()
 
+    def _validate_collection_name(self, collection_name: str) -> None:
+        import re
+        if not re.match(r"^[a-zA-Z0-9_-]{3,63}$", collection_name):
+            msg = "Invalid collection name"
+            raise ValueError(msg)
+
     def upsert(self, collection_name: str, records: list[dict[str, Any]]) -> None:
         self._check_memory_usage()
-        import re
-        if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
-            msg = 'Invalid collection name'
-            raise ValueError(msg)
+        self._validate_collection_name(collection_name)
 
         if collection_name not in self._collections:
             self._collections[collection_name] = []
@@ -150,10 +168,7 @@ class InMemoryVectorStore(VectorStoreProtocol):
     def search(
         self, collection_name: str, query_vector: list[float], limit: int
     ) -> list[dict[str, Any]]:
-        import re
-        if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
-            msg = 'Invalid collection name'
-            raise ValueError(msg)
+        self._validate_collection_name(collection_name)
         if len(query_vector) > 3072:
             msg = 'Embedding too large'
             raise ValueError(msg)

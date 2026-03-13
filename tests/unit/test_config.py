@@ -35,10 +35,20 @@ def test_database_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
         clear=True,
     ):
         config = DatabaseConfig()  # type: ignore[call-arg]
-        assert (
+        with pytest.raises(ValueError, match="Local database connections are not permitted by security policy."):
             config.get_decrypted_database_uri.get_secret_value()
-            == "postgresql://user:pass@localhost/db"
-        )
+
+        # Test valid external URI
+        encrypted_valid_uri = service.encrypt_key("postgresql://user:pass@external.db.com/db")
+        with mock.patch.dict(
+            os.environ,
+            {"DATABASE_URI_ENCRYPTED": encrypted_valid_uri, "ENCRYPTION_KEY": encryption_key},
+            clear=True,
+        ):
+            config_valid = DatabaseConfig()  # type: ignore[call-arg]
+            # Userinfo stripped check
+            assert config_valid.get_decrypted_database_uri.get_secret_value() == "postgresql://external.db.com/db"
+
 
 
 def test_model_config_success() -> None:

@@ -44,7 +44,14 @@ def get_di_container(request: Request) -> DIContainer:
         msg = "DI Container is not initialized in app state."
         logger.error(msg)
         raise HTTPException(status_code=500, detail=msg)
-    return request.app.state.container  # type: ignore[no-any-return]
+
+    container = request.app.state.container
+    if not isinstance(container, DIContainer):
+        msg = "DI Container invalid type in app state."
+        logger.error(msg)
+        raise HTTPException(status_code=500, detail=msg)
+
+    return container
 
 
 def get_sq3r_service(

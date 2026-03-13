@@ -74,12 +74,16 @@ class DIContainer:
 
 def validate_container(container: DIContainer) -> None:
     """Validates that necessary protocols are registered."""
-    required_protocols = [LLMProtocol]
+    required_protocols = [LLMProtocol, VectorStoreProtocol]
+    missing = []
     for protocol in required_protocols:
         if protocol not in container._factories and protocol not in container._singletons:
-            msg = f"{protocol.__name__} must be registered in the DI container before bootstrapping application services."
-            logger.error(msg)
-            raise RuntimeError(msg)
+            missing.append(protocol.__name__)
+
+    if missing:
+        msg = f"Critical dependencies missing: {', '.join(missing)}. Please check App initialization."
+        logger.error(msg)
+        raise RuntimeError(msg)
 
 
 def register_raptor_engine(container: DIContainer) -> None:
@@ -183,6 +187,16 @@ def register_nlp_service(container: DIContainer) -> None:
 def bootstrap_application_services(container: DIContainer) -> None:
     """Helper to cleanly register application services to the DI container."""
     logger.info("Starting bootstrap of application services...")
+
+    # Core Infrastructure
+    try:
+        register_vector_store(container)
+    except Exception as e:
+        logger.exception("Vector store registration failed.")
+        msg = "Bootstrap failed due to core infrastructure failure."
+        raise RuntimeError(msg) from e
+
+    # Post-Core Validation
     try:
         validate_container(container)
     except Exception as e:
@@ -191,33 +205,28 @@ def bootstrap_application_services(container: DIContainer) -> None:
         raise RuntimeError(msg) from e
 
     try:
-        register_vector_store(container)
-    except Exception:
-        logger.exception("Vector store registration failed. App will run in degraded state.")
-
-    try:
         register_raptor_engine(container)
     except Exception:
-        logger.exception("RAPTOREngine registration failed. App will run in degraded state.")
+        logger.exception("RAPTOREngine failed to register. Document summarizing will be unavailable.")
 
     try:
         register_sq3r_engine(container)
     except Exception:
-        logger.exception("SQ3REngine registration failed. App will run in degraded state.")
+        logger.exception("SQ3REngine failed to register. Interactive questioning will be unavailable.")
 
     try:
         register_pivot_kj_engine(container)
     except Exception:
-        logger.exception("PivotKJEngine registration failed. App will run in degraded state.")
+        logger.exception("PivotKJEngine failed to register. Pivot KJ clustering will be unavailable.")
 
     try:
         register_pivot_workflow(container)
     except Exception:
-        logger.exception("PivotWorkflow registration failed. App will run in degraded state.")
+        logger.exception("PivotWorkflow failed to register. Pivot API features will be degraded.")
 
     try:
         register_nlp_service(container)
     except Exception:
-        logger.exception("NLPService registration failed. App will run in degraded state.")
+        logger.exception("NLPService failed to register. Entity tagging will fail.")
 
     logger.info("Bootstrap complete.")

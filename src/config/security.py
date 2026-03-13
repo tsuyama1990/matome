@@ -36,15 +36,18 @@ class SecurityService:
     import contextlib
     from collections.abc import Generator
 
+    def _validate_decoded_key(self, decoded: str) -> None:
+        if not decoded or len(decoded) < 8:
+            msg = "Decrypted key is invalid or too short."
+            raise ValueError(msg)
+
     @contextlib.contextmanager
     def get_decrypted_key(self, encrypted_key: str) -> Generator[str, None, None]:
         """Decrypts an API key and yields it securely, ensuring memory is cleared."""
         try:
             decrypted = self._fernet.decrypt(encrypted_key.encode("utf-8"))
             decoded = decrypted.decode("utf-8")
-            if not decoded or len(decoded) < 8:
-                msg = "Decrypted key is invalid or too short."
-                raise ValueError(msg)
+            self._validate_decoded_key(decoded)
         except Exception as e:
             msg = "Failed to decrypt key"
             raise DecryptionError(msg) from e

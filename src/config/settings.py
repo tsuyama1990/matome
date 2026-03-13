@@ -2,6 +2,7 @@ import logging
 import urllib.parse
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
+from pydantic_core.core_schema import ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -22,11 +23,41 @@ class DatabaseConfig(BaseSettings):
             msg = f"Decrypted database URI has invalid scheme: {parsed_uri.scheme}"
             raise ValueError(msg)
 
-        if parsed_uri.scheme != "sqlite" and not parsed_uri.hostname:
+        if parsed_uri.scheme == "sqlite":
+            return SecretStr(uri)
+
+        if not parsed_uri.hostname:
             msg = "Database URI must include a hostname."
             raise ValueError(msg)
 
-        return SecretStr(uri)
+        if parsed_uri.port and not (1 <= parsed_uri.port <= 65535):
+            msg = "Database URI port out of range."
+            raise ValueError(msg)
+
+        # Prevent SSRF: block local loopback patterns unless strictly needed.
+        if parsed_uri.hostname in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):  # noqa: S104
+            # For this test scope, we might allow it, but architectural spec says "reject local IPs / loops"
+            msg = "Local database connections are not permitted by security policy."
+            raise ValueError(msg)
+
+        # Optional: strip userinfo before returning if we want to sanitize, but typically SQLAlchemy needs it.
+        # But per instructions: "Add comprehensive URI validation including userinfo stripping"
+        # We can construct a clean URI without userinfo to return, or just validate it.
+        # Replacing userinfo:
+        clean_netloc = parsed_uri.hostname
+        if parsed_uri.port:
+            clean_netloc += f":{parsed_uri.port}"
+
+        clean_uri = urllib.parse.urlunparse((
+            parsed_uri.scheme,
+            clean_netloc,
+            parsed_uri.path,
+            parsed_uri.params,
+            parsed_uri.query,
+            parsed_uri.fragment,
+        ))
+
+        return SecretStr(clean_uri)
 
     @property
     def get_decrypted_database_uri(self) -> SecretStr:
@@ -92,15 +123,6 @@ class ModelConfig(BaseSettings):
         description="The OpenRouter API endpoint.",
     )
 
-    @field_validator("openrouter_api_url")
-    @classmethod
-    def validate_https_url(cls, v: AnyHttpUrl) -> AnyHttpUrl:
-        """Ensures the API URL uses HTTPS."""
-        if v.scheme != "https":
-            msg = "OpenRouter API URL must use HTTPS."
-            raise ValueError(msg)
-        return v
-
     text_fast_model: str = Field(
         description="Model for chunking and fast processing.",
     )
@@ -114,5 +136,25 @@ class ModelConfig(BaseSettings):
     allowed_hosts: list[str] = Field(
         description="List of allowed hostnames for external API calls to prevent SSRF.",
     )
+
+    @field_validator("openrouter_api_url")
+    @classmethod
+    def validate_https_url(cls, v: AnyHttpUrl, info: ValidationInfo) -> AnyHttpUrl:
+        """Ensures the API URL uses HTTPS and is in the allowed hosts list."""
+        if v.scheme != "https":
+            msg = "OpenRouter API URL must use HTTPS."
+            raise ValueError(msg)
+
+        allowed_hosts = info.data.get("allowed_hosts", [])
+        if allowed_hosts and v.host not in allowed_hosts:
+            msg = f"Host {v.host} is not in the allowed hosts list to prevent SSRF."
+            raise ValueError(msg)
+
+        # Hardblock internal networks explicitly
+        if v.host in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):  # noqa: S104
+            msg = "Internal network hostnames are forbidden for external API calls."
+            raise ValueError(msg)
+
+        return v
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
