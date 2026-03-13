@@ -66,6 +66,50 @@ def test_semantic_chunk_embedding_validation_failure() -> None:
 
     assert "Embedding length 3 is invalid" in str(excinfo.value)
 
+def test_semantic_chunk_embedding_validation_empty() -> None:
+    """Test SemanticChunk raises an error if an embedding is empty."""
+    metadata = ChunkMetadata(source_file="test.txt")
+    chunk_id = uuid.uuid4()
+
+    with pytest.raises(ValidationError) as excinfo:
+        SemanticChunk(
+            id=chunk_id,
+            content="This is a test chunk.",
+            embedding=[],
+            metadata=metadata,
+        )
+
+    assert "Embedding cannot be empty" in str(excinfo.value)
+
+def test_enriched_document_embedding_consistency() -> None:
+    """Test EnrichedDocument validates consistent embedding lengths across all chunks."""
+    metadata = ChunkMetadata(source_file="test.txt")
+
+    # Chunk 1: valid 256 embedding
+    chunk1 = SemanticChunk(
+        id=uuid.uuid4(),
+        content="Chunk 1",
+        embedding=[0.1] * 256,
+        metadata=metadata,
+    )
+
+    # Chunk 2: valid 384 embedding (mismatch with chunk 1)
+    chunk2 = SemanticChunk(
+        id=uuid.uuid4(),
+        content="Chunk 2",
+        embedding=[0.2] * 384,
+        metadata=metadata,
+    )
+
+    with pytest.raises(ValidationError) as excinfo:
+        EnrichedDocument(
+            document_id=uuid.uuid4(),
+            original_text="Test",
+            chunks=[chunk1, chunk2]
+        )
+
+    assert "Inconsistent embedding dimensions detected" in str(excinfo.value)
+
 
 def test_raptor_node_defaults() -> None:
     """Test RaptorNode provides the correct defaults."""

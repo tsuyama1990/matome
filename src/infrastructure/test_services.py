@@ -19,17 +19,33 @@ class FileProcessingService:
         self._upload_dir.mkdir(parents=True, exist_ok=True)
         self._max_file_size = config.max_file_size
 
-    def read_file(self, filename: str) -> str:
-        """Securely reads a file from the upload directory."""
-        # Explicitly deny null bytes to prevent C-style injection attacks.
+    def _validate_filename(self, filename: str) -> str:
+        import unicodedata
+
         if "\0" in filename:
             msg = "Invalid file path structure"
             raise ValueError(msg)
 
+        if len(filename) > 255:
+            msg = "Filename exceeds maximum allowed length"
+            raise ValueError(msg)
+
+        normalized_filename = unicodedata.normalize('NFKD', filename)
+
+        if not re.match(r"^[\w\-. ]+$", normalized_filename):
+            msg = "Filename contains invalid characters"
+            raise ValueError(msg)
+
+        return normalized_filename
+
+    def read_file(self, filename: str) -> str:
+        """Securely reads a file from the upload directory."""
+        normalized_filename = self._validate_filename(filename)
+
         try:
             # We explicitly prevent path traversal using strict resolution and
             # checking if the target remains in the designated upload dir.
-            resolved_path = self._upload_dir.joinpath(filename).resolve(strict=True)
+            resolved_path = self._upload_dir.joinpath(normalized_filename).resolve(strict=True)
             if not resolved_path.is_relative_to(self._upload_dir):
                 msg = "Resolved path is outside upload directory"
                 raise ValueError(msg)

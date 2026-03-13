@@ -1,6 +1,7 @@
+from typing import Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ChunkMetadata(BaseModel):
@@ -81,5 +82,18 @@ class EnrichedDocument(BaseModel):
     raptor_nodes: list[RaptorNode] = Field(
         default_factory=list, description="The root nodes of the RAPTOR tree."
     )
+
+    @model_validator(mode="after")
+    def validate_embedding_consistency(self) -> Self:
+        """Validates that all chunk embeddings within the document share the exact same dimensionality."""
+        if not self.chunks:
+            return self
+
+        first_dim = len(self.chunks[0].embedding)
+        for i, chunk in enumerate(self.chunks[1:], start=1):
+            if len(chunk.embedding) != first_dim:
+                msg = f"Inconsistent embedding dimensions detected. Chunk 0 has dimension {first_dim}, but chunk {i} has dimension {len(chunk.embedding)}."
+                raise ValueError(msg)
+        return self
 
     model_config = ConfigDict(extra="forbid")

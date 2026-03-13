@@ -26,14 +26,18 @@ def test_file_processing_service_valid_file(tmp_path: Path) -> None:
 def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
     config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
     service = FileProcessingService(config)
-    with pytest.raises(FileProcessingError, match="File not found"):
-        # Without regex, resolve() with strict=True will raise FileNotFoundError,
-        # which is caught and turned into FileProcessingError
+
+    with pytest.raises(ValueError, match="Filename contains invalid characters"):
         service.read_file("../../../etc/passwd")
 
     # Also test null byte injection
     with pytest.raises(ValueError, match="Invalid file path structure"):
         service.read_file("file.txt\0.pdf")
+
+    # Test extreme filename length
+    long_filename = "a" * 260 + ".txt"
+    with pytest.raises(ValueError, match="Filename exceeds maximum allowed length"):
+        service.read_file(long_filename)
 
 
 def test_file_processing_service_valid_unicode_filename(tmp_path: Path) -> None:

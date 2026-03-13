@@ -3,20 +3,23 @@ Application layer containing orchestration workflows, use cases, and AI services
 """
 
 import contextlib
+import logging
 import uuid
 from collections import defaultdict
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from src.domain_models.document import RaptorNode, SemanticChunk
+from src.domain_models.exceptions import ProcessingError, RaptorError
+from src.interfaces.dependencies import LLMProtocol
+
+logger = logging.getLogger(__name__)
+
 with contextlib.suppress(ImportError):
     import umap
     from sklearn.decomposition import PCA
     from sklearn.mixture import GaussianMixture
-
-from src.domain_models.document import RaptorNode, SemanticChunk
-from src.domain_models.exceptions import ProcessingError, RaptorError
-from src.interfaces.dependencies import LLMProtocol
 
 if TYPE_CHECKING:
     from spacy.language import Language
@@ -101,6 +104,16 @@ class RAPTOREngine:
             raise RaptorError(msg) from e
 
     def _reduce_embeddings(self, embeddings: "Any") -> "Any":
+        if not isinstance(embeddings, np.ndarray):
+            msg = f"Expected embeddings to be a numpy array, got {type(embeddings)}."
+            logger.error(msg)
+            raise TypeError(msg)
+
+        if embeddings.ndim != 2:
+            msg = f"Expected embeddings to be a 2D numpy array, got shape {embeddings.shape}."
+            logger.error(msg)
+            raise ValueError(msg)
+
         n_samples = len(embeddings)
 
         if n_samples == 0:
@@ -137,11 +150,17 @@ class RAPTOREngine:
 
         # Verify embedding dimension consistency
         if len(embeddings.shape) != 2:
-            return {0: list(range(n_samples))}
+            msg = f"Invalid embedding dimensions. Expected 2D array, got shape {embeddings.shape}."
+            logger.error(msg)
+            raise ValueError(msg)
 
         # If we have very few samples, explicitly group them to form a hierarchy
         # instead of dumping them all into a single flat cluster
         if n_samples < 3 or n_samples <= n_clusters:
+            logger.warning(
+                "Sample count %d is too small for GMM clustering. "
+                "Using explicit fallback hierarchy grouping.", n_samples
+            )
             if n_samples == 2:
                 # Still cluster them separately to maintain tree generation depth if allowed
                 return {0: [0], 1: [1]}
@@ -173,6 +192,7 @@ class RAPTOREngine:
             return dict(clusters)
         except Exception:
             # Fallback if GMM fails (e.g. singular covariance matrix with duplicate points)
+            logger.exception("GMM clustering failed. Falling back to singular cluster.")
             return {0: list(range(n_samples))}
 
     async def cluster_chunks(self, chunks: list[SemanticChunk]) -> list[RaptorNode]:
