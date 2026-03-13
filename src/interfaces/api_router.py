@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -32,7 +32,7 @@ def get_di_container(request: Request) -> DIContainer:
 
 
 def get_sq3r_service(
-    container: DIContainer = Depends(get_di_container),  # noqa: B008
+    container: Annotated[DIContainer, Depends(get_di_container)],
 ) -> SQ3RService:
     try:
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
@@ -43,7 +43,7 @@ def get_sq3r_service(
 
 
 def get_repository(
-    container: DIContainer = Depends(get_di_container),  # noqa: B008
+    container: Annotated[DIContainer, Depends(get_di_container)],
 ) -> DocumentRepositoryProtocol:
     try:
         return container.resolve(DocumentRepositoryProtocol)  # type: ignore[type-abstract]
@@ -55,8 +55,8 @@ def get_repository(
 @router.get("/nodes/{node_id}/question")
 async def get_node_question(
     node_id: str,
-    service: SQ3RService = Depends(get_sq3r_service),  # noqa: B008
-    repository: DocumentRepositoryProtocol = Depends(get_repository),  # noqa: B008
+    service: Annotated[SQ3RService, Depends(get_sq3r_service)],
+    repository: Annotated[DocumentRepositoryProtocol, Depends(get_repository)],
 ) -> dict[str, str]:
     try:
         node = repository.get_node_by_id(node_id)
@@ -71,8 +71,8 @@ async def get_node_question(
 async def unlock_node(
     node_id: str,
     payload: UserAnswerPayload,
-    service: SQ3RService = Depends(get_sq3r_service),  # noqa: B008
-    repository: DocumentRepositoryProtocol = Depends(get_repository),  # noqa: B008
+    service: Annotated[SQ3RService, Depends(get_sq3r_service)],
+    repository: Annotated[DocumentRepositoryProtocol, Depends(get_repository)],
 ) -> dict[str, Any]:
     try:
         node = repository.get_node_by_id(node_id)

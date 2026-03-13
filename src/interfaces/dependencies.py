@@ -81,8 +81,19 @@ def bootstrap_application_services(container: DIContainer) -> None:
 
     # Register RAPTOREngine
     def raptor_factory() -> RAPTOREngine:
+        from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+        from src.interfaces.clustering import ClusteringStrategy
+
+        # In a real app we'd resolve it, but for simplicity here we can just instantiate or resolve
+        if (
+            ClusteringStrategy not in container._factories
+            and ClusteringStrategy not in container._singletons
+        ):
+            container.register(ClusteringStrategy, UMAPGMMClusteringStrategy)  # type: ignore[type-abstract]
+
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
-        return RAPTOREngine(llm=llm)
+        clustering_strategy = container.resolve(ClusteringStrategy)  # type: ignore[type-abstract]
+        return RAPTOREngine(llm=llm, clustering_strategy=clustering_strategy)
 
     container.register(RAPTOREngine, raptor_factory)
 

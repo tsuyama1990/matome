@@ -7,6 +7,7 @@ import uuid
 import pytest
 
 from src.application import PivotKJEngine, RAPTOREngine, SQ3REngine
+from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 from src.domain_models import ChunkMetadata, SemanticChunk
 from src.infrastructure.test_services import SimpleParsingService
 
@@ -49,7 +50,7 @@ async def test_uat_01_quick_start() -> None:
         )
 
     llm = MockE2ELLM()
-    raptor = RAPTOREngine(llm=llm, max_levels=2, max_clusters=2)
+    raptor = RAPTOREngine(llm=llm, clustering_strategy=UMAPGMMClusteringStrategy(), max_levels=2, max_clusters=2)
 
     nodes = await raptor.cluster_chunks(chunks)
     assert len(nodes) > 0

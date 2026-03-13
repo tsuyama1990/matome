@@ -9,7 +9,7 @@ from src.infrastructure.llm_gateway import LLMError, OpenRouterGateway
 
 
 def setup_encryption_env(
-    monkeypatch: pytest.MonkeyPatch, key: str = "sk-valid-key-longer-than-8-chars"
+    monkeypatch: pytest.MonkeyPatch, key: str = "sk-valid-key-longer-than-50-characters-for-testing-12345"
 ) -> None:
     """Helper to setup encrypted API key and encryption key."""
     from src.config.security import SecurityService
@@ -75,7 +75,7 @@ async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatc
     )
     setup_encryption_env(monkeypatch, key="invalid-format-key")
     async with OpenRouterGateway(config) as gateway:
-        with pytest.raises(ValueError, match="Decrypted API key does not match expected format."):
+        with pytest.raises(ValueError, match="Decrypted API key does not match expected OpenRouter format."):
             await gateway.generate("test prompt")
 
 

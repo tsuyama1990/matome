@@ -35,7 +35,7 @@ def main() -> None:
     logger.info("Starting matome application...")
 
     try:
-        app_config = AppConfig()  # type: ignore[call-arg]
+        app_config = AppConfig()
         model_config = ModelConfig()  # type: ignore[call-arg]
         logger.info(f"Loaded configuration for environment: {app_config.environment}")
     except ValidationError:

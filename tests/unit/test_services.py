@@ -12,7 +12,7 @@ from src.infrastructure.test_services import (
 
 def test_file_processing_service_valid_file(tmp_path: Path) -> None:
     config = AppConfig(
-        database_uri_encrypted="encrypted", upload_dir=str(tmp_path), max_file_size=1024 * 1024
+        upload_dir=str(tmp_path), max_file_size=1024 * 1024
     )
     service = FileProcessingService(config)
 
@@ -24,7 +24,7 @@ def test_file_processing_service_valid_file(tmp_path: Path) -> None:
 
 
 def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
-    config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
+    config = AppConfig(upload_dir=str(tmp_path))
     service = FileProcessingService(config)
 
     with pytest.raises(ValueError, match="Filename contains invalid characters"):
@@ -42,7 +42,7 @@ def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
 
 def test_file_processing_service_valid_unicode_filename(tmp_path: Path) -> None:
     config = AppConfig(
-        database_uri_encrypted="encrypted", upload_dir=str(tmp_path), max_file_size=1024 * 1024
+        upload_dir=str(tmp_path), max_file_size=1024 * 1024
     )
     service = FileProcessingService(config)
 
@@ -55,7 +55,7 @@ def test_file_processing_service_valid_unicode_filename(tmp_path: Path) -> None:
 
 
 def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
-    config = AppConfig(database_uri_encrypted="encrypted", upload_dir=str(tmp_path))
+    config = AppConfig(upload_dir=str(tmp_path))
     service = FileProcessingService(config)
 
     with pytest.raises(FileProcessingError, match="File not found"):
@@ -64,7 +64,7 @@ def test_file_processing_service_file_not_found(tmp_path: Path) -> None:
 
 def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
     config = AppConfig(
-        database_uri_encrypted="encrypted", upload_dir=str(tmp_path), max_file_size=10
+        upload_dir=str(tmp_path), max_file_size=10
     )
     service = FileProcessingService(config)
 

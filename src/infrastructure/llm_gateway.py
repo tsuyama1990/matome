@@ -148,7 +148,13 @@ class OpenRouterGateway:
     def __init__(self, config: ModelConfig) -> None:
         self._config = config
         self._client: httpx.AsyncClient | None = None
-        self._encrypted_api_key = os.environ.get("OPENROUTER_API_KEY_ENCRYPTED")
+
+        # Security: strictly validate the encrypted API key before assigning it
+        encrypted_key = os.environ.get("OPENROUTER_API_KEY_ENCRYPTED")
+        if not encrypted_key or not encrypted_key.strip():
+            msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
+            raise ValueError(msg)
+        self._encrypted_api_key = encrypted_key
 
         # Verify ENCRYPTION_KEY exists
         enc_key = os.environ.get("ENCRYPTION_KEY")
@@ -156,12 +162,21 @@ class OpenRouterGateway:
             msg = "ENCRYPTION_KEY environment variable is missing or invalid format."
             raise ValueError(msg)
 
-        if not self._config.openrouter_api_url or not self._config.text_reasoning_model:
-            msg = "Invalid ModelConfig: URL or model name is missing."
+        # Validate all required ModelConfig fields
+        if not self._config.openrouter_api_url:
+            msg = "Invalid ModelConfig: openrouter_api_url is required."
             raise ValueError(msg)
-
-        if not self._encrypted_api_key:
-            msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing."
+        if not self._config.text_reasoning_model:
+            msg = "Invalid ModelConfig: text_reasoning_model is required."
+            raise ValueError(msg)
+        if not self._config.text_fast_model:
+            msg = "Invalid ModelConfig: text_fast_model is required."
+            raise ValueError(msg)
+        if not self._config.multimodal_model:
+            msg = "Invalid ModelConfig: multimodal_model is required."
+            raise ValueError(msg)
+        if not self._config.allowed_hosts:
+            msg = "Invalid ModelConfig: allowed_hosts is required and must not be empty."
             raise ValueError(msg)
 
     async def __aenter__(self) -> "OpenRouterGateway":
@@ -175,6 +190,29 @@ class OpenRouterGateway:
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         await self.close()
 
+    def _sanitize_prompt(self, prompt: str) -> str:
+        """Sanitizes input prompt string using a whitelist pattern."""
+        import re
+        if not prompt:
+            msg = "Prompt cannot be empty."
+            raise ValueError(msg)
+
+        if len(prompt) > 100000:
+            msg = "Prompt exceeds maximum allowed length."
+            raise ValueError(msg)
+
+        allowed_pattern = re.compile(r"^[a-zA-Z0-9\s\.,;:!?()\[\]\{\}\"'<>@#\$%\^&\*\-_\+=`~\\|/]+$")
+        sanitized_chars = []
+        for char in prompt:
+            if allowed_pattern.match(char) or char in "\n\r\t":
+                sanitized_chars.append(char)
+
+        sanitized_prompt = "".join(sanitized_chars)
+        if not sanitized_prompt:
+            msg = "Prompt is empty after sanitization."
+            raise ValueError(msg)
+        return sanitized_prompt
+
     async def generate(self, prompt: str) -> str:
         """Generates text from a prompt."""
         import re
@@ -185,18 +223,17 @@ class OpenRouterGateway:
             msg = "Client not initialized. Use async context manager."
             raise RuntimeError(msg)
 
-        # Sanitize prompt
-        sanitized_prompt = "".join(
-            char for char in prompt if char.isprintable() or char in "\n\r\t"
-        )
-        if len(sanitized_prompt) > 100000:
-            msg = "Prompt exceeds maximum allowed length."
-            raise ValueError(msg)
+        sanitized_prompt = self._sanitize_prompt(prompt)
 
         security_service = SecurityService()
-        with security_service.get_decrypted_key(self._encrypted_api_key) as api_key:  # type: ignore[arg-type]
-            if len(api_key) < 20 or not re.match(r"^sk-[A-Za-z0-9\-_]+$", api_key):
-                msg = "Decrypted API key does not match expected format."
+        with security_service.get_decrypted_key(self._encrypted_api_key) as api_key:
+            # Stricter validation: specific prefix, strict alphanumeric payload, minimum and maximum lengths
+            if (
+                len(api_key) < 51
+                or len(api_key) > 100
+                or not re.match(r"^sk-[A-Za-z0-9\-_]{48,97}$", api_key)
+            ):
+                msg = "Decrypted API key does not match expected OpenRouter format."
                 raise ValueError(msg)
 
             headers = {
@@ -208,15 +245,12 @@ class OpenRouterGateway:
                 "messages": [{"role": "user", "content": sanitized_prompt}],
             }
 
-        if not self._client:
-            msg = "Client not initialized."
-            raise RuntimeError(msg)
-
         try:
             response = await self._client.post(
                 str(self._config.openrouter_api_url),
                 json=payload,
                 headers=headers,
+                timeout=self._config.llm_timeout,
             )
             response.raise_for_status()
 

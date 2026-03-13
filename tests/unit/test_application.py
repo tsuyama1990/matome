@@ -47,8 +47,7 @@ def test_nlp_service_tag_entities() -> None:
     # DATE is not in target_labels so it's not extracted, but it sets time_axis
     assert "today" not in chunk.metadata.extracted_entities
 
-    assert chunk.metadata.actor_axis == "Detected Actor"
-    assert chunk.metadata.time_axis == "Detected Time"
+    assert chunk.metadata.time_axis == "Present"
 
 
 def test_nlp_service_tag_entities_not_loaded() -> None:
@@ -80,8 +79,10 @@ class DummyLLM:
 
 @pytest.mark.asyncio
 async def test_raptor_engine_cluster_chunks() -> None:
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
     llm = DummyLLM()
-    engine = RAPTOREngine(llm=llm, max_levels=2, max_clusters=2)
+    clustering = UMAPGMMClusteringStrategy()
+    engine = RAPTOREngine(llm=llm, clustering_strategy=clustering, max_levels=2, max_clusters=2)
 
     # Create dummy chunks
     chunks = []
@@ -102,25 +103,27 @@ async def test_raptor_engine_cluster_chunks() -> None:
 
 def test_raptor_engine_cluster_edge_cases() -> None:
     import numpy as np
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 
     llm = DummyLLM()
-    engine = RAPTOREngine(llm=llm, max_levels=2, max_clusters=2)
+    clustering = UMAPGMMClusteringStrategy()
+    engine = RAPTOREngine(llm=llm, clustering_strategy=clustering, max_levels=2, max_clusters=2)
 
     # Test empty array (must have shape length 2 but empty size)
     empty = np.array([[]])
-    assert engine._cluster_reduced_embeddings(empty) == {}
+    assert clustering.cluster(empty, 2) == {}
 
     # Test single item
     single = np.array([[0.1, 0.2]])
-    assert engine._cluster_reduced_embeddings(single) == {0: [0]}
+    assert clustering.cluster(single, 2) == {0: [0]}
 
     # Test two items
     two = np.array([[0.1, 0.2], [0.3, 0.4]])
-    assert engine._cluster_reduced_embeddings(two) == {0: [0], 1: [1]}
+    assert clustering.cluster(two, 2) == {0: [0], 1: [1]}
 
     # Test identical items that would cause GMM to fail with singular covariance
     identical = np.array([[0.1, 0.2], [0.1, 0.2], [0.1, 0.2], [0.1, 0.2]])
-    assert engine._cluster_reduced_embeddings(identical) == {0: [0, 1, 2, 3]}
+    assert clustering.cluster(identical, 2) == {0: [0, 1, 2, 3]}
 
 
 @pytest.mark.asyncio

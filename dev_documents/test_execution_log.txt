@@ -2,7 +2,6 @@
 platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 configfile: pyproject.toml
-testpaths: tests
 plugins: cov-7.0.0, asyncio-1.3.0, anyio-4.12.1
 asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
 collected 56 items
@@ -23,10 +22,8 @@ tests/unit/test_application.py::test_raptor_engine_cluster_chunks
   /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
     warn(
 
-tests/unit/test_application.py::test_raptor_engine_cluster_chunks
-  /app/.venv/lib/python3.12/site-packages/sklearn/mixture/_base.py:293: ConvergenceWarning: Best performing initialization did not converge. Try different init parameters, or increase max_iter, tol, or check for degenerate data.
-    warnings.warn(
-
+tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
+tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
 tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
   /app/.venv/lib/python3.12/site-packages/sklearn/base.py:1336: ConvergenceWarning: Number of distinct clusters (1) found smaller than n_clusters (2). Possibly due to duplicate points in X.
     return fit_method(estimator, *args, **kwargs)
@@ -38,22 +35,24 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             208     46    78%   24-25, 92-93, 102-103, 106-107, 118-120, 124-126, 129-131, 136, 158-163, 168-170, 173-175, 199, 221-222, 225-228, 237, 255, 307-309, 326-328, 344, 364-365
+src/application/__init__.py             140     21    85%   53, 63, 65, 92-93, 96-97, 108-110, 119, 139, 196-198, 215-217, 233, 253-254
 src/application/sq3r_service.py          12      0   100%
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   38      4    89%   13-14, 42-43
-src/config/settings.py                   34      2    94%   39-40
+src/config/settings.py                   36      2    94%   23-24
 src/domain_models/__init__.py             4      0   100%
 src/domain_models/document.py            61      2    97%   50-51
-src/domain_models/exceptions.py           2      0   100%
+src/domain_models/exceptions.py           3      0   100%
 src/domain_models/graph_state.py         33      0   100%
 src/infrastructure/__init__.py            0      0   100%
-src/infrastructure/llm_gateway.py       126     28    78%   58, 112-142, 156-157, 160-161, 185-186, 193-194, 212-213, 226-229, 234-238, 240-242
+src/infrastructure/clustering.py         70     20    71%   15-16, 24-25, 30-31, 39, 55-62, 67-68, 96-98
+src/infrastructure/llm_gateway.py       151     38    75%   58, 112-142, 162-163, 167-168, 170-171, 173-174, 176-177, 179-180, 197-198, 201-202, 212-213, 223-224, 260-263, 268-272, 274-276
 src/infrastructure/test_services.py      79     17    78%   63-64, 69-71, 73-75, 88-89, 94-97, 108-110
 src/interfaces/__init__.py                2      0   100%
 src/interfaces/api_router.py             51     10    80%   40-42, 50-52, 63-64, 79-80
-src/interfaces/dependencies.py           54     20    63%   47-48, 74-104
+src/interfaces/clustering.py              2      0   100%
+src/interfaces/dependencies.py           59     25    58%   47-48, 74-115
 src/interfaces/repository.py              3      0   100%
 -------------------------------------------------------------------
-TOTAL                                   710    129    82%
-======================= 56 passed, 3 warnings in 50.08s ========================
+TOTAL                                   747    139    81%
+================== 56 passed, 4 warnings in 81.16s (0:01:21) ===================

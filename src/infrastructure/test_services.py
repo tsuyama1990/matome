@@ -32,8 +32,8 @@ class FileProcessingService:
 
         normalized_filename = unicodedata.normalize("NFKD", filename)
 
-        # Removed space character explicitly to block evasion of traversals and URL encodings.
-        if not re.match(r"^[\w\-.]+$", normalized_filename):
+        # Block all non-alphanumeric characters except safe basic punctuation, allow unicode letters
+        if not re.match(r"^[\w\-\.]+$", normalized_filename, re.UNICODE):
             msg = "Filename contains invalid characters"
             raise ValueError(msg)
 

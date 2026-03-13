@@ -7,14 +7,21 @@ from pydantic import ValidationError
 from src.config.settings import AppConfig, ModelConfig
 
 
-def test_app_config_missing_variables() -> None:
-    """Test AppConfig raises ValidationError when required env variables are missing."""
-    with mock.patch.dict(os.environ, {}, clear=True), pytest.raises(ValidationError):
-        AppConfig()  # type: ignore[call-arg]
-
-
 def test_app_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test AppConfig loads correctly when env variables are provided."""
+    from src.config.security import SecurityService
+
+    with mock.patch.dict(
+        os.environ,
+        {},
+        clear=True,
+    ):
+        config = AppConfig()
+        assert config.environment == "production"
+
+def test_database_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test DatabaseConfig loads correctly when env variables are provided."""
+    from src.config.settings import DatabaseConfig
     from src.config.security import SecurityService
 
     encryption_key = "abcdefghijklmnopqrstuvwxyz12345678901234567="
@@ -27,7 +34,7 @@ def test_app_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
         {"DATABASE_URI_ENCRYPTED": encrypted_uri, "ENCRYPTION_KEY": encryption_key},
         clear=True,
     ):
-        config = AppConfig()  # type: ignore[call-arg]
+        config = DatabaseConfig()  # type: ignore[call-arg]
         assert (
             config.get_decrypted_database_uri.get_secret_value()
             == "postgresql://user:pass@localhost/db"
