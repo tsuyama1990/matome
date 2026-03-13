@@ -4,6 +4,9 @@ from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
 
+class DecryptionError(Exception):
+    """Custom exception raised when BYOK decryption fails."""
+
 class SecurityService:
     """Service handling BYOK encryption and description."""
 
@@ -36,11 +39,15 @@ class SecurityService:
     @contextlib.contextmanager
     def get_decrypted_key(self, encrypted_key: str) -> Generator[str, None, None]:
         """Decrypts an API key and yields it securely, ensuring memory is cleared."""
-        decrypted = self._fernet.decrypt(encrypted_key.encode("utf-8"))
-        decoded = decrypted.decode("utf-8")
-        if not decoded or len(decoded) < 8:
-            msg = "Decrypted key is invalid or too short."
-            raise ValueError(msg)
+        try:
+            decrypted = self._fernet.decrypt(encrypted_key.encode("utf-8"))
+            decoded = decrypted.decode("utf-8")
+            if not decoded or len(decoded) < 8:
+                msg = "Decrypted key is invalid or too short."
+                raise ValueError(msg)
+        except Exception as e:
+            msg = "Failed to decrypt key"
+            raise DecryptionError(msg) from e
 
         try:
             yield decoded

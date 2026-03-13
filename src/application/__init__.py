@@ -3,6 +3,8 @@ import uuid
 from collections import defaultdict
 from typing import Any
 
+import bleach
+
 from src.application.pivot_workflow import PivotWorkflow
 from src.domain_models import RaptorNode, SemanticChunk
 from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
@@ -15,9 +17,18 @@ logger = logging.getLogger(__name__)
 class NLPService:
     """Service dedicated to natural language processing and entity tagging."""
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(
+        self,
+        model_name: str,
+        max_entities: int = 50,
+        time_axis_past_words: list[str] | None = None,
+        time_axis_future_words: list[str] | None = None,
+    ) -> None:
         self.nlp: Any | None = None
         self.model_name = model_name
+        self.max_entities = max_entities
+        self.time_axis_past_words = time_axis_past_words or ["yesterday", "previously", "was", "were"]
+        self.time_axis_future_words = time_axis_future_words or ["tomorrow", "will", "future", "next"]
         self._load_model()
 
     def _load_model(self) -> None:
@@ -34,6 +45,14 @@ class NLPService:
             msg = f"Spacy model '{self.model_name}' is missing. Please install it."
             raise NLPModelLoadError(msg) from e
 
+    def _detect_time_axis(self, content_lower: str) -> str:
+        """Detects the time axis of the text using configured temporal keywords."""
+        if any(word in content_lower for word in self.time_axis_past_words):
+            return "Past"
+        if any(word in content_lower for word in self.time_axis_future_words):
+            return "Future"
+        return "Present"
+
     def tag_entities_and_axes(self, chunks: list[SemanticChunk]) -> None:
         """
         Public method to tag entities and multi-dimensional axes.
@@ -44,28 +63,18 @@ class NLPService:
             raise RuntimeError(msg)
 
         for chunk in chunks:
-            doc = self.nlp(chunk.content)
+            # XSS Protection: Deep sanitize the content before NLP processing to prevent injection
+            sanitized_content = bleach.clean(chunk.content, tags=[], strip=True)
+            doc = self.nlp(sanitized_content)
             extracted_entities = []
 
-            # ReDoS protection: Limit maximum entities extracted per chunk to prevent memory bloat
-            for ent in doc.ents[:50]:
-                # XSS protection: Ignore any entity that looks like script injection
-                if "<script" in ent.text.lower() or "javascript:" in ent.text.lower():
-                    continue
-
+            # Prevent memory bloat and DoS via massive entity injections
+            for ent in doc.ents[:self.max_entities]:
                 if ent.label_ in ("PERSON", "ORG", "GPE", "PRODUCT"):
                     extracted_entities.append(ent.text)
 
             chunk.metadata.extracted_entities = list(set(extracted_entities))
-
-            # Basic deterministic heuristic for Time Axis (Past, Present, Future)
-            content_lower = chunk.content.lower()
-            if any(word in content_lower for word in ["yesterday", "previously", "was", "were"]):
-                chunk.metadata.time_axis = "Past"
-            elif any(word in content_lower for word in ["tomorrow", "will", "future", "next"]):
-                chunk.metadata.time_axis = "Future"
-            else:
-                chunk.metadata.time_axis = "Present"
+            chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
 
 
 class RAPTOREngine:

@@ -62,10 +62,16 @@ def test_unlock_node_valid(client: TestClient) -> None:
 
 
 def test_unlock_node_invalid_crlf(client: TestClient) -> None:
-    response = client.post("/nodes/test-node-123/unlock", json={"user_answer": "Paris\n"})
+    response = client.post("/nodes/test-node-123/unlock", json={"user_answer": "   \n "})
     assert response.status_code == 422
     data = response.json()
-    assert "CRLF characters are not allowed" in data["detail"][0]["msg"]
+    assert "Answer cannot be empty" in data["detail"][0]["msg"]
+
+def test_unlock_node_too_long(client: TestClient) -> None:
+    response = client.post("/nodes/test-node-123/unlock", json={"user_answer": "A" * 5001})
+    assert response.status_code == 422
+    data = response.json()
+    assert "String should have at most 5000 characters" in data["detail"][0]["msg"]
 
 
 def test_unlock_node_missing_payload(client: TestClient) -> None:

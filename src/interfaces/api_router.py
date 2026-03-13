@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -14,6 +15,8 @@ from src.interfaces.repository import DocumentRepositoryProtocol
 router = APIRouter()
 
 
+
+
 class UserAnswerPayload(BaseModel):
     user_answer: str = Field(..., max_length=5000, description="The user's answer.")
 
@@ -21,8 +24,11 @@ class UserAnswerPayload(BaseModel):
     @classmethod
     def sanitize_answer(cls, v: str, info: ValidationInfo) -> str:
         _ = info  # use it to pass ruff argument check if needed
-        if "\r" in v or "\n" in v:
-            msg = "CRLF characters are not allowed."
+        if len(v) > 5000:
+            msg = "Answer too long"
+            raise ValueError(msg)
+        if not v.strip():
+            msg = "Answer cannot be empty"
             raise ValueError(msg)
         return v
 
@@ -109,14 +115,14 @@ def get_pivot_workflow(
         raise HTTPException(status_code=500, detail=msg) from e
 
 
-@router.post("/documents/{document_id}/pivot")
+@router.post("/documents/{document_id:uuid}/pivot")
 async def pivot_document(
-    document_id: str,
+    document_id: uuid.UUID,
     payload: PivotRequestPayload,
     workflow: Annotated[PivotWorkflow, Depends(get_pivot_workflow)],
 ) -> dict[str, Any]:
     try:
-        result = await workflow.execute(document_id, payload)
+        result = await workflow.execute(str(document_id), payload)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:

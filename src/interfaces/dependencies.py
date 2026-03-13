@@ -170,7 +170,12 @@ def register_nlp_service(container: DIContainer) -> None:
 
     def nlp_factory() -> NLPService:
         config = container.resolve(AppConfig)
-        return NLPService(model_name=config.spacy_model)
+        return NLPService(
+            model_name=config.spacy_model,
+            max_entities=config.nlp_max_entities,
+            time_axis_past_words=config.nlp_time_axis_past_words,
+            time_axis_future_words=config.nlp_time_axis_future_words,
+        )
 
     container.register(NLPService, nlp_factory)
 
@@ -180,14 +185,39 @@ def bootstrap_application_services(container: DIContainer) -> None:
     logger.info("Starting bootstrap of application services...")
     try:
         validate_container(container)
-        register_vector_store(container)
-        register_raptor_engine(container)
-        register_sq3r_engine(container)
-        register_pivot_kj_engine(container)
-        register_pivot_workflow(container)
-        register_nlp_service(container)
-        logger.info("Successfully bootstrapped application services.")
     except Exception as e:
-        logger.exception("Error during dependency bootstrapping.")
+        logger.exception("Container pre-validation failed.")
         msg = "Bootstrap failed."
         raise RuntimeError(msg) from e
+
+    try:
+        register_vector_store(container)
+    except Exception:
+        logger.exception("Vector store registration failed. App will run in degraded state.")
+
+    try:
+        register_raptor_engine(container)
+    except Exception:
+        logger.exception("RAPTOREngine registration failed. App will run in degraded state.")
+
+    try:
+        register_sq3r_engine(container)
+    except Exception:
+        logger.exception("SQ3REngine registration failed. App will run in degraded state.")
+
+    try:
+        register_pivot_kj_engine(container)
+    except Exception:
+        logger.exception("PivotKJEngine registration failed. App will run in degraded state.")
+
+    try:
+        register_pivot_workflow(container)
+    except Exception:
+        logger.exception("PivotWorkflow registration failed. App will run in degraded state.")
+
+    try:
+        register_nlp_service(container)
+    except Exception:
+        logger.exception("NLPService registration failed. App will run in degraded state.")
+
+    logger.info("Bootstrap complete.")

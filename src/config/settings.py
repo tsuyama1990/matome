@@ -1,5 +1,10 @@
+import logging
+import urllib.parse
+
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class DatabaseConfig(BaseSettings):
@@ -11,18 +16,33 @@ class DatabaseConfig(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    def _validate_uri(self, uri: str) -> SecretStr:
+        parsed_uri = urllib.parse.urlparse(uri)
+        if parsed_uri.scheme not in ("postgresql", "sqlite", "mysql"):
+            msg = f"Decrypted database URI has invalid scheme: {parsed_uri.scheme}"
+            raise ValueError(msg)
+
+        if parsed_uri.scheme != "sqlite" and not parsed_uri.hostname:
+            msg = "Database URI must include a hostname."
+            raise ValueError(msg)
+
+        return SecretStr(uri)
+
     @property
     def get_decrypted_database_uri(self) -> SecretStr:
         """Returns the decrypted database URI securely."""
-        from src.config.security import SecurityService
+        from src.config.security import DecryptionError, SecurityService
 
         service = SecurityService()
-        with service.get_decrypted_key(self.database_uri_encrypted) as uri:
-            # Add basic validation that it looks like a URL
-            if not uri.startswith(("postgresql://", "sqlite://", "mysql://")):
-                msg = "Decrypted database URI has invalid scheme."
-                raise ValueError(msg)
-            return SecretStr(uri)
+        try:
+            with service.get_decrypted_key(self.database_uri_encrypted) as uri:
+                return self._validate_uri(uri)
+        except DecryptionError:
+            logger.exception("Database decryption failed.")
+            raise
+        except Exception:
+            logger.exception("Database URI validation failed.")
+            raise
 
 
 class AppConfig(BaseSettings):
@@ -49,6 +69,17 @@ class AppConfig(BaseSettings):
     pivot_allowed_axes: list[str] = Field(
         default_factory=lambda: ["actor", "time", "entities"],
         description="List of allowed axes for Pivot KJ analysis.",
+    )
+    nlp_max_entities: int = Field(
+        default=50, gt=0, le=1000, description="Max entities to extract per chunk to prevent memory exhaustion."
+    )
+    nlp_time_axis_past_words: list[str] = Field(
+        default_factory=lambda: ["yesterday", "previously", "was", "were"],
+        description="Keywords to detect past time axis.",
+    )
+    nlp_time_axis_future_words: list[str] = Field(
+        default_factory=lambda: ["tomorrow", "will", "future", "next"],
+        description="Keywords to detect future time axis.",
     )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")

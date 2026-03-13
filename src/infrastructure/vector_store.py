@@ -1,5 +1,6 @@
 import logging
 import math
+import sys
 from typing import Any
 
 import httpx
@@ -23,15 +24,22 @@ class PineconeVectorStore(VectorStoreProtocol):
 
         # Proper connection pooling
         limits = httpx.Limits(max_keepalive_connections=50, max_connections=100)
+        transport = httpx.HTTPTransport(retries=3)
         self.client = httpx.Client(
             base_url=self.base_url,
             headers={"Api-Key": self.api_key},
             limits=limits,
             timeout=30.0,
+            transport=transport,
         )
 
     def upsert(self, collection_name: str, records: list[dict[str, Any]]) -> None:
         """Upserts records into Pinecone. Note that collection_name usually maps to namespace in Pinecone."""
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
+            msg = 'Invalid collection name'
+            raise ValueError(msg)
+
         formatted_records = []
         for r in records:
             if "id" not in r or "embedding" not in r:
@@ -59,6 +67,14 @@ class PineconeVectorStore(VectorStoreProtocol):
         self, collection_name: str, query_vector: list[float], limit: int
     ) -> list[dict[str, Any]]:
         """Searches Pinecone index."""
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
+            msg = 'Invalid collection name'
+            raise ValueError(msg)
+        if len(query_vector) > 3072:
+            msg = 'Embedding too large'
+            raise ValueError(msg)
+
         response = self.client.post(
             "/query",
             json={
@@ -90,13 +106,28 @@ class PineconeVectorStore(VectorStoreProtocol):
         self.client.close()
 
 
+
+
 class InMemoryVectorStore(VectorStoreProtocol):
     """An in-memory implementation of VectorStoreProtocol for testing/foundational use."""
+
+    MAX_MEMORY = 100 * 1024 * 1024
 
     def __init__(self) -> None:
         self._collections: dict[str, list[dict[str, Any]]] = {}
 
+    def _check_memory_usage(self) -> None:
+        if sys.getsizeof(self._collections) > self.MAX_MEMORY:
+            logger.warning("InMemoryVectorStore exceeded max memory limit. Clearing collections.")
+            self._collections.clear()
+
     def upsert(self, collection_name: str, records: list[dict[str, Any]]) -> None:
+        self._check_memory_usage()
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
+            msg = 'Invalid collection name'
+            raise ValueError(msg)
+
         if collection_name not in self._collections:
             self._collections[collection_name] = []
 
@@ -119,6 +150,14 @@ class InMemoryVectorStore(VectorStoreProtocol):
     def search(
         self, collection_name: str, query_vector: list[float], limit: int
     ) -> list[dict[str, Any]]:
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
+            msg = 'Invalid collection name'
+            raise ValueError(msg)
+        if len(query_vector) > 3072:
+            msg = 'Embedding too large'
+            raise ValueError(msg)
+
         if collection_name not in self._collections:
             return []
 
