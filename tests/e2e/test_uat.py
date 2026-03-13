@@ -69,7 +69,7 @@ async def test_uat_01_quick_start() -> None:
     assert "Good job" in feedback
 
     # 4. Transformation (Pivot KJ)
-    pivot_engine = PivotKJEngine()
+    pivot_engine = PivotKJEngine(allowed_axes=frozenset({"actor", "time", "entities"}))
     clusters = pivot_engine.pivot(chunks, axis="actor")
 
     assert "Executive" in clusters

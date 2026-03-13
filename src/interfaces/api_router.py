@@ -1,14 +1,20 @@
+import logging
+import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_core.core_schema import ValidationInfo
 
+from src.application.pivot_workflow import PivotWorkflow
 from src.application.sq3r_service import SQ3RService
+from src.domain_models.pivot import PivotRequestPayload
 from src.interfaces.dependencies import DIContainer, LLMProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
 
 router = APIRouter()
+
+
 
 
 class UserAnswerPayload(BaseModel):
@@ -18,17 +24,34 @@ class UserAnswerPayload(BaseModel):
     @classmethod
     def sanitize_answer(cls, v: str, info: ValidationInfo) -> str:
         _ = info  # use it to pass ruff argument check if needed
-        if "\r" in v or "\n" in v:
-            msg = "CRLF characters are not allowed."
+        if len(v) > 5000:
+            msg = "Answer too long"
+            raise ValueError(msg)
+        if not v.strip():
+            msg = "Answer cannot be empty"
             raise ValueError(msg)
         return v
 
     model_config = ConfigDict(extra="forbid")
 
 
+logger = logging.getLogger(__name__)
+
+
 def get_di_container(request: Request) -> DIContainer:
     """Dependency injection container resolver from app state."""
-    return request.app.state.container  # type: ignore[no-any-return]
+    if not hasattr(request.app.state, "container"):
+        msg = "DI Container is not initialized in app state."
+        logger.error(msg)
+        raise HTTPException(status_code=500, detail=msg)
+
+    container = request.app.state.container
+    if not isinstance(container, DIContainer):
+        msg = "DI Container invalid type in app state."
+        logger.error(msg)
+        raise HTTPException(status_code=500, detail=msg)
+
+    return container
 
 
 def get_sq3r_service(
@@ -87,3 +110,29 @@ async def unlock_node(
         "is_unlocked": node.is_unlocked,
         "summarized_content": node.summarized_content,
     }
+
+
+def get_pivot_workflow(
+    container: Annotated[DIContainer, Depends(get_di_container)],
+) -> PivotWorkflow:
+    try:
+        return container.resolve(PivotWorkflow)
+    except Exception as e:
+        msg = "Pivot workflow not configured."
+        raise HTTPException(status_code=500, detail=msg) from e
+
+
+@router.post("/documents/{document_id:uuid}/pivot")
+async def pivot_document(
+    document_id: uuid.UUID,
+    payload: PivotRequestPayload,
+    workflow: Annotated[PivotWorkflow, Depends(get_pivot_workflow)],
+) -> dict[str, Any]:
+    try:
+        result = await workflow.execute(str(document_id), payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    else:
+        return result

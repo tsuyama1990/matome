@@ -30,6 +30,12 @@
    cp .env.example .env
    ```
 
+## Features
+- **Semantic Chunking:** Context-preserving noise normalization and semantic chunking of massive text data.
+- **RAPTOR Tree Generation:** Hierarchical clustering (UMAP+GMM) to summarize documents dynamically from bottom up.
+- **Interactive Active Learning (SQ3R):** Unlock knowledge nodes by answering AI-generated questions and reciting information to solidify memory.
+- **MD-SKJ Pivot Engine:** Dynamically re-arrange clustered knowledge along custom, multi-dimensional business axes (e.g., actors vs. state transitions) to instantly output actionable UML diagrams and Markdown Requirements.
+
 ## Usage
 
 **Execute the foundation system setup**:
@@ -37,7 +43,12 @@
 uv run python main.py
 ```
 
-Currently, in our initial stable release, the platform exposes a hardened underlying base ready for the integration of LangGraph nodes, Semantic Zoom canvas UIs, and external model orchestrations without risking core logic instability.
+**Testing the end-to-end capabilities**:
+```bash
+uv run pytest
+```
+
+Currently, the platform exposes a hardened underlying base fully capable of handling LangGraph node orchestration, Semantic Zoom API generation, SQ3R active learning verification, and multi-dimensional Pivot KJ insights.
 
 ## Project Structure
 

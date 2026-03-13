@@ -1,3 +1,3 @@
-"""
-Infrastructure layer providing concrete implementations for interfaces like OpenRouter or VectorDB.
-"""
+from src.infrastructure.vector_store import InMemoryVectorStore
+
+__all__ = ["InMemoryVectorStore"]

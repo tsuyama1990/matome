@@ -1,13 +1,13 @@
 from src.domain_models.document import ChunkMetadata, EnrichedDocument, RaptorNode, SemanticChunk
-from src.domain_models.exceptions import ProcessingError, RaptorError
-from src.domain_models.graph_state import GraphState
+from src.domain_models.graph_state import GraphState, ProcessingStatus
+from src.domain_models.pivot import PivotRequestPayload
 
 __all__ = [
     "ChunkMetadata",
     "EnrichedDocument",
     "GraphState",
-    "ProcessingError",
-    "RaptorError",
+    "PivotRequestPayload",
+    "ProcessingStatus",
     "RaptorNode",
     "SemanticChunk",
 ]
