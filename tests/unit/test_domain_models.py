@@ -123,10 +123,20 @@ def test_graph_state_serialization() -> None:
     # Compare
     assert reconstructed_state.processing_status == ProcessingStatus.CHUNKING
     assert reconstructed_state.error_log == ["error 1"]
+    assert reconstructed_state.clustering_metadata == {}
     assert reconstructed_state.current_document is not None
     assert reconstructed_state.current_document.document_id == doc_id
     assert len(reconstructed_state.current_document.chunks) == 1
     assert reconstructed_state.current_document.chunks[0].content == "Test content"
+
+
+def test_graph_state_clustering_metadata() -> None:
+    """Test GraphState clustering metadata fields are initialized and updatable."""
+    state = GraphState()
+    assert state.clustering_metadata == {}
+
+    state.clustering_metadata["test_key"] = "test_val"
+    assert state.clustering_metadata["test_key"] == "test_val"
 
 
 def test_graph_state_methods() -> None:

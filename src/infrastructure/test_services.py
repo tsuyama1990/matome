@@ -60,3 +60,15 @@ class FileProcessingService:
             raise FileProcessingError(msg) from e
 
         return "".join(content_chunks)
+
+
+class SimpleParsingService:
+    """A minimal parsing service meant purely for tests."""
+
+    def parse_document(self, content: str) -> list[str]:
+        """Splits the content roughly into sentences/chunks."""
+        if not content:
+            return []
+
+        # very basic naive splitting for test simplicity
+        return [c.strip() for c in re.split(r"(?<=[.!?])\s+", content) if c.strip()]

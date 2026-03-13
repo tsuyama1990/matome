@@ -29,6 +29,9 @@ class GraphState(BaseModel):
     error_log: list[str] = Field(
         default_factory=list, description="A log of errors encountered during processing."
     )
+    clustering_metadata: dict[str, str] = Field(
+        default_factory=dict, description="Metadata generated during clustering and summarization."
+    )
 
     model_config = ConfigDict(extra="forbid")
 

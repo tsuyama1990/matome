@@ -55,3 +55,25 @@ class DIContainer:
         """Dynamically loads a class from a module."""
         module = importlib.import_module(module_path)
         return getattr(module, class_name)  # type: ignore[no-any-return]
+
+
+def bootstrap_application_services(container: DIContainer) -> None:
+    """Helper to cleanly register application services to the DI container."""
+    from src.application import PivotKJEngine, RAPTOREngine, SQ3REngine
+
+    # Register RAPTOREngine
+    def raptor_factory() -> RAPTOREngine:
+        llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+        return RAPTOREngine(llm=llm)
+
+    container.register(RAPTOREngine, raptor_factory)
+
+    # Register SQ3REngine
+    def sq3r_factory() -> SQ3REngine:
+        llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+        return SQ3REngine(llm=llm)
+
+    container.register(SQ3REngine, sq3r_factory)
+
+    # Register PivotKJEngine
+    container.register(PivotKJEngine, PivotKJEngine)

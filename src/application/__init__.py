@@ -2,9 +2,13 @@
 Application layer containing orchestration workflows, use cases, and AI services.
 """
 
-from typing import TYPE_CHECKING
+import uuid
+from collections import defaultdict
+from typing import TYPE_CHECKING, Any
 
-from src.domain_models.document import SemanticChunk
+from src.domain_models.document import RaptorNode, SemanticChunk
+from src.domain_models.exceptions import ProcessingError, RaptorError
+from src.interfaces.dependencies import LLMProtocol
 
 if TYPE_CHECKING:
     from spacy.language import Language
@@ -61,4 +65,211 @@ class NLPService:
                     chunk.metadata.time_axis = "Detected Time"
 
 
-__all__ = ["NLPModelLoadError", "NLPService"]
+class RAPTOREngine:
+    """
+    Engine to orchestrate UMAP and GMM clustering to form a RAPTOR tree.
+    Builds the tree bottom-up by clustering chunks, summarising them, and recursively
+    clustering the summaries until a single root remains (or max depth is reached).
+    """
+
+    def __init__(self, llm: LLMProtocol, max_levels: int = 3, max_clusters: int = 5) -> None:
+        self._llm = llm
+        self._max_levels = max_levels
+        self._max_clusters = max_clusters
+
+    async def _summarize_cluster(self, texts: list[str]) -> str:
+        """Summarizes a list of texts using the Chain of Density concept."""
+        combined_text = "\n".join(texts)
+        prompt = (
+            "Summarize the following texts into a single, highly dense paragraph. "
+            "Extract the core entities and relationships. "
+            f"Texts:\n{combined_text}"
+        )
+        try:
+            summary = await self._llm.generate(prompt)
+            return summary.strip()
+        except Exception as e:
+            msg = "Failed to summarize cluster."
+            raise RaptorError(msg) from e
+
+    def _reduce_embeddings(self, embeddings: "Any") -> "Any":
+        import umap
+
+        n_samples = len(embeddings)
+        n_neighbors = min(15, n_samples - 1) if n_samples > 2 else 2
+
+        # Avoid running UMAP on extremely small sample sets to prevent spectral
+        # initialization issues in low-dimensional space
+        if n_samples > 3:
+            reducer = umap.UMAP(
+                n_neighbors=n_neighbors,
+                n_components=min(2, n_samples),
+                metric="cosine",
+                random_state=42,
+            )
+            return reducer.fit_transform(embeddings)
+        return embeddings
+
+    def _cluster_reduced_embeddings(self, embeddings: "Any") -> dict[int, list[int]]:
+        import numpy as np
+        from sklearn.mixture import GaussianMixture
+
+        n_samples = len(embeddings)
+        n_clusters = min(self._max_clusters, n_samples)
+        if n_samples < n_clusters:
+            return {0: list(range(n_samples))}
+
+        gmm = GaussianMixture(n_components=n_clusters, random_state=42)
+        gmm.fit(embeddings)
+        probs = gmm.predict_proba(embeddings)
+
+        threshold = 0.2
+        clusters = defaultdict(list)
+        for i, prob in enumerate(probs):
+            for j, p in enumerate(prob):
+                if p > threshold:
+                    clusters[j].append(i)
+
+        for i, prob in enumerate(probs):
+            if not any(p > threshold for p in prob):
+                clusters[int(np.argmax(prob))].append(i)
+
+        return clusters
+
+    async def cluster_chunks(self, chunks: list[SemanticChunk]) -> list[RaptorNode]:
+        """
+        Builds a RAPTOR hierarchical tree from chunks.
+        Strictly applies UMAP and GaussianMixture for mathematically sound clustering.
+        """
+        import numpy as np
+
+        if not chunks:
+            return []
+
+        all_nodes: list[RaptorNode] = []
+        current_level_texts = [c.content for c in chunks]
+        current_level_embeddings = np.array([c.embedding for c in chunks])
+        current_level_ids = [str(c.id) for c in chunks]
+
+        level = 0
+        while level < self._max_levels and len(current_level_texts) > 1:
+            reduced_embeddings = self._reduce_embeddings(current_level_embeddings)
+            clusters = self._cluster_reduced_embeddings(reduced_embeddings)
+
+            next_level_texts = []
+            next_level_embeddings = []
+            next_level_ids = []
+
+            for _cluster_idx, indices in clusters.items():
+                if not indices:
+                    continue
+
+                cluster_texts = [current_level_texts[i] for i in indices]
+                child_ids = [current_level_ids[i] for i in indices]
+
+                summary = await self._summarize_cluster(cluster_texts)
+                node_id = str(uuid.uuid4())
+
+                node = RaptorNode(
+                    node_id=node_id,
+                    level=level,
+                    children_ids=child_ids,
+                    summarized_content=summary,
+                    is_unlocked=False,
+                )
+                all_nodes.append(node)
+
+                next_level_texts.append(summary)
+                next_level_ids.append(node_id)
+
+                cluster_embs = np.array([current_level_embeddings[i] for i in indices])
+                next_level_embeddings.append(cluster_embs.mean(axis=0).tolist())
+
+            current_level_texts = next_level_texts
+            current_level_embeddings = np.array(next_level_embeddings)
+            current_level_ids = next_level_ids
+            level += 1
+
+        return all_nodes
+
+
+class SQ3REngine:
+    """
+    Engine for interactive Question and Recite features in the SQ3R loop.
+    Generates questions to unlock nodes, and evaluates user recited summaries.
+    """
+
+    def __init__(self, llm: LLMProtocol) -> None:
+        self._llm = llm
+
+    async def generate_question(self, node: RaptorNode) -> str:
+        """Generates a contextual question based on the node's hidden summary."""
+        prompt = (
+            "Based on the following summary, generate a single, thought-provoking question "
+            "that tests the reader's understanding of the core concept. The question should "
+            "not directly reveal the answer.\n\n"
+            f"Summary: {node.summarized_content}\n\n"
+            "Question:"
+        )
+        try:
+            question = await self._llm.generate(prompt)
+            return question.strip()
+        except Exception as e:
+            msg = "Failed to generate question."
+            raise ProcessingError(msg) from e
+
+    async def evaluate_answer(self, user_answer: str, node: RaptorNode) -> str:
+        """Evaluates the user's answer against the node's summary, providing 'Sandwich Feedback'."""
+        prompt = (
+            "You are an AI tutor. A student has just read the following summary and provided an answer "
+            "to a question about it. Provide 'Sandwich Feedback': "
+            "1. Praise their effort.\n"
+            "2. Gently correct any errors or hallucinations.\n"
+            "3. Praise their overall structure and encourage them.\n\n"
+            f"Original Summary: {node.summarized_content}\n"
+            f"Student Answer: {user_answer}\n\n"
+            "Feedback:"
+        )
+        try:
+            feedback = await self._llm.generate(prompt)
+            return feedback.strip()
+        except Exception as e:
+            msg = "Failed to evaluate answer."
+            raise ProcessingError(msg) from e
+
+
+class PivotKJEngine:
+    """
+    Engine to orchestrate dynamic re-clustering (Pivot KJ) of semantic chunks based
+    on specific multi-dimensional axes (e.g., actor, timeline).
+    """
+
+    def pivot(self, chunks: list[SemanticChunk], axis: str) -> dict[str, list[SemanticChunk]]:
+        """
+        Dynamically relocates and clusters chunks based on explicitly defined metadata tags.
+        """
+        if not chunks:
+            return {}
+
+        clusters: dict[str, list[SemanticChunk]] = defaultdict(list)
+        axis_lower = axis.lower()
+
+        for chunk in chunks:
+            # Map dynamic axes to concrete metadata fields based on axis name
+            target_value = "Uncategorized"
+
+            if "actor" in axis_lower:
+                target_value = chunk.metadata.actor_axis or "Uncategorized"
+            elif "time" in axis_lower:
+                target_value = chunk.metadata.time_axis or "Uncategorized"
+            # If axis isn't strictly recognized, check extracted entities as a fallback
+            elif chunk.metadata.extracted_entities:
+                target_value = chunk.metadata.extracted_entities[0]
+
+            clusters[target_value].append(chunk)
+
+        # Convert defaultdict to standard dict for strict typing
+        return dict(clusters)
+
+
+__all__ = ["NLPModelLoadError", "NLPService", "PivotKJEngine", "RAPTOREngine", "SQ3REngine"]

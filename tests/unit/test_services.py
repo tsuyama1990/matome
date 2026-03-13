@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 
 from src.config.settings import AppConfig
-from src.infrastructure.test_services import FileProcessingError, FileProcessingService
+from src.infrastructure.test_services import (
+    FileProcessingError,
+    FileProcessingService,
+    SimpleParsingService,
+)
 
 
 def test_file_processing_service_valid_file(tmp_path: Path) -> None:
@@ -43,3 +47,13 @@ def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
 
     with pytest.raises(FileProcessingError, match="File size exceeds the allowed limit."):
         service.read_file("large_file.txt")
+
+
+def test_simple_parsing_service() -> None:
+    service = SimpleParsingService()
+    content = "Hello there. How are you! I am fine."
+    chunks = service.parse_document(content)
+    assert chunks == ["Hello there.", "How are you!", "I am fine."]
+
+    empty_chunks = service.parse_document("")
+    assert empty_chunks == []

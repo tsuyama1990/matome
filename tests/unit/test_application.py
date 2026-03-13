@@ -3,8 +3,8 @@ from unittest import mock
 
 import pytest
 
-from src.application import NLPModelLoadError, NLPService
-from src.domain_models import ChunkMetadata, SemanticChunk
+from src.application import NLPModelLoadError, NLPService, PivotKJEngine, RAPTOREngine, SQ3REngine
+from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
 
 
 def test_nlp_service_load_success() -> None:
@@ -72,3 +72,76 @@ def test_nlp_service_tag_entities_not_loaded() -> None:
         service.nlp = None
         with pytest.raises(RuntimeError, match="NLP model is not loaded."):
             service.tag_entities_and_axes([])
+
+
+class DummyLLM:
+    async def generate(self, prompt: str) -> str:
+        return "Dummy Summary or Question."
+
+@pytest.mark.asyncio
+async def test_raptor_engine_cluster_chunks() -> None:
+    llm = DummyLLM()
+    engine = RAPTOREngine(llm=llm, max_levels=2, max_clusters=2)
+
+    # Create dummy chunks
+    chunks = []
+    for i in range(5):
+        chunk = SemanticChunk(
+            id=uuid.uuid4(),
+            content=f"This is chunk {i}",
+            embedding=[float(i) / 10.0] * 768,
+            metadata=ChunkMetadata(source_file="test.txt")
+        )
+        chunks.append(chunk)
+
+    nodes = await engine.cluster_chunks(chunks)
+    assert len(nodes) > 0
+    assert all(isinstance(node, RaptorNode) for node in nodes)
+    assert all(node.summarized_content == "Dummy Summary or Question." for node in nodes)
+
+
+@pytest.mark.asyncio
+async def test_sq3r_engine() -> None:
+    llm = DummyLLM()
+    engine = SQ3REngine(llm=llm)
+
+    node = RaptorNode(
+        node_id=str(uuid.uuid4()),
+        level=0,
+        summarized_content="Important summary.",
+    )
+
+    q = await engine.generate_question(node)
+    assert q == "Dummy Summary or Question."
+
+    feedback = await engine.evaluate_answer("I think it is X.", node)
+    assert feedback == "Dummy Summary or Question."
+
+
+def test_pivot_kj_engine() -> None:
+    engine = PivotKJEngine()
+
+    chunks = [
+        SemanticChunk(
+            id=uuid.uuid4(), content="A", embedding=[0.0]*768,
+            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin")
+        ),
+        SemanticChunk(
+            id=uuid.uuid4(), content="B", embedding=[0.0]*768,
+            metadata=ChunkMetadata(source_file="f1", actor_axis="User")
+        ),
+        SemanticChunk(
+            id=uuid.uuid4(), content="C", embedding=[0.0]*768,
+            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin")
+        ),
+    ]
+
+    clusters = engine.pivot(chunks, "actor")
+    assert "Admin" in clusters
+    assert "User" in clusters
+    assert len(clusters["Admin"]) == 2
+    assert len(clusters["User"]) == 1
+
+    time_clusters = engine.pivot(chunks, "time")
+    assert "Uncategorized" in time_clusters
+    assert len(time_clusters["Uncategorized"]) == 3
