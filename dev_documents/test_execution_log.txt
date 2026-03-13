@@ -36,7 +36,7 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             196     38    81%   94-95, 98-99, 110-112, 116-118, 121-123, 128, 150, 155-157, 160-162, 185, 207-208, 211-214, 223, 241, 293-295, 312-314, 328, 346-347
+src/application/__init__.py             208     46    78%   23-24, 91-92, 101-102, 105-106, 117-119, 123-125, 128-130, 135, 157-162, 167-169, 172-174, 197, 219-220, 223-226, 235, 253, 305-307, 324-326, 342, 360-361
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   38      4    89%   13-14, 42-43
 src/config/settings.py                   34      2    94%   37-38
@@ -46,11 +46,11 @@ src/domain_models/exceptions.py           2      0   100%
 src/domain_models/graph_state.py         33      0   100%
 src/infrastructure/__init__.py            0      0   100%
 src/infrastructure/llm_gateway.py       126     28    78%   58, 111-141, 155-156, 159-160, 184-185, 190-191, 209-210, 223-226, 231-235, 237-239
-src/infrastructure/test_services.py      67     11    84%   52-53, 69-71, 88-89, 91-94
+src/infrastructure/test_services.py      79     17    78%   63-64, 69-71, 73-75, 88-89, 94-97, 108-110
 src/interfaces/__init__.py                2      0   100%
-src/interfaces/dependencies.py           49     15    69%   47-48, 74-96
+src/interfaces/dependencies.py           54     20    63%   47-48, 74-104
 -------------------------------------------------------------------
-TOTAL                                   615    100    84%
-======================= 52 passed, 3 warnings in 59.44s ========================
+TOTAL                                   644    119    82%
+======================= 52 passed, 3 warnings in 53.99s ========================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

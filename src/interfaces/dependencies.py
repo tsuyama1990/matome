@@ -71,7 +71,8 @@ class DIContainer:
 
 def bootstrap_application_services(container: DIContainer) -> None:
     """Helper to cleanly register application services to the DI container."""
-    from src.application import PivotKJEngine, RAPTOREngine, SQ3REngine
+    from src.application import NLPService, PivotKJEngine, RAPTOREngine, SQ3REngine
+    from src.config.settings import AppConfig
 
     # Validate essential configurations and protocols exist prior to booting engines.
     if LLMProtocol not in container._factories and LLMProtocol not in container._singletons:
@@ -94,3 +95,10 @@ def bootstrap_application_services(container: DIContainer) -> None:
 
     # Register PivotKJEngine
     container.register(PivotKJEngine, PivotKJEngine)
+
+    # Register NLPService
+    def nlp_factory() -> NLPService:
+        config = container.resolve(AppConfig)
+        return NLPService(model_name=config.spacy_model)
+
+    container.register(NLPService, nlp_factory)

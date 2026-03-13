@@ -2,7 +2,6 @@
 Application layer containing orchestration workflows, use cases, and AI services.
 """
 
-import contextlib
 import logging
 import uuid
 from collections import defaultdict
@@ -16,10 +15,13 @@ from src.interfaces.dependencies import LLMProtocol
 
 logger = logging.getLogger(__name__)
 
-with contextlib.suppress(ImportError):
+try:
     import umap
     from sklearn.decomposition import PCA
     from sklearn.mixture import GaussianMixture
+    _ML_IMPORTS_SUCCESSFUL = True
+except ImportError:
+    _ML_IMPORTS_SUCCESSFUL = False
 
 if TYPE_CHECKING:
     from spacy.language import Language
@@ -32,8 +34,9 @@ class NLPModelLoadError(Exception):
 class NLPService:
     """Service dedicated to natural language processing and entity tagging."""
 
-    def __init__(self) -> None:
+    def __init__(self, model_name: str = "en_core_web_sm") -> None:
         self.nlp: Language | None = None
+        self.model_name = model_name
         self._load_model()
 
     def _load_model(self) -> None:
@@ -45,9 +48,9 @@ class NLPService:
             raise NLPModelLoadError(msg) from e
 
         try:
-            self.nlp = spacy.load("en_core_web_sm")
+            self.nlp = spacy.load(self.model_name)
         except OSError as e:
-            msg = "Spacy model 'en_core_web_sm' is missing. Please install it."
+            msg = f"Spacy model '{self.model_name}' is missing. Please install it."
             raise NLPModelLoadError(msg) from e
 
     def tag_entities_and_axes(self, chunks: list[SemanticChunk]) -> None:
@@ -84,6 +87,10 @@ class RAPTOREngine:
     """
 
     def __init__(self, llm: LLMProtocol, max_levels: int = 3, max_clusters: int = 5) -> None:
+        if not _ML_IMPORTS_SUCCESSFUL:
+            msg = "Missing required ML dependencies (umap-learn, scikit-learn). Please install them to use RAPTOREngine."
+            raise RaptorError(msg)
+
         self._llm = llm
         self._max_levels = max_levels
         self._max_clusters = max_clusters
@@ -130,22 +137,27 @@ class RAPTOREngine:
         n_neighbors = min(15, n_samples - 1) if n_samples > 2 else 2
         n_components = min(2, n_samples)
 
-        # Avoid running UMAP on extremely small sample sets to prevent spectral
-        # initialization issues in low-dimensional space
-        if n_samples > 3:
-            reducer = umap.UMAP(
-                n_neighbors=n_neighbors,
-                n_components=n_components,
-                metric="cosine",
-                random_state=42,
-            )
-            return reducer.fit_transform(embeddings)  # type: ignore[no-any-return]
+        try:
+            # Avoid running UMAP on extremely small sample sets to prevent spectral
+            # initialization issues in low-dimensional space
+            if n_samples > 3:
+                reducer = umap.UMAP(
+                    n_neighbors=n_neighbors,
+                    n_components=n_components,
+                    metric="cosine",
+                    random_state=42,
+                )
+                return reducer.fit_transform(embeddings)  # type: ignore[no-any-return]
 
-        # Use PCA as fallback to ensure a valid 2D array is returned
-        # without spectral initialization issues.
-        if embeddings.shape[1] > n_components:
-            pca = PCA(n_components=n_components, random_state=42)
-            return pca.fit_transform(embeddings)  # type: ignore[no-any-return]
+            # Use PCA as fallback to ensure a valid 2D array is returned
+            # without spectral initialization issues.
+            if embeddings.shape[1] > n_components:
+                pca = PCA(n_components=n_components, random_state=42)
+                return pca.fit_transform(embeddings)  # type: ignore[no-any-return]
+        except Exception as e:
+            msg = f"Dimensionality reduction failed: {e}"
+            logger.exception(msg)
+            raise RaptorError(msg) from e
 
         return embeddings
 
@@ -320,6 +332,8 @@ class PivotKJEngine:
     on specific multi-dimensional axes (e.g., actor, timeline).
     """
 
+    ALLOWED_AXES = frozenset({"actor", "time", "entities"})
+
     def pivot(self, chunks: list[SemanticChunk], axis: str) -> dict[str, list[SemanticChunk]]:
         """
         Dynamically relocates and clusters chunks based on explicitly defined metadata tags.
@@ -328,8 +342,8 @@ class PivotKJEngine:
             return {}
 
         axis_lower = axis.lower()
-        if axis_lower not in ("actor", "time", "entities"):
-            msg = f"Invalid axis '{axis}'. Supported axes are 'actor', 'time', and 'entities'."
+        if axis_lower not in self.ALLOWED_AXES:
+            msg = f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self.ALLOWED_AXES))}."
             logger.error(msg)
             raise ValueError(msg)
 
