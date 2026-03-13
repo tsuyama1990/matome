@@ -68,7 +68,7 @@ def test_semantic_chunk_embedding_validation_failure() -> None:
     metadata = ChunkMetadata(source_file="test.txt")
     chunk_id = uuid.uuid4()
 
-    # Provide incorrect dimensions (3 elements instead of 768 or 1536)
+    # Provide incorrect dimensions (3 elements instead of 384, 768 or 1536)
     invalid_embedding = [0.1, 0.2, 0.3]
 
     with pytest.raises(ValidationError) as excinfo:

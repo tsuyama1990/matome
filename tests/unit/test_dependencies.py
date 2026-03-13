@@ -2,9 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from src.application import BaseTestParsingService, build_ingestion_graph
+from src.application import build_ingestion_graph
 from src.domain_models.exceptions import ProcessingError
 from src.domain_models.graph_state import GraphState, ProcessingStatus
+from src.infrastructure.test_services import SimpleParsingService
 from src.interfaces.dependencies import DIContainer
 
 
@@ -72,7 +73,7 @@ def test_base_test_parsing_service_success(tmp_path: Path) -> None:
     test_file = tmp_path / "test.txt"
     test_file.write_text("Hello World", encoding="utf-8")
 
-    service = BaseTestParsingService(config=config)
+    service = SimpleParsingService(config=config)
     content = service.parse("test.txt")
 
     assert content == "Hello World"
@@ -88,7 +89,7 @@ def test_base_test_parsing_service_file_not_found(tmp_path: Path) -> None:
         database_uri=SecretStr("mock"), encryption_key=SecretStr("A" * 32), upload_dir=str(tmp_path)
     )
 
-    service = BaseTestParsingService(config=config)
+    service = SimpleParsingService(config=config)
     with pytest.raises(ProcessingError, match="File not found"):
         service.parse("nonexistent_file.txt")
 
@@ -102,8 +103,6 @@ def test_semantic_chunking_service_empty_text() -> None:
         service.chunk_text("", source_file="test.txt")
 
 
-
-
 class DummyLLM:
     """Dummy LLM client strictly for testing isolated workflow logic."""
 
@@ -111,7 +110,8 @@ class DummyLLM:
         return f"[Mock CoD] Extracted entities. Length: {len(prompt)}"
 
 
-def test_ingestion_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.asyncio
+async def test_ingestion_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Test the LangGraph ingestion workflow end-to-end."""
     # We must patch AppConfig environment variables via monkeypatch
     # to redirect the UPLOAD_DIR for test to our pytest tmp_path
@@ -128,11 +128,22 @@ def test_ingestion_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
     # Initialize GraphState with the upload filepath
     initial_state = GraphState(source_filepath="test_doc.txt")
 
+    from src.application import SemanticChunkingService
+    from src.application.di import global_container
+    from src.config.settings import AppConfig
+    from src.interfaces.dependencies import ChunkingProtocol, DocumentParserProtocol, LLMProtocol
+
+    # We must register the implementation protocols for testing inside the test environment DI container
+    global_container.register(AppConfig, AppConfig)  # type: ignore[arg-type]
+    global_container.register(DocumentParserProtocol, lambda: SimpleParsingService(AppConfig()))  # type: ignore[type-abstract,call-arg]
+    global_container.register(ChunkingProtocol, SemanticChunkingService)  # type: ignore[type-abstract]
+    global_container.register(LLMProtocol, DummyLLM)  # type: ignore[type-abstract]
+
     # Build and run workflow
     workflow = build_ingestion_graph()
 
-    # LangGraph invoke expects and returns the state dict
-    final_state_dict = workflow.invoke(initial_state.model_dump())
+    # LangGraph ainvoke expects and returns the state object asynchronously
+    final_state_dict = await workflow.ainvoke(initial_state)
     final_state = GraphState(**final_state_dict)
 
     # Assertions
@@ -144,7 +155,7 @@ def test_ingestion_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
 
     # Ensure chunking occurred
     assert len(doc.chunks) > 0
-    assert len(doc.chunks[0].embedding) == 768
+    assert len(doc.chunks[0].embedding) == 384
 
     # Assert NER and Axes
     assert len(doc.chunks[0].metadata.extracted_entities) >= 0

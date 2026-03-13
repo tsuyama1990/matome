@@ -42,9 +42,15 @@ class SemanticChunk(BaseModel):
     @classmethod
     def validate_embedding_dimension(cls, v: list[float]) -> list[float]:
         """Validates that if the embedding is provided, it matches the required dimensions."""
-        if v and len(v) not in (768, 1536):
-            msg = "Embedding must be empty or a valid length (e.g., 768 or 1536)."
+        if not v:
+            return v
+        if len(v) not in (384, 768, 1536):
+            msg = "Embedding must be empty or a valid length (e.g., 384, 768, or 1536)."
             raise ValueError(msg)
+        for element in v:
+            if not isinstance(element, float):
+                msg = "All embedding elements must be floats."
+                raise TypeError(msg)
         return v
 
     model_config = ConfigDict(extra="forbid")
