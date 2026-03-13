@@ -58,7 +58,7 @@ async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("ENCRYPTION_KEY", "abcdefghijklmnopqrstuvwxyz12345678901234567=")
     monkeypatch.delenv("OPENROUTER_API_KEY_ENCRYPTED", raising=False)
     with pytest.raises(
-        ValueError, match="OPENROUTER_API_KEY_ENCRYPTED environment variable is missing."
+        ValueError, match="OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
     ):
         OpenRouterGateway(config)
 

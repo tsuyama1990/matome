@@ -26,16 +26,34 @@ class FileProcessingService:
             msg = "Invalid file path structure"
             raise ValueError(msg)
 
+        # Do not allow any path separators or dots indicating directory traversal
+        if "/" in filename or "\\" in filename or ".." in filename:
+            msg = "Filename contains directory traversal patterns"
+            raise ValueError(msg)
+
+        from pathlib import Path
+        # Ensure we only have the basename (no relative structures)
+        if Path(filename).name != filename:
+            msg = "Filename must be a base name without directories"
+            raise ValueError(msg)
+
         if len(filename) > 255:
             msg = "Filename exceeds maximum allowed length"
             raise ValueError(msg)
 
         normalized_filename = unicodedata.normalize("NFKD", filename)
 
-        # Block all non-alphanumeric characters except safe basic punctuation, allow unicode letters
-        if not re.match(r"^[\w\-\.]+$", normalized_filename, re.UNICODE):
-            msg = "Filename contains invalid characters"
+        # Block all non-alphanumeric characters except basic safe characters (e.g. -, _). Dots explicitly disallowed in body except for single extension if needed, but let's just disallow dots entirely or tightly control it.
+        # Actually a filename usually needs an extension. Let's strictly control the extension and no other dots.
+        parts = normalized_filename.split(".")
+        if len(parts) > 2:
+            msg = "Filename contains multiple dots which are disallowed."
             raise ValueError(msg)
+
+        for part in parts:
+            if not re.match(r"^[\w\-]+$", part, re.UNICODE):
+                msg = "Filename contains invalid characters"
+                raise ValueError(msg)
 
         return normalized_filename
 

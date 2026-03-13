@@ -1,7 +1,6 @@
-from typing import Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChunkMetadata(BaseModel):
@@ -87,17 +86,39 @@ class EnrichedDocument(BaseModel):
         default_factory=list, description="The root nodes of the RAPTOR tree."
     )
 
-    @model_validator(mode="after")
-    def validate_embedding_consistency(self) -> Self:
-        """Validates that all chunk embeddings within the document share the exact same dimensionality."""
-        if not self.chunks:
-            return self
+    model_config = ConfigDict(extra="forbid")
 
-        first_dim = len(self.chunks[0].embedding)
-        for i, chunk in enumerate(self.chunks[1:], start=1):
+
+class DocumentValidator:
+    """Service class for complex document validation logic."""
+
+    @staticmethod
+    def validate_embedding_consistency(chunks: list[SemanticChunk]) -> None:
+        """Validates that all chunk embeddings share the exact same dimensionality."""
+        if not chunks:
+            return
+
+        first_dim = len(chunks[0].embedding)
+        for i, chunk in enumerate(chunks[1:], start=1):
             if len(chunk.embedding) != first_dim:
                 msg = f"Inconsistent embedding dimensions detected. Chunk 0 has dimension {first_dim}, but chunk {i} has dimension {len(chunk.embedding)}."
                 raise ValueError(msg)
-        return self
 
-    model_config = ConfigDict(extra="forbid")
+
+class DocumentFactory:
+    """Factory for creating and validating enriched documents."""
+
+    @staticmethod
+    def create(
+        document_id: UUID,
+        original_text: str,
+        chunks: list[SemanticChunk],
+        raptor_nodes: list[RaptorNode]
+    ) -> EnrichedDocument:
+        DocumentValidator.validate_embedding_consistency(chunks)
+        return EnrichedDocument(
+            document_id=document_id,
+            original_text=original_text,
+            chunks=chunks,
+            raptor_nodes=raptor_nodes
+        )

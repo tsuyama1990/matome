@@ -25,7 +25,7 @@ def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
     config = AppConfig(upload_dir=str(tmp_path))
     service = FileProcessingService(config)
 
-    with pytest.raises(ValueError, match="Filename contains invalid characters"):
+    with pytest.raises(ValueError, match="Filename contains directory traversal patterns"):
         service.read_file("../../../etc/passwd")
 
     # Also test null byte injection

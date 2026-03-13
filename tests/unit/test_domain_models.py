@@ -103,10 +103,15 @@ def test_enriched_document_embedding_consistency() -> None:
         metadata=metadata,
     )
 
-    with pytest.raises(ValidationError) as excinfo:
-        EnrichedDocument(document_id=uuid.uuid4(), original_text="Test", chunks=[chunk1, chunk2])
+    from src.domain_models.document import DocumentFactory
 
-    assert "Inconsistent embedding dimensions detected" in str(excinfo.value)
+    with pytest.raises(ValueError, match="Inconsistent embedding dimensions detected"):
+        DocumentFactory.create(
+            document_id=uuid.uuid4(),
+            original_text="Test",
+            chunks=[chunk1, chunk2],
+            raptor_nodes=[]
+        )
 
 
 def test_raptor_node_defaults() -> None:
