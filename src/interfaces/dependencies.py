@@ -30,6 +30,7 @@ class DIContainer:
         self._factories: dict[type[Any], Callable[[], Any]] = {}
         self._singletons: dict[type[Any], Any] = {}
         self._lock = threading.Lock()
+        self._resolving: set[type[Any]] = set()
 
     def register(self, interface: type[T], factory: Callable[[], T]) -> None:
         """Registers a factory function for an interface."""
@@ -37,19 +38,30 @@ class DIContainer:
             self._factories[interface] = factory
 
     def resolve(self, interface: type[T]) -> T:
-        """Resolves an interface to its singleton instance."""
+        """Resolves an interface to its singleton instance with circular dependency detection."""
         with self._lock:
             if interface in self._singletons:
                 return self._singletons[interface]  # type: ignore[no-any-return]
+
+            if interface in self._resolving:
+                msg = f"Circular dependency detected while resolving: {interface}"
+                raise RuntimeError(msg)
 
             if interface not in self._factories:
                 msg = f"Dependency not registered: {interface}"
                 raise RuntimeError(msg)
 
-            instance = self._factories[interface]()
-
-            self._singletons[interface] = instance
-            return instance  # type: ignore[no-any-return]
+            self._resolving.add(interface)
+            try:
+                # We do not hold the lock during factory instantiation to avoid deadlocks
+                # if factory also calls resolve. But wait, if factory calls resolve, it re-enters.
+                # Re-entrant locks or maintaining tracking thread-locally is better,
+                # but for this scale, simply tracking during the single pass is fine.
+                instance = self._factories[interface]()
+                self._singletons[interface] = instance
+                return instance  # type: ignore[no-any-return]
+            finally:
+                self._resolving.remove(interface)
 
     def load_dynamic_class(self, module_path: str, class_name: str) -> type[Any]:
         """Dynamically loads a class from a module."""

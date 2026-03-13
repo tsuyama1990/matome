@@ -60,6 +60,19 @@ def test_nlp_service_tag_entities_not_loaded() -> None:
             service.tag_entities_and_axes([])
 
 
+def test_nlp_service_malicious_input() -> None:
+    service = NLPService()
+    chunk = SemanticChunk(
+        id=uuid.uuid4(),
+        content="<script>alert('XSS')</script> SELECT * FROM users;",
+        embedding=[0.0] * 768,
+        metadata=ChunkMetadata(source_file="test.txt"),
+    )
+    # The NLP processor shouldn't crash, execute the script, or hallucinate random entities
+    service.tag_entities_and_axes([chunk])
+    assert "script" not in chunk.metadata.extracted_entities
+
+
 class DummyLLM:
     async def generate(self, prompt: str) -> str:
         return "Dummy Summary or Question."
@@ -92,8 +105,8 @@ def test_raptor_engine_cluster_edge_cases() -> None:
     llm = DummyLLM()
     engine = RAPTOREngine(llm=llm, max_levels=2, max_clusters=2)
 
-    # Test empty array
-    empty = np.array([])
+    # Test empty array (must have shape length 2 but empty size)
+    empty = np.array([[]])
     assert engine._cluster_reduced_embeddings(empty) == {}
 
     # Test single item

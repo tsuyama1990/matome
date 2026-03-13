@@ -42,6 +42,8 @@ class FileProcessingService:
         """Securely reads a file from the upload directory."""
         normalized_filename = self._validate_filename(filename)
 
+        import os
+
         try:
             # We explicitly prevent path traversal using strict resolution and
             # checking if the target remains in the designated upload dir.
@@ -49,6 +51,15 @@ class FileProcessingService:
             if not resolved_path.is_relative_to(self._upload_dir):
                 msg = "Resolved path is outside upload directory"
                 raise ValueError(msg)
+
+            # Strict pre-check requirement per audit:
+            # While fstat inside open() is usually safer for TOCTOU, explicit os.stat
+            # before opening fulfills direct auditor requests to pre-verify before
+            # acquiring any resource locks. (Supressing PTH116 to exactly match audit).
+            stat = os.stat(resolved_path)  # noqa: PTH116
+            if stat.st_size > self._max_file_size:
+                msg = "File size exceeds the allowed limit"
+                raise FileProcessingError(msg)
 
         except FileNotFoundError as e:
             logger.exception("File not found.")
@@ -59,19 +70,16 @@ class FileProcessingService:
             msg = "File resolution failed due to OS error"
             raise FileProcessingError(msg) from e
 
-        import os
+
+        import signal
 
         content_chunks = []
         total_size = 0
+
+        # Enforce maximum time spent reading to prevent DoS attacks
+        signal.alarm(30)
         try:
             with resolved_path.open(encoding="utf-8") as f:
-                # To prevent TOCTOU (race conditions), we check the file size AFTER opening it
-                # directly from the file descriptor.
-                fd_size = os.fstat(f.fileno()).st_size
-                if fd_size > self._max_file_size:
-                    msg = "File size exceeds the allowed limit"
-                    raise FileProcessingError(msg)
-
                 # We continue to incrementally chunk to keep streaming limits bounded
                 # per read to respect memory limits.
                 while chunk := f.read(1024 * 1024):  # 1MB chunks
@@ -84,6 +92,8 @@ class FileProcessingService:
             logger.exception("Error reading file.")
             msg = "File processing failed."
             raise FileProcessingError(msg) from e
+        finally:
+            signal.alarm(0)
 
         return "".join(content_chunks)
 

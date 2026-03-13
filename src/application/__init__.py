@@ -6,7 +6,7 @@ import contextlib
 import logging
 import uuid
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -90,6 +90,14 @@ class RAPTOREngine:
 
     async def _summarize_cluster(self, texts: list[str]) -> str:
         """Summarizes a list of texts using the Chain of Density concept."""
+        if not texts:
+            msg = "Texts cannot be empty."
+            raise ValueError(msg)
+
+        if any(len(t) > 100000 for t in texts):
+            msg = "Text chunk too large."
+            raise ValueError(msg)
+
         combined_text = "\n".join(texts)
         prompt = (
             "Summarize the following texts into a single, highly dense paragraph. "
@@ -103,7 +111,7 @@ class RAPTOREngine:
             msg = "Failed to summarize cluster."
             raise RaptorError(msg) from e
 
-    def _reduce_embeddings(self, embeddings: "Any") -> "Any":
+    def _reduce_embeddings(self, embeddings: np.ndarray) -> np.ndarray:
         if not isinstance(embeddings, np.ndarray):
             msg = f"Expected embeddings to be a numpy array, got {type(embeddings)}."
             logger.error(msg)
@@ -131,28 +139,36 @@ class RAPTOREngine:
                 metric="cosine",
                 random_state=42,
             )
-            return reducer.fit_transform(embeddings)
+            return reducer.fit_transform(embeddings)  # type: ignore[no-any-return]
 
         # Use PCA as fallback to ensure a valid 2D array is returned
         # without spectral initialization issues.
         if embeddings.shape[1] > n_components:
             pca = PCA(n_components=n_components, random_state=42)
-            return pca.fit_transform(embeddings)
+            return pca.fit_transform(embeddings)  # type: ignore[no-any-return]
 
         return embeddings
 
-    def _cluster_reduced_embeddings(self, embeddings: "Any") -> dict[int, list[int]]:
-        n_samples = len(embeddings)
-        if n_samples == 0:
-            return {}
+    def _validate_embeddings_type_and_shape(self, embeddings: np.ndarray) -> None:
+        """Helper to ensure embeddings are valid 2D numpy arrays before processing."""
+        if not isinstance(embeddings, np.ndarray):
+            msg = f"Expected embeddings to be a numpy array, got {type(embeddings)}."
+            logger.error(msg)
+            raise TypeError(msg)
 
-        n_clusters = min(self._max_clusters, n_samples)
-
-        # Verify embedding dimension consistency
         if len(embeddings.shape) != 2:
             msg = f"Invalid embedding dimensions. Expected 2D array, got shape {embeddings.shape}."
             logger.error(msg)
             raise ValueError(msg)
+
+    def _cluster_reduced_embeddings(self, embeddings: np.ndarray) -> dict[int, list[int]]:
+        self._validate_embeddings_type_and_shape(embeddings)
+
+        n_samples = len(embeddings)
+        if n_samples == 0 or (n_samples == 1 and embeddings.shape[1] == 0):
+            return {}
+
+        n_clusters = min(self._max_clusters, n_samples)
 
         # If we have very few samples, explicitly group them to form a hierarchy
         # instead of dumping them all into a single flat cluster

@@ -254,3 +254,18 @@ def test_semantic_chunk_embedding_validation_nan() -> None:
         metadata=metadata,
     )
     assert chunk.embedding[-1] == 1.5
+
+def test_semantic_chunk_embedding_validation_overflow() -> None:
+    """Test validation fails if embedding floats exceed safe overflow ranges."""
+    metadata = ChunkMetadata(source_file="test.txt")
+    chunk_id = uuid.uuid4()
+
+    invalid_embedding_large = [0.1] * 767 + [1e11]
+    with pytest.raises(ValidationError) as excinfo:
+        SemanticChunk(
+            id=chunk_id,
+            content="This is a test chunk.",
+            embedding=invalid_embedding_large,
+            metadata=metadata,
+        )
+    assert "Embedding values out of reasonable range." in str(excinfo.value)

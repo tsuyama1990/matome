@@ -17,7 +17,10 @@ class MockE2ELLM:
             return "Good job. Correct."
         if "question" in prompt.lower():
             return "What is the core condition?"
-        return "Executive approval is strictly needed if the budget exceeds 5000."
+        if "summarize" in prompt.lower():
+            return "Executive approval is strictly needed if the budget exceeds 5000."
+
+        raise ValueError("Unexpected prompt without context: " + prompt)
 
 @pytest.mark.asyncio
 async def test_uat_01_quick_start() -> None:

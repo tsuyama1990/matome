@@ -50,6 +50,9 @@ class SemanticChunk(BaseModel):
             if math.isnan(val) or math.isinf(val):
                 msg = "Embedding elements cannot be NaN or Inf."
                 raise ValueError(msg)
+            if not (-1e10 < val < 1e10):
+                msg = "Embedding values out of reasonable range."
+                raise ValueError(msg)
 
         return v
 
@@ -72,7 +75,7 @@ class EnrichedDocument(BaseModel):
     """The complete aggregated document representing chunks and the RAPTOR tree."""
 
     document_id: UUID = Field(description="The unique identifier for the document.")
-    original_text: str = Field(description="The raw text of the entire document.")
+    original_text: str = Field(max_length=10_000_000, description="The raw text of the entire document.")
     chunks: list[SemanticChunk] = Field(
         default_factory=list, description="The list of semantic chunks."
     )
