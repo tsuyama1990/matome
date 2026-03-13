@@ -1,5 +1,6 @@
 from src.infrastructure.vector_store import InMemoryVectorStore
 
+
 def test_vector_store_upsert_and_search() -> None:
     store = InMemoryVectorStore()
     records = [

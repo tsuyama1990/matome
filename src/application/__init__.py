@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class NLPService:
     """Service dedicated to natural language processing and entity tagging."""
 
-    def __init__(self, model_name: str = "en_core_web_sm") -> None:
+    def __init__(self, model_name: str) -> None:
         self.nlp: Any | None = None
         self.model_name = model_name
         self._load_model()
@@ -79,8 +79,8 @@ class RAPTOREngine:
         self,
         llm: LLMProtocol,
         clustering_strategy: ClusteringStrategy,
-        max_levels: int = 3,
-        max_clusters: int = 5,
+        max_levels: int,
+        max_clusters: int,
     ) -> None:
         self._llm = llm
         self._clustering_strategy = clustering_strategy
@@ -224,7 +224,8 @@ class PivotKJEngine:
     on specific multi-dimensional axes (e.g., actor, timeline).
     """
 
-    ALLOWED_AXES = frozenset({"actor", "time", "entities"})
+    def __init__(self, allowed_axes: frozenset[str]) -> None:
+        self._allowed_axes = allowed_axes
 
     def pivot(self, chunks: list[SemanticChunk], axis: str) -> dict[str, list[SemanticChunk]]:
         """
@@ -234,11 +235,11 @@ class PivotKJEngine:
             return {}
 
         axis_lower = axis.lower()
-        if axis_lower not in self.ALLOWED_AXES:
+        if axis_lower not in self._allowed_axes:
             msg = (
-                f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self.ALLOWED_AXES))}."
+                f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self._allowed_axes))}."
             )
-            logger.error(msg)
+            logger.exception(msg)
             raise ValueError(msg)
 
         clusters: dict[str, list[SemanticChunk]] = defaultdict(list)

@@ -1,7 +1,10 @@
 import importlib
+import logging
 import threading
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar
+
+logger = logging.getLogger(__name__)
 
 
 class LLMProtocol(Protocol):
@@ -71,13 +74,17 @@ class DIContainer:
 
 def validate_container(container: DIContainer) -> None:
     """Validates that necessary protocols are registered."""
-    if LLMProtocol not in container._factories and LLMProtocol not in container._singletons:
-        msg = "LLMProtocol must be registered in the DI container before bootstrapping application services."
-        raise RuntimeError(msg)
+    required_protocols = [LLMProtocol]
+    for protocol in required_protocols:
+        if protocol not in container._factories and protocol not in container._singletons:
+            msg = f"{protocol.__name__} must be registered in the DI container before bootstrapping application services."
+            logger.error(msg)
+            raise RuntimeError(msg)
 
 
 def register_raptor_engine(container: DIContainer) -> None:
     from src.application import RAPTOREngine
+    from src.config.settings import AppConfig
 
     def raptor_factory() -> RAPTOREngine:
         from src.infrastructure.clustering import UMAPGMMClusteringStrategy
@@ -91,7 +98,13 @@ def register_raptor_engine(container: DIContainer) -> None:
 
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
         clustering_strategy = container.resolve(ClusteringStrategy)  # type: ignore[type-abstract]
-        return RAPTOREngine(llm=llm, clustering_strategy=clustering_strategy)
+        config = container.resolve(AppConfig)
+        return RAPTOREngine(
+            llm=llm,
+            clustering_strategy=clustering_strategy,
+            max_levels=config.raptor_max_levels,
+            max_clusters=config.raptor_max_clusters,
+        )
 
     container.register(RAPTOREngine, raptor_factory)
 
@@ -108,8 +121,13 @@ def register_sq3r_engine(container: DIContainer) -> None:
 
 def register_pivot_kj_engine(container: DIContainer) -> None:
     from src.application import PivotKJEngine
+    from src.config.settings import AppConfig
 
-    container.register(PivotKJEngine, PivotKJEngine)
+    def pivot_factory() -> PivotKJEngine:
+        config = container.resolve(AppConfig)
+        return PivotKJEngine(allowed_axes=frozenset(config.pivot_allowed_axes))
+
+    container.register(PivotKJEngine, pivot_factory)
 
 
 def register_pivot_workflow(container: DIContainer) -> None:
@@ -128,10 +146,20 @@ def register_pivot_workflow(container: DIContainer) -> None:
 
 
 def register_vector_store(container: DIContainer) -> None:
-    from src.infrastructure.vector_store import InMemoryVectorStore
+    import os
+
+    from src.infrastructure.vector_store import PineconeVectorStore
 
     def vector_store_factory() -> VectorStoreProtocol:
-        return InMemoryVectorStore()
+        api_key = os.environ.get("PINECONE_API_KEY")
+        if not api_key:
+            from src.infrastructure.vector_store import InMemoryVectorStore
+            logger.warning("PINECONE_API_KEY not found, falling back to InMemoryVectorStore.")
+            return InMemoryVectorStore()
+
+        environment = os.environ.get("PINECONE_ENV", "us-east-1")
+        index_name = os.environ.get("PINECONE_INDEX", "matome")
+        return PineconeVectorStore(api_key, environment, index_name)
 
     container.register(VectorStoreProtocol, vector_store_factory)  # type: ignore[type-abstract]
 
@@ -149,10 +177,17 @@ def register_nlp_service(container: DIContainer) -> None:
 
 def bootstrap_application_services(container: DIContainer) -> None:
     """Helper to cleanly register application services to the DI container."""
-    validate_container(container)
-    register_vector_store(container)
-    register_raptor_engine(container)
-    register_sq3r_engine(container)
-    register_pivot_kj_engine(container)
-    register_pivot_workflow(container)
-    register_nlp_service(container)
+    logger.info("Starting bootstrap of application services...")
+    try:
+        validate_container(container)
+        register_vector_store(container)
+        register_raptor_engine(container)
+        register_sq3r_engine(container)
+        register_pivot_kj_engine(container)
+        register_pivot_workflow(container)
+        register_nlp_service(container)
+        logger.info("Successfully bootstrapped application services.")
+    except Exception as e:
+        logger.exception("Error during dependency bootstrapping.")
+        msg = "Bootstrap failed."
+        raise RuntimeError(msg) from e

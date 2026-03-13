@@ -50,7 +50,9 @@ def pivot_client() -> Generator[TestClient, None, None]:
     container.register(DocumentRepositoryProtocol, MockE2EPivotRepository)  # type: ignore[type-abstract]
 
     # We must also register PivotKJEngine for the API
-    container.register(PivotKJEngine, PivotKJEngine)
+    def test_pivot_factory() -> PivotKJEngine:
+        return PivotKJEngine(allowed_axes=frozenset({"actor", "time", "entities"}))
+    container.register(PivotKJEngine, test_pivot_factory)
 
     from src.interfaces.dependencies import register_pivot_workflow
     register_pivot_workflow(container)

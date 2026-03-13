@@ -44,6 +44,12 @@ class AppConfig(BaseSettings):
         default_factory=lambda: [256, 384, 512, 768, 1024, 1536, 2048, 3072],
         description="Allowed embedding dimensions.",
     )
+    raptor_max_levels: int = Field(default=3, description="Maximum levels for RAPTOR tree.")
+    raptor_max_clusters: int = Field(default=5, description="Maximum clusters per RAPTOR level.")
+    pivot_allowed_axes: list[str] = Field(
+        default_factory=lambda: ["actor", "time", "entities"],
+        description="List of allowed axes for Pivot KJ analysis.",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

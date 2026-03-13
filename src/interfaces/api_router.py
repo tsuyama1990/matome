@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -28,8 +29,15 @@ class UserAnswerPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+logger = logging.getLogger(__name__)
+
+
 def get_di_container(request: Request) -> DIContainer:
     """Dependency injection container resolver from app state."""
+    if not hasattr(request.app.state, "container"):
+        msg = "DI Container is not initialized in app state."
+        logger.error(msg)
+        raise HTTPException(status_code=500, detail=msg)
     return request.app.state.container  # type: ignore[no-any-return]
 
 

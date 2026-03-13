@@ -1,9 +1,11 @@
 import logging
-
 import typing
 
 if typing.TYPE_CHECKING:
     from src.application import PivotKJEngine
+
+from tenacity import retry, stop_after_attempt, wait_exponential
+
 from src.domain_models.pivot import PivotRequestPayload
 from src.interfaces.dependencies import LLMProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
@@ -60,13 +62,26 @@ class PivotWorkflow:
             f"Clusters:\n{cluster_text}"
         )
 
+        markdown = "Markdown generation failed."
+        mermaid = "Mermaid generation failed."
+
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=2, max=10),
+            reraise=True,
+        )
+        async def generate_artifact(prompt: str) -> str:
+            return await self._llm.generate(prompt)
+
         try:
-            markdown = await self._llm.generate(markdown_prompt)
-            mermaid = await self._llm.generate(mermaid_prompt)
-        except Exception as e:
-            msg = "Failed to generate markdown and mermaid artifacts."
-            logger.exception(msg)
-            raise RuntimeError(msg) from e
+            markdown = await generate_artifact(markdown_prompt)
+        except Exception:
+            logger.exception("Failed to generate markdown artifact, continuing with partial success.")
+
+        try:
+            mermaid = await generate_artifact(mermaid_prompt)
+        except Exception:
+            logger.exception("Failed to generate mermaid artifact, continuing with partial success.")
 
         serialized_clusters = {}
         for key, value in clusters.items():
