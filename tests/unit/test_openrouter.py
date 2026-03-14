@@ -30,7 +30,7 @@ async def test_openrouter_happy_path(test_config: AppConfig) -> None:
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Hello World"}}]}
     )
-    client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
+    client = httpx.AsyncClient(transport=transport)
 
     openrouter = OpenRouterClient(config=test_config, client=client)
     result = await openrouter.generate_text("Say hello", "fast-model")
@@ -52,7 +52,7 @@ async def test_openrouter_retries_on_transient_error(test_config: AppConfig) -> 
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Recovered!"}}]}
     )
-    client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
+    client = httpx.AsyncClient(transport=transport)
 
     openrouter = OpenRouterClient(config=test_config, client=client)
     result = await openrouter.generate_text("Say hello", "fast-model")
@@ -68,7 +68,7 @@ async def test_openrouter_immediate_failure_401(test_config: AppConfig) -> None:
     req = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
     resp = httpx.Response(401, request=req)
     transport.add_response(exc=httpx.HTTPStatusError("401", request=req, response=resp))
-    client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
+    client = httpx.AsyncClient(transport=transport)
 
     openrouter = OpenRouterClient(config=test_config, client=client)
 
@@ -93,7 +93,7 @@ async def test_openrouter_fallback_mechanism(test_config: AppConfig) -> None:
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Fallback used"}}]}
     )
-    client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
+    client = httpx.AsyncClient(transport=transport)
 
     openrouter = OpenRouterClient(config=test_config, client=client)
     result = await openrouter.generate_text("Say hello", "fast-model")
@@ -121,7 +121,7 @@ async def test_openrouter_fallback_fails(test_config: AppConfig) -> None:
     transport.add_response(exc=httpx.ConnectError("Failed to connect"))
     transport.add_response(exc=httpx.ConnectError("Failed to connect"))
 
-    client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
+    client = httpx.AsyncClient(transport=transport)
 
     openrouter = OpenRouterClient(config=test_config, client=client)
 

@@ -13,6 +13,8 @@ class LLMProtocol(Protocol):
 
     async def generate(self, prompt: str) -> str: ...
 
+    async def generate_text(self, prompt: str, model: str) -> str: ...
+
 
 @runtime_checkable
 class VectorStoreProtocol(Protocol):
@@ -23,6 +25,20 @@ class VectorStoreProtocol(Protocol):
     def search(
         self, collection_name: str, query_vector: list[float], limit: int
     ) -> list[dict[str, Any]]: ...
+
+
+@runtime_checkable
+class EmbeddingProtocol(Protocol):
+    """Protocol for generating vector embeddings."""
+
+    async def embed_text(self, text: str) -> list[float]: ...
+
+
+@runtime_checkable
+class TextParserProtocol(Protocol):
+    """Protocol for extracting raw string content from various document formats."""
+
+    async def parse(self, file_content: bytes, filename: str) -> str: ...
 
 
 T = TypeVar("T")

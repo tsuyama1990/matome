@@ -15,6 +15,7 @@ def test_file_processing_service_valid_file(tmp_path: Path) -> None:
     service = FileProcessingService(config)
 
     import hashlib
+
     file_hash = hashlib.sha256(b"valid_file.txt").hexdigest()
     test_file = tmp_path / f"{file_hash}.safe"
     test_file.write_text("Hello, world!", encoding="utf-8")
@@ -46,6 +47,7 @@ def test_file_processing_service_valid_unicode_filename(tmp_path: Path) -> None:
 
     import hashlib
     import unicodedata
+
     filename = "テスト_ファイル-1.txt"
     normalized = unicodedata.normalize("NFKD", filename)
     file_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
@@ -70,6 +72,7 @@ def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
     service = FileProcessingService(config)
 
     import hashlib
+
     file_hash = hashlib.sha256(b"large_file.txt").hexdigest()
     test_file = tmp_path / f"{file_hash}.safe"
     test_file.write_text("This file is way too large for the 10 byte limit.", encoding="utf-8")

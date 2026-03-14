@@ -132,6 +132,26 @@ class SimpleParsingService:
         return [c.strip() for c in re.split(r"(?<=[.!?])\s+", content) if c.strip()]
 
 
+class PlainTextParser:
+    """Minimal text parser for testing."""
+
+    async def parse(self, file_content: bytes, filename: str) -> str:
+        """Parses the text from the bytes."""
+        return file_content.decode("utf-8", errors="replace")
+
+
+class DummyEmbeddingService:
+    """Dummy embedding service for testing."""
+
+    def __init__(self, dimension: int = 384) -> None:
+        self.dimension = dimension
+
+    async def embed_text(self, text: str) -> list[float]:
+        """Returns a dummy embedding of the configured dimension."""
+        # Using 0.1 for deterministic tests
+        return [0.1] * self.dimension
+
+
 class SafeTestLLMService:
     """Minimal test implementation of LLMProtocol without mocking."""
 
@@ -149,6 +169,13 @@ class SafeTestLLMService:
             raise ValueError(msg)
         return "Test Summary or Question."
 
+    async def generate_text(self, prompt: str, model: str) -> str:
+        self._call_count += 1
+        if self.raise_error:
+            msg = "LLM connection failed"
+            raise ValueError(msg)
+        return "Test Summary or Question."
+
 
 class DummyLLMService:
     """Dummy test implementation of LLMProtocol."""
@@ -159,6 +186,13 @@ class DummyLLMService:
 
     def get_call_count(self) -> int:
         return self._call_count
+
+    async def generate(self, prompt: str) -> str:
+        self._call_count += 1
+        if self.raise_error:
+            msg = "LLM connection failed"
+            raise ValueError(msg)
+        return "Test Summary or Question."
 
     async def generate_text(self, prompt: str, model: str) -> str:
         self._call_count += 1
@@ -204,7 +238,12 @@ class MockHTTPTransport(httpx.AsyncBaseTransport):
                 msg = "exc must be an Exception"
                 raise ValueError(msg)
 
-            allowed_exceptions = (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError, httpx.HTTPStatusError)
+            allowed_exceptions = (
+                httpx.ConnectError,
+                httpx.TimeoutException,
+                httpx.RequestError,
+                httpx.HTTPStatusError,
+            )
             if not isinstance(exc, allowed_exceptions):
                 msg = "exc must be a valid httpx exception"
                 raise ValueError(msg)
@@ -223,7 +262,7 @@ class MockHTTPTransport(httpx.AsyncBaseTransport):
             return httpx.Response(
                 status_code=200,
                 json={"choices": [{"message": {"content": "Mock fallback success"}}]},
-                request=request
+                request=request,
             )
 
         resp = self.responses.pop(0)
@@ -236,8 +275,12 @@ class MockHTTPTransport(httpx.AsyncBaseTransport):
         body = json.dumps(json_data).encode("utf-8") if json_data else b""
         stream = httpx.ByteStream(body)
         return httpx.Response(
-            status_code=status_code, headers=[(b"content-type", b"application/json")], stream=stream, request=request
+            status_code=status_code,
+            headers=[(b"content-type", b"application/json")],
+            stream=stream,
+            request=request,
         )
+
 
 # For backward compatibility with tests using the old name
 MockHttpxTransport = MockHTTPTransport
@@ -275,5 +318,5 @@ class SafeTestHTTPTransport:
             status_code=self.status_code,
             headers=[(b"content-type", b"application/json")],
             stream=stream,
-            request=request
+            request=request,
         )

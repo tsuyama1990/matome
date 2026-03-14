@@ -196,6 +196,10 @@ class OpenRouterGateway:
 
     async def generate(self, prompt: str) -> str:
         """Generates text from a prompt."""
+        return await self.generate_text(prompt, self._config.text_fast_model)
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        """Generates text from a prompt for a specific model."""
         import re
 
         from src.config.security import SecurityService

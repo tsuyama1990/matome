@@ -87,7 +87,7 @@ class OpenRouterClient(LLMProtocol):
                 headers=headers,
                 json=payload,
                 timeout=30.0,
-                auth=OpenRouterAuth(self._api_key)
+                auth=OpenRouterAuth(self._api_key),
             )
             response.raise_for_status()
 
@@ -124,6 +124,9 @@ class OpenRouterClient(LLMProtocol):
         except Exception as e:
             msg = "An unexpected error occurred during LLM generation."
             raise LLMConnectionError(msg) from e
+
+    async def generate(self, prompt: str) -> str:
+        return await self.generate_text(prompt, self._config.routing_rules.fallback_model)
 
     async def generate_text(self, prompt: str, model: str) -> str:
         """
