@@ -2,17 +2,19 @@ import importlib
 import logging
 import threading
 from collections.abc import Callable
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
 
+@runtime_checkable
 class LLMProtocol(Protocol):
     """Protocol for interacting with LLM Gateways."""
 
     async def generate(self, prompt: str) -> str: ...
 
 
+@runtime_checkable
 class VectorStoreProtocol(Protocol):
     """Protocol for interacting with Vector Databases."""
 
@@ -191,20 +193,20 @@ def bootstrap_application_services(container: DIContainer) -> None:
     """Helper to cleanly register application services to the DI container."""
     logger.info("Starting bootstrap of application services...")
 
+    # Pre-Core Validation (Per audit requirements)
+    try:
+        validate_container(container)
+    except Exception as e:
+        logger.exception("Container pre-validation failed.")
+        msg = "Bootstrap failed."
+        raise RuntimeError(msg) from e
+
     # Core Infrastructure
     try:
         register_vector_store(container)
     except Exception as e:
         logger.exception("Vector store registration failed.")
         msg = "Bootstrap failed due to core infrastructure failure."
-        raise RuntimeError(msg) from e
-
-    # Post-Core Validation
-    try:
-        validate_container(container)
-    except Exception as e:
-        logger.exception("Container pre-validation failed.")
-        msg = "Bootstrap failed."
         raise RuntimeError(msg) from e
 
     try:

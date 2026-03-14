@@ -1,10 +1,11 @@
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from src.domain_models.document import EnrichedDocument, RaptorNode
 
 
+@runtime_checkable
 class DocumentRepositoryProtocol(Protocol):
     def get_node_by_id(self, node_id: str) -> RaptorNode: ...
     def save_node(self, node: RaptorNode) -> None: ...
