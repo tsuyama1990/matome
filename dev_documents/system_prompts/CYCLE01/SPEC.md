@@ -34,9 +34,9 @@ This cycle focuses entirely on data structures and structural patterns. We are d
 ### 1. `src/domain_models/config.py`
 This module contains the core configuration models for the application.
 *   **`ModelRoutingRules`**: A Pydantic `BaseModel` that defines which LLM/VLM should be used for specific tasks. It should have fields like `text_fast_model` (defaulting to a fast, cheap model), `text_reasoning_model` (for complex tasks), and `multimodal_model`. It must strictly forbid extra fields (`model_config = ConfigDict(extra="forbid")`).
-*   **`AppConfig`**: A Pydantic `BaseSettings` class. This is the root configuration object. It must read from environment variables. Crucially, it must include an `openrouter_api_key` field typed as `pydantic.SecretStr` to prevent accidental logging of the key. It should also embed the `ModelRoutingRules` as a nested model. It must use `SettingsConfigDict(env_file=".env", extra="forbid")`.
+*   **`AppConfig`**: A Pydantic `BaseSettings` class. This is the root configuration object. It must read from environment variables. Crucially, it must include an `openrouter_api_key` field typed as `pydantic.SecretStr` to prevent accidental logging of the key. It should also embed the `ModelRoutingRules` as a nested model. To support multi-tenancy natively, it must include a `tenant_id` field. It must use `SettingsConfigDict(env_file=".env", extra="forbid")`.
 
-**Invariants and Constraints:** The `AppConfig` must fail fast upon instantiation if required environment variables (like the API key) are missing, unless explicitly running in a designated "Mock Mode" for testing. The `ModelRoutingRules` ensure that the application always has a default model defined for every required capability, preventing runtime errors during routing.
+**Invariants and Constraints:** The `AppConfig` must fail fast upon instantiation if required environment variables (like the API key or `tenant_id`) are missing, unless explicitly running in a designated "Mock Mode" for testing. The `ModelRoutingRules` ensure that the application always has a default model defined for every required capability, preventing runtime errors during routing. Including `tenant_id` in the core config ensures data is naturally isolated across tenants.
 
 ### 2. `src/interfaces/llm_protocol.py`
 This module defines the abstract interface for the AI engine.

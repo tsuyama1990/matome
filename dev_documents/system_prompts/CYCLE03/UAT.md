@@ -33,6 +33,7 @@ This UAT will be implemented in the `tutorials/UAT_AND_TUTORIAL.py` Marimo noteb
 **AND** every chunk in the list must have a valid UUID.
 **AND** every chunk must have an `embedding` vector of exactly length 384.
 **AND** every chunk's `metadata` must contain the extracted entities `["MockEntityA"]`, proving the AI orchestration occurred.
+**AND** every chunk's `metadata` must have the `time_axis` field populated (e.g., "Present"), verifying the pre-tagging requirement.
 
 ### UAT-03-02: Semantic Boundary Adherence
 **GIVEN** an application configured with a basic sentence-aware chunking algorithm (even in Mock Mode).

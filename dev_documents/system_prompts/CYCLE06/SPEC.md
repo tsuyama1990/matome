@@ -44,8 +44,8 @@ This cycle focuses on complex query orchestration and data transformation into n
     *   **Dependencies**: Requires `LLMProtocol`, `VectorDBProtocol`, and `EmbeddingProtocol`.
     *   **`execute_pivot(document: EnrichedDocument, axis: str) -> PivotState`**: The main orchestration method.
         1.  **Define Axis Prompts**: Based on the `axis` (e.g., "System Actors"), retrieve predefined sub-categories or reasoning prompts.
-        2.  **Semantic Search (Optional but powerful)**: Use the `EmbeddingProtocol` to embed the axis names (e.g., embed the word "Security Constraint"). Query the `VectorDBProtocol` to find `SemanticChunk`s highly relevant to this axis.
-        3.  **LLM Reasoning**: Send the retrieved chunks (or all chunks if the document is small) to the `LLMProtocol` with a complex reasoning prompt (e.g., "Analyze these chunks. Identify all system actors. For each actor, summarize their responsibilities and list the IDs of the source chunks providing this evidence").
+        2.  **Semantic Search & Metadata Filtering (CRITICAL)**: Use the `EmbeddingProtocol` to embed the axis names (e.g., embed the word "Security Constraint"). Query the `VectorDBProtocol` to find `SemanticChunk`s highly relevant to this axis. CRUCIALLY, the search MUST utilize the pre-calculated metadata tags generated in Cycle 03 (e.g., filtering `filter_metadata={"time_axis": "Future"}`) to drastically reduce the number of chunks sent to the LLM context window.
+        3.  **LLM Reasoning**: Send the filtered and retrieved chunks to the `LLMProtocol` with a complex reasoning prompt (e.g., "Analyze these filtered chunks. Identify all system actors. For each actor, summarize their responsibilities and list the IDs of the source chunks providing this evidence").
         4.  **Construct State**: Parse the LLM's structured output (preferably JSON) to instantiate the `PivotNode` and `PivotState` Pydantic models.
 
 ### 4. `src/application/export_service.py`
@@ -59,7 +59,7 @@ This cycle focuses on complex query orchestration and data transformation into n
 2.  **Create Dummy Vector DB**: In `src/infrastructure/test_services.py`, create a `DummyVectorDB` that stores chunks in a simple list and returns random chunks for `search`.
 3.  **Refine Pivot Models**: Ensure `src/domain_models/pivot.py` models are strictly typed and forbid extra fields.
 4.  **Develop `PivotEngine`**: Create `src/application/pivot_engine.py`. Inject the required protocols.
-5.  **Implement `execute_pivot`**: Start with a simplified approach: pass a subset of chunks to the LLM and ask it to categorize them based on the `axis`. Parse the result into `PivotNode`s. Ensure the LLM prompt explicitly demands traceability (returning the original chunk IDs).
+5.  **Implement `execute_pivot`**: Start with defining the specific `filter_metadata` query based on the requested `axis`. Execute the `VectorDBProtocol.search` with this filter. Pass the filtered subset of chunks to the LLM and ask it to categorize them. Parse the result into `PivotNode`s. Ensure the LLM prompt explicitly demands traceability (returning the original chunk IDs).
 6.  **Develop `ExportService`**: Implement `generate_markdown` to iterate through the `PivotState` and create a formatted string.
 7.  **Integrate with DI**: Register all new services and dummies in the `DIContainer`.
 
