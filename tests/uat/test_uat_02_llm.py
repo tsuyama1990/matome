@@ -52,7 +52,6 @@ async def test_uat_02_02_network_resilience(uat_config: AppConfig) -> None:
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))
     # Second: 502 Bad Gateway
     transport.add_response(status_code=502, json_data={})
-    # Third: Success
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Recovered!"}}]}
     )

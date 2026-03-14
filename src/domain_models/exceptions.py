@@ -14,5 +14,9 @@ class LLMConnectionError(Exception):
     """Exception raised when a network error occurs during LLM communication."""
 
 
+class LLMServerError(Exception):
+    """Exception raised when the LLM server returns a 5xx error."""
+
+
 class LLMAuthenticationError(Exception):
     """Exception raised when authentication fails during LLM communication."""

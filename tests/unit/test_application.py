@@ -67,8 +67,8 @@ def test_nlp_service_malicious_input() -> None:
         metadata=ChunkMetadata(source_file="test.txt"),
     )
     # The NLP processor shouldn't crash, execute the script, or hallucinate random entities
-    with pytest.raises(ValueError, match="HTML"):
-        service.tag_entities_and_axes([chunk])
+    # Instead, bleach completely strips HTML out safely.
+    service.tag_entities_and_axes([chunk])
     assert "script" not in chunk.metadata.extracted_entities
 
 

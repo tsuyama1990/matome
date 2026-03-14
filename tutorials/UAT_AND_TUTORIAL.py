@@ -13,9 +13,9 @@ os.environ.pop("TENANT_ID", None)
 
 try:
     AppConfig(
-        openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",  # type: ignore[arg-type]
         tenant_id="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-    )  # type: ignore[arg-type]
+    )
     raise AssertionError("Expected ValidationError due to missing keys")
 except ValidationError:
     print("Success: AppConfig correctly rejected missing OPENROUTER_API_KEY.")
@@ -31,9 +31,9 @@ except ValidationError:
     print("Success: AppConfig correctly rejected invalid routing rules.")
 
 config = AppConfig(
-    openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",  # type: ignore[arg-type]
     tenant_id="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-)  # type: ignore[arg-type]
+)
 print("String representation of config: ", config)
 assert "sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" not in str(
     config

@@ -73,18 +73,26 @@ class NLPService:
             raise RuntimeError(msg)
 
         for chunk in chunks:
-            # XSS Protection: ContentSanitizer logic inline
+            # XSS Protection: Comprehensive HTML sanitization and strict control character validation
             import re
 
-            # Comprehensive whitelist validation: explicitly block control characters and HTML tags <script> directly
-            if re.search(r"<script|<style|<iframe|<object|<embed", chunk.content, re.IGNORECASE):
-                msg = "Content contains forbidden HTML tags."
-                raise ValueError(msg)
-            if re.search(r"[\x00-\x08\x0b-\x0c\x0e-\x1f]", chunk.content):
+            # Explicitly reject all ASCII control characters except tab, newline, and carriage return
+            # \x00-\x08 (0-8), \x0b (11), \x0c (12 form feed), \x0e-\x1f (14-31), \x7f (127 DEL)
+            if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", chunk.content):
                 msg = "Content contains forbidden control characters."
                 raise ValueError(msg)
 
-            sanitized_content = bleach.clean(chunk.content, tags=[], strip=True)
+            # Use bleach to completely strip all HTML elements, attributes, and protocols
+            # This handles <img onerror>, <a href="javascript:">, etc. securely.
+            sanitized_content = bleach.clean(
+                chunk.content, tags=[], attributes={}, protocols=[], strip=True
+            )
+
+            # If the chunk content had HTML that was completely stripped (e.g. it was entirely a malicious script)
+            # and is now empty, we skip it. But we don't need to explicitly raise an error unless required.
+            if not sanitized_content.strip():
+                continue
+
             doc = self.nlp(sanitized_content)
             extracted_entities = []
 

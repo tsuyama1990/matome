@@ -9,7 +9,7 @@ from tenacity import (
 )
 
 from src.domain_models.config import AppConfig
-from src.domain_models.exceptions import LLMAuthenticationError, LLMConnectionError
+from src.domain_models.exceptions import LLMAuthenticationError, LLMConnectionError, LLMServerError
 from src.interfaces.llm_protocol import LLMProtocol
 
 logger = logging.getLogger(__name__)
@@ -35,8 +35,16 @@ class OpenRouterClient(LLMProtocol):
         msg = "Invalid response format: 'choices' missing or empty."
         raise ValueError(msg)
 
+    def _is_transient_error(self, e: Exception) -> bool:
+        """Determines if the exception is transient and should trigger a retry."""
+        if isinstance(e, (httpx.ConnectError, httpx.TimeoutException)):
+            return True
+        if isinstance(e, httpx.HTTPStatusError):
+            return e.response.status_code in (500, 502, 503, 504)
+        return False
+
     @retry(
-        retry=retry_if_exception_type((httpx.ConnectError, httpx.TimeoutException)),
+        retry=retry_if_exception_type(Exception),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
@@ -63,23 +71,30 @@ class OpenRouterClient(LLMProtocol):
 
             return str(data["choices"][0]["message"]["content"])
 
-        except httpx.HTTPStatusError as e:
-            if e.response.status_code in (401, 403):
-                msg = f"Authentication failed with status {e.response.status_code}."
-                raise LLMAuthenticationError(msg) from e
-            if e.response.status_code in (500, 502, 503, 504):
-                # We can just raise ConnectError to trigger a retry
-                msg = f"Server error {e.response.status_code}"
-                raise httpx.ConnectError(msg) from e
-            msg = f"HTTP error {e.response.status_code} during LLM generation."
-            raise LLMConnectionError(msg) from e
-
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
-            logger.warning(f"Transient error occurred: {e}. Retrying...")
-            raise
-
         except Exception as e:
-            msg = f"Unexpected error during LLM generation: {e}"
+            if self._is_transient_error(e):
+                logger.warning("Transient error occurred during LLM request. Retrying...")
+                raise  # Let tenacity handle the retry
+
+            # Handle non-transient errors gracefully
+            if isinstance(e, httpx.HTTPStatusError):
+                if e.response.status_code in (401, 403):
+                    msg = "Authentication failed. Please verify the API key."
+                    raise LLMAuthenticationError(msg) from e
+
+                # If we get here with a 5xx error, it means we exhausted retries
+                if e.response.status_code >= 500:
+                    msg = "The external LLM service is currently unavailable."
+                    raise LLMServerError(msg) from e
+
+                msg = "A generic HTTP error occurred during the LLM request."
+                raise LLMConnectionError(msg) from e
+
+            if isinstance(e, (httpx.ConnectError, httpx.TimeoutException)):
+                msg = "A network timeout or connection error occurred."
+                raise LLMConnectionError(msg) from e
+
+            msg = "An unexpected error occurred during LLM generation."
             raise LLMConnectionError(msg) from e
 
     async def generate_text(self, prompt: str, model: str) -> str:
@@ -95,14 +110,17 @@ class OpenRouterClient(LLMProtocol):
         """
         try:
             return await self._make_request(prompt, model)
-        except (httpx.ConnectError, httpx.TimeoutException) as e:
+        except Exception as e:
+            if not self._is_transient_error(e):
+                raise  # Re-raise non-transient, non-retryable errors immediately
+
             fallback = self._config.routing_rules.fallback_model
             logger.warning(
-                f"Primary model {model} failed after retries due to {e}. "
+                f"Primary model {model} failed after retries due to {type(e).__name__}. "
                 f"Attempting fallback to {fallback}."
             )
             try:
                 return await self._make_request(prompt, fallback)
             except Exception as fallback_error:
-                msg = f"Both primary ({model}) and fallback ({fallback}) models failed."
+                msg = "Both primary and fallback models failed to complete the request."
                 raise LLMConnectionError(msg) from fallback_error

@@ -24,7 +24,7 @@ def test_app_config_missing_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TENANT_ID", raising=False)
 
     with pytest.raises(ValidationError) as excinfo:
-        AppConfig()
+        AppConfig()  # type: ignore[call-arg]
 
     # Needs OPENROUTER_API_KEY
     assert "validation error" in str(excinfo.value).lower()
@@ -38,7 +38,7 @@ def test_app_config_valid(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     monkeypatch.setenv("TENANT_ID", "tenant-123")
 
-    config = AppConfig()
+    config = AppConfig()  # type: ignore[call-arg]
 
     assert config.tenant_id == "tenant-123"
     # SecretStr masks the representation

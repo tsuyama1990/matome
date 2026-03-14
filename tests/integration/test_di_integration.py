@@ -18,9 +18,9 @@ def test_di_integration_app_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TENANT_ID", "test-tenant")
 
     config = AppConfig(
-        openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",  # type: ignore[arg-type]
         tenant_id="test-tenant",
-    )  # type: ignore[arg-type]
+    )
     container = DIContainer()
 
     container.register_singleton(AppConfig, config)
