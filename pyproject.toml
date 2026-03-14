@@ -7,12 +7,65 @@ version = "0.1.0"
 description = "Interactive summarization for very long texts"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "bleach>=6.3.0",
+    "cryptography>=46.0.5",
+    "en-core-web-sm",
+    "fastapi>=0.135.1",
+    "pydantic>=2.12.5",
+    "pydantic-settings>=2.13.1",
+    "tenacity>=9.1.4",
+    "uvicorn>=0.41.0",
+]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
     "ruff>=0.15.5",
+    "scikit-learn>=1.8.0",
+    "spacy>=3.8.11",
+    "types-bleach>=6.3.0.20251115",
+    "umap-learn>=0.5.11",
 ]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+fix = true
+
+[tool.ruff.lint]
+select = [
+    "F", "E", "W", "C90", "I", "N", "UP", "YTT", "ANN", "ASYNC", "S", "BLE",
+    "B", "A", "C4", "DTZ", "T10", "EM", "ICN", "PIE", "T20", "PT", "RET",
+    "SIM", "TID", "ARG", "PTH", "ERA", "PL", "TRY", "RUF"
+]
+
+ignore = [
+    "ASYNC109", "ANN101", "ANN002", "ANN003", "ANN001", "ANN401", "ARG001", "ARG005",
+    "PLR2004", "E501", "TRY003", "D", "ANN201", "N806", "PLC0415", "BLE001",
+    "PT019", "RUF003", "ARG002", "RUF043", "RUF059", "PLR0913", "ANN202"
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101"]  # Allow assert in tests
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10  # Exceeding this prompts function splitting (prevent AI long functions)
+
+[tool.ruff.lint.flake8-annotations]
+suppress-dummy-args = true  # Arguments starting with _ do not require type hints
+
+[tool.pytest.ini_options]
+addopts = "--cov=src --cov-report=term-missing"
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true
+
+[tool.uv.sources]
+en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz" }
