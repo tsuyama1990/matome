@@ -1,5 +1,7 @@
 import os
+import re
 
+import bleach
 from cryptography.fernet import Fernet
 from pydantic import SecretStr
 
@@ -66,3 +68,31 @@ class SecurityService:
         """Decrypts an API key back into a SecretStr."""
         with self.get_decrypted_key(encrypted_key) as decoded:
             return SecretStr(decoded)
+
+def sanitize_text(content: str) -> str:
+    """
+    Comprehensive sanitization of user-provided content.
+    Prevents XSS via Bleach and filters hazardous control characters.
+    """
+
+
+    # Reject all ASCII control characters except tab, newline, and carriage return
+    # \x00-\x08 (0-8), \x0B (11), \x0C (12 form feed), \x0E-\x1F (14-31), \x7F (127 DEL)
+    if re.search(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", content):
+        msg = "Content contains forbidden control characters."
+        raise ValueError(msg)
+
+    # Use bleach to completely strip all HTML elements, attributes, and protocols
+    sanitized_content = bleach.clean(
+        content,
+        tags=[],
+        attributes={},
+        protocols=[],
+        strip=True
+    )
+
+    if not sanitized_content.strip():
+        msg = "Content is empty after sanitization."
+        raise ValueError(msg)
+
+    return sanitized_content

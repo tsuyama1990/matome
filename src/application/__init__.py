@@ -3,9 +3,10 @@ import uuid
 from collections import defaultdict
 from typing import Any
 
-import bleach
+import numpy as np
 
 from src.application.pivot_workflow import PivotWorkflow
+from src.config.security import sanitize_text
 from src.domain_models import RaptorNode, SemanticChunk
 from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
 from src.interfaces.clustering import ClusteringStrategy
@@ -73,18 +74,32 @@ class NLPService:
             raise RuntimeError(msg)
 
         for chunk in chunks:
-            # XSS Protection: Deep sanitize the content before NLP processing to prevent injection
-            sanitized_content = bleach.clean(chunk.content, tags=[], strip=True)
+            sanitized_content = sanitize_text(chunk.content)
             doc = self.nlp(sanitized_content)
             extracted_entities = []
 
             # Prevent memory bloat and DoS via massive entity injections
-            for ent in doc.ents[: self.max_entities]:
-                if ent.label_ in ("PERSON", "ORG", "GPE", "PRODUCT"):
-                    extracted_entities.append(ent.text)
+            allowed_types = {"PERSON", "ORG", "GPE", "PRODUCT"}
+
+            # Scalability: Stream entities in batches of 100 to prevent OOM
+            ent_iter = iter(ent for ent in doc.ents if ent.label_ in allowed_types)
+            collected = 0
+            while collected < self.max_entities:
+                batch = []
+                try:
+                    for _ in range(100):
+                        batch.append(next(ent_iter).text)
+                except StopIteration:
+                    extracted_entities.extend(batch)
+                    break
+
+                extracted_entities.extend(batch)
+                collected += len(batch)
+
+            extracted_entities = extracted_entities[:self.max_entities]
 
             chunk.metadata.extracted_entities = list(set(extracted_entities))
-            chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
+            chunk.metadata.time_axis = self._detect_time_axis(doc.ents)
 
 
 class RAPTOREngine:
@@ -108,8 +123,8 @@ class RAPTOREngine:
 
     async def _summarize_cluster(self, texts: list[str]) -> str:
         """Summarizes a list of texts using the Chain of Density concept."""
-        if not texts:
-            msg = "Texts cannot be empty."
+        if not texts or any(not t.strip() for t in texts):
+            msg = "Texts cannot be empty or contain only whitespace."
             raise ValueError(msg)
 
         if any(len(t) > 100000 for t in texts):
@@ -179,9 +194,7 @@ class RAPTOREngine:
                 # Mean pooling for embeddings list fallback
                 cluster_embs = [current_level_embeddings[i] for i in indices]
                 if cluster_embs:
-                    mean_emb = [
-                        sum(x) / len(cluster_embs) for x in zip(*cluster_embs, strict=False)
-                    ]
+                    mean_emb = np.mean(np.array(cluster_embs, dtype=float), axis=0).tolist()
                     next_level_embeddings.append(mean_emb)
 
             current_level_texts = next_level_texts
@@ -218,6 +231,9 @@ class SQ3REngine:
             raise ProcessingError(msg) from e
 
     async def evaluate_answer(self, user_answer: str, node: RaptorNode) -> str:
+        if len(user_answer) > 10000:
+            msg = "Answer too long"
+            raise ValueError(msg)
         """Evaluates the user's answer against the node's summary, providing 'Sandwich Feedback'."""
         prompt = (
             "You are an AI tutor. A student has just read the following summary and provided an answer "
@@ -247,6 +263,9 @@ class PivotKJEngine:
         self._allowed_axes = allowed_axes
 
     def pivot(self, chunks: list[SemanticChunk], axis: str) -> dict[str, list[SemanticChunk]]:
+        if not axis.isidentifier():
+            msg = "Axis must be a valid identifier"
+            raise ValueError(msg)
         """
         Dynamically relocates and clusters chunks based on explicitly defined metadata tags.
         """
@@ -279,7 +298,7 @@ class PivotKJEngine:
 
 
 __all__ = [
-    "NLPModelLoadError",
+        "NLPModelLoadError",
     "NLPService",
     "PivotKJEngine",
     "PivotWorkflow",
