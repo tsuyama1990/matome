@@ -72,6 +72,6 @@ src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
 TOTAL                                  1491    381    74%
-================== 84 passed, 4 warnings in 117.55s (0:01:57) ==================
+================== 84 passed, 4 warnings in 110.85s (0:01:50) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
