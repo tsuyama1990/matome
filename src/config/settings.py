@@ -125,20 +125,27 @@ class ModelConfig(BaseSettings):
     """Configuration for LLMs via OpenRouter."""
 
     openrouter_api_url: AnyHttpUrl = Field(
+        default="https://openrouter.ai/api/v1",  # type: ignore[arg-type]
         description="The OpenRouter API endpoint.",
     )
 
     text_fast_model: str = Field(
+        default="google/gemini-2.5-flash",
         description="Model for chunking and fast processing.",
     )
     text_reasoning_model: str = Field(
+        default="deepseek/deepseek-reasoner",
         description="Model for reasoning tasks.",
     )
-    multimodal_model: str = Field(description="Model for multimodal tasks.")
+    multimodal_model: str = Field(
+        default="google/gemini-2.5-pro",
+        description="Model for multimodal tasks."
+    )
     llm_timeout: float = Field(
         default=30.0, gt=0.0, description="The default timeout for LLM API requests in seconds."
     )
     allowed_hosts: list[str] = Field(
+        default_factory=lambda: ["openrouter.ai", "api.openrouter.ai"],
         description="List of allowed hostnames for external API calls to prevent SSRF.",
     )
 
