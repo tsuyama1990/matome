@@ -60,47 +60,49 @@ class NLPService:
             return "Future"
         return "Present"
 
+    def _validate_and_sanitize(self, content: str) -> str:
+        """Isolates the validation logic to keep complexity low."""
+        import re
+
+        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", content):
+            msg = "Content contains forbidden control characters."
+            raise ValueError(msg)
+
+        harmful_patterns = [
+            r"\b(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION)\b.*\b(?:FROM|INTO|TABLE|DATABASE)\b",
+            r"\b(?:exec|system|eval|os\.system|subprocess)\s*\(",
+            r"(\b|;)rm\s+-rf\s",
+        ]
+        for pattern in harmful_patterns:
+            if re.search(pattern, content, re.IGNORECASE):
+                msg = "Content rejected due to semantic injection patterns."
+                raise ValueError(msg)
+
+        return bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
+
     def tag_entities_and_axes(self, chunks: list[SemanticChunk]) -> None:
         """
         Public method to tag entities and multi-dimensional axes.
-        Moved out from being a complex private method to ensure Single Responsibility.
         """
         if self.nlp is None:
             msg = "NLP model is not loaded."
             raise RuntimeError(msg)
 
         for chunk in chunks:
-            # XSS Protection: Comprehensive HTML sanitization and strict control character validation
-            import re
+            sanitized_content = self._validate_and_sanitize(chunk.content)
 
-            # Explicitly reject all ASCII control characters except tab, newline, and carriage return
-            # \x00-\x08 (0-8), \x0b (11), \x0c (12 form feed), \x0e-\x1f (14-31), \x7f (127 DEL)
-            if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", chunk.content):
-                msg = "Content contains forbidden control characters."
-                raise ValueError(msg)
-
-            # Use bleach to completely strip all HTML elements, attributes, and protocols
-            # This handles <img onerror>, <a href="javascript:">, etc. securely.
-            sanitized_content = bleach.clean(
-                chunk.content, tags=[], attributes={}, protocols=[], strip=True
-            )
-
-            # If the chunk content had HTML that was completely stripped (e.g. it was entirely a malicious script)
-            # and is now empty, we skip it. But we don't need to explicitly raise an error unless required.
             if not sanitized_content.strip():
                 continue
 
             doc = self.nlp(sanitized_content)
             extracted_entities = []
-
-            # Prevent memory bloat and DoS via massive entity injections
             allowed_types = {"PERSON", "ORG", "GPE", "PRODUCT"}
 
-            # Scalability: Stream entities in batches of 100 to prevent OOM
             ent_iter = iter(ent for ent in doc.ents if ent.label_ in allowed_types)
             collected = 0
             iterations = 0
             max_iterations = 1000
+
             while collected < self.max_entities:
                 iterations += 1
                 if iterations > max_iterations:
@@ -116,9 +118,7 @@ class NLPService:
                 extracted_entities.extend(batch)
                 collected += len(batch)
 
-            extracted_entities = extracted_entities[: self.max_entities]
-
-            chunk.metadata.extracted_entities = list(set(extracted_entities))
+            chunk.metadata.extracted_entities = list(set(extracted_entities[: self.max_entities]))
             chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
 
 

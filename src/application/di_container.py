@@ -16,12 +16,15 @@ class DIContainer:
         self._local = threading.local()
 
     def register_singleton(self, interface: type[T], instance: T) -> None:
-        """Registers a singleton instance for an interface."""
+        """Registers a singleton instance for an interface safely across threads."""
         if not isinstance(instance, interface):
             msg = f"Expected instance of {interface}, got {type(instance)}"
             raise TypeError(msg)
-        with self._lock:
-            self._singletons[interface] = instance
+
+        if interface not in self._singletons:
+            with self._lock:
+                if interface not in self._singletons:
+                    self._singletons[interface] = instance
 
     def register(self, interface: type[T], factory: Callable[[], T]) -> None:
         """Registers a factory function for an interface (resolved as singleton)."""
@@ -46,10 +49,6 @@ class DIContainer:
 
             if interface in resolving:
                 msg = f"Circular dependency detected while resolving: {interface}"
-                raise RuntimeError(msg)
-
-            if len(resolving) > 50:
-                msg = f"Max dependency depth exceeded resolving: {interface}"
                 raise RuntimeError(msg)
 
             if interface in self._singletons:
@@ -89,6 +88,6 @@ class DIContainer:
                     else:
                         instance = self._singletons[interface]
 
-            return instance
+            return cast(T, instance)
         finally:
             resolving.remove(interface)

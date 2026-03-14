@@ -15,6 +15,19 @@ from src.interfaces.llm_protocol import LLMProtocol
 logger = logging.getLogger(__name__)
 
 
+class OpenRouterAuth(httpx.Auth):
+    """Custom httpx authentication to securely handle SecretStr injection."""
+
+    def __init__(self, token: Any) -> None:
+        self.token = token
+
+    def auth_flow(self, request: httpx.Request) -> Any:
+        # Resolve actual token specifically at request time so it avoids log dumps
+        actual_token = self.token.get_secret_value() if hasattr(self.token, "get_secret_value") else str(self.token)
+        request.headers["Authorization"] = f"Bearer {actual_token}"
+        yield request
+
+
 class OpenRouterClient(LLMProtocol):
     """Concrete implementation of LLMProtocol using OpenRouter."""
 
@@ -60,7 +73,6 @@ class OpenRouterClient(LLMProtocol):
     async def _make_request(self, prompt: str, model: str) -> str:
         """Makes an asynchronous HTTP request to OpenRouter with retries for transient errors."""
         headers = {
-            "Authorization": f"Bearer {self._api_key.get_secret_value()}",
             "Content-Type": "application/json",
         }
         payload = {
@@ -70,7 +82,11 @@ class OpenRouterClient(LLMProtocol):
 
         try:
             response = await self._client.post(
-                self._base_url, headers=headers, json=payload, timeout=30.0
+                self._base_url,
+                headers=headers,
+                json=payload,
+                timeout=30.0,
+                auth=OpenRouterAuth(self._api_key)
             )
             response.raise_for_status()
 

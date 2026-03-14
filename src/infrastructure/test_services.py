@@ -24,33 +24,32 @@ class FileProcessingService:
 
     def _validate_filename(self, filename: str) -> str:
         import unicodedata
+        from pathlib import Path
 
         if "\0" in filename:
-            msg = "Invalid file path structure"
+            msg = "Invalid file path structure: null bytes not allowed."
             raise ValueError(msg)
 
-        # Do not allow any path separators or dots indicating directory traversal
+        # Pre-normalization length and separator checks
         if "/" in filename or "\\" in filename or ".." in filename:
             msg = "Filename contains directory traversal patterns"
             raise ValueError(msg)
 
-        from pathlib import Path
+        normalized_filename = unicodedata.normalize("NFKD", filename)
+
+        # Post-normalization length and separator checks
+        if "/" in normalized_filename or "\\" in normalized_filename or ".." in normalized_filename:
+            msg = "Filename contains directory traversal patterns after normalization."
+            raise ValueError(msg)
 
         # Ensure we only have the basename (no relative structures)
-        if Path(filename).name != filename:
+        if Path(normalized_filename).name != normalized_filename:
             msg = "Filename must be a base name without directories"
             raise ValueError(msg)
 
-        if len(filename) > 255:
-            msg = "Filename exceeds maximum allowed length"
-            raise ValueError(msg)
-
-        normalized_filename = unicodedata.normalize("NFKD", filename)
-
-        # Allow alphanumeric characters, hyphens, underscores, and single dots
-        # Reject consecutive dots to prevent traverse sequences that slip through
-        if ".." in normalized_filename:
-            msg = "Filename contains consecutive dots."
+        # Check raw byte length to avoid filesystem limits on multibyte encodings
+        if len(normalized_filename.encode("utf-8")) > 255:
+            msg = "Filename exceeds maximum allowed byte length"
             raise ValueError(msg)
 
         if not re.match(r"^[\w\-\.]+$", normalized_filename, re.UNICODE):
@@ -65,6 +64,10 @@ class FileProcessingService:
         content_chunks = []
         total_size = 0
         try:
+            if resolved_path.stat().st_size > self._max_file_size:
+                msg = "File size exceeds the allowed limit."
+                raise FileProcessingError(msg)
+
             # Open with strict encoding to catch malformed characters
             with resolved_path.open(encoding="utf-8", errors="strict") as f:
                 # Keep streaming limits bounded per read to respect memory limits and prevent TOCTOU.
@@ -188,14 +191,13 @@ class SafeTestDocumentRepository:
         return self.doc
 
 
-class MockHttpxTransport:
-    """Custom httpx transport for deterministic testing."""
+class MockHTTPTransport:
+    """A clean, protocol-compliant mock transport avoiding direct class-level httpx instantiation state."""
 
-    def __init__(self, _httpx_module: Any = httpx) -> None:
-        self.httpx = _httpx_module
+    def __init__(self) -> None:
         self.responses: list[Any] = []
         self.call_count = 0
-        self.requests: list[httpx.Request] = []
+        self.requests: list[Any] = []
 
     def add_response(
         self,
@@ -206,6 +208,11 @@ class MockHttpxTransport:
         if exc is not None:
             if not isinstance(exc, Exception):
                 msg = "exc must be an Exception"
+                raise ValueError(msg)
+
+            allowed_exceptions = (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError, httpx.HTTPStatusError)
+            if not isinstance(exc, allowed_exceptions):
+                msg = "exc must be a valid httpx exception"
                 raise ValueError(msg)
             self.responses.append(exc)
         else:
@@ -219,9 +226,10 @@ class MockHttpxTransport:
         self.requests.append(request)
 
         if not self.responses:
-            return self.httpx.Response(
+            return httpx.Response(
                 status_code=200,
                 json={"choices": [{"message": {"content": "Mock fallback success"}}]},
+                request=request
             )
 
         resp = self.responses.pop(0)
@@ -232,25 +240,13 @@ class MockHttpxTransport:
         import json
 
         body = json.dumps(json_data).encode("utf-8") if json_data else b""
-
-        class AsyncIterator:
-            def __init__(self, data: bytes) -> None:
-                self.data = data
-                self.yielded = False
-
-            async def __aiter__(self) -> "AsyncIterator":
-                return self
-
-            async def __anext__(self) -> bytes:
-                if not self.yielded:
-                    self.yielded = True
-                    return self.data
-                raise StopAsyncIteration
-
-        stream = self.httpx.ByteStream(body)
-        return self.httpx.Response(
-            status_code=status_code, headers=[(b"content-type", b"application/json")], stream=stream
+        stream = httpx.ByteStream(body)
+        return httpx.Response(
+            status_code=status_code, headers=[(b"content-type", b"application/json")], stream=stream, request=request
         )
+
+# For backward compatibility with tests using the old name
+MockHttpxTransport = MockHTTPTransport
 
 
 class SafeTestHTTPTransport:
@@ -261,7 +257,6 @@ class SafeTestHTTPTransport:
         response_data: dict[str, Any],
         status_code: int = 200,
         raise_exception: Exception | None = None,
-        _httpx_module: Any = httpx,
     ) -> None:
         if raise_exception is not None and not isinstance(raise_exception, Exception):
             msg = "raise_exception must be an Exception"
@@ -270,7 +265,6 @@ class SafeTestHTTPTransport:
         self.response_data = response_data
         self.status_code = status_code
         self.raise_exception = raise_exception
-        self.httpx = _httpx_module
 
     async def aclose(self) -> None:
         pass
@@ -282,25 +276,10 @@ class SafeTestHTTPTransport:
             raise self.raise_exception
 
         body = json.dumps(self.response_data).encode("utf-8")
-
-        class AsyncIterator:
-            def __init__(self, data: bytes) -> None:
-                self.data = data
-                self.yielded = False
-
-            async def __aiter__(self) -> "AsyncIterator":
-                return self
-
-            async def __anext__(self) -> bytes:
-                if not self.yielded:
-                    self.yielded = True
-                    return self.data
-                raise StopAsyncIteration
-
-        stream = self.httpx.ByteStream(body)
-
-        return self.httpx.Response(
+        stream = httpx.ByteStream(body)
+        return httpx.Response(
             status_code=self.status_code,
             headers=[(b"content-type", b"application/json")],
             stream=stream,
+            request=request
         )

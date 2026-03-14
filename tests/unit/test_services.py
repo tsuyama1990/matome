@@ -34,7 +34,7 @@ def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
 
     # Test extreme filename length
     long_filename = "a" * 260 + ".txt"
-    with pytest.raises(ValueError, match="Filename exceeds maximum allowed length"):
+    with pytest.raises(ValueError, match="Filename exceeds maximum allowed byte length"):
         service.read_file(long_filename)
 
 
@@ -65,7 +65,7 @@ def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
     test_file = tmp_path / "large_file.txt"
     test_file.write_text("This file is way too large for the 10 byte limit.", encoding="utf-8")
 
-    with pytest.raises(FileProcessingError, match="File size exceeds memory limits during read"):
+    with pytest.raises(FileProcessingError, match="File size exceeds the allowed limit."):
         service.read_file("large_file.txt")
 
 
