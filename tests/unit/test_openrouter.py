@@ -64,13 +64,18 @@ async def test_openrouter_retries_on_transient_error(test_config: AppConfig) -> 
 @pytest.mark.asyncio
 async def test_openrouter_immediate_failure_401(test_config: AppConfig) -> None:
     transport = MockHttpxTransport()
-    transport.add_response(status_code=401, json_data={"error": "Unauthorized"})
+    # The HTTPStatusError is what triggers the 401 check, so we need to raise it
+    req = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
+    resp = httpx.Response(401, request=req)
+    transport.add_response(exc=httpx.HTTPStatusError("401", request=req, response=resp))
     client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
 
     openrouter = OpenRouterClient(config=test_config, client=client)
 
-    with pytest.raises(LLMAuthenticationError, match="Authentication failed with status 401"):
-        await openrouter.generate_text("Say hello", "fast-model")
+    with pytest.raises(
+        LLMAuthenticationError, match="Authentication failed. Please verify the API key."
+    ):
+        await openrouter._make_request("Say hello", "fast-model")
 
     # Assert no retries on 401
     assert transport.call_count == 1

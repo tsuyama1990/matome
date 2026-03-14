@@ -3,6 +3,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from src.config.settings import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -145,10 +147,13 @@ class SafeTestLLMService:
 
     def __init__(self, raise_error: bool = False) -> None:
         self.raise_error = raise_error
-        self.call_count = 0
+        self._call_count = 0
+
+    def get_call_count(self) -> int:
+        return self._call_count
 
     async def generate(self, prompt: str) -> str:
-        self.call_count += 1
+        self._call_count += 1
         if self.raise_error:
             msg = "LLM connection failed"
             raise ValueError(msg)
@@ -160,10 +165,13 @@ class DummyLLMService:
 
     def __init__(self, raise_error: bool = False) -> None:
         self.raise_error = raise_error
-        self.call_count = 0
+        self._call_count = 0
+
+    def get_call_count(self) -> int:
+        return self._call_count
 
     async def generate_text(self, prompt: str, model: str) -> str:
-        self.call_count += 1
+        self._call_count += 1
         if self.raise_error:
             msg = "LLM connection failed"
             raise ValueError(msg)
@@ -190,10 +198,8 @@ class SafeTestDocumentRepository:
 class MockHttpxTransport:
     """Custom httpx transport for deterministic testing."""
 
-    def __init__(self) -> None:
-        import httpx
-
-        self.httpx = httpx
+    def __init__(self, _httpx_module: Any = httpx) -> None:
+        self.httpx = _httpx_module
         self.responses: list[Any] = []
         self.call_count = 0
         self.requests: list[httpx.Request] = []
@@ -205,6 +211,9 @@ class MockHttpxTransport:
         exc: Exception | None = None,
     ) -> None:
         if exc is not None:
+            if not isinstance(exc, Exception):
+                msg = "exc must be an Exception"
+                raise ValueError(msg)
             self.responses.append(exc)
         else:
             self.responses.append((status_code, json_data))
@@ -259,13 +268,16 @@ class SafeTestHTTPTransport:
         response_data: dict[str, Any],
         status_code: int = 200,
         raise_exception: Exception | None = None,
+        _httpx_module: Any = httpx,
     ) -> None:
-        import httpx
+        if raise_exception is not None and not isinstance(raise_exception, Exception):
+            msg = "raise_exception must be an Exception"
+            raise ValueError(msg)
 
         self.response_data = response_data
         self.status_code = status_code
         self.raise_exception = raise_exception
-        self.httpx = httpx
+        self.httpx = _httpx_module
 
     async def aclose(self) -> None:
         pass

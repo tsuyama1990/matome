@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 import httpx
 from tenacity import (
@@ -27,7 +28,7 @@ class OpenRouterClient(LLMProtocol):
             client (httpx.AsyncClient | None): Optional injected HTTP client for testing.
         """
         self._config = config
-        self._api_key = config.openrouter_api_key.get_secret_value()
+        self._api_key = config.openrouter_api_key
         self._base_url = config.openrouter_base_url
         self._client = client or httpx.AsyncClient(timeout=30.0)
 
@@ -43,8 +44,17 @@ class OpenRouterClient(LLMProtocol):
             return e.response.status_code in (500, 502, 503, 504)
         return False
 
+    def _should_retry(retry_state: Any) -> bool:
+        """Custom retry condition to skip LLMAuthenticationError."""
+        if retry_state.outcome.failed:
+            e = retry_state.outcome.exception()
+            if isinstance(e, LLMAuthenticationError):
+                return False
+            return True
+        return False
+
     @retry(
-        retry=retry_if_exception_type(Exception),
+        retry=_should_retry,
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         reraise=True,
@@ -52,7 +62,7 @@ class OpenRouterClient(LLMProtocol):
     async def _make_request(self, prompt: str, model: str) -> str:
         """Makes an asynchronous HTTP request to OpenRouter with retries for transient errors."""
         headers = {
-            "Authorization": f"Bearer {self._api_key}",
+            "Authorization": f"Bearer {self._api_key.get_secret_value()}",
             "Content-Type": "application/json",
         }
         payload = {
@@ -61,7 +71,9 @@ class OpenRouterClient(LLMProtocol):
         }
 
         try:
-            response = await self._client.post(self._base_url, headers=headers, json=payload)
+            response = await self._client.post(
+                self._base_url, headers=headers, json=payload, timeout=30.0
+            )
             response.raise_for_status()
 
             data = response.json()
@@ -72,21 +84,21 @@ class OpenRouterClient(LLMProtocol):
             return str(data["choices"][0]["message"]["content"])
 
         except Exception as e:
+            if isinstance(e, httpx.HTTPStatusError):
+                if e.response.status_code in (401, 403):
+                    msg = "Authentication failed. Please verify the API key."
+                    # We bypass Tenacity by wrapping in a custom error that is NOT retried.
+                    raise LLMAuthenticationError(msg) from e
+
             if self._is_transient_error(e):
                 logger.warning("Transient error occurred during LLM request. Retrying...")
                 raise  # Let tenacity handle the retry
 
             # Handle non-transient errors gracefully
             if isinstance(e, httpx.HTTPStatusError):
-                if e.response.status_code in (401, 403):
-                    msg = "Authentication failed. Please verify the API key."
-                    raise LLMAuthenticationError(msg) from e
-
-                # If we get here with a 5xx error, it means we exhausted retries
                 if e.response.status_code >= 500:
                     msg = "The external LLM service is currently unavailable."
                     raise LLMServerError(msg) from e
-
                 msg = "A generic HTTP error occurred during the LLM request."
                 raise LLMConnectionError(msg) from e
 
@@ -111,6 +123,9 @@ class OpenRouterClient(LLMProtocol):
         try:
             return await self._make_request(prompt, model)
         except Exception as e:
+            if isinstance(e, LLMAuthenticationError):
+                raise
+
             if not self._is_transient_error(e):
                 raise  # Re-raise non-transient, non-retryable errors immediately
 

@@ -9,7 +9,9 @@ from src.infrastructure.test_services import SafeTestLLMService
 
 def test_nlp_service_load_success() -> None:
     # Test real loading of the lightweight model without mocking
-    service = NLPService(model_name="en_core_web_sm")
+    service = NLPService(
+        model_name="en_core_web_sm", time_axis_past_words=["was"], time_axis_future_words=["will"]
+    )
     assert service.nlp is not None
 
 
@@ -20,7 +22,11 @@ def test_nlp_service_load_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     # Actually monkeypatching sys.modules to None is how it was done:
     monkeypatch.setitem(sys.modules, "spacy", None)
     with pytest.raises(NLPModelLoadError, match="Spacy library is not installed."):
-        NLPService(model_name="en_core_web_sm")
+        NLPService(
+            model_name="en_core_web_sm",
+            time_axis_past_words=["was"],
+            time_axis_future_words=["will"],
+        )
 
 
 def test_nlp_service_load_os_error() -> None:
@@ -28,11 +34,17 @@ def test_nlp_service_load_os_error() -> None:
     with pytest.raises(
         NLPModelLoadError, match="Spacy model 'nonexistent_model' is missing. Please install it."
     ):
-        NLPService(model_name="nonexistent_model")
+        NLPService(
+            model_name="nonexistent_model",
+            time_axis_past_words=["was"],
+            time_axis_future_words=["will"],
+        )
 
 
 def test_nlp_service_tag_entities() -> None:
-    service = NLPService(model_name="en_core_web_sm")
+    service = NLPService(
+        model_name="en_core_web_sm", time_axis_past_words=["was"], time_axis_future_words=["will"]
+    )
     chunk = SemanticChunk(
         id=uuid.uuid4(),
         content="Apple is looking at buying U.K. startup for $1 billion today.",
@@ -51,7 +63,9 @@ def test_nlp_service_tag_entities() -> None:
 
 
 def test_nlp_service_tag_entities_not_loaded() -> None:
-    service = NLPService(model_name="en_core_web_sm")
+    service = NLPService(
+        model_name="en_core_web_sm", time_axis_past_words=["was"], time_axis_future_words=["will"]
+    )
     # Manually unset nlp attribute to simulate uninitialized state without mocking
     service.nlp = None
     with pytest.raises(RuntimeError, match="NLP model is not loaded."):
@@ -59,7 +73,9 @@ def test_nlp_service_tag_entities_not_loaded() -> None:
 
 
 def test_nlp_service_malicious_input() -> None:
-    service = NLPService(model_name="en_core_web_sm")
+    service = NLPService(
+        model_name="en_core_web_sm", time_axis_past_words=["was"], time_axis_future_words=["will"]
+    )
     chunk = SemanticChunk(
         id=uuid.uuid4(),
         content="<script>alert('XSS')</script> SELECT * FROM users;",

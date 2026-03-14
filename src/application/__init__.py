@@ -20,25 +20,22 @@ class NLPService:
     def __init__(
         self,
         model_name: str,
+        time_axis_past_words: list[str],
+        time_axis_future_words: list[str],
         max_entities: int = 50,
-        time_axis_past_words: list[str] | None = None,
-        time_axis_future_words: list[str] | None = None,
     ) -> None:
         self.nlp: Any | None = None
         self.model_name = model_name
         self.max_entities = max_entities
-        self.time_axis_past_words = time_axis_past_words or [
-            "yesterday",
-            "previously",
-            "was",
-            "were",
-        ]
-        self.time_axis_future_words = time_axis_future_words or [
-            "tomorrow",
-            "will",
-            "future",
-            "next",
-        ]
+        if not time_axis_past_words:
+            msg = "time_axis_past_words must not be empty"
+            raise ValueError(msg)
+        if not time_axis_future_words:
+            msg = "time_axis_future_words must not be empty"
+            raise ValueError(msg)
+
+        self.time_axis_past_words = time_axis_past_words
+        self.time_axis_future_words = time_axis_future_words
         self._load_model()
 
     def _load_model(self) -> None:

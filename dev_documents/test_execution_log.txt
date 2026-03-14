@@ -19,31 +19,13 @@ tests/unit/test_di_container.py .....                                    [ 45%]
 tests/unit/test_domain_config.py ....                                    [ 50%]
 tests/unit/test_domain_models.py .............                           [ 65%]
 tests/unit/test_llm_gateway.py ..........                                [ 77%]
-tests/unit/test_openrouter.py ..F..                                      [ 83%]
+tests/unit/test_openrouter.py .....                                      [ 83%]
 tests/unit/test_pivot_workflow.py ...                                    [ 86%]
 tests/unit/test_security.py ..                                           [ 89%]
 tests/unit/test_security_errors.py ..                                    [ 91%]
 tests/unit/test_services.py ......                                       [ 98%]
 tests/unit/test_vector_store.py .                                        [100%]
 
-=================================== FAILURES ===================================
-____________________ test_openrouter_immediate_failure_401 _____________________
-
-test_config = AppConfig(openrouter_api_key=SecretStr('**********'), openrouter_base_url='https://openrouter.ai/api/v1/chat/completio...fast-model', text_reasoning_model='reasoning-model', multimodal_model='vision-model', fallback_model='fallback-model'))
-
-    @pytest.mark.asyncio
-    async def test_openrouter_immediate_failure_401(test_config: AppConfig) -> None:
-        transport = MockHttpxTransport()
-        transport.add_response(status_code=401, json_data={"error": "Unauthorized"})
-        client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
-
-        openrouter = OpenRouterClient(config=test_config, client=client)
-
->       with pytest.raises(LLMAuthenticationError, match="Authentication failed with status 401"):
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-E       Failed: DID NOT RAISE <class 'src.domain_models.exceptions.LLMAuthenticationError'>
-
-tests/unit/test_openrouter.py:72: Failed
 =============================== warnings summary ===============================
 tests/unit/test_application.py::test_raptor_engine_cluster_chunks
   /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
@@ -62,15 +44,15 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             172     29    83%   61, 63, 82-83, 94, 114-115, 145-146, 149-150, 161-163, 172, 192, 249-251, 255-256, 271-273, 287-288, 293, 311-312
-src/application/di_container.py          43      6    86%   20-21, 35-36, 54-55
+src/application/__init__.py             178     33    81%   31-32, 34-35, 58, 60, 79-80, 91, 111-112, 142-143, 146-147, 158-160, 169, 189, 246-248, 252-253, 268-270, 284-285, 290, 308-309
+src/application/di_container.py          55      8    85%   21-22, 33-34, 48-49, 70-71
 src/application/pivot_workflow.py        47      0   100%
 src/application/sq3r_service.py          12      0   100%
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   45      7    84%   17-18, 42-43, 52-54
 src/config/settings.py                   78     14    82%   23-24, 27, 30-31, 34-35, 49, 74-75, 155-156, 160-161
 src/domain_models/__init__.py             5      0   100%
-src/domain_models/config.py              28      2    93%   66-67
+src/domain_models/config.py              28      2    93%   67-68
 src/domain_models/document.py            65      4    94%   49-50, 99, 119
 src/domain_models/exceptions.py           6      0   100%
 src/domain_models/graph_state.py         33      0   100%
@@ -79,8 +61,8 @@ src/infrastructure/__init__.py            2      0   100%
 src/infrastructure/clustering.py         70     20    71%   15-16, 24-25, 30-31, 39, 55-63, 68-69, 97-99
 src/infrastructure/llm_gateway.py       158     51    68%   33-34, 41-42, 47-48, 57-58, 64-65, 76-77, 84-88, 97-98, 105-106, 113-114, 139-140, 143-144, 149-150, 154-155, 176-177, 182-183, 192-193, 204-205, 208-209, 245-248, 253-257, 259-261
 src/infrastructure/network.py            51      8    84%   51, 105-135
-src/infrastructure/openrouter.py         64     15    77%   35-36, 44, 70, 86-98, 115
-src/infrastructure/test_services.py     186     45    76%   39-40, 51-52, 55-56, 81-82, 87-89, 91-93, 106-107, 112-115, 126-128, 166-170, 185-186, 213, 236-237, 240, 243-246, 283-284, 287, 290-293
+src/infrastructure/openrouter.py         75     17    77%   36-37, 45, 82, 98-110, 127, 130
+src/infrastructure/test_services.py     195     52    73%   41-42, 53-54, 57-58, 83-84, 89-91, 93-95, 108-109, 114-117, 128-130, 153, 171, 174-178, 193-194, 215-216, 222, 229, 245-246, 249, 252-255, 274-275, 295-296, 299, 302-305
 src/infrastructure/vector_store.py      120     64    47%   20-28, 37-42, 46-86, 92-121, 125, 138-139, 145-146, 176-177, 188-189
 src/interfaces/__init__.py                2      0   100%
 src/interfaces/api_router.py             83     23    72%   26-27, 42-44, 48-50, 61-63, 71-73, 84-85, 100-101, 118-120, 133-134
@@ -89,9 +71,7 @@ src/interfaces/dependencies.py          140     86    39%   52-53, 79-90, 94-117
 src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1444    376    74%
-=========================== short test summary info ============================
-FAILED tests/unit/test_openrouter.py::test_openrouter_immediate_failure_401
-============= 1 failed, 83 passed, 4 warnings in 128.43s (0:02:08) =============
+TOTAL                                  1482    391    74%
+================== 84 passed, 4 warnings in 118.07s (0:01:58) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

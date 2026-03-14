@@ -58,12 +58,13 @@ class AppConfig(BaseSettings):
         import re
 
         val = v.get_secret_value()
-        # Security: Validates minimum length and restricts character set to standard OpenRouter format
-        if len(val) < 32:
-            msg = "Invalid API key format."
+        # Security: Validates length and restricts character set to standard OpenRouter format
+        # OpenRouter keys are strictly format sk-or-v1-[64 hex chars]
+        if len(val) != 73:  # len("sk-or-v1-") + 64
+            msg = "Invalid API key format: length must be exactly 73 characters."
             raise ValueError(msg)
         if not re.match(r"^sk-or-v1-[a-fA-F0-9]{64}$", val):
-            msg = "Invalid API key format."
+            msg = "Invalid API key format: must match sk-or-v1-[64 hex]."
             raise ValueError(msg)
         return v
 
