@@ -41,8 +41,8 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             147     20    86%   62, 64, 113-114, 117-118, 129-131, 140, 160, 217-219, 236-238, 255, 273-274
-src/application/di_container.py          32      0   100%
+src/application/__init__.py             162     24    85%   61, 63, 120-121, 124-125, 136-138, 147, 167, 223-225, 229-230, 245-247, 261-262, 267, 285-286
+src/application/di_container.py          41      6    85%   19-20, 34-35, 50-51
 src/application/pivot_workflow.py        47      0   100%
 src/application/sq3r_service.py          12      0   100%
 src/config/__init__.py                    3      0   100%
@@ -60,14 +60,14 @@ src/infrastructure/llm_gateway.py       158     51    68%   33-34, 41-42, 47-48,
 src/infrastructure/network.py            51      8    84%   51, 105-135
 src/infrastructure/test_services.py     139     32    77%   39-40, 51-52, 55-56, 81-82, 87-89, 91-93, 106-107, 112-115, 126-128, 170-171, 204-205, 208, 211-214
 src/infrastructure/vector_store.py      120     64    47%   20-28, 37-42, 46-86, 92-121, 125, 138-139, 145-146, 176-177, 188-189
-src/interfaces/__init__.py                4      0   100%
+src/interfaces/__init__.py                2      0   100%
 src/interfaces/api_router.py             83     23    72%   26-27, 42-44, 48-50, 61-63, 71-73, 84-85, 100-101, 118-120, 133-134
-src/interfaces/clustering.py              2      0   100%
-src/interfaces/dependencies.py          138     86    38%   50-51, 77-88, 92-115, 119-125, 129-136, 155-171, 175-187, 192-241
-src/interfaces/llm_protocol.py            3      0   100%
-src/interfaces/repository.py              7      0   100%
+src/interfaces/clustering.py              3      0   100%
+src/interfaces/dependencies.py          140     86    39%   52-53, 79-90, 94-117, 121-127, 131-138, 157-173, 177-189, 194-243
+src/interfaces/llm_protocol.py            5      0   100%
+src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1274    331    74%
-================== 74 passed, 4 warnings in 90.45s (0:01:30) ===================
+TOTAL                                  1302    341    74%
+================== 74 passed, 4 warnings in 96.89s (0:01:36) ===================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

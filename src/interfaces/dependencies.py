@@ -2,17 +2,19 @@ import importlib
 import logging
 import threading
 from collections.abc import Callable
-from typing import Any, Protocol, TypeVar
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
 
+@runtime_checkable
 class LLMProtocol(Protocol):
     """Protocol for interacting with LLM Gateways."""
 
     async def generate(self, prompt: str) -> str: ...
 
 
+@runtime_checkable
 class VectorStoreProtocol(Protocol):
     """Protocol for interacting with Vector Databases."""
 

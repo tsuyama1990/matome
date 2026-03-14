@@ -1,6 +1,8 @@
 import typing
+from typing import runtime_checkable
 
 
+@runtime_checkable
 class LLMProtocol(typing.Protocol):
     """Abstract protocol defining the required capabilities of an LLM provider."""
 

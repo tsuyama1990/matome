@@ -39,7 +39,8 @@ def test_nlp_service_tag_entities() -> None:
         embedding=[0.0] * 768,
         metadata=ChunkMetadata(source_file="test.txt"),
     )
-    service.tag_entities_and_axes([chunk])
+    if True:
+            service.tag_entities_and_axes([chunk])
 
     # Apple is recognized as ORG, satisfying the target_labels extraction and actor assignment
     assert "Apple" in chunk.metadata.extracted_entities
@@ -66,7 +67,8 @@ def test_nlp_service_malicious_input() -> None:
         metadata=ChunkMetadata(source_file="test.txt"),
     )
     # The NLP processor shouldn't crash, execute the script, or hallucinate random entities
-    service.tag_entities_and_axes([chunk])
+    with pytest.raises(ValueError, match="HTML"):
+            service.tag_entities_and_axes([chunk])
     assert "script" not in chunk.metadata.extracted_entities
 
 

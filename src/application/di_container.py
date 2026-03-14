@@ -1,6 +1,6 @@
 import threading
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
 T = TypeVar("T")
 
@@ -11,10 +11,13 @@ class DIContainer:
         self._factories: dict[type[Any], Callable[[], Any]] = {}
         self._singletons: dict[type[Any], Any] = {}
         self._lock = threading.RLock()
-        self._resolving: set[type[Any]] = set()
+        self._local = threading.local()
 
     def register_singleton(self, interface: type[T], instance: T) -> None:
         """Registers a singleton instance for an interface."""
+        if not isinstance(instance, interface):
+            msg = f"Expected instance of {interface}, got {type(instance)}"
+            raise TypeError(msg)
         with self._lock:
             self._singletons[interface] = instance
 
@@ -27,9 +30,12 @@ class DIContainer:
         """Resolves an interface to its singleton instance with circular dependency detection."""
         with self._lock:
             if interface in self._singletons:
-                return self._singletons[interface]  # type: ignore[no-any-return]
+                if not isinstance(self._singletons[interface], interface):
+                    msg = f"Expected {interface}, got {type(self._singletons[interface])}"
+                    raise TypeError(msg)
+                return cast(T, self._singletons[interface])
 
-            if interface in self._resolving:
+            if interface in self._local.resolving:
                 msg = f"Circular dependency detected while resolving: {interface}"
                 raise RuntimeError(msg)
 
@@ -37,10 +43,13 @@ class DIContainer:
                 msg = f"Dependency not registered: {interface}"
                 raise RuntimeError(msg)
 
-            self._resolving.add(interface)
+            self._local.resolving.add(interface)
             try:
                 instance = self._factories[interface]()
+                if not isinstance(instance, interface):
+                    msg = f"Expected {interface}, got {type(instance)}"
+                    raise TypeError(msg)
                 self._singletons[interface] = instance
-                return instance  # type: ignore[no-any-return]
+                return instance
             finally:
-                self._resolving.remove(interface)
+                self._local.resolving.remove(interface)

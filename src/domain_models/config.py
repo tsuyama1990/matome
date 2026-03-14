@@ -1,4 +1,5 @@
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic_core.core_schema import ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,7 +29,7 @@ class AppConfig(BaseSettings):
     """Core application configuration."""
 
     openrouter_api_key: SecretStr = Field(
-        description="API Key for OpenRouter.",
+        min_length=1, description="API Key for OpenRouter.",
     )
     tenant_id: str = Field(
         min_length=1,
@@ -38,5 +39,20 @@ class AppConfig(BaseSettings):
         default_factory=ModelRoutingRules,
         description="Rules for routing tasks to models.",
     )
+
+    @field_validator("openrouter_api_key")
+    @classmethod
+    def validate_api_key(cls, v: SecretStr, info: ValidationInfo) -> SecretStr:
+        _ = info
+        import re
+        val = v.get_secret_value()
+        # Security: Validates minimum length and restricts character set to standard OpenRouter format
+        if len(val) < 32:
+            msg = "Invalid API key format."
+            raise ValueError(msg)
+        if not re.match(r"^sk-or-v1-[a-zA-Z0-9]+$", val):
+            msg = "Invalid API key format."
+            raise ValueError(msg)
+        return v
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")
