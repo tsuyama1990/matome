@@ -35,6 +35,9 @@ class DIContainer:
                     raise TypeError(msg)
                 return cast(T, self._singletons[interface])
 
+            if not hasattr(self._local, "resolving"):
+                self._local.resolving = set()
+
             if interface in self._local.resolving:
                 msg = f"Circular dependency detected while resolving: {interface}"
                 raise RuntimeError(msg)

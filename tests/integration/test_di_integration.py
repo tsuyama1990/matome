@@ -12,10 +12,10 @@ class DummyLLMService(LLMProtocol):
 
 
 def test_di_integration_app_config(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-testkeytestkeytestkeytestkeytestkey")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
     monkeypatch.setenv("TENANT_ID", "test-tenant")
 
-    config = AppConfig(openrouter_api_key="sk-or-v1-testkeytestkeytestkeytestkeytestkey", tenant_id="test-tenant") # type: ignore[arg-type]
+    config = AppConfig(openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", tenant_id="test-tenant") # type: ignore[arg-type]
     container = DIContainer()
 
     container.register_singleton(AppConfig, config)

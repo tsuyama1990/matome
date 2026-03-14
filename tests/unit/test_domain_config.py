@@ -23,7 +23,7 @@ def test_app_config_missing_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("TENANT_ID", raising=False)
 
     with pytest.raises(ValidationError) as excinfo:
-        AppConfig(openrouter_api_key="sk-or-v1-mockmockmockmockmockmockmockmock", tenant_id="mock") # type: ignore[arg-type]
+        AppConfig()
 
     # Needs OPENROUTER_API_KEY
     assert "validation error" in str(excinfo.value).lower()
@@ -31,18 +31,18 @@ def test_app_config_missing_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_app_config_valid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-abcdefghijklmnopqrstuvwxyz123456")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
     monkeypatch.setenv("TENANT_ID", "tenant-123")
 
-    config = AppConfig(openrouter_api_key="sk-or-v1-mockmockmockmockmockmockmockmock", tenant_id="mock") # type: ignore[arg-type]
+    config = AppConfig()
 
     assert config.tenant_id == "tenant-123"
     # SecretStr masks the representation
     assert str(config.openrouter_api_key) == "**********"
-    assert config.openrouter_api_key.get_secret_value() == "sk-or-v1-abcdefghijklmnopqrstuvwxyz123456"
+    assert config.openrouter_api_key.get_secret_value() == "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
 
 def test_app_config_extra_forbid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-abcdefghijklmnopqrstuvwxyz123456")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
     monkeypatch.setenv("TENANT_ID", "tenant-123")
     monkeypatch.setenv("HACK_ME", "true")
 

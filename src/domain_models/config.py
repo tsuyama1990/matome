@@ -50,7 +50,7 @@ class AppConfig(BaseSettings):
         if len(val) < 32:
             msg = "Invalid API key format."
             raise ValueError(msg)
-        if not re.match(r"^sk-or-v1-[a-zA-Z0-9]+$", val):
+        if not re.match(r"^sk-or-v1-[a-fA-F0-9]{64}$", val):
             msg = "Invalid API key format."
             raise ValueError(msg)
         return v

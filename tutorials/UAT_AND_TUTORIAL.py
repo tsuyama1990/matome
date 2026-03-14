@@ -12,12 +12,12 @@ os.environ.pop("OPENROUTER_API_KEY", None)
 os.environ.pop("TENANT_ID", None)
 
 try:
-    AppConfig(openrouter_api_key="sk-or-v1-mockmockmockmockmockmockmockmock", tenant_id="sk-or-v1-mockmockmockmockmockmockmockmock") # type: ignore[arg-type]
+    AppConfig(openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", tenant_id="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") # type: ignore[arg-type]
     raise AssertionError("Expected ValidationError due to missing keys")
 except ValidationError:
     print("Success: AppConfig correctly rejected missing OPENROUTER_API_KEY.")
 
-os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-mysecretkeymysecretkeymysecretkey"
+os.environ["OPENROUTER_API_KEY"] = "sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 os.environ["TENANT_ID"] = "tenant1"
 try:
     ModelRoutingRules(text_fast_model="")
@@ -25,9 +25,9 @@ try:
 except ValidationError:
     print("Success: AppConfig correctly rejected invalid routing rules.")
 
-config = AppConfig(openrouter_api_key="sk-or-v1-mockmockmockmockmockmockmockmock", tenant_id="sk-or-v1-mockmockmockmockmockmockmockmock") # type: ignore[arg-type]
+config = AppConfig(openrouter_api_key="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", tenant_id="sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") # type: ignore[arg-type]
 print("String representation of config: ", config)
-assert "sk-or-v1-mysecretkeymysecretkeymysecretkey" not in str(config), "SecretStr leaked!"
+assert "sk-or-v1-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" not in str(config), "SecretStr leaked!"
 assert "**********" in str(config), "SecretStr did not mask correctly!"
 print("Success: SecretStr securely masked.")
 print()

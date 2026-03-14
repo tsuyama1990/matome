@@ -41,15 +41,15 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             162     24    85%   61, 63, 120-121, 124-125, 136-138, 147, 167, 223-225, 229-230, 245-247, 261-262, 267, 285-286
-src/application/di_container.py          41      6    85%   19-20, 34-35, 50-51
+src/application/__init__.py             173     28    84%   61, 63, 83-84, 105-106, 136-137, 140-141, 152-154, 163, 183, 239-241, 245-246, 261-263, 277-278, 283, 301-302
+src/application/di_container.py          43      6    86%   19-20, 34-35, 53-54
 src/application/pivot_workflow.py        47      0   100%
 src/application/sq3r_service.py          12      0   100%
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   45      7    84%   17-18, 42-43, 52-54
 src/config/settings.py                   78     14    82%   23-24, 27, 30-31, 34-35, 49, 74-75, 155-156, 160-161
 src/domain_models/__init__.py             5      0   100%
-src/domain_models/config.py              12      0   100%
+src/domain_models/config.py              26      2    92%   54-55
 src/domain_models/document.py            65      4    94%   49-50, 99, 119
 src/domain_models/exceptions.py           3      0   100%
 src/domain_models/graph_state.py         33      0   100%
@@ -67,7 +67,7 @@ src/interfaces/dependencies.py          140     86    39%   52-53, 79-90, 94-117
 src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1302    341    74%
-================== 74 passed, 4 warnings in 96.89s (0:01:36) ===================
+TOTAL                                  1329    347    74%
+================== 74 passed, 4 warnings in 96.42s (0:01:36) ===================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
