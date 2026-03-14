@@ -1,4 +1,4 @@
-with open("src/application/di_container.py", "r") as f:
+with open("src/application/di_container.py") as f:
     content = f.read()
 
 # Fix the resolution thread-local initialization

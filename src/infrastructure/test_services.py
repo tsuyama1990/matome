@@ -155,6 +155,21 @@ class SafeTestLLMService:
         return "Test Summary or Question."
 
 
+class DummyLLMService:
+    """Dummy test implementation of LLMProtocol."""
+
+    def __init__(self, raise_error: bool = False) -> None:
+        self.raise_error = raise_error
+        self.call_count = 0
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        self.call_count += 1
+        if self.raise_error:
+            msg = "LLM connection failed"
+            raise ValueError(msg)
+        return "Test Summary or Question."
+
+
 class SafeTestDocumentRepository:
     """Minimal test implementation of DocumentRepositoryProtocol without mocking."""
 
@@ -170,6 +185,70 @@ class SafeTestDocumentRepository:
             msg = "Not found"
             raise ValueError(msg)
         return self.doc
+
+
+class MockHttpxTransport:
+    """Custom httpx transport for deterministic testing."""
+
+    def __init__(self) -> None:
+        import httpx
+
+        self.httpx = httpx
+        self.responses: list[Any] = []
+        self.call_count = 0
+        self.requests: list[httpx.Request] = []
+
+    def add_response(
+        self,
+        status_code: int = 200,
+        json_data: dict[str, Any] | None = None,
+        exc: Exception | None = None,
+    ) -> None:
+        if exc is not None:
+            self.responses.append(exc)
+        else:
+            self.responses.append((status_code, json_data))
+
+    async def aclose(self) -> None:
+        pass
+
+    async def handle_async_request(self, request: Any) -> Any:
+        self.call_count += 1
+        self.requests.append(request)
+
+        if not self.responses:
+            return self.httpx.Response(
+                status_code=200,
+                json={"choices": [{"message": {"content": "Mock fallback success"}}]},
+            )
+
+        resp = self.responses.pop(0)
+        if isinstance(resp, Exception):
+            raise resp
+
+        status_code, json_data = resp
+        import json
+
+        body = json.dumps(json_data).encode("utf-8") if json_data else b""
+
+        class AsyncIterator:
+            def __init__(self, data: bytes) -> None:
+                self.data = data
+                self.yielded = False
+
+            async def __aiter__(self) -> "AsyncIterator":
+                return self
+
+            async def __anext__(self) -> bytes:
+                if not self.yielded:
+                    self.yielded = True
+                    return self.data
+                raise StopAsyncIteration
+
+        stream = self.httpx.ByteStream(body)
+        return self.httpx.Response(
+            status_code=status_code, headers=[(b"content-type", b"application/json")], stream=stream
+        )
 
 
 class SafeTestHTTPTransport:

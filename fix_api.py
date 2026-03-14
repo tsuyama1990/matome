@@ -1,4 +1,4 @@
-with open("src/domain_models/config.py", "r") as f:
+with open("src/domain_models/config.py") as f:
     content = f.read()
 
 # Update the regex to exactly 64 hex characters

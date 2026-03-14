@@ -4,6 +4,7 @@ from typing import Any, TypeVar, cast
 
 T = TypeVar("T")
 
+
 class DIContainer:
     """Dependency Injection container using dynamic imports for initialization."""
 

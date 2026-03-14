@@ -73,8 +73,9 @@ class NLPService:
             raise RuntimeError(msg)
 
         for chunk in chunks:
-                        # XSS Protection: ContentSanitizer logic inline
+            # XSS Protection: ContentSanitizer logic inline
             import re
+
             # Comprehensive whitelist validation: explicitly block control characters and HTML tags <script> directly
             if re.search(r"<script|<style|<iframe|<object|<embed", chunk.content, re.IGNORECASE):
                 msg = "Content contains forbidden HTML tags."
@@ -105,7 +106,7 @@ class NLPService:
                 extracted_entities.extend(batch)
                 collected += len(batch)
 
-            extracted_entities = extracted_entities[:self.max_entities]
+            extracted_entities = extracted_entities[: self.max_entities]
 
             chunk.metadata.extracted_entities = list(set(extracted_entities))
             chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
@@ -204,6 +205,7 @@ class RAPTOREngine:
                 cluster_embs = [current_level_embeddings[i] for i in indices]
                 if cluster_embs:
                     import numpy as np
+
                     mean_emb = np.mean(np.array(cluster_embs, dtype=float), axis=0).tolist()
                     next_level_embeddings.append(mean_emb)
 
@@ -308,7 +310,7 @@ class PivotKJEngine:
 
 
 __all__ = [
-        "NLPModelLoadError",
+    "NLPModelLoadError",
     "NLPService",
     "PivotKJEngine",
     "PivotWorkflow",

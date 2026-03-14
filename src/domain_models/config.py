@@ -21,6 +21,11 @@ class ModelRoutingRules(BaseModel):
         min_length=1,
         description="Model for multimodal tasks.",
     )
+    fallback_model: str = Field(
+        default="openai/gpt-4o-mini",
+        min_length=1,
+        description="Fallback model if the primary model fails.",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -29,7 +34,8 @@ class AppConfig(BaseSettings):
     """Core application configuration."""
 
     openrouter_api_key: SecretStr = Field(
-        min_length=1, description="API Key for OpenRouter.",
+        min_length=1,
+        description="API Key for OpenRouter.",
     )
     tenant_id: str = Field(
         min_length=1,
@@ -45,6 +51,7 @@ class AppConfig(BaseSettings):
     def validate_api_key(cls, v: SecretStr, info: ValidationInfo) -> SecretStr:
         _ = info
         import re
+
         val = v.get_secret_value()
         # Security: Validates minimum length and restricts character set to standard OpenRouter format
         if len(val) < 32:

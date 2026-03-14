@@ -1,6 +1,4 @@
-import re
-
-with open("src/application/__init__.py", "r") as f:
+with open("src/application/__init__.py") as f:
     content = f.read()
 
 # Replace the XSS section
@@ -20,8 +18,8 @@ new_xss = """            # XSS Protection: Comprehensive HTML sanitization and s
             import re
 
             # Explicitly reject all ASCII control characters except tab, newline, and carriage return
-            # \x00-\x08 (0-8), \x0B (11), \x0C (12 form feed), \x0E-\x1F (14-31), \x7F (127 DEL)
-            if re.search(r"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", chunk.content):
+            # \x00-\x08 (0-8), \x0b (11), \x0c (12 form feed), \x0e-\x1f (14-31), \x7f (127 DEL)
+            if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", chunk.content):
                 msg = "Content contains forbidden control characters."
                 raise ValueError(msg)
 
@@ -45,7 +43,7 @@ content = content.replace(old_xss, new_xss)
 with open("src/application/__init__.py", "w") as f:
     f.write(content)
 
-with open("tests/unit/test_application.py", "r") as f:
+with open("tests/unit/test_application.py") as f:
     test_content = f.read()
 
 # The test test_nlp_service_malicious_input expects ValueError for <script>.
@@ -56,7 +54,7 @@ with open("tests/unit/test_application.py", "r") as f:
 
 test_content = test_content.replace(
     "with pytest.raises(ValueError):\n            service.tag_entities_and_axes([chunk])",
-    "service.tag_entities_and_axes([chunk])"
+    "service.tag_entities_and_axes([chunk])",
 )
 
 with open("tests/unit/test_application.py", "w") as f:

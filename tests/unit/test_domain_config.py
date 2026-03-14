@@ -15,8 +15,9 @@ def test_model_routing_rules_validation() -> None:
 
     # Extra fields should fail
     with pytest.raises(ValidationError) as excinfo:
-        ModelRoutingRules(malicious_field="injection") # type: ignore[call-arg]
+        ModelRoutingRules(malicious_field="injection")  # type: ignore[call-arg]
     assert "Extra inputs are not permitted" in str(excinfo.value)
+
 
 def test_app_config_missing_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
@@ -31,7 +32,10 @@ def test_app_config_missing_env_vars(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_app_config_valid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+    monkeypatch.setenv(
+        "OPENROUTER_API_KEY",
+        "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    )
     monkeypatch.setenv("TENANT_ID", "tenant-123")
 
     config = AppConfig()
@@ -39,14 +43,21 @@ def test_app_config_valid(monkeypatch: pytest.MonkeyPatch) -> None:
     assert config.tenant_id == "tenant-123"
     # SecretStr masks the representation
     assert str(config.openrouter_api_key) == "**********"
-    assert config.openrouter_api_key.get_secret_value() == "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+    assert (
+        config.openrouter_api_key.get_secret_value()
+        == "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+    )
+
 
 def test_app_config_extra_forbid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789")
+    monkeypatch.setenv(
+        "OPENROUTER_API_KEY",
+        "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+    )
     monkeypatch.setenv("TENANT_ID", "tenant-123")
     monkeypatch.setenv("HACK_ME", "true")
 
     # Should not fail on extra environment variables, SettingsConfigDict parses env
     # But if initialized directly with kwargs, it should forbid extras
     with pytest.raises(ValidationError):
-        AppConfig(openrouter_api_key="123", tenant_id="t1", extra_kwarg="should_fail") # type: ignore[call-arg, arg-type]
+        AppConfig(openrouter_api_key="123", tenant_id="t1", extra_kwarg="should_fail")  # type: ignore[call-arg, arg-type]

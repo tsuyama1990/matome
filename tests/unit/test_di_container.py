@@ -11,14 +11,16 @@ class DummyLLM:
     async def generate_text(self, prompt: str, model: str) -> str:
         return "dummy"
 
+
 def test_di_container_register_resolve_singleton() -> None:
     container = DIContainer()
     instance = DummyLLM()
 
-    container.register_singleton(LLMProtocol, instance) # type: ignore[type-abstract]
-    resolved = container.resolve(LLMProtocol) # type: ignore[type-abstract]
+    container.register_singleton(LLMProtocol, instance)  # type: ignore[type-abstract]
+    resolved = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
 
     assert resolved is instance
+
 
 def test_di_container_register_resolve_factory() -> None:
     container = DIContainer()
@@ -26,26 +28,30 @@ def test_di_container_register_resolve_factory() -> None:
     def factory() -> DummyLLM:
         return DummyLLM()
 
-    container.register(LLMProtocol, factory) # type: ignore[type-abstract]
-    resolved1 = container.resolve(LLMProtocol) # type: ignore[type-abstract]
-    resolved2 = container.resolve(LLMProtocol) # type: ignore[type-abstract]
+    container.register(LLMProtocol, factory)  # type: ignore[type-abstract]
+    resolved1 = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+    resolved2 = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
 
     assert isinstance(resolved1, DummyLLM)
     assert resolved1 is resolved2
+
 
 def test_di_container_unregistered() -> None:
     container = DIContainer()
 
     with pytest.raises(RuntimeError, match="Dependency not registered"):
-        container.resolve(LLMProtocol) # type: ignore[type-abstract]
+        container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+
 
 class ServiceA:
-    def __init__(self, b: 'ServiceB') -> None:
+    def __init__(self, b: "ServiceB") -> None:
         self.b = b
 
+
 class ServiceB:
-    def __init__(self, a: 'ServiceA') -> None:
+    def __init__(self, a: "ServiceA") -> None:
         self.a = a
+
 
 def test_di_container_circular_dependency() -> None:
     container = DIContainer()
@@ -64,6 +70,7 @@ def test_di_container_circular_dependency() -> None:
     with pytest.raises(RuntimeError, match="Circular dependency detected"):
         container.resolve(ServiceA)
 
+
 def test_di_container_thread_safety() -> None:
     container = DIContainer()
 
@@ -71,16 +78,16 @@ def test_di_container_thread_safety() -> None:
         time.sleep(0.1)
         return DummyLLM()
 
-    container.register(LLMProtocol, slow_factory) # type: ignore[type-abstract]
+    container.register(LLMProtocol, slow_factory)  # type: ignore[type-abstract]
 
     results = []
 
     def worker() -> None:
         try:
-            res = container.resolve(LLMProtocol) # type: ignore[type-abstract]
+            res = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
             results.append(res)
         except Exception as e:
-            results.append(e) # type: ignore[arg-type]
+            results.append(e)  # type: ignore[arg-type]
 
     threads = [threading.Thread(target=worker) for _ in range(5)]
     for t in threads:

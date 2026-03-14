@@ -1,4 +1,4 @@
-with open("src/interfaces/dependencies.py", "r") as f:
+with open("src/interfaces/dependencies.py") as f:
     content = f.read()
 
 old_bootstrap = """def bootstrap_application_services(container: DIContainer) -> None:
