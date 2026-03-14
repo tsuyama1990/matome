@@ -10,7 +10,7 @@ from src.infrastructure.test_services import MockHttpxTransport
 def uat_config(monkeypatch: pytest.MonkeyPatch) -> AppConfig:
     monkeypatch.setenv(
         "OPENROUTER_API_KEY",
-        "sk-or-v1-0000000000000000000000000000000000000000000000000000000000000000",
+        "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
     )
     monkeypatch.setenv("TENANT_ID", "uat-tenant")
     return AppConfig(  # type: ignore[call-arg]

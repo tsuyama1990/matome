@@ -61,20 +61,13 @@ class FileProcessingService:
 
     def _read_file_content(self, resolved_path: Path) -> str:
         """Internal method to perform the actual chunked read operation."""
-        import os
 
         content_chunks = []
         total_size = 0
         try:
             # Open with strict encoding to catch malformed characters
             with resolved_path.open(encoding="utf-8", errors="strict") as f:
-                # TOCTOU mitigation: Check size on the open file descriptor.
-                fd_size = os.fstat(f.fileno()).st_size
-                if fd_size > self._max_file_size:
-                    msg = "File size exceeds the allowed limit"
-                    raise FileProcessingError(msg)
-
-                # Keep streaming limits bounded per read to respect memory limits.
+                # Keep streaming limits bounded per read to respect memory limits and prevent TOCTOU.
                 while chunk := f.read(1024 * 1024):  # 1MB chunks
                     chunk_byte_len = len(chunk.encode("utf-8", errors="strict"))
 

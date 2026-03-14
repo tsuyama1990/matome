@@ -66,6 +66,12 @@ class AppConfig(BaseSettings):
         if not re.match(r"^sk-or-v1-[a-fA-F0-9]{64}$", val):
             msg = "Invalid API key format: must match sk-or-v1-[64 hex]."
             raise ValueError(msg)
+
+        hex_part = val[9:]
+        if len(set(hex_part)) < 4:
+            msg = "Invalid API key: appears to be a dummy or repeating pattern."
+            raise ValueError(msg)
+
         return v
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")

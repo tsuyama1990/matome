@@ -33,14 +33,23 @@ class DIContainer:
         with self._lock:
             self._scoped_factories[interface] = factory
 
+    def _get_resolving_set(self) -> set[type[Any]]:
+        if not hasattr(self._local, "resolving"):
+            self._local.resolving = set()
+        return cast(set[type[Any]], self._local.resolving)
+
     def resolve(self, interface: type[T]) -> T:
         """Resolves an interface to an instance with circular dependency detection."""
+        # Fast path for singletons outside the lock if possible, but we need lock for thread safety
         with self._lock:
-            if not hasattr(self._local, "resolving"):
-                self._local.resolving = set()
+            resolving = self._get_resolving_set()
 
-            if interface in self._local.resolving:
+            if interface in resolving:
                 msg = f"Circular dependency detected while resolving: {interface}"
+                raise RuntimeError(msg)
+
+            if len(resolving) > 50:
+                msg = f"Max dependency depth exceeded resolving: {interface}"
                 raise RuntimeError(msg)
 
             if interface in self._singletons:
@@ -58,21 +67,28 @@ class DIContainer:
 
             factory = self._scoped_factories[interface] if is_scoped else self._factories[interface]
 
-            self._local.resolving.add(interface)
+            resolving.add(interface)
+
+        # Call factory outside the lock to prevent deadlocks in multi-threaded nested resolutions
+        try:
             try:
-                try:
-                    instance = factory()
-                except Exception as e:
-                    msg = f"Error instantiating dependency {interface}: {e}"
-                    raise RuntimeError(msg) from e
+                instance = factory()
+            except Exception as e:
+                msg = f"Error instantiating dependency {interface}: {e}"
+                raise RuntimeError(msg) from e
 
-                if not isinstance(instance, interface):
-                    msg = f"Expected {interface}, got {type(instance)}"
-                    raise TypeError(msg)
+            if not isinstance(instance, interface):
+                msg = f"Expected {interface}, got {type(instance)}"
+                raise TypeError(msg)
 
-                if not is_scoped:
-                    self._singletons[interface] = instance
+            if not is_scoped:
+                with self._lock:
+                    # Double-checked locking pattern
+                    if interface not in self._singletons:
+                        self._singletons[interface] = instance
+                    else:
+                        instance = self._singletons[interface]
 
-                return instance
-            finally:
-                self._local.resolving.remove(interface)
+            return instance
+        finally:
+            resolving.remove(interface)

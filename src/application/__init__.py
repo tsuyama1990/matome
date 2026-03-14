@@ -99,7 +99,12 @@ class NLPService:
             # Scalability: Stream entities in batches of 100 to prevent OOM
             ent_iter = iter(ent for ent in doc.ents if ent.label_ in allowed_types)
             collected = 0
+            iterations = 0
+            max_iterations = 1000
             while collected < self.max_entities:
+                iterations += 1
+                if iterations > max_iterations:
+                    break
                 batch = []
                 try:
                     for _ in range(100):

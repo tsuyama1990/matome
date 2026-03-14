@@ -4,7 +4,6 @@ from typing import Any
 import httpx
 from tenacity import (
     retry,
-    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
 )
@@ -44,13 +43,12 @@ class OpenRouterClient(LLMProtocol):
             return e.response.status_code in (500, 502, 503, 504)
         return False
 
+    @staticmethod
     def _should_retry(retry_state: Any) -> bool:
         """Custom retry condition to skip LLMAuthenticationError."""
         if retry_state.outcome.failed:
             e = retry_state.outcome.exception()
-            if isinstance(e, LLMAuthenticationError):
-                return False
-            return True
+            return not isinstance(e, LLMAuthenticationError)
         return False
 
     @retry(
@@ -83,29 +81,30 @@ class OpenRouterClient(LLMProtocol):
 
             return str(data["choices"][0]["message"]["content"])
 
-        except Exception as e:
-            if isinstance(e, httpx.HTTPStatusError):
-                if e.response.status_code in (401, 403):
-                    msg = "Authentication failed. Please verify the API key."
-                    # We bypass Tenacity by wrapping in a custom error that is NOT retried.
-                    raise LLMAuthenticationError(msg) from e
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (401, 403):
+                msg = "Authentication failed. Please verify the API key."
+                # We bypass Tenacity by wrapping in a custom error that is NOT retried.
+                raise LLMAuthenticationError(msg) from e
 
             if self._is_transient_error(e):
                 logger.warning("Transient error occurred during LLM request. Retrying...")
                 raise  # Let tenacity handle the retry
 
-            # Handle non-transient errors gracefully
-            if isinstance(e, httpx.HTTPStatusError):
-                if e.response.status_code >= 500:
-                    msg = "The external LLM service is currently unavailable."
-                    raise LLMServerError(msg) from e
-                msg = "A generic HTTP error occurred during the LLM request."
-                raise LLMConnectionError(msg) from e
+            if e.response.status_code >= 500:
+                msg = "The external LLM service is currently unavailable."
+                raise LLMServerError(msg) from e
+            msg = "A generic HTTP error occurred during the LLM request."
+            raise LLMConnectionError(msg) from e
 
-            if isinstance(e, (httpx.ConnectError, httpx.TimeoutException)):
-                msg = "A network timeout or connection error occurred."
-                raise LLMConnectionError(msg) from e
+        except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError) as e:
+            if self._is_transient_error(e):
+                logger.warning("Transient error occurred during LLM request. Retrying...")
+                raise  # Let tenacity handle the retry
+            msg = "A network timeout or connection error occurred."
+            raise LLMConnectionError(msg) from e
 
+        except Exception as e:
             msg = "An unexpected error occurred during LLM generation."
             raise LLMConnectionError(msg) from e
 

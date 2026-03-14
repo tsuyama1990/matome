@@ -65,7 +65,7 @@ def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
     test_file = tmp_path / "large_file.txt"
     test_file.write_text("This file is way too large for the 10 byte limit.", encoding="utf-8")
 
-    with pytest.raises(FileProcessingError, match="File size exceeds the allowed limit"):
+    with pytest.raises(FileProcessingError, match="File size exceeds memory limits during read"):
         service.read_file("large_file.txt")
 
 
