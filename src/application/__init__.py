@@ -5,6 +5,7 @@ from typing import Any
 
 import bleach
 
+from src.application.di_container import DIContainer
 from src.application.pivot_workflow import PivotWorkflow
 from src.domain_models import RaptorNode, SemanticChunk
 from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
@@ -279,6 +280,7 @@ class PivotKJEngine:
 
 
 __all__ = [
+    "DIContainer",
     "NLPModelLoadError",
     "NLPService",
     "PivotKJEngine",

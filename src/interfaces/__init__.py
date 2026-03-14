@@ -10,3 +10,6 @@ from src.interfaces.dependencies import (
 )
 
 __all__ = ["DIContainer", "LLMProtocol", "VectorStoreProtocol", "bootstrap_application_services"]
+from src.interfaces.llm_protocol import LLMProtocol
+
+__all__.append("LLMProtocol")
