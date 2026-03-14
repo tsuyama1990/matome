@@ -52,7 +52,7 @@ src/config/__init__.py                    3      0   100%
 src/config/security.py                   45      7    84%   17-18, 42-43, 52-54
 src/config/settings.py                   78     14    82%   23-24, 27, 30-31, 34-35, 49, 74-75, 155-156, 160-161
 src/domain_models/__init__.py             5      0   100%
-src/domain_models/config.py              27      2    93%   61-62
+src/domain_models/config.py              28      2    93%   66-67
 src/domain_models/document.py            65      4    94%   49-50, 99, 119
 src/domain_models/exceptions.py           5      0   100%
 src/domain_models/graph_state.py         33      0   100%
@@ -71,7 +71,7 @@ src/interfaces/dependencies.py          140     86    39%   52-53, 79-90, 94-117
 src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1432    369    74%
-================== 84 passed, 4 warnings in 152.22s (0:02:32) ==================
+TOTAL                                  1433    369    74%
+================== 84 passed, 4 warnings in 122.79s (0:02:02) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

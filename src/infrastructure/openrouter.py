@@ -28,7 +28,7 @@ class OpenRouterClient(LLMProtocol):
         """
         self._config = config
         self._api_key = config.openrouter_api_key.get_secret_value()
-        self._base_url = "https://openrouter.ai/api/v1/chat/completions"
+        self._base_url = config.openrouter_base_url
         self._client = client or httpx.AsyncClient(timeout=30.0)
 
     def _handle_invalid_response(self) -> str:

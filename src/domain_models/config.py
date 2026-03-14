@@ -37,6 +37,11 @@ class AppConfig(BaseSettings):
         min_length=1,
         description="API Key for OpenRouter.",
     )
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1/chat/completions",
+        min_length=1,
+        description="Base URL for OpenRouter API.",
+    )
     tenant_id: str = Field(
         min_length=1,
         description="Tenant ID for isolating data.",
