@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 import httpx
+from pydantic import SecretStr
 from tenacity import (
     retry,
     stop_after_attempt,
@@ -18,12 +19,12 @@ logger = logging.getLogger(__name__)
 class OpenRouterAuth(httpx.Auth):
     """Custom httpx authentication to securely handle SecretStr injection."""
 
-    def __init__(self, token: Any) -> None:
+    def __init__(self, token: SecretStr) -> None:
         self.token = token
 
     def auth_flow(self, request: httpx.Request) -> Any:
         # Resolve actual token specifically at request time so it avoids log dumps
-        actual_token = self.token.get_secret_value() if hasattr(self.token, "get_secret_value") else str(self.token)
+        actual_token = self.token.get_secret_value()
         request.headers["Authorization"] = f"Bearer {actual_token}"
         yield request
 

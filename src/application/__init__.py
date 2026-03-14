@@ -68,15 +68,12 @@ class NLPService:
             msg = "Content contains forbidden control characters."
             raise ValueError(msg)
 
-        harmful_patterns = [
-            r"\b(?:SELECT|INSERT|UPDATE|DELETE|DROP|UNION)\b.*\b(?:FROM|INTO|TABLE|DATABASE)\b",
-            r"\b(?:exec|system|eval|os\.system|subprocess)\s*\(",
-            r"(\b|;)rm\s+-rf\s",
-        ]
-        for pattern in harmful_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                msg = "Content rejected due to semantic injection patterns."
-                raise ValueError(msg)
+        # Secure whitelist approach: Only allow printable characters, newlines, and standard punctuation.
+        # This implicitly blocks complex semantic injection payloads without brittle regex blocklists.
+        # We allow standard word characters, whitespace, and basic punctuation.
+        if not re.match(r"^[\w\s\.,;:!?\-\(\)\[\]\{\}\'\"\$£€]+$", content, re.UNICODE):
+            msg = "Content rejected due to semantic injection patterns."
+            raise ValueError(msg)
 
         return bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
 

@@ -68,25 +68,25 @@ class DIContainer:
 
             resolving.add(interface)
 
-        # Call factory outside the lock to prevent deadlocks in multi-threaded nested resolutions
+        # Call factory inside the lock to ensure atomic singleton creation across threads
         try:
-            try:
-                instance = factory()
-            except Exception as e:
-                msg = f"Error instantiating dependency {interface}: {e}"
-                raise RuntimeError(msg) from e
+            with self._lock:
+                # Double-check inside the lock in case another thread created it
+                if not is_scoped and interface in self._singletons:
+                    return cast(T, self._singletons[interface])
 
-            if not isinstance(instance, interface):
-                msg = f"Expected {interface}, got {type(instance)}"
-                raise TypeError(msg)
+                try:
+                    instance = factory()
+                except Exception as e:
+                    msg = f"Error instantiating dependency {interface}: {e}"
+                    raise RuntimeError(msg) from e
 
-            if not is_scoped:
-                with self._lock:
-                    # Double-checked locking pattern
-                    if interface not in self._singletons:
-                        self._singletons[interface] = instance
-                    else:
-                        instance = self._singletons[interface]
+                if not isinstance(instance, interface):
+                    msg = f"Expected {interface}, got {type(instance)}"
+                    raise TypeError(msg)
+
+                if not is_scoped:
+                    self._singletons[interface] = instance
 
             return cast(T, instance)
         finally:
