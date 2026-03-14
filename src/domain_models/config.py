@@ -21,6 +21,11 @@ class ModelRoutingRules(BaseModel):
         min_length=1,
         description="Model for multimodal tasks.",
     )
+    fallback_model: str = Field(
+        default="openai/gpt-4o-mini",
+        min_length=1,
+        description="Fallback model if the primary model fails.",
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -29,7 +34,13 @@ class AppConfig(BaseSettings):
     """Core application configuration."""
 
     openrouter_api_key: SecretStr = Field(
-        min_length=1, description="API Key for OpenRouter.",
+        min_length=1,
+        description="API Key for OpenRouter.",
+    )
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1/chat/completions",
+        min_length=1,
+        description="Base URL for OpenRouter API.",
     )
     tenant_id: str = Field(
         min_length=1,
@@ -45,14 +56,22 @@ class AppConfig(BaseSettings):
     def validate_api_key(cls, v: SecretStr, info: ValidationInfo) -> SecretStr:
         _ = info
         import re
+
         val = v.get_secret_value()
-        # Security: Validates minimum length and restricts character set to standard OpenRouter format
+        # Security: Allow various provider formats (OpenRouter, OpenAI, Anthropic, etc.)
+        # Most keys are minimum 32 chars and mostly alphanumeric with hyphens or underscores
         if len(val) < 32:
-            msg = "Invalid API key format."
+            msg = "Invalid API key format: length must be at least 32 characters."
             raise ValueError(msg)
-        if not re.match(r"^sk-or-v1-[a-fA-F0-9]{64}$", val):
-            msg = "Invalid API key format."
+
+        if not re.match(r"^[A-Za-z0-9\-_]+$", val):
+            msg = "Invalid API key format: contains invalid characters."
             raise ValueError(msg)
+
+        if len(set(val)) < 8:
+            msg = "Invalid API key: appears to be a dummy or repeating pattern."
+            raise ValueError(msg)
+
         return v
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="forbid")

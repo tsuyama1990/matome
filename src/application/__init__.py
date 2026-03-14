@@ -20,25 +20,22 @@ class NLPService:
     def __init__(
         self,
         model_name: str,
+        time_axis_past_words: list[str],
+        time_axis_future_words: list[str],
         max_entities: int = 50,
-        time_axis_past_words: list[str] | None = None,
-        time_axis_future_words: list[str] | None = None,
     ) -> None:
         self.nlp: Any | None = None
         self.model_name = model_name
         self.max_entities = max_entities
-        self.time_axis_past_words = time_axis_past_words or [
-            "yesterday",
-            "previously",
-            "was",
-            "were",
-        ]
-        self.time_axis_future_words = time_axis_future_words or [
-            "tomorrow",
-            "will",
-            "future",
-            "next",
-        ]
+        if not time_axis_past_words:
+            msg = "time_axis_past_words must not be empty"
+            raise ValueError(msg)
+        if not time_axis_future_words:
+            msg = "time_axis_future_words must not be empty"
+            raise ValueError(msg)
+
+        self.time_axis_past_words = time_axis_past_words
+        self.time_axis_future_words = time_axis_future_words
         self._load_model()
 
     def _load_model(self) -> None:
@@ -63,37 +60,50 @@ class NLPService:
             return "Future"
         return "Present"
 
+    def _validate_and_sanitize(self, content: str) -> str:
+        """Isolates the validation logic to keep complexity low."""
+        import re
+
+        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", content):
+            msg = "Content contains forbidden control characters."
+            raise ValueError(msg)
+
+        # Secure whitelist approach: Only allow printable characters, newlines, and standard punctuation.
+        # This implicitly blocks complex semantic injection payloads without brittle regex blocklists.
+        # We allow standard word characters, whitespace, and basic punctuation.
+        if not re.match(r"^[\w\s\.,;:!?\-\(\)\[\]\{\}\'\"\$£€]+$", content, re.UNICODE):
+            msg = "Content rejected due to semantic injection patterns."
+            raise ValueError(msg)
+
+        return bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
+
     def tag_entities_and_axes(self, chunks: list[SemanticChunk]) -> None:
         """
         Public method to tag entities and multi-dimensional axes.
-        Moved out from being a complex private method to ensure Single Responsibility.
         """
         if self.nlp is None:
             msg = "NLP model is not loaded."
             raise RuntimeError(msg)
 
         for chunk in chunks:
-                        # XSS Protection: ContentSanitizer logic inline
-            import re
-            # Comprehensive whitelist validation: explicitly block control characters and HTML tags <script> directly
-            if re.search(r"<script|<style|<iframe|<object|<embed", chunk.content, re.IGNORECASE):
-                msg = "Content contains forbidden HTML tags."
-                raise ValueError(msg)
-            if re.search(r"[\x00-\x08\x0b-\x0c\x0e-\x1f]", chunk.content):
-                msg = "Content contains forbidden control characters."
-                raise ValueError(msg)
+            sanitized_content = self._validate_and_sanitize(chunk.content)
 
-            sanitized_content = bleach.clean(chunk.content, tags=[], strip=True)
+            if not sanitized_content.strip():
+                continue
+
             doc = self.nlp(sanitized_content)
             extracted_entities = []
-
-            # Prevent memory bloat and DoS via massive entity injections
             allowed_types = {"PERSON", "ORG", "GPE", "PRODUCT"}
 
-            # Scalability: Stream entities in batches of 100 to prevent OOM
             ent_iter = iter(ent for ent in doc.ents if ent.label_ in allowed_types)
             collected = 0
+            iterations = 0
+            max_iterations = 1000
+
             while collected < self.max_entities:
+                iterations += 1
+                if iterations > max_iterations:
+                    break
                 batch = []
                 try:
                     for _ in range(100):
@@ -105,9 +115,7 @@ class NLPService:
                 extracted_entities.extend(batch)
                 collected += len(batch)
 
-            extracted_entities = extracted_entities[:self.max_entities]
-
-            chunk.metadata.extracted_entities = list(set(extracted_entities))
+            chunk.metadata.extracted_entities = list(set(extracted_entities[: self.max_entities]))
             chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
 
 
@@ -204,6 +212,7 @@ class RAPTOREngine:
                 cluster_embs = [current_level_embeddings[i] for i in indices]
                 if cluster_embs:
                     import numpy as np
+
                     mean_emb = np.mean(np.array(cluster_embs, dtype=float), axis=0).tolist()
                     next_level_embeddings.append(mean_emb)
 
@@ -308,7 +317,7 @@ class PivotKJEngine:
 
 
 __all__ = [
-        "NLPModelLoadError",
+    "NLPModelLoadError",
     "NLPService",
     "PivotKJEngine",
     "PivotWorkflow",

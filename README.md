@@ -6,6 +6,8 @@
 `matome` (Japanese for "summary") is an interactive knowledge workspace that seamlessly integrates cognitive psychology principles with cutting-edge generative AI technologies. It enables professionals, researchers, and learners to instantly analyze massive documents, visualize structural hierarchies, and seamlessly pivot information across custom business or research axes.
 
 ## Features
+*   **Robust LLM Integration via OpenRouter**: Seamlessly communicate with various AI models (Claude, GPT-4o, Gemini) through a unified interface.
+*   **Network Resilience and High Availability**: Built-in automatic retries for transient network errors and intelligent model fallback mechanisms ensure your workflows never crash due to third-party API instability.
 *   **Secure BYOK Configuration**: Bring Your Own Key (BYOK) support natively powered by OpenRouter. Your API keys are strictly validated and handled securely in memory.
 *   **Dependency Injection Architecture**: Designed under the rigorous AC-CDD methodology, all external dependencies are decoupled, ensuring extreme stability and mock-free CI testing capabilities.
 *   **Hybrid Execution Modes**: Supports running in local CI or offline environments gracefully using "Mock Mode," dynamically rerouting to functional deterministic models without complex infrastructure requirements.
