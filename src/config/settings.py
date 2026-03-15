@@ -125,6 +125,12 @@ class AppConfig(BaseSettings):
     file_read_chunk_size: int = Field(
         default=1024 * 1024, gt=0, description="Chunk size for file reading operations."
     )
+    llm_timeout: float = Field(
+        default=30.0,
+        gt=0.0,
+        le=300.0,
+        description="Timeout for LLM API calls in seconds.",
+    )
     spacy_model: str = Field(
         default="en_core_web_sm", min_length=1, description="Spacy model name."
     )

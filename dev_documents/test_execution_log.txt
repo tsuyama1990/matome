@@ -2,28 +2,27 @@
 platform linux -- Python 3.12.13, pytest-9.0.2, pluggy-1.6.0
 rootdir: /app
 configfile: pyproject.toml
-testpaths: tests
 plugins: cov-7.0.0, asyncio-1.3.0, anyio-4.12.1
 asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 102 items
+collected 110 items
 
 tests/e2e/test_api.py .....                                              [  4%]
 tests/e2e/test_pivot_api.py ..                                           [  6%]
-tests/e2e/test_uat.py ...                                                [  9%]
-tests/e2e/test_uat_04_raptor.py ...                                      [ 12%]
-tests/integration/test_di_integration.py ..                              [ 14%]
-tests/integration/test_openrouter_di.py ..                               [ 16%]
-tests/uat/test_uat_02_llm.py ...                                         [ 19%]
-tests/unit/test_application.py ................                          [ 35%]
-tests/unit/test_config.py ....                                           [ 39%]
-tests/unit/test_dependencies.py ....                                     [ 43%]
-tests/unit/test_di_container.py .....                                    [ 48%]
-tests/unit/test_domain_config.py ....                                    [ 51%]
-tests/unit/test_domain_models.py ...............                         [ 66%]
+tests/e2e/test_uat.py .........                                          [ 14%]
+tests/e2e/test_uat_04_raptor.py ...                                      [ 17%]
+tests/integration/test_di_integration.py ..                              [ 19%]
+tests/integration/test_openrouter_di.py ..                               [ 20%]
+tests/uat/test_uat_02_llm.py ...                                         [ 23%]
+tests/unit/test_application.py ................                          [ 38%]
+tests/unit/test_config.py ....                                           [ 41%]
+tests/unit/test_dependencies.py ....                                     [ 45%]
+tests/unit/test_di_container.py .....                                    [ 50%]
+tests/unit/test_domain_config.py ....                                    [ 53%]
+tests/unit/test_domain_models.py ...............                         [ 67%]
 tests/unit/test_llm_gateway.py ..........                                [ 76%]
-tests/unit/test_openrouter.py .....                                      [ 81%]
-tests/unit/test_pivot_workflow.py ...                                    [ 84%]
-tests/unit/test_raptor_engine.py .....                                   [ 89%]
+tests/unit/test_openrouter.py .....                                      [ 80%]
+tests/unit/test_pivot_workflow.py .....                                  [ 85%]
+tests/unit/test_raptor_engine.py .....                                   [ 90%]
 tests/unit/test_security.py ..                                           [ 91%]
 tests/unit/test_security_errors.py ..                                    [ 93%]
 tests/unit/test_services.py ......                                       [ 99%]
@@ -47,35 +46,35 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             165     35    79%   46-47, 49-50, 58, 60, 67-68, 76-77, 93, 107, 116-117, 134-135, 140, 158-159, 202-207, 215, 218-228
+src/application/__init__.py             166     31    81%   46-47, 49-50, 58, 60, 68-69, 77-78, 94, 108, 117-118, 135-136, 141, 159-160, 206, 216, 219-229
 src/application/di_container.py          63      9    86%   21-22, 36-37, 56-57, 76, 85-86
-src/application/pivot_workflow.py        47      0   100%
+src/application/pivot_workflow.py       143     34    76%   36-37, 64-66, 69, 72-73, 88-89, 94-95, 135-146, 161-162, 165, 172, 242-243, 249-250, 261-262
 src/application/raptor_engine.py         53      9    83%   37-38, 41-42, 52-54, 73, 83
-src/application/sq3r_service.py          37      8    78%   28-30, 35-36, 51-53
+src/application/sq3r_service.py          39      8    79%   28-30, 38-39, 56-58
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   45      7    84%   17-18, 42-43, 52-54
-src/config/settings.py                  103     14    86%   34-35, 38, 41-42, 45-46, 75, 101-102, 234-235, 243-244
+src/config/settings.py                  104     14    87%   34-35, 38, 41-42, 45-46, 75, 101-102, 240-241, 249-250
 src/domain_models/__init__.py             5      0   100%
 src/domain_models/config.py              50      4    92%   137-138, 141-142
 src/domain_models/document.py            65      3    95%   49-50, 99
 src/domain_models/exceptions.py           6      0   100%
 src/domain_models/graph_state.py         46      0   100%
-src/domain_models/pivot.py               15      2    87%   27-28
+src/domain_models/pivot.py               32      2    94%   65-66
 src/infrastructure/__init__.py            2      0   100%
 src/infrastructure/clustering.py        110     33    70%   34-35, 77-79, 87-88, 94-98, 101-129, 134-135
 src/infrastructure/llm_gateway.py       170     53    69%   41-42, 50-51, 56-57, 66-67, 73-74, 85-86, 93-97, 113-114, 116-117, 120-121, 139-140, 143-144, 149-150, 154-155, 176-177, 182-183, 192-193, 208-209, 212-213, 230-231, 268-271, 276-280, 282-284
 src/infrastructure/network.py            51      8    84%   51, 105-135
 src/infrastructure/openrouter.py        102     20    80%   48-49, 52-53, 61, 108, 115, 124, 141-146, 152-156, 159, 176, 179
-src/infrastructure/test_services.py     225     58    74%   25-26, 36-37, 55-56, 86-88, 98-99, 104-106, 108-110, 123-124, 129-132, 143-145, 167-170, 204, 212, 234, 237-241, 244-248, 263-264, 271-272, 277-278, 301-302, 311-312, 318, 325, 328, 366-367
+src/infrastructure/test_services.py     258     67    74%   29-30, 40-41, 59-60, 90-91, 101-102, 107-109, 111-113, 126-127, 132-135, 146-148, 170-173, 207, 215, 218, 223, 237, 240-244, 247-251, 266-267, 298-299, 306-307, 310-311, 316-317, 320, 323, 326, 330, 351-352, 361-362, 368, 375, 378, 416-417
 src/infrastructure/vector_store.py      120     64    47%   20-28, 37-42, 46-86, 92-121, 125, 138-139, 145-146, 176-177, 188-189
 src/interfaces/__init__.py                2      0   100%
-src/interfaces/api_router.py             83     23    72%   26-27, 42-44, 48-50, 61-63, 71-73, 84-85, 100-101, 118-120, 133-134
+src/interfaces/api_router.py             86     23    73%   24-25, 40-42, 46-48, 60-62, 70-72, 83-84, 99-100, 117-119, 133, 138
 src/interfaces/clustering.py              6      0   100%
-src/interfaces/dependencies.py          199    126    37%   75-76, 102-113, 117-153, 157-163, 167-174, 193-209, 223-239, 243-248, 252-288, 292-326, 331-347
+src/interfaces/dependencies.py          222    141    36%   103-104, 130-141, 145-181, 185-191, 195-202, 211-224, 227-229, 241-269, 283-299, 303-308, 312-348, 352-386, 391-407
 src/interfaces/llm_protocol.py            5      0   100%
-src/interfaces/repository.py              8      0   100%
+src/interfaces/repository.py              9      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1786    476    73%
-================== 102 passed, 4 warnings in 97.59s (0:01:37) ==================
+TOTAL                                  1963    530    73%
+================= 110 passed, 4 warnings in 114.34s (0:01:54) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

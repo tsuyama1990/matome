@@ -1,15 +1,13 @@
 import logging
-import uuid
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_core.core_schema import ValidationInfo
 
-from src.application.pivot_workflow import PivotWorkflow
 from src.application.sq3r_service import SQ3REngine, SQ3RService
-from src.domain_models.pivot import PivotRequestPayload
-from src.interfaces.dependencies import DIContainer, LLMProtocol
+from src.domain_models.pivot import PivotRequestPayload, PivotResponse
+from src.interfaces.dependencies import DIContainer, LLMProtocol, PivotWorkflowProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
 
 router = APIRouter()
@@ -113,25 +111,30 @@ async def unlock_node(
 
 def get_pivot_workflow(
     container: Annotated[DIContainer, Depends(get_di_container)],
-) -> PivotWorkflow:
+) -> PivotWorkflowProtocol:
     try:
-        return container.resolve(PivotWorkflow)
+        return container.resolve(PivotWorkflowProtocol) # type: ignore[type-abstract]
     except Exception as e:
-        msg = "Pivot workflow not configured."
+        msg = f"Pivot workflow not configured: {e!s}"
         raise HTTPException(status_code=500, detail=msg) from e
 
 
-@router.post("/documents/{document_id:uuid}/pivot")
+@router.post("/documents/{document_id}/pivot")
 async def pivot_document(
-    document_id: uuid.UUID,
+    document_id: str,
     payload: PivotRequestPayload,
-    workflow: Annotated[PivotWorkflow, Depends(get_pivot_workflow)],
-) -> dict[str, Any]:
+    workflow: Annotated[PivotWorkflowProtocol, Depends(get_pivot_workflow)],
+) -> PivotResponse:
     try:
-        result = await workflow.execute(str(document_id), payload)
+        import uuid as _uuid
+        doc_uuid = _uuid.UUID(document_id)
+        result = await workflow.execute(doc_uuid, payload)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
+        # Check if the exception name indicates a specific domain error that should be a 400
+        if "PivotGenerationError" in type(e).__name__:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         raise HTTPException(status_code=500, detail=str(e)) from e
     else:
         return result

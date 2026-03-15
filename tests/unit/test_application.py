@@ -6,7 +6,6 @@ from pydantic import ValidationError
 from src.application import (
     IngestionPipeline,
     NLPService,
-    PivotKJEngine,
     RaptorEngine,
     SQ3REngine,
 )
@@ -168,44 +167,6 @@ async def test_sq3r_engine() -> None:
 
     feedback = await engine.evaluate_answer(node, "I think it is X.")
     assert feedback is False
-
-
-def test_pivot_kj_engine() -> None:
-    engine = PivotKJEngine(allowed_axes=frozenset({"actor", "time", "entities"}))
-
-    chunks = [
-        SemanticChunk(
-            id=uuid.uuid4(),
-            content="A",
-            embedding=[0.0] * 768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin"),
-        ),
-        SemanticChunk(
-            id=uuid.uuid4(),
-            content="B",
-            embedding=[0.0] * 768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="User"),
-        ),
-        SemanticChunk(
-            id=uuid.uuid4(),
-            content="C",
-            embedding=[0.0] * 768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin"),
-        ),
-    ]
-
-    clusters = engine.pivot(chunks, "actor")
-    assert "Admin" in clusters
-    assert "User" in clusters
-    assert len(clusters["Admin"]) == 2
-    assert len(clusters["User"]) == 1
-
-    time_clusters = engine.pivot(chunks, "time")
-    assert "Uncategorized" in time_clusters
-    assert len(time_clusters["Uncategorized"]) == 3
-
-    with pytest.raises(ValueError, match="Invalid axis"):
-        engine.pivot(chunks, "unsupported_axis")
 
 
 @pytest.mark.asyncio

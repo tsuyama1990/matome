@@ -1,11 +1,15 @@
 import logging
 import re
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from src.config.settings import AppConfig
+from src.domain_models import EnrichedDocument, RaptorNode
+from src.domain_models.document import SemanticChunk
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +86,9 @@ class FileProcessingService:
             import mimetypes
 
             mime_type, _ = mimetypes.guess_type(resolved_path.name)
-            if not resolved_path.name.endswith(".safe"):
-                if not mime_type or not mime_type.startswith("text/"):
-                    msg = "Invalid file type. Only text files are permitted."
-                    raise FileProcessingError(msg)
+            if not resolved_path.name.endswith(".safe") and (not mime_type or not mime_type.startswith("text/")):
+                msg = "Invalid file type. Only text files are permitted."
+                raise FileProcessingError(msg)
 
             # Open with strict encoding to catch malformed characters
             with resolved_path.open(encoding="utf-8", errors="strict") as f:
@@ -248,6 +251,38 @@ class DummyLLMService:
         return "Test Summary or Question."
 
 
+class MockReasoningLLMService(SafeTestLLMService):
+    """Specific dummy LLM returning structured JSON for Pivot scenarios."""
+
+    def __init__(self, response_json: str) -> None:
+        super().__init__()
+        self.response_json = response_json
+
+    async def generate(self, prompt: str) -> str:
+        self._call_count += 1
+        return self.response_json
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        self._call_count += 1
+        return self.response_json
+
+
+
+
+class DummyVectorDB:
+    """Mock Vector DB for E2E tests."""
+    def __init__(self) -> None:
+        self.chunks: list[SemanticChunk] = []
+        self._search_called_with_filter: dict[str, str] | None = None
+
+    async def upsert(self, chunks: list[SemanticChunk]) -> None:
+        self.chunks.extend(chunks)
+
+    async def search(self, query_embedding: list[float], top_k: int, filter_metadata: dict[str, str] | None = None) -> list[SemanticChunk]:
+        self._search_called_with_filter = filter_metadata
+        return self.chunks[:top_k]
+
+
 class SafeTestDocumentRepository:
     """Minimal test implementation of DocumentRepositoryProtocol without mocking."""
 
@@ -258,7 +293,7 @@ class SafeTestDocumentRepository:
         self.raise_error = raise_error
         self.permission_denied = permission_denied
 
-    def get_document_by_id(self, document_id: str) -> Any:
+    def get_document_by_id(self, document_id: Any) -> EnrichedDocument:
         if self.permission_denied:
             msg = "Permission denied: Invalid credentials or role."
             raise PermissionError(msg)
@@ -271,13 +306,28 @@ class SafeTestDocumentRepository:
             msg = "Not found"
             raise ValueError(msg)
 
-        from src.domain_models import EnrichedDocument
-
         if not isinstance(self.doc, EnrichedDocument):
             msg = "Database returned malformed document structure."
-            raise ValueError(msg)
+            raise TypeError(msg)
 
         return self.doc
+
+    def get_node_by_id(self, node_id: str) -> RaptorNode:
+        msg = "Node not found."
+        raise ValueError(msg)
+
+    def save_node(self, node: RaptorNode) -> None:
+        pass
+
+    def save_nodes_batch(self, nodes: list[RaptorNode]) -> None:
+        pass
+
+    def save_document(self, document: EnrichedDocument) -> None:
+        pass
+
+    @contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        yield
 
 
 class MockHTTPTransport(httpx.AsyncBaseTransport):

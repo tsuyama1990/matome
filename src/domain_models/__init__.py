@@ -6,7 +6,7 @@ from src.domain_models.graph_state import (
     ProcessingStatus,
     UnlockAttempt,
 )
-from src.domain_models.pivot import PivotRequestPayload
+from src.domain_models.pivot import PivotNode, PivotRequestPayload, PivotState
 
 __all__ = [
     "AppConfig",
@@ -15,7 +15,9 @@ __all__ = [
     "GraphState",
     "LearningProgress",
     "ModelRoutingRules",
+    "PivotNode",
     "PivotRequestPayload",
+    "PivotState",
     "ProcessingStatus",
     "RaptorNode",
     "SemanticChunk",
