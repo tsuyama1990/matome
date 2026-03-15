@@ -6,6 +6,8 @@
 `matome` (Japanese for "summary") is an interactive knowledge workspace that seamlessly integrates cognitive psychology principles with cutting-edge generative AI technologies. It enables professionals, researchers, and learners to instantly analyze massive documents, visualize structural hierarchies, and seamlessly pivot information across custom business or research axes.
 
 ## Features
+*   **Document Ingestion & Semantic Chunking**: Dynamically slice unstructured documents into intelligent `SemanticChunk` models that avoid abrupt "mid-sentence" cuts.
+*   **Entity Extraction & Multi-Dimensional Tagging**: Automatically tag recognized entities and map content along custom domains like "Time axis" using NLP and Vision-Language Models.
 *   **Robust LLM Integration via OpenRouter**: Seamlessly communicate with various AI models (Claude, GPT-4o, Gemini) through a unified interface.
 *   **Network Resilience and High Availability**: Built-in automatic retries for transient network errors and intelligent model fallback mechanisms ensure your workflows never crash due to third-party API instability.
 *   **Secure BYOK Configuration**: Bring Your Own Key (BYOK) support natively powered by OpenRouter. Your API keys are strictly validated and handled securely in memory.
@@ -38,12 +40,13 @@ TENANT_ID=your_org_id
 Run the core application verification and interactive tutorial to explore configuration routing and DI execution:
 
 ```bash
-uv run python tutorials/UAT_AND_TUTORIAL.py
+uv run pytest tests/e2e/test_uat.py
 ```
 
 ## Project Structure
 
 *   `src/domain_models/`: Core Pydantic schemas and configuration objects enforcing strict bounds.
-*   `src/application/`: Application layer logic including the DI Container.
+*   `src/application/`: Application layer logic including the DI Container and Ingestion Pipeline orchestrator.
 *   `src/interfaces/`: Abstract protocols defining system boundaries.
-*   `tutorials/`: Executable scripts and Marimo notebooks demonstrating capabilities (e.g., `UAT_AND_TUTORIAL.py`).
+*   `src/infrastructure/`: Implementations of models, web transports, and local file processors.
+*   `tests/`: Executable tests covering UAT, E2E integrations, and robust Unit logic.

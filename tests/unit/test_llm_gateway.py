@@ -8,7 +8,7 @@ from src.infrastructure.test_services import SafeTestHTTPTransport
 
 def setup_encryption_env(
     monkeypatch: pytest.MonkeyPatch,
-    key: str = "sk-valid-key-longer-than-50-characters-for-testing-12345",
+    key: str = "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 ) -> None:
     """Helper to setup encrypted API key and encryption key."""
     from src.config.security import SecurityService
@@ -28,9 +28,9 @@ async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
     # we need to use a domain that resolves natively, such as example.com
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
@@ -39,7 +39,7 @@ async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
         test_transport = SafeTestHTTPTransport(
             response_data={"choices": [{"message": {"content": "Hello World"}}]}
         )
-        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+        gateway._client = httpx.AsyncClient(transport=test_transport)
 
         result = await gateway.generate("test prompt")
         assert result == "Hello World"
@@ -55,9 +55,9 @@ async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> N
     # Validation logic will fail early, but config can be valid structurally
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     with pytest.raises(
@@ -72,9 +72,9 @@ async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatc
 
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch, key="invalid-format-key")
@@ -91,16 +91,16 @@ async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
 
     async with OpenRouterGateway(config) as gateway:
         test_transport = SafeTestHTTPTransport(response_data={}, status_code=400)
-        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+        gateway._client = httpx.AsyncClient(transport=test_transport)
 
         with pytest.raises(LLMError, match="LLM API request failed due to an HTTP error: 400."):
             await gateway.generate("test prompt")
@@ -112,9 +112,9 @@ async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> Non
 
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
@@ -124,7 +124,7 @@ async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> Non
         test_transport = SafeTestHTTPTransport(
             response_data={}, raise_exception=httpx.RequestError("error", request=req)
         )
-        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+        gateway._client = httpx.AsyncClient(transport=test_transport)
 
         with pytest.raises(
             LLMError, match="LLM API request failed due to a network error after retries."

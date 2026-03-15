@@ -5,11 +5,17 @@ End-to-End tests mapping to the entire user journey.
 import uuid
 
 import pytest
+from pydantic import ValidationError
 
-from src.application import PivotKJEngine, RAPTOREngine, SQ3REngine
+from src.application import IngestionPipeline, PivotKJEngine, RAPTOREngine, SQ3REngine
 from src.domain_models import ChunkMetadata, SemanticChunk
 from src.infrastructure.clustering import UMAPGMMClusteringStrategy
-from src.infrastructure.test_services import SimpleParsingService
+from src.infrastructure.test_services import (
+    DummyEmbeddingService,
+    PlainTextParser,
+    SafeTestLLMService,
+    SimpleParsingService,
+)
 
 
 class MockE2ELLM:
@@ -24,6 +30,9 @@ class MockE2ELLM:
             return "Executive approval is strictly needed if the budget exceeds 5000."
 
         raise ValueError("Unexpected prompt without context: " + prompt)
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        return await self.generate(prompt)
 
 
 @pytest.mark.asyncio
@@ -79,3 +88,89 @@ async def test_uat_01_quick_start() -> None:
         == "Executive approval is strictly needed if the budget exceeds 5000."
     )
     assert "System" in clusters
+
+
+class DummyE2ELLMService(SafeTestLLMService):
+    """Specific dummy LLM returning a valid JSON string for ingestion tests."""
+
+    async def generate(self, prompt: str) -> str:
+        self._call_count += 1
+        return '{"entities": ["MockEntityA"], "time_axis": "Present"}'
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        self._call_count += 1
+        return '{"entities": ["MockEntityA"], "time_axis": "Present"}'
+
+
+@pytest.mark.asyncio
+async def test_uat_03_01_end_to_end_ingestion() -> None:
+    """UAT-03-01: End-to-End Document Ingestion (Mock Mode)"""
+    llm = DummyE2ELLMService()
+    embedding = DummyEmbeddingService(dimension=384)
+    parser = PlainTextParser()
+
+    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+
+    raw_text = (
+        "Artificial Intelligence (AI) is rapidly evolving. It promises to revolutionize many industries. "
+        "However, cognitive load theory suggests humans might struggle to keep up with the pace of new information."
+    )
+
+    chunks = await pipeline.process_document(raw_text.encode("utf-8"), "ai_article.txt")
+
+    # Assert basic success
+    assert len(chunks) > 0
+    assert all(isinstance(c, SemanticChunk) for c in chunks)
+    assert all(c.id is not None for c in chunks)
+    assert all(len(c.embedding) == 384 for c in chunks)
+
+    # Assert AI orchestration
+    for chunk in chunks:
+        assert "MockEntityA" in chunk.metadata.extracted_entities
+        assert chunk.metadata.time_axis == "Present"
+
+
+@pytest.mark.asyncio
+async def test_uat_03_02_semantic_boundary_adherence() -> None:
+    """UAT-03-02: Semantic Boundary Adherence"""
+    llm = DummyE2ELLMService()
+    embedding = DummyEmbeddingService(dimension=384)
+    parser = PlainTextParser()
+
+    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+
+    long_sentence = (
+        "This is a very long sentence that discusses the complexities of natural language processing "
+        "and how it relates to cognitive load theory without being abruptly cut off. "
+        "Here is another sentence."
+    )
+
+    chunks = await pipeline.process_document(long_sentence.encode("utf-8"), "long_sentence.txt")
+
+    # Ensure it's not cut mid-word arbitrarily
+    chunk_texts = [c.content for c in chunks]
+    assert any(
+        "cognitive load theory without being abruptly cut off." in text for text in chunk_texts
+    )
+    # Ensure second sentence is kept intact or properly split
+    assert any("Here is another sentence." in text for text in chunk_texts)
+
+
+@pytest.mark.asyncio
+async def test_uat_03_03_strict_domain_validation_enforcement() -> None:
+    """UAT-03-03: Strict Domain Validation Enforcement"""
+    llm = DummyE2ELLMService()
+    # Intentionally misconfigured faulty embedding service
+    faulty_embedding = DummyEmbeddingService(dimension=3)
+    parser = PlainTextParser()
+
+    pipeline = IngestionPipeline(llm=llm, embedding=faulty_embedding, text_parser=parser)
+
+    raw_text = "Standard text document."
+
+    with pytest.raises(ValidationError) as excinfo:
+        await pipeline.process_document(raw_text.encode("utf-8"), "test.txt")
+
+    assert "Embedding length 3 is invalid" in str(excinfo.value)
+    # The validation originates from SemanticChunk
+    assert "SemanticChunk" in str(excinfo.traceback) or "SemanticChunk" in str(excinfo)

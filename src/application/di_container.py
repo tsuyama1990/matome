@@ -88,6 +88,6 @@ class DIContainer:
                 if not is_scoped:
                     self._singletons[interface] = instance
 
-            return cast(T, instance)
+            return instance
         finally:
             resolving.remove(interface)

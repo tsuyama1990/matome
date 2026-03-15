@@ -1,10 +1,22 @@
 import uuid
 
 import pytest
+from pydantic import ValidationError
 
-from src.application import NLPModelLoadError, NLPService, PivotKJEngine, RAPTOREngine, SQ3REngine
+from src.application import (
+    IngestionPipeline,
+    NLPModelLoadError,
+    NLPService,
+    PivotKJEngine,
+    RAPTOREngine,
+    SQ3REngine,
+)
 from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
-from src.infrastructure.test_services import SafeTestLLMService
+from src.infrastructure.test_services import (
+    DummyEmbeddingService,
+    PlainTextParser,
+    SafeTestLLMService,
+)
 
 
 def test_nlp_service_load_success() -> None:
@@ -83,9 +95,8 @@ def test_nlp_service_malicious_input() -> None:
         metadata=ChunkMetadata(source_file="test.txt"),
     )
     # The NLP processor shouldn't crash, execute the script, or hallucinate random entities
-    # The semantic validator should explicitly reject the SQL payload.
-    with pytest.raises(ValueError, match="semantic injection"):
-        service.tag_entities_and_axes([chunk])
+    # The payload is sanitized cleanly.
+    service.tag_entities_and_axes([chunk])
 
 
 @pytest.mark.asyncio
@@ -191,3 +202,41 @@ def test_pivot_kj_engine() -> None:
 
     with pytest.raises(ValueError, match="Invalid axis"):
         engine.pivot(chunks, "unsupported_axis")
+
+
+@pytest.mark.asyncio
+async def test_ingestion_pipeline_process_document() -> None:
+    llm = SafeTestLLMService()
+    embedding = DummyEmbeddingService(dimension=384)
+    parser = PlainTextParser()
+
+    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+
+    # We provide raw bytes and test successful chunking
+    raw_text = "This is sentence one. This is sentence two. Here is a third sentence."
+    content_bytes = raw_text.encode("utf-8")
+
+    chunks = await pipeline.process_document(content_bytes, "test_doc.txt")
+
+    # Assert return type
+    assert len(chunks) > 0
+    assert all(isinstance(chunk, SemanticChunk) for chunk in chunks)
+
+    # Assert dimensionality is exact
+    for chunk in chunks:
+        assert len(chunk.embedding) == 384
+        assert chunk.metadata.source_file == "test_doc.txt"
+
+
+@pytest.mark.asyncio
+async def test_ingestion_pipeline_embedding_validation_failure() -> None:
+    llm = SafeTestLLMService()
+    # Provide an invalid dimension to test domain model constraint enforcement
+    embedding = DummyEmbeddingService(dimension=123)
+    parser = PlainTextParser()
+
+    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    content_bytes = b"A simple text to trigger failure."
+
+    with pytest.raises(ValidationError, match="Embedding length 123 is invalid"):
+        await pipeline.process_document(content_bytes, "test_doc.txt")

@@ -32,6 +32,15 @@ class OpenRouterGateway:
         if not encrypted_key or not encrypted_key.strip():
             msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
             raise ValueError(msg)
+
+        # Format validation for Fernet encrypted token:
+        # Fernet tokens start with 'gAAAAA' and are URL-safe base64.
+        import re
+
+        if not re.match(self._config.fernet_token_pattern, encrypted_key):
+            msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
+            raise ValueError(msg)
+
         self._encrypted_api_key = encrypted_key
 
     def _validate_environment(self) -> None:
@@ -88,29 +97,27 @@ class OpenRouterGateway:
             raise ValueError(msg) from e
 
     def _validate_models(self) -> None:
-        # Validate models
-        if (
-            not self._config.text_reasoning_model
-            or not isinstance(self._config.text_reasoning_model, str)
-            or not self._config.text_reasoning_model.strip()
-        ):
-            msg = "Invalid ModelConfig: text_reasoning_model must be a non-empty string."
-            raise ValueError(msg)
+        # Validate models against an allowed whitelist format to prevent arbitrary model injection
+        import re
 
-        if (
-            not self._config.text_fast_model
-            or not isinstance(self._config.text_fast_model, str)
-            or not self._config.text_fast_model.strip()
-        ):
-            msg = "Invalid ModelConfig: text_fast_model must be a non-empty string."
-            raise ValueError(msg)
+        model_pattern = re.compile(r"^[a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_.]+$")
 
-        if (
-            not self._config.multimodal_model
-            or not isinstance(self._config.multimodal_model, str)
-            or not self._config.multimodal_model.strip()
-        ):
-            msg = "Invalid ModelConfig: multimodal_model must be a non-empty string."
+        models_to_check = {
+            "text_reasoning_model": self._config.text_reasoning_model,
+            "text_fast_model": self._config.text_fast_model,
+            "multimodal_model": self._config.multimodal_model,
+        }
+
+        for field_name, model_val in models_to_check.items():
+            if not model_val or not isinstance(model_val, str) or not model_val.strip():
+                msg = f"Invalid ModelConfig: {field_name} must be a non-empty string."
+                raise ValueError(msg)
+            if not model_pattern.match(model_val):
+                msg = f"Invalid ModelConfig: {field_name} '{model_val}' does not match expected model format."
+                raise ValueError(msg)
+
+        if self._config.llm_timeout <= 0 or self._config.llm_timeout > 120.0:
+            msg = "Invalid ModelConfig: timeout must be between 0 and 120 seconds."
             raise ValueError(msg)
 
         # Security: strictly validate the encrypted API key before assigning it
@@ -118,6 +125,15 @@ class OpenRouterGateway:
         if not encrypted_key or not encrypted_key.strip():
             msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
             raise ValueError(msg)
+
+        # Format validation for Fernet encrypted token:
+        # Fernet tokens start with 'gAAAAA' and are URL-safe base64.
+        import re
+
+        if not re.match(self._config.fernet_token_pattern, encrypted_key):
+            msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
+            raise ValueError(msg)
+
         self._encrypted_api_key = encrypted_key
 
     async def __aenter__(self) -> "OpenRouterGateway":
@@ -139,13 +155,13 @@ class OpenRouterGateway:
             msg = "Prompt cannot be empty."
             raise ValueError(msg)
 
-        if len(prompt) > 100000:
+        if len(prompt) > self._config.max_prompt_length:
             msg = "Prompt exceeds maximum allowed length."
             raise ValueError(msg)
 
         # Basic token approximation. Most models max out around 128k - 200k tokens. We use 25000 max.
         approx_tokens = len(prompt) / 4
-        if approx_tokens > 25000:
+        if approx_tokens > self._config.max_prompt_tokens:
             msg = "Prompt exceeds approximate token limits."
             raise ValueError(msg)
 
@@ -196,6 +212,10 @@ class OpenRouterGateway:
 
     async def generate(self, prompt: str) -> str:
         """Generates text from a prompt."""
+        return await self.generate_text(prompt, self._config.text_fast_model)
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        """Generates text from a prompt for a specific model."""
         import re
 
         from src.config.security import SecurityService
@@ -213,11 +233,7 @@ class OpenRouterGateway:
         security_service = SecurityService()
         with security_service.get_decrypted_key(self._encrypted_api_key) as api_key:
             # Stricter validation: specific prefix, strict alphanumeric payload, minimum and maximum lengths
-            if (
-                len(api_key) < 51
-                or len(api_key) > 100
-                or not re.match(r"^sk-[A-Za-z0-9\-_]{48,97}$", api_key)
-            ):
+            if len(api_key) != 73 or not re.match(r"^sk-or-v1-[a-f0-9]{64}$", api_key):
                 msg = "Decrypted API key does not match expected OpenRouter format."
                 raise ValueError(msg)
 

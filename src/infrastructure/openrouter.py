@@ -3,11 +3,6 @@ from typing import Any
 
 import httpx
 from pydantic import SecretStr
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from src.domain_models.config import AppConfig
 from src.domain_models.exceptions import LLMAuthenticationError, LLMConnectionError, LLMServerError
@@ -43,10 +38,18 @@ class OpenRouterClient(LLMProtocol):
         self._config = config
         self._api_key = config.openrouter_api_key
         self._base_url = config.openrouter_base_url
-        self._client = client or httpx.AsyncClient(timeout=30.0)
+
+        if client is not None:
+            self._client = client
+        else:
+            self._client = httpx.AsyncClient(timeout=self._config.llm_timeout)
 
     def _handle_invalid_response(self) -> str:
         msg = "Invalid response format: 'choices' missing or empty."
+        raise ValueError(msg)
+
+    def _handle_massive_payload(self) -> None:
+        msg = "Generated text is suspiciously large."
         raise ValueError(msg)
 
     def _is_transient_error(self, e: Exception) -> bool:
@@ -65,40 +68,67 @@ class OpenRouterClient(LLMProtocol):
             return not isinstance(e, LLMAuthenticationError)
         return False
 
-    @retry(
-        retry=_should_retry,
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
-        reraise=True,
-    )
     async def _make_request(self, prompt: str, model: str) -> str:
         """Makes an asynchronous HTTP request to OpenRouter with retries for transient errors."""
-        headers = {
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": model,
-            "messages": [{"role": "user", "content": prompt}],
-        }
+        import tenacity
 
-        try:
-            response = await self._client.post(
-                self._base_url,
-                headers=headers,
-                json=payload,
-                timeout=30.0,
-                auth=OpenRouterAuth(self._api_key)
-            )
-            response.raise_for_status()
+        # Dynamically apply tenacity decorator using class config variables for retries
+        retry_decorator = tenacity.retry(
+            retry=self._should_retry,
+            stop=tenacity.stop_after_attempt(self._config.max_retry_attempts),
+            wait=tenacity.wait_exponential(
+                multiplier=1, min=self._config.retry_min_wait, max=self._config.retry_max_wait
+            ),
+            reraise=True,
+        )
 
-            data = response.json()
-            # Ensure "choices" is in data and it's not empty, otherwise raise a ValueError
-            if "choices" not in data or not data["choices"]:
-                return self._handle_invalid_response()
+        @retry_decorator
+        async def _execute_request() -> str:
+            headers = {
+                "Content-Type": "application/json",
+            }
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+            }
 
-            return str(data["choices"][0]["message"]["content"])
+            try:
+                response = await self._client.post(
+                    self._base_url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self._config.llm_timeout,
+                    auth=OpenRouterAuth(self._api_key),
+                )
+                response.raise_for_status()
 
-        except httpx.HTTPStatusError as e:
+                data = response.json()
+                # Ensure "choices" is in data and it's not empty, otherwise raise a ValueError
+                if "choices" not in data or not data["choices"]:
+                    return self._handle_invalid_response()
+
+                content = str(data["choices"][0]["message"]["content"])
+
+                # Security: Validate the response content is reasonable and doesn't contain injected malicious instructions
+                # or massive payloads that could cause downstream denial of service.
+                if len(content) > self._config.max_content_length:
+                    self._handle_massive_payload()
+
+                import bleach
+
+                # Sanitize the output to prevent injection attacks if this content is directly rendered in UI or parsed
+                return bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
+
+            except Exception as e:
+                self._handle_request_error(e)
+                raise
+
+        return await _execute_request()
+
+    def _handle_request_error(self, e: Exception) -> None:
+        import httpx
+
+        if isinstance(e, httpx.HTTPStatusError):
             if e.response.status_code in (401, 403):
                 msg = "Authentication failed. Please verify the API key."
                 # We bypass Tenacity by wrapping in a custom error that is NOT retried.
@@ -106,24 +136,27 @@ class OpenRouterClient(LLMProtocol):
 
             if self._is_transient_error(e):
                 logger.warning("Transient error occurred during LLM request. Retrying...")
-                raise  # Let tenacity handle the retry
+                raise e  # Let tenacity handle the retry
 
             if e.response.status_code >= 500:
                 msg = "The external LLM service is currently unavailable."
                 raise LLMServerError(msg) from e
+
             msg = "A generic HTTP error occurred during the LLM request."
             raise LLMConnectionError(msg) from e
 
-        except (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError) as e:
+        if isinstance(e, (httpx.ConnectError, httpx.TimeoutException, httpx.RequestError)):
             if self._is_transient_error(e):
                 logger.warning("Transient error occurred during LLM request. Retrying...")
-                raise  # Let tenacity handle the retry
+                raise e  # Let tenacity handle the retry
             msg = "A network timeout or connection error occurred."
             raise LLMConnectionError(msg) from e
 
-        except Exception as e:
-            msg = "An unexpected error occurred during LLM generation."
-            raise LLMConnectionError(msg) from e
+        msg = "An unexpected error occurred during LLM generation."
+        raise LLMConnectionError(msg) from e
+
+    async def generate(self, prompt: str) -> str:
+        return await self.generate_text(prompt, self._config.routing_rules.fallback_model)
 
     async def generate_text(self, prompt: str, model: str) -> str:
         """
