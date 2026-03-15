@@ -42,7 +42,7 @@ TENANT_ID=your_org_id
 Run the core application verification and interactive tutorial to explore configuration routing and DI execution:
 
 ```bash
-uv run pytest tests/e2e/test_uat.py
+uv run marimo run tutorials/UAT_AND_TUTORIAL.py --headless
 ```
 
 ## Project Structure
