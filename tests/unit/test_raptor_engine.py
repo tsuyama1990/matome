@@ -1,4 +1,5 @@
 import uuid
+from typing import Any
 
 import numpy as np
 import pytest
@@ -7,15 +8,19 @@ from src.application.raptor_engine import RaptorEngine
 from src.domain_models.document import ChunkMetadata, SemanticChunk
 from src.infrastructure.clustering import SemanticClusterer
 from src.infrastructure.test_services import SafeTestLLMService
+from src.interfaces.clustering import ClusteringStrategy
 
 
-class MockSemanticClusterer:
+class MockSemanticClusterer(ClusteringStrategy):
     """A deterministic mock clusterer for testing RaptorEngine."""
 
     def __init__(self, mocked_output: dict[int, list[int]]) -> None:
         self.mocked_output = mocked_output
 
-    def cluster_embeddings(self, embeddings: np.ndarray) -> dict[int, list[int]]:
+    def reduce_dimensions(self, embeddings: list[list[float]]) -> Any:
+        return embeddings
+
+    def cluster(self, embeddings: Any, max_clusters: int) -> dict[int, list[int]]:
         return self.mocked_output
 
 
@@ -23,11 +28,9 @@ class MockSemanticClusterer:
 async def test_raptor_engine_orchestration() -> None:
     """Test RaptorEngine properly orchestrates chunk gathering and LLM summarization."""
     llm = SafeTestLLMService()
-    engine = RaptorEngine(llm=llm)
-
     # Mock the clusterer to deterministically pair chunks
     mocked_clusterer = MockSemanticClusterer(mocked_output={0: [0, 1], 1: [2]})
-    engine.clusterer = mocked_clusterer  # type: ignore[assignment]
+    engine = RaptorEngine(llm=llm, clustering_strategy=mocked_clusterer)
 
     chunks = [
         SemanticChunk(
@@ -72,7 +75,8 @@ async def test_raptor_engine_orchestration() -> None:
 async def test_raptor_engine_empty_input() -> None:
     """Test empty chunks input returns empty list."""
     llm = SafeTestLLMService()
-    engine = RaptorEngine(llm=llm)
+    mocked_clusterer = MockSemanticClusterer(mocked_output={})
+    engine = RaptorEngine(llm=llm, clustering_strategy=mocked_clusterer)
 
     nodes = await engine.build_tree([])
     assert nodes == []
@@ -127,10 +131,13 @@ def test_semantic_clusterer_edge_cases() -> None:
 
 def test_semantic_clusterer_missing_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test gracefully handling missing ML dependencies."""
-    # We must reset the module state logic
-    import src.infrastructure.clustering as clustering_module
+    import sys
 
-    monkeypatch.setattr(clustering_module, "_ML_IMPORTS_SUCCESSFUL", False)
+    # Simulate missing modules
+    monkeypatch.setitem(sys.modules, "umap", None)
+    monkeypatch.setitem(sys.modules, "umap.umap_", None)
+    monkeypatch.setitem(sys.modules, "sklearn", None)
+    monkeypatch.setitem(sys.modules, "sklearn.mixture", None)
 
     clusterer = SemanticClusterer()
 

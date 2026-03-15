@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections import defaultdict
 from typing import Any
@@ -10,8 +11,8 @@ import bleach
 from src.application.pivot_workflow import PivotWorkflow
 from src.application.raptor_engine import RaptorEngine
 from src.domain_models import ChunkMetadata, EnrichedDocument, RaptorNode, SemanticChunk
-from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
-from src.interfaces.clustering import ClusteringStrategy
+from src.domain_models.exceptions import NLPModelLoadError, ProcessingError
+from src.interfaces.clustering import PivotEngineProtocol
 from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, TextParserProtocol
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,6 @@ class NLPService:
 
     def _validate_and_sanitize(self, content: str) -> str:
         """Isolates the validation logic to keep complexity low."""
-        import re
 
         if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", content):
             msg = "Content contains forbidden control characters."
@@ -128,115 +128,6 @@ class NLPService:
             chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
 
 
-class RAPTOREngine:
-    """
-    Engine to orchestrate clustering to form a RAPTOR tree.
-    Builds the tree bottom-up by clustering chunks, summarising them, and recursively
-    clustering the summaries until a single root remains (or max depth is reached).
-    """
-
-    def __init__(
-        self,
-        llm: LLMProtocol,
-        clustering_strategy: ClusteringStrategy,
-        max_levels: int,
-        max_clusters: int,
-    ) -> None:
-        self._llm = llm
-        self._clustering_strategy = clustering_strategy
-        self._max_levels = max_levels
-        self._max_clusters = max_clusters
-
-    async def _summarize_cluster(self, texts: list[str]) -> str:
-        """Summarizes a list of texts using the Chain of Density concept."""
-        if not texts or any(not t.strip() for t in texts):
-            msg = "Texts cannot be empty or contain only whitespace."
-            raise ValueError(msg)
-
-        from src.config.settings import AppConfig
-
-        max_content_length = AppConfig().max_content_length
-
-        if any(len(t) > max_content_length for t in texts):
-            msg = "Text chunk too large."
-            raise ValueError(msg)
-
-        combined_text = "\n".join(texts)
-        prompt = (
-            "Summarize the following texts into a single, highly dense paragraph. "
-            "Extract the core entities and relationships. "
-            f"Texts:\n{combined_text}"
-        )
-        try:
-            summary = await self._llm.generate(prompt)
-            return summary.strip()
-        except Exception as e:
-            msg = "Failed to summarize cluster."
-            raise RaptorError(msg) from e
-
-    async def cluster_chunks(self, chunks: list[SemanticChunk]) -> list[RaptorNode]:
-        """
-        Builds a RAPTOR hierarchical tree from chunks.
-        Strictly applies clustering strategy for mathematically sound clustering.
-        """
-
-        if not chunks:
-            return []
-
-        all_nodes: list[RaptorNode] = []
-        current_level_texts = [c.content for c in chunks]
-        current_level_embeddings = [c.embedding for c in chunks]
-        current_level_ids = [str(c.id) for c in chunks]
-
-        level = 0
-        while level < self._max_levels and len(current_level_texts) > 1:
-            reduced_embeddings = self._clustering_strategy.reduce_dimensions(
-                current_level_embeddings
-            )
-            clusters = self._clustering_strategy.cluster(reduced_embeddings, self._max_clusters)
-
-            next_level_texts = []
-            next_level_embeddings = []
-            next_level_ids = []
-
-            for _cluster_idx, indices in clusters.items():
-                if not indices:
-                    continue
-
-                cluster_texts = [current_level_texts[i] for i in indices]
-                child_ids = [current_level_ids[i] for i in indices]
-
-                summary = await self._summarize_cluster(cluster_texts)
-                node_id = str(uuid.uuid4())
-
-                node = RaptorNode(
-                    node_id=node_id,
-                    level=level,
-                    children_ids=child_ids,
-                    summarized_content=summary,
-                    is_unlocked=False,
-                )
-                all_nodes.append(node)
-
-                next_level_texts.append(summary)
-                next_level_ids.append(node_id)
-
-                # Mean pooling for embeddings list fallback
-                cluster_embs = [current_level_embeddings[i] for i in indices]
-                if cluster_embs:
-                    import numpy as np
-
-                    mean_emb = np.mean(np.array(cluster_embs, dtype=float), axis=0).tolist()
-                    next_level_embeddings.append(mean_emb)
-
-            current_level_texts = next_level_texts
-            current_level_embeddings = next_level_embeddings
-            current_level_ids = next_level_ids
-            level += 1
-
-        return all_nodes
-
-
 class SQ3REngine:
     """
     Engine for interactive Question and Recite features in the SQ3R loop.
@@ -285,7 +176,7 @@ class SQ3REngine:
             raise ProcessingError(msg) from e
 
 
-class PivotKJEngine:
+class PivotKJEngine(PivotEngineProtocol):
     """
     Engine to orchestrate dynamic re-clustering (Pivot KJ) of semantic chunks based
     on specific multi-dimensional axes (e.g., actor, timeline).
@@ -344,7 +235,18 @@ class IngestionPipeline:
         self._llm = llm
         self._embedding = embedding
         self._text_parser = text_parser
-        self._raptor_engine = RaptorEngine(llm=llm)
+
+        from src.config.settings import AppConfig
+
+        self._config = AppConfig()
+
+        from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+
+        self._raptor_engine = RaptorEngine(
+            llm=llm,
+            clustering_strategy=UMAPGMMClusteringStrategy(),
+            max_clusters=self._config.raptor_max_clusters,
+        )
         try:
             import spacy
 
@@ -367,7 +269,11 @@ class IngestionPipeline:
         )
         try:
             # We assume a text_fast_model for these metadata extractions
-            response_text = await self._llm.generate_text(prompt, model="google/gemini-2.5-flash")
+            from src.domain_models.config import ModelRoutingRules
+
+            # Fallback for settings configuration mismatches
+            model_name = getattr(self._config, "routing_rules", ModelRoutingRules()).text_fast_model
+            response_text = await self._llm.generate_text(prompt, model=model_name)
             # Parse the JSON string
             # LLMs sometimes wrap json in markdown block
             response_text = response_text.replace("```json", "").replace("```", "").strip()
@@ -401,8 +307,6 @@ class IngestionPipeline:
                     current_chunk = []
             return chunks
         # Fallback simple logic
-        import re
-
         return [c.strip() for c in re.split(r"(?<=[.!?])\s+", text) if c.strip()]
 
     async def _process_single_chunk(self, text: str, filename: str) -> SemanticChunk:
@@ -479,7 +383,6 @@ __all__ = [
     "NLPService",
     "PivotKJEngine",
     "PivotWorkflow",
-    "RAPTOREngine",
     "RaptorEngine",
     "SQ3REngine",
 ]

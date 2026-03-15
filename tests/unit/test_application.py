@@ -8,7 +8,7 @@ from src.application import (
     NLPModelLoadError,
     NLPService,
     PivotKJEngine,
-    RAPTOREngine,
+    RaptorEngine,
     SQ3REngine,
 )
 from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
@@ -105,7 +105,7 @@ async def test_raptor_engine_cluster_chunks() -> None:
 
     llm = SafeTestLLMService()
     clustering = UMAPGMMClusteringStrategy()
-    engine = RAPTOREngine(llm=llm, clustering_strategy=clustering, max_levels=2, max_clusters=2)
+    engine = RaptorEngine(llm=llm, clustering_strategy=clustering, max_clusters=2)
 
     # Create test chunks
     chunks = []
@@ -118,7 +118,7 @@ async def test_raptor_engine_cluster_chunks() -> None:
         )
         chunks.append(chunk)
 
-    nodes = await engine.cluster_chunks(chunks)
+    nodes = await engine.build_tree(chunks)
     assert len(nodes) > 0
     assert all(isinstance(node, RaptorNode) for node in nodes)
     assert all(node.summarized_content == "Test Summary or Question." for node in nodes)

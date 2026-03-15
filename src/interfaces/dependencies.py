@@ -114,10 +114,10 @@ def validate_container(container: DIContainer) -> None:
 
 
 def register_raptor_engine(container: DIContainer) -> None:
-    from src.application import RAPTOREngine
+    from src.application import RaptorEngine
     from src.config.settings import AppConfig
 
-    def raptor_factory() -> RAPTOREngine:
+    def raptor_factory() -> RaptorEngine:
         from src.infrastructure.clustering import UMAPGMMClusteringStrategy
         from src.interfaces.clustering import ClusteringStrategy
 
@@ -130,14 +130,13 @@ def register_raptor_engine(container: DIContainer) -> None:
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
         clustering_strategy = container.resolve(ClusteringStrategy)  # type: ignore[type-abstract]
         config = container.resolve(AppConfig)
-        return RAPTOREngine(
+        return RaptorEngine(
             llm=llm,
             clustering_strategy=clustering_strategy,
-            max_levels=config.raptor_max_levels,
             max_clusters=config.raptor_max_clusters,
         )
 
-    container.register(RAPTOREngine, raptor_factory)
+    container.register(RaptorEngine, raptor_factory)
 
 
 def register_sq3r_engine(container: DIContainer) -> None:
@@ -236,7 +235,7 @@ def bootstrap_application_services(container: DIContainer) -> None:
         register_raptor_engine(container)
     except Exception:
         logger.exception(
-            "RAPTOREngine failed to register. Document summarizing will be unavailable."
+            "RaptorEngine failed to register. Document summarizing will be unavailable."
         )
 
     try:

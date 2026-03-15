@@ -7,23 +7,24 @@ from src.infrastructure.test_services import (
     PlainTextParser,
     SafeTestLLMService,
 )
+from src.interfaces.dependencies import LLMProtocol
 from tests.unit.test_raptor_engine import MockSemanticClusterer
 
 
-class PromptSpyLLMService(SafeTestLLMService):
-    """Spy LLM service that records all prompts."""
+class PromptSpyLLMService(LLMProtocol):
+    """Spy LLM service that records all prompts by wrapping another LLMProtocol via composition."""
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, wrapped_llm: LLMProtocol) -> None:
+        self._wrapped_llm = wrapped_llm
         self.recorded_prompts: list[str] = []
 
     async def generate_text(self, prompt: str, model: str) -> str:
         self.recorded_prompts.append(prompt)
-        return "Mock Summary"
+        return await self._wrapped_llm.generate_text(prompt, model)
 
     async def generate(self, prompt: str) -> str:
         self.recorded_prompts.append(prompt)
-        return "Mock Summary"
+        return await self._wrapped_llm.generate(prompt)
 
 
 @pytest.mark.asyncio
@@ -32,20 +33,21 @@ async def test_uat_04_01_hierarchical_tree_construction_mock_mode() -> None:
     Scenario ID: UAT-04-01
     Title: Hierarchical Tree Construction (Mock Mode)
     """
-    llm = PromptSpyLLMService()
+    base_llm = SafeTestLLMService()
+    llm = PromptSpyLLMService(wrapped_llm=base_llm)
     embedding = DummyEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
     pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
 
     # Override RaptorEngine's clusterer inside the pipeline's instantiated engine
-    pipeline._raptor_engine.clusterer = MockSemanticClusterer(
+    pipeline._raptor_engine.clustering_strategy = MockSemanticClusterer(
         # Note: the test text splits into 2 chunks because of the period placement and sentence splitting logic
         # wait, let's verify chunks size instead. Actually PlainTextParser + fallback splitter
         # splits by ". ". "Data one. Data two." -> 2 chunks.
         # "Chunk one text. Chunk two text. Chunk three text. Chunk four text. Chunk five text. Chunk six text." -> 6 chunks.
         mocked_output={0: [0, 1], 1: [2, 3], 2: [4, 5]}
-    )  # type: ignore[assignment]
+    )
 
     raw_text = (
         "Chunk one text. Chunk two text. Chunk three text. "
@@ -65,7 +67,7 @@ async def test_uat_04_01_hierarchical_tree_construction_mock_mode() -> None:
     assert len(doc.raptor_nodes) == 3
 
     # Assert children mapped according to mocked grouping
-    assert doc.raptor_nodes[0].summarized_content == "Mock Summary"
+    assert "Test Summary or Question." in doc.raptor_nodes[0].summarized_content
     assert len(doc.raptor_nodes[0].children_ids) == 2
     assert set(doc.raptor_nodes[0].children_ids) == {str(doc.chunks[0].id), str(doc.chunks[1].id)}
 
@@ -76,14 +78,15 @@ async def test_uat_04_02_chain_of_density_prompt() -> None:
     Scenario ID: UAT-04-02
     Title: Chain of Density Prompt Generation
     """
-    spy_llm = PromptSpyLLMService()
+    base_llm = SafeTestLLMService()
+    spy_llm = PromptSpyLLMService(wrapped_llm=base_llm)
     embedding = DummyEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
     pipeline = IngestionPipeline(llm=spy_llm, embedding=embedding, text_parser=parser)
 
     # Deterministic mock cluster to ensure a prompt is triggered
-    pipeline._raptor_engine.clusterer = MockSemanticClusterer(mocked_output={0: [0]})  # type: ignore[assignment]
+    pipeline._raptor_engine.clustering_strategy = MockSemanticClusterer(mocked_output={0: [0]})
 
     raw_text = "Some text."
     await pipeline.build_enriched_document(raw_text.encode("utf-8"), "test.txt")
@@ -110,7 +113,7 @@ async def test_uat_04_03_tree_relational_integrity_and_schema() -> None:
     parser = PlainTextParser()
 
     pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
-    pipeline._raptor_engine.clusterer = MockSemanticClusterer(mocked_output={0: [0, 1]})  # type: ignore[assignment]
+    pipeline._raptor_engine.clustering_strategy = MockSemanticClusterer(mocked_output={0: [0, 1]})
 
     raw_text = "Data one. Data two."
     pipeline._nlp = None  # type: ignore[assignment]

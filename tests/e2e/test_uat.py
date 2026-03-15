@@ -7,7 +7,7 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from src.application import IngestionPipeline, PivotKJEngine, RAPTOREngine, SQ3REngine
+from src.application import IngestionPipeline, PivotKJEngine, RaptorEngine, SQ3REngine
 from src.domain_models import ChunkMetadata, SemanticChunk
 from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 from src.infrastructure.test_services import (
@@ -59,11 +59,9 @@ async def test_uat_01_quick_start() -> None:
         )
 
     llm = MockE2ELLM()
-    raptor = RAPTOREngine(
-        llm=llm, clustering_strategy=UMAPGMMClusteringStrategy(), max_levels=2, max_clusters=2
-    )
+    raptor = RaptorEngine(llm=llm, clustering_strategy=UMAPGMMClusteringStrategy(), max_clusters=2)
 
-    nodes = await raptor.cluster_chunks(chunks)
+    nodes = await raptor.build_tree(chunks)
     assert len(nodes) > 0
 
     # 2. Interaction (Question & Read)

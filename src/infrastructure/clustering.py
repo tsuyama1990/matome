@@ -7,24 +7,23 @@ from src.interfaces.clustering import ClusteringStrategy
 
 logger = logging.getLogger(__name__)
 
-try:
-    import umap.umap_ as umap
-    from sklearn.mixture import GaussianMixture
-
-    _ML_IMPORTS_SUCCESSFUL = True
-except ImportError:
-    _ML_IMPORTS_SUCCESSFUL = False
-
 
 class SemanticClusterer:
     """A class responsible for the heavy mathematical lifting of clustering."""
 
     def __init__(self, max_clusters: int = 10) -> None:
         self.max_clusters = max_clusters
-        if not _ML_IMPORTS_SUCCESSFUL:
-            self._ml_available = False
-        else:
+        try:
+            import umap.umap_ as umap
+            from sklearn.mixture import GaussianMixture
+
             self._ml_available = True
+            self.umap_lib = umap
+            self.gmm_cls = GaussianMixture
+        except ImportError:
+            self._ml_available = False
+            self.umap_lib = None
+            self.gmm_cls = None
 
     def _validate_input(self, embeddings: np.ndarray) -> tuple[int, int]:
         if not self._ml_available:
@@ -54,7 +53,7 @@ class SemanticClusterer:
             n_neighbors = min(15, n_samples - 1)
             n_components = min(embeddings.shape[1], 10, n_samples - 2)
 
-            reducer = umap.UMAP(
+            reducer = self.umap_lib.UMAP(
                 n_neighbors=n_neighbors,
                 n_components=n_components,
                 metric="cosine",
@@ -62,7 +61,7 @@ class SemanticClusterer:
             )
             reduced_embeddings = reducer.fit_transform(embeddings)
 
-            gmm = GaussianMixture(n_components=n_clusters, random_state=42, n_init=3)
+            gmm = self.gmm_cls(n_components=n_clusters, random_state=42, n_init=3)
             gmm.fit(reduced_embeddings)
             probs = gmm.predict_proba(reduced_embeddings)
 
@@ -84,9 +83,15 @@ class UMAPGMMClusteringStrategy(ClusteringStrategy):
     """Clustering strategy using UMAP for dimension reduction and GMM for clustering."""
 
     def __init__(self) -> None:
-        if not _ML_IMPORTS_SUCCESSFUL:
+        try:
+            import umap.umap_ as umap
+            from sklearn.mixture import GaussianMixture
+
+            self.umap_lib = umap
+            self.gmm_cls = GaussianMixture
+        except ImportError as e:
             msg = "Missing required ML dependencies (umap-learn, scikit-learn)."
-            raise RuntimeError(msg)
+            raise RuntimeError(msg) from e
 
     def _validate_embeddings(self, embeddings: list[list[float]]) -> np.ndarray:
         arr = np.array(embeddings, dtype=np.float32)
@@ -109,7 +114,7 @@ class UMAPGMMClusteringStrategy(ClusteringStrategy):
         n_components = min(arr.shape[1], 10, n_samples - 2)
 
         try:
-            reducer = umap.UMAP(
+            reducer = self.umap_lib.UMAP(
                 n_neighbors=n_neighbors,
                 n_components=n_components,
                 metric="cosine",
@@ -139,13 +144,11 @@ class UMAPGMMClusteringStrategy(ClusteringStrategy):
         n_clusters = min(max_clusters, n_samples)
 
         if n_samples < 3 or n_samples <= n_clusters:
-            if n_samples == 2:
-                return {0: [0], 1: [1]}
-            if n_samples == 1:
-                return {0: [0]}
+            # Map each sample to its own cluster if we don't have enough data
+            return {i: [i] for i in range(n_samples)}
 
         try:
-            gmm = GaussianMixture(n_components=n_clusters, random_state=42, n_init=3)
+            gmm = self.gmm_cls(n_components=n_clusters, random_state=42, n_init=3)
             gmm.fit(arr)
             probs = gmm.predict_proba(arr)
 

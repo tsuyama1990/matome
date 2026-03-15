@@ -7,7 +7,7 @@ import numpy as np
 
 from src.domain_models.document import RaptorNode, SemanticChunk
 from src.domain_models.exceptions import RaptorError
-from src.infrastructure.clustering import SemanticClusterer
+from src.interfaces.clustering import ClusteringStrategy
 from src.interfaces.llm_protocol import LLMProtocol
 
 logger = logging.getLogger(__name__)
@@ -19,10 +19,12 @@ class RaptorEngine:
     Builds the tree bottom-up by clustering chunks, summarizing them, and returning the RaptorNodes.
     """
 
-    def __init__(self, llm: LLMProtocol, max_clusters: int = 10) -> None:
+    def __init__(
+        self, llm: LLMProtocol, clustering_strategy: ClusteringStrategy, max_clusters: int = 10
+    ) -> None:
         self.llm = llm
+        self.clustering_strategy = clustering_strategy
         self.max_clusters = max_clusters
-        self.clusterer = SemanticClusterer(max_clusters=max_clusters)
 
     async def _generate_cod_summary(self, text: str) -> str:
         """Helper method to generate Chain of Density summary using LLMProtocol."""
@@ -57,7 +59,7 @@ class RaptorEngine:
         embeddings = np.array([c.embedding for c in chunks], dtype=np.float32)
 
         # 1. Cluster embeddings
-        clusters = self.clusterer.cluster_embeddings(embeddings)
+        clusters = self.clustering_strategy.cluster(embeddings, self.max_clusters)
 
         nodes: list[RaptorNode] = []
         cluster_tasks: list[Any] = []
