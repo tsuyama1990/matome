@@ -3,7 +3,7 @@ import pytest
 
 from src.domain_models.config import AppConfig, ModelRoutingRules
 from src.infrastructure.openrouter import OpenRouterClient
-from src.infrastructure.test_services import MockHttpxTransport
+from src.infrastructure.test_services import FallbackHttpxTransport
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ async def test_uat_02_01_successful_llm_text_generation(uat_config: AppConfig) -
     Scenario ID: UAT-02-01
     Title: Successful LLM Text Generation
     """
-    transport = MockHttpxTransport()
+    transport = FallbackHttpxTransport()
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Hello, world!"}}]}
     )
@@ -47,7 +47,7 @@ async def test_uat_02_02_network_resilience(uat_config: AppConfig) -> None:
     Scenario ID: UAT-02-02
     Title: Network Resilience: Retries on Transient Errors
     """
-    transport = MockHttpxTransport()
+    transport = FallbackHttpxTransport()
     # First: connection timeout
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))
     # Second: 502 Bad Gateway
@@ -70,7 +70,7 @@ async def test_uat_02_03_automatic_model_fallback(uat_config: AppConfig) -> None
     Scenario ID: UAT-02-03
     Title: High Availability: Automatic Model Fallback
     """
-    transport = MockHttpxTransport()
+    transport = FallbackHttpxTransport()
     # Primary model (claude-3-opus) times out consistently (3 retries)
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))

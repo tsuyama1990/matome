@@ -1,11 +1,6 @@
 import json
 import logging
-import typing
 import uuid
-
-if typing.TYPE_CHECKING:
-    pass
-
 
 from tenacity import retry, stop_after_attempt, wait_exponential
 
@@ -32,7 +27,11 @@ class PivotEngine:
         allowed_axes: frozenset[str],
         llm_timeout: float = 30.0,
     ) -> None:
-        if not hasattr(llm, "generate") or not hasattr(vector_db, "search") or not hasattr(embedding, "embed_text"):
+        if (
+            not hasattr(llm, "generate")
+            or not hasattr(vector_db, "search")
+            or not hasattr(embedding, "embed_text")
+        ):
             msg = "Invalid protocol implementations provided to PivotEngine"
             raise ValueError(msg)
 
@@ -83,7 +82,9 @@ class PivotEngine:
         import bleach
 
         # Sanitize and validate axis parameter
-        sanitized_axis = bleach.clean(axis.strip().lower(), tags=[], attributes={}, protocols=[], strip=True)
+        sanitized_axis = bleach.clean(
+            axis.strip().lower(), tags=[], attributes={}, protocols=[], strip=True
+        )
         if sanitized_axis not in self._allowed_axes:
             msg = "Invalid axis"
             raise PivotGenerationError(msg)
@@ -94,7 +95,12 @@ class PivotEngine:
             msg = "Pivot processing failed"
             raise PivotGenerationError(msg)
 
-        chunk_context = "".join([f"Chunk ID: {c.id}\nContent: {bleach.clean(c.content, tags=[], attributes={}, protocols=[], strip=True)}\n---\n" for c in chunks])
+        chunk_context = "".join(
+            [
+                f"Chunk ID: {c.id}\nContent: {bleach.clean(c.content, tags=[], attributes={}, protocols=[], strip=True)}\n---\n"
+                for c in chunks
+            ]
+        )
 
         prompt = (
             f"Analyze these text chunks. Organize them into the conceptual axis: '{sanitized_axis}'.\n"
@@ -115,7 +121,9 @@ class PivotEngine:
 
         try:
             # Add timeout protection for LLM call based on config
-            response_json = await asyncio.wait_for(self._llm.generate(prompt), timeout=self._llm_timeout)
+            response_json = await asyncio.wait_for(
+                self._llm.generate(prompt), timeout=self._llm_timeout
+            )
             response_json = response_json.replace("```json", "").replace("```", "").strip()
             data = json.loads(response_json)
 
@@ -127,6 +135,7 @@ class PivotEngine:
                 valid_chunk_ids = []
                 for uid in node_data.get("source_chunk_ids", []):
                     import contextlib
+
                     with contextlib.suppress(ValueError, TypeError, AttributeError):
                         valid_chunk_ids.append(uuid.UUID(uid))
                 node_data["source_chunk_ids"] = valid_chunk_ids
@@ -190,14 +199,14 @@ class PivotWorkflow:
         self._pivot_engine = pivot_engine
         self._llm = llm
 
-    async def execute(
-        self, document_id: uuid.UUID, payload: PivotRequestPayload
-    ) -> PivotResponse:
+    async def execute(self, document_id: uuid.UUID, payload: PivotRequestPayload) -> PivotResponse:
         """Executes the Pivot workflow."""
         import bleach
 
         # Validate payload axis before hitting engine
-        sanitized_axis = bleach.clean(payload.axis.strip().lower(), tags=[], attributes={}, protocols=[], strip=True)
+        sanitized_axis = bleach.clean(
+            payload.axis.strip().lower(), tags=[], attributes={}, protocols=[], strip=True
+        )
         if not sanitized_axis:
             msg = "Invalid or empty axis provided"
             raise PivotGenerationError(msg)

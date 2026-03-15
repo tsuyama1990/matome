@@ -38,7 +38,9 @@ class SQ3REngine:
             msg = "Answer too long"
             raise ValueError(msg)
 
-        sanitized_answer = bleach.clean(user_answer, tags=[], attributes={}, protocols=[], strip=True)
+        sanitized_answer = bleach.clean(
+            user_answer, tags=[], attributes={}, protocols=[], strip=True
+        )
 
         prompt = (
             "You are an AI tutor. A student has just read the following summary and provided an answer "
@@ -61,6 +63,7 @@ class SQ3REngine:
         """Updates the LearningProgress state by adding the node_id to the unlocked_node_ids set."""
         progress.unlocked_node_ids.add(node_id)
         return progress
+
 
 class SQ3RService:
     def __init__(self, engine: SQ3REngine) -> None:

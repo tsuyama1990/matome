@@ -20,8 +20,6 @@ class LLMProtocol(Protocol):
     async def generate_text(self, prompt: str, model: str) -> str: ...
 
 
-
-
 @runtime_checkable
 class VectorDBProtocol(Protocol):
     """Protocol defining the contract for similarity search."""
@@ -29,8 +27,12 @@ class VectorDBProtocol(Protocol):
     async def upsert(self, chunks: list[SemanticChunk]) -> None: ...
 
     async def search(
-        self, query_embedding: list[float], top_k: int, filter_metadata: dict[str, str] | None = None
+        self,
+        query_embedding: list[float],
+        top_k: int,
+        filter_metadata: dict[str, str] | None = None,
     ) -> list[SemanticChunk]: ...
+
 
 @runtime_checkable
 class VectorStoreProtocol(Protocol):
@@ -43,9 +45,6 @@ class VectorStoreProtocol(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
-
-
-
 @runtime_checkable
 class EmbeddingProtocol(Protocol):
     """Protocol for generating vector embeddings."""
@@ -53,13 +52,13 @@ class EmbeddingProtocol(Protocol):
     async def embed_text(self, text: str) -> list[float]: ...
 
 
-
-
 @runtime_checkable
 class PivotWorkflowProtocol(Protocol):
     """Protocol defining the facade for Pivot Workflow orchestration."""
 
-    async def execute(self, document_id: uuid.UUID, payload: PivotRequestPayload) -> PivotResponse: ...
+    async def execute(
+        self, document_id: uuid.UUID, payload: PivotRequestPayload
+    ) -> PivotResponse: ...
 
 
 @runtime_checkable
@@ -112,7 +111,7 @@ class DIContainer:
                 # We do not hold the lock during factory instantiation to avoid deadlocks
                 # if factory also calls resolve. But wait, if factory calls resolve, it re-enters.
                 # Re-entrant locks or maintaining tracking thread-locally is better,
-                # but for this scale, simply tracking during the single pass is fine.
+                # but for this scale, simply tracking during the single traversal is fine.
                 instance = self._factories[interface]()
                 self._singletons[interface] = instance
                 return instance  # type: ignore[no-any-return]
@@ -197,8 +196,10 @@ def register_pivot_workflow(container: DIContainer) -> None:
 
     # If the user overrides PivotEngine directly, don't try to resolve its internal dependencies
     if PivotEngine not in container._factories and PivotEngine not in container._singletons:
+
         def pivot_engine_factory() -> PivotEngine:
             from src.config.settings import AppConfig
+
             config = container.resolve(AppConfig)
             llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
             vector_db = container.resolve(VectorDBProtocol)  # type: ignore[type-abstract]
@@ -208,13 +209,16 @@ def register_pivot_workflow(container: DIContainer) -> None:
                 vector_db=vector_db,
                 embedding=embedding,
                 allowed_axes=frozenset(config.pivot_allowed_axes),
-                llm_timeout=config.llm_timeout
+                llm_timeout=config.llm_timeout,
             )
+
         container.register(PivotEngine, pivot_engine_factory)
 
     if ExportService not in container._factories and ExportService not in container._singletons:
+
         def export_service_factory() -> ExportService:
             return ExportService()
+
         container.register(ExportService, export_service_factory)
 
     def pivot_workflow_factory() -> PivotWorkflowProtocol:
@@ -223,7 +227,7 @@ def register_pivot_workflow(container: DIContainer) -> None:
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
         return PivotWorkflow(repository=repository, pivot_engine=pivot_engine_new, llm=llm)
 
-    container.register(PivotWorkflowProtocol, pivot_workflow_factory) # type: ignore[type-abstract]
+    container.register(PivotWorkflowProtocol, pivot_workflow_factory)  # type: ignore[type-abstract]
 
 
 def register_vector_store(container: DIContainer) -> None:
@@ -245,15 +249,11 @@ def register_vector_store(container: DIContainer) -> None:
 
     container.register(VectorStoreProtocol, vector_store_factory)  # type: ignore[type-abstract]
 
-    # Also bind VectorDBProtocol to the same instance (if they are compatible)
-    # Since PineconeVectorStore now needs to support both, or InMemoryVectorStore.
-    # Actually, PineconeVectorStore from existing codebase does NOT implement VectorDBProtocol.
-    # We will just map VectorDBProtocol to DummyVectorDB since it is only used in PivotEngine
-    # for now, and the Pinecone VectorDBProtocol adapter was not created as per "DummyVectorDB in tests".
-
     def vector_db_factory() -> VectorDBProtocol:
-        from src.infrastructure.test_services import DummyVectorDB
-        return DummyVectorDB()
+        from src.infrastructure.vector_store import VectorDBAdapter
+
+        store = container.resolve(VectorStoreProtocol)  # type: ignore[type-abstract]
+        return VectorDBAdapter(vector_store=store)
 
     container.register(VectorDBProtocol, vector_db_factory)  # type: ignore[type-abstract]
 

@@ -9,12 +9,13 @@ class PivotNode(BaseModel):
     """
     A node representing a concept on a new axis in the reconstructed graph.
     """
+
     node_id: str = Field(description="Unique identifier for the node.")
     label: str = Field(description="The label or name of this category/concept.")
     summary: str = Field(description="A descriptive summary of what this node represents.")
     source_chunk_ids: list[UUID] = Field(
         min_length=1,
-        description="List of original SemanticChunk UUIDs providing evidence for this node."
+        description="List of original SemanticChunk UUIDs providing evidence for this node.",
     )
 
     model_config = ConfigDict(extra="forbid")
@@ -24,6 +25,7 @@ class PivotState(BaseModel):
     """
     The overall state of the newly formed graph based on a specific axis.
     """
+
     original_document_id: UUID = Field(description="The ID of the document this pivot is based on.")
     axis_name: str = Field(description="The name of the multi-dimensional axis used (e.g., SWOT).")
     nodes: list[PivotNode] = Field(description="List of nodes constructed for this axis.")
@@ -35,6 +37,7 @@ class PivotResponse(BaseModel):
     """
     Response model for Pivot Workflow.
     """
+
     markdown: str = Field(description="Generated markdown string.")
     mermaid: str = Field(description="Generated mermaid string.")
     clusters: dict[str, list[dict[str, str]]] = Field(description="Serialized clusters mappings.")

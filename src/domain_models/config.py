@@ -138,7 +138,7 @@ class AppConfig(BaseSettings):
             raise ValueError(msg)
 
         if len(set(val)) < min_entropy:
-            msg = "Invalid API key: appears to be a dummy or repeating pattern."
+            msg = "Invalid API key: appears to be a fake or repeating pattern."
             raise ValueError(msg)
 
         return v

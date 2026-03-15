@@ -13,7 +13,7 @@ app = FastAPI()
 app.include_router(router)
 
 
-class MockLLM(LLMProtocol):
+class FallbackLLM(LLMProtocol):
     async def generate(self, prompt: str) -> str:
         if "generate a single, thought-provoking question" in prompt:
             return "What is the capital of France?"
@@ -25,7 +25,7 @@ class MockLLM(LLMProtocol):
         return "YES. Good job. You are correct. Keep it up!"
 
 
-class MockRepository(DocumentRepositoryProtocol):
+class FallbackRepository(DocumentRepositoryProtocol):
     def get_node_by_id(self, node_id: str) -> RaptorNode:
         return RaptorNode(
             node_id=node_id,
@@ -42,8 +42,8 @@ class MockRepository(DocumentRepositoryProtocol):
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
     container = DIContainer()
-    container.register(LLMProtocol, MockLLM)  # type: ignore[type-abstract]
-    container.register(DocumentRepositoryProtocol, MockRepository)  # type: ignore[type-abstract]
+    container.register(LLMProtocol, FallbackLLM)  # type: ignore[type-abstract]
+    container.register(DocumentRepositoryProtocol, FallbackRepository)  # type: ignore[type-abstract]
 
     app.state.container = container
 

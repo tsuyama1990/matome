@@ -62,7 +62,7 @@ class NLPService:
         """Isolates the validation logic to keep complexity low."""
         import unicodedata
 
-        if any(unicodedata.category(c).startswith('C') for c in content):
+        if any(unicodedata.category(c).startswith("C") for c in content):
             msg = "Content contains forbidden control characters."
             raise ValueError(msg)
 
@@ -117,8 +117,6 @@ class NLPService:
 
             chunk.metadata.extracted_entities = list(set(extracted_entities[: self.max_entities]))
             chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
-
-
 
 
 class IngestionPipeline:

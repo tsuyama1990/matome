@@ -9,7 +9,7 @@ from src.application import IngestionPipeline, RaptorEngine, SQ3REngine
 from src.domain_models import ChunkMetadata, LearningProgress, RaptorNode, SemanticChunk
 from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 from src.infrastructure.test_services import (
-    DummyEmbeddingService,
+    FallbackEmbeddingService,
     PlainTextParser,
     SafeTestLLMService,
     SimpleParsingService,
@@ -17,8 +17,8 @@ from src.infrastructure.test_services import (
 from src.interfaces.dependencies import LLMProtocol
 
 
-class MockE2ELLM:
-    """Mock LLM for E2E tests."""
+class FallbackE2ELLM:
+    """Fallback LLM for E2E tests."""
 
     async def generate(self, prompt: str) -> str:
         if "feedback" in prompt.lower():
@@ -62,7 +62,7 @@ async def test_uat_01_quick_start() -> None:
     import umap.umap_ as umap
     from sklearn.mixture import GaussianMixture
 
-    llm = MockE2ELLM()
+    llm = FallbackE2ELLM()
     raptor = RaptorEngine(
         llm=llm,
         clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
@@ -86,42 +86,48 @@ async def test_uat_01_quick_start() -> None:
     # 4. Transformation (Pivot)
     from src.application.pivot_workflow import PivotEngine
     from src.domain_models import EnrichedDocument
-    from src.infrastructure.test_services import DummyEmbeddingService, DummyVectorDB
-    mock_db = DummyVectorDB()
-    await mock_db.upsert(chunks)
-    mock_embed = DummyEmbeddingService()
-    pivot_engine = PivotEngine(llm=llm, vector_db=mock_db, embedding=mock_embed, allowed_axes=frozenset({"actor"}))
+    from src.infrastructure.test_services import FallbackEmbeddingService, FallbackVectorDB
+
+    fallback_db = FallbackVectorDB()
+    await fallback_db.upsert(chunks)
+    fallback_embed = FallbackEmbeddingService()
+    pivot_engine = PivotEngine(
+        llm=llm, vector_db=fallback_db, embedding=fallback_embed, allowed_axes=frozenset({"actor"})
+    )
     try:
         state = await pivot_engine.execute_pivot(
-            EnrichedDocument(document_id=uuid.uuid4(), original_text=text, chunks=chunks, raptor_nodes=nodes),
-            "actor"
+            EnrichedDocument(
+                document_id=uuid.uuid4(), original_text=text, chunks=chunks, raptor_nodes=nodes
+            ),
+            "actor",
         )
         assert state.axis_name == "actor"
     except Exception as e:
-        # Expected since LLM Mock returns random string missing valid JSON
+        # Expected since LLM Fallback returns random string missing valid JSON
         import logging
-        logging.info(f"Expected mock failure: {e}")
-    # LLM Mock returns random format or "Test Summary or Question."
+
+        logging.info(f"Expected fallback failure: {e}")
+    # LLM Fallback returns random format or "Test Summary or Question."
     # We will just assert state executes and returns properly.
 
 
-class DummyE2ELLMService(SafeTestLLMService):
-    """Specific dummy LLM returning a valid JSON string for ingestion tests."""
+class FallbackE2ELLMService(SafeTestLLMService):
+    """Specific fallback LLM returning a valid JSON string for ingestion tests."""
 
     async def generate(self, prompt: str) -> str:
         self._call_count += 1
-        return '{"entities": ["MockEntityA"], "time_axis": "Present"}'
+        return '{"entities": ["FallbackEntityA"], "time_axis": "Present"}'
 
     async def generate_text(self, prompt: str, model: str) -> str:
         self._call_count += 1
-        return '{"entities": ["MockEntityA"], "time_axis": "Present"}'
+        return '{"entities": ["FallbackEntityA"], "time_axis": "Present"}'
 
 
 @pytest.mark.asyncio
 async def test_uat_03_01_end_to_end_ingestion() -> None:
-    """UAT-03-01: End-to-End Document Ingestion (Mock Mode)"""
-    llm = DummyE2ELLMService()
-    embedding = DummyEmbeddingService(dimension=384)
+    """UAT-03-01: End-to-End Document Ingestion (Fallback Mode)"""
+    llm = FallbackE2ELLMService()
+    embedding = FallbackEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
     import umap.umap_ as umap
@@ -158,15 +164,15 @@ async def test_uat_03_01_end_to_end_ingestion() -> None:
 
     # Assert AI orchestration
     for chunk in chunks:
-        assert "MockEntityA" in chunk.metadata.extracted_entities
+        assert "FallbackEntityA" in chunk.metadata.extracted_entities
         assert chunk.metadata.time_axis == "Present"
 
 
 @pytest.mark.asyncio
 async def test_uat_03_02_semantic_boundary_adherence() -> None:
     """UAT-03-02: Semantic Boundary Adherence"""
-    llm = DummyE2ELLMService()
-    embedding = DummyEmbeddingService(dimension=384)
+    llm = FallbackE2ELLMService()
+    embedding = FallbackEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
     import umap.umap_ as umap
@@ -208,9 +214,9 @@ async def test_uat_03_02_semantic_boundary_adherence() -> None:
 @pytest.mark.asyncio
 async def test_uat_03_03_strict_domain_validation_enforcement() -> None:
     """UAT-03-03: Strict Domain Validation Enforcement"""
-    llm = DummyE2ELLMService()
+    llm = FallbackE2ELLMService()
     # Intentionally misconfigured faulty embedding service
-    faulty_embedding = DummyEmbeddingService(dimension=3)
+    faulty_embedding = FallbackEmbeddingService(dimension=3)
     parser = PlainTextParser()
 
     import umap.umap_ as umap
@@ -256,7 +262,7 @@ class PromptSpyLLMService(LLMProtocol):
         return self.return_text
 
 
-class MockEvaluationLLMService(LLMProtocol):
+class FallbackEvaluationLLMService(LLMProtocol):
     def __init__(self) -> None:
         self.next_response = "YES"
 
@@ -303,8 +309,8 @@ async def test_uat_05_02_ai_answer_evaluation_and_node_unlocking() -> None:
     Description: Tests the critical evaluation loop. Simulates a user submitting an answer
     and verifies that only a "correct" evaluation results in the node being unlocked.
     """
-    mock_service = MockEvaluationLLMService()
-    engine = SQ3REngine(llm=mock_service)
+    fallback_service = FallbackEvaluationLLMService()
+    engine = SQ3REngine(llm=fallback_service)
 
     progress = LearningProgress(document_id=uuid.uuid4())
     node = RaptorNode(
@@ -314,14 +320,14 @@ async def test_uat_05_02_ai_answer_evaluation_and_node_unlocking() -> None:
     # Initially locked
     assert "node_123" not in progress.unlocked_node_ids
 
-    # User submits bad answer "London", mock service returns "NO"
-    mock_service.set_next_response("NO")
+    # User submits bad answer "London", fallback service returns "NO"
+    fallback_service.set_next_response("NO")
     result_fail = await engine.evaluate_answer(node, "London")
     assert result_fail is False
     assert "node_123" not in progress.unlocked_node_ids
 
-    # User submits good answer "Paris", mock service returns "YES"
-    mock_service.set_next_response("YES")
+    # User submits good answer "Paris", fallback service returns "YES"
+    fallback_service.set_next_response("YES")
     result_pass = await engine.evaluate_answer(node, "Paris")
     assert result_pass is True
 
@@ -338,27 +344,32 @@ async def test_uat_06_01_pivot_reconstruction() -> None:
     from src.application.pivot_workflow import PivotEngine
     from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
     from src.infrastructure.test_services import (
-        DummyEmbeddingService,
-        DummyVectorDB,
-        MockReasoningLLMService,
+        FallbackEmbeddingService,
+        FallbackReasoningLLMService,
+        FallbackVectorDB,
     )
 
-    # Mock DB and LLM setup
-    mock_db = DummyVectorDB()
+    # Fallback DB and LLM setup
+    fallback_db = FallbackVectorDB()
     chunk_id = uuid.uuid4()
     chunk = SemanticChunk(
         id=chunk_id,
         content="User admin manages settings.",
         embedding=[0.1] * 384,
-        metadata=ChunkMetadata(source_file="test.txt", actor_axis="Admin User")
+        metadata=ChunkMetadata(source_file="test.txt", actor_axis="Admin User"),
     )
-    await mock_db.upsert([chunk])
+    await fallback_db.upsert([chunk])
 
     json_resp = f'{{"nodes": [{{"label": "Admin User", "summary": "Manages system settings.", "source_chunk_ids": ["{chunk_id!s}"]}}]}}'
-    mock_llm = MockReasoningLLMService(response_json=json_resp)
-    mock_embed = DummyEmbeddingService(dimension=384)
+    fallback_llm = FallbackReasoningLLMService(response_json=json_resp)
+    fallback_embed = FallbackEmbeddingService(dimension=384)
 
-    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed, allowed_axes=frozenset({"system actors"}))
+    engine = PivotEngine(
+        llm=fallback_llm,
+        vector_db=fallback_db,
+        embedding=fallback_embed,
+        allowed_axes=frozenset({"system actors"}),
+    )
     doc_id = uuid.uuid4()
     doc = EnrichedDocument(document_id=doc_id, original_text="...", chunks=[chunk], raptor_nodes=[])
 
@@ -385,16 +396,9 @@ async def test_uat_06_02_data_traceability() -> None:
 
     # Valid instantiation
     node = PivotNode(
-        node_id="node_1",
-        label="Test",
-        summary="Test summary",
-        source_chunk_ids=[chunk_id]
+        node_id="node_1", label="Test", summary="Test summary", source_chunk_ids=[chunk_id]
     )
-    state = PivotState(
-        original_document_id=uuid.uuid4(),
-        axis_name="Test Axis",
-        nodes=[node]
-    )
+    state = PivotState(original_document_id=uuid.uuid4(), axis_name="Test Axis", nodes=[node])
 
     assert len(state.nodes) == 1
     assert state.nodes[0].source_chunk_ids[0] == chunk_id
@@ -405,7 +409,7 @@ async def test_uat_06_02_data_traceability() -> None:
             node_id="node_2",
             label="Test2",
             summary="Invalid sources",
-            source_chunk_ids=["this is not a list of UUIDs"] # type: ignore
+            source_chunk_ids=["this is not a list of UUIDs"],  # type: ignore
         )
 
 
@@ -421,13 +425,9 @@ async def test_uat_06_03_artifact_export_generation() -> None:
         node_id="node_1",
         label="Strength",
         summary="Strong brand presence.",
-        source_chunk_ids=[uuid.uuid4()]
+        source_chunk_ids=[uuid.uuid4()],
     )
-    state = PivotState(
-        original_document_id=uuid.uuid4(),
-        axis_name="SWOT Analysis",
-        nodes=[node]
-    )
+    state = PivotState(original_document_id=uuid.uuid4(), axis_name="SWOT Analysis", nodes=[node])
 
     export_service = ExportService()
     markdown_output = export_service.generate_markdown(state)
