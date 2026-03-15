@@ -1,5 +1,7 @@
+from datetime import datetime
 from enum import StrEnum
 from typing import ClassVar
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,6 +41,31 @@ class StateTransitionConfig:
         if target not in allowed:
             msg = f"Invalid transition from {current} to {target}"
             raise ValueError(msg)
+
+
+class UnlockAttempt(BaseModel):
+    """A single attempt by a user to unlock a node."""
+
+    node_id: str = Field(description="The ID of the node attempted.")
+    user_answer: str = Field(description="The answer provided by the user.")
+    is_correct: bool = Field(description="Whether the answer was correct.")
+    timestamp: datetime = Field(description="When the attempt was made.")
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class LearningProgress(BaseModel):
+    """Tracks a user's overall progress on a specific document."""
+
+    document_id: UUID = Field(description="The document being learned.")
+    unlocked_node_ids: set[str] = Field(
+        default_factory=set, description="Set of unlocked node IDs."
+    )
+    history: list[UnlockAttempt] = Field(
+        default_factory=list, description="History of unlock attempts."
+    )
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class GraphState(BaseModel):

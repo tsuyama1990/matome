@@ -9,6 +9,7 @@
 *   **Document Ingestion & Semantic Chunking**: Dynamically slice unstructured documents into intelligent `SemanticChunk` models that avoid abrupt "mid-sentence" cuts.
 *   **RAPTOR Hierarchical Tree Generation**: Automatically mathematically cluster and summarize text chunks bottom-up using UMAP and GMM algorithms, creating an interactive, multi-layered knowledge graph (the "Chain of Density").
 *   **Entity Extraction & Multi-Dimensional Tagging**: Automatically tag recognized entities and map content along custom domains like "Time axis" using NLP and Vision-Language Models.
+*   **Interactive Learning Loop (SQ3R)**: Dynamically generates contextual questions based on document sections and uses AI to evaluate user answers before unlocking new content.
 *   **Robust LLM Integration via OpenRouter**: Seamlessly communicate with various AI models (Claude, GPT-4o, Gemini) through a unified interface.
 *   **Network Resilience and High Availability**: Built-in automatic retries for transient network errors and intelligent model fallback mechanisms ensure your workflows never crash due to third-party API instability.
 *   **Secure BYOK Configuration**: Bring Your Own Key (BYOK) support natively powered by OpenRouter. Your API keys are strictly validated and handled securely in memory.

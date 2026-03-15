@@ -10,12 +10,13 @@ from src.application import (
     RaptorEngine,
     SQ3REngine,
 )
-from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
+from src.domain_models import ChunkMetadata, LearningProgress, RaptorNode, SemanticChunk
 from src.infrastructure.test_services import (
     DummyEmbeddingService,
     PlainTextParser,
     SafeTestLLMService,
 )
+from src.interfaces.dependencies import LLMProtocol
 
 
 def test_nlp_service_load_success() -> None:
@@ -165,8 +166,8 @@ async def test_sq3r_engine() -> None:
     q = await engine.generate_question(node)
     assert q == "Test Summary or Question."
 
-    feedback = await engine.evaluate_answer("I think it is X.", node)
-    assert feedback == "Test Summary or Question."
+    feedback = await engine.evaluate_answer(node, "I think it is X.")
+    assert feedback is False
 
 
 def test_pivot_kj_engine() -> None:
@@ -275,3 +276,97 @@ async def test_ingestion_pipeline_embedding_validation_failure() -> None:
 
     with pytest.raises(ValidationError, match="Embedding length 123 is invalid"):
         await pipeline.process_document(content_bytes, "test_doc.txt")
+
+
+
+
+
+class DummyLLMService(LLMProtocol):
+    def __init__(self, return_text: str) -> None:
+        self.return_text = return_text
+
+    async def generate(self, prompt: str, **kwargs: str) -> str:
+        return self.return_text
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        return self.return_text
+
+
+class PromptSpyLLMService(LLMProtocol):
+    def __init__(self, return_text: str) -> None:
+        self.return_text = return_text
+        self.received_prompt = ""
+
+    async def generate(self, prompt: str, **kwargs: str) -> str:
+        self.received_prompt = prompt
+        return self.return_text
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        self.received_prompt = prompt
+        return self.return_text
+
+
+@pytest.mark.asyncio
+async def test_sq3r_generate_question() -> None:
+    """Test SQ3REngine.generate_question returns the string and constructs the right prompt."""
+    node = RaptorNode(
+        node_id="test_node",
+        level=1,
+        summarized_content="The quick brown fox jumps over the lazy dog.",
+    )
+    spy_llm = PromptSpyLLMService("What jumps over the lazy dog?")
+    engine = SQ3REngine(llm=spy_llm)
+
+    question = await engine.generate_question(node, difficulty="factual")
+
+    assert question == "What jumps over the lazy dog?"
+    assert "The quick brown fox jumps over the lazy dog." in spy_llm.received_prompt
+    assert "factual" in spy_llm.received_prompt
+
+
+@pytest.mark.asyncio
+async def test_sq3r_evaluate_answer_yes() -> None:
+    """Test evaluate_answer correctly parses a YES response."""
+    node = RaptorNode(
+        node_id="test_node",
+        level=1,
+        summarized_content="The quick brown fox jumps over the lazy dog.",
+    )
+    spy_llm = PromptSpyLLMService("Yes, that is correct.")
+    engine = SQ3REngine(llm=spy_llm)
+
+    result = await engine.evaluate_answer(node, "A fox")
+
+    assert result is True
+    assert "The quick brown fox jumps over the lazy dog." in spy_llm.received_prompt
+    assert "A fox" in spy_llm.received_prompt
+    assert "YES" in spy_llm.received_prompt or "NO" in spy_llm.received_prompt
+
+
+@pytest.mark.asyncio
+async def test_sq3r_evaluate_answer_no() -> None:
+    """Test evaluate_answer correctly parses a NO response."""
+    node = RaptorNode(
+        node_id="test_node",
+        level=1,
+        summarized_content="The quick brown fox jumps over the lazy dog.",
+    )
+    spy_llm = PromptSpyLLMService("NO, that is wrong.")
+    engine = SQ3REngine(llm=spy_llm)
+
+    result = await engine.evaluate_answer(node, "A cat")
+
+    assert result is False
+
+
+def test_sq3r_unlock_node() -> None:
+    """Test unlock_node adds the node_id to the unlocked_node_ids set."""
+    engine = SQ3REngine(llm=DummyLLMService(""))
+    progress = LearningProgress(document_id=uuid.uuid4())
+
+    assert "node_1" not in progress.unlocked_node_ids
+
+    updated_progress = engine.unlock_node(progress, "node_1")
+
+    assert "node_1" in updated_progress.unlocked_node_ids
+    assert updated_progress is progress  # it should mutate the original object
