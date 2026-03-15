@@ -75,7 +75,9 @@ class NLPService:
         sanitized = bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
 
         # Enforce basic constraints
-        if len(sanitized) > 100000:
+        from src.config.security_constants import MAX_CONTENT_LENGTH
+
+        if len(sanitized) > MAX_CONTENT_LENGTH:
             msg = "Content exceeds maximum length."
             raise ValueError(msg)
 
@@ -148,7 +150,9 @@ class RAPTOREngine:
             msg = "Texts cannot be empty or contain only whitespace."
             raise ValueError(msg)
 
-        if any(len(t) > 100000 for t in texts):
+        from src.config.security_constants import MAX_CONTENT_LENGTH
+
+        if any(len(t) > MAX_CONTENT_LENGTH for t in texts):
             msg = "Text chunk too large."
             raise ValueError(msg)
 

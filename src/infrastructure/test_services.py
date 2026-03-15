@@ -18,8 +18,15 @@ class FileProcessingService:
     """Service for securely processing local files."""
 
     def __init__(self, config: AppConfig) -> None:
+        from src.config.security_constants import MAX_FILE_SIZE_LIMIT
+
         self._upload_dir = Path(config.upload_dir).resolve(strict=False)
         self._upload_dir.mkdir(parents=True, exist_ok=True)
+
+        if config.max_file_size > MAX_FILE_SIZE_LIMIT:
+            msg = "max_file_size configured exceeds hard security limit."
+            raise ValueError(msg)
+
         self._max_file_size = config.max_file_size
 
     def _validate_filename(self, filename: str) -> str:
@@ -62,10 +69,12 @@ class FileProcessingService:
                 msg = "File size exceeds the allowed limit."
                 raise FileProcessingError(msg)
 
+            from src.config.security_constants import FILE_READ_CHUNK_SIZE
+
             # Open with strict encoding to catch malformed characters
             with resolved_path.open(encoding="utf-8", errors="strict") as f:
                 # Keep streaming limits bounded per read to respect memory limits and prevent TOCTOU.
-                while chunk := f.read(1024 * 1024):  # 1MB chunks
+                while chunk := f.read(FILE_READ_CHUNK_SIZE):
                     chunk_byte_len = len(chunk.encode("utf-8", errors="strict"))
 
                     # Track exact memory consumption against limit BEFORE appending

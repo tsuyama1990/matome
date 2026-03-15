@@ -44,12 +44,13 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             251     43    83%   33-34, 36-37, 60, 62, 70-71, 79-80, 96, 110, 119-120, 148-149, 152-153, 164-166, 175, 195, 252-254, 258-259, 274-276, 290-291, 296, 314-315, 343-345, 369, 379, 394-396
+src/application/__init__.py             253     43    83%   33-34, 36-37, 60, 62, 70-71, 81-82, 98, 112, 121-122, 150-151, 156-157, 168-170, 179, 199, 256-258, 262-263, 278-280, 294-295, 300, 318-319, 347-349, 373, 383, 398-400
 src/application/di_container.py          63      9    86%   21-22, 36-37, 56-57, 76, 85-86
 src/application/pivot_workflow.py        47      0   100%
 src/application/sq3r_service.py          12      0   100%
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   45      7    84%   17-18, 42-43, 52-54
+src/config/security_constants.py          9      0   100%
 src/config/settings.py                   78     14    82%   23-24, 27, 30-31, 34-35, 49, 74-75, 155-156, 160-161
 src/domain_models/__init__.py             5      0   100%
 src/domain_models/config.py              31      4    87%   68-69, 72-73
@@ -59,10 +60,10 @@ src/domain_models/graph_state.py         33      0   100%
 src/domain_models/pivot.py               15      2    87%   27-28
 src/infrastructure/__init__.py            2      0   100%
 src/infrastructure/clustering.py         70     20    71%   15-16, 24-25, 30-31, 39, 55-63, 68-69, 97-99
-src/infrastructure/llm_gateway.py       168     55    67%   33-34, 41-42, 50-51, 56-57, 66-67, 73-74, 85-86, 93-97, 106-107, 114-115, 122-123, 136-137, 157-158, 161-162, 167-168, 172-173, 194-195, 200-201, 210-211, 226-227, 230-231, 263-266, 271-275, 277-279
+src/infrastructure/llm_gateway.py       171     55    68%   33-34, 43-44, 52-53, 58-59, 68-69, 75-76, 87-88, 95-99, 108-109, 116-117, 124-125, 140-141, 163-164, 167-168, 173-174, 178-179, 200-201, 206-207, 216-217, 232-233, 236-237, 269-272, 277-281, 283-285
 src/infrastructure/network.py            51      8    84%   51, 105-135
-src/infrastructure/openrouter.py         95     20    79%   53-54, 57-58, 66, 105, 112, 129-133, 139-144, 147, 164, 167
-src/infrastructure/test_services.py     196     47    76%   30-31, 73-74, 79-81, 83-85, 98-99, 104-107, 118-120, 142-145, 168, 180-181, 193, 196-200, 203-207, 222-223, 244-245, 254-255, 261, 268, 306-307
+src/infrastructure/openrouter.py         98     20    80%   55-56, 59-60, 68, 109, 118, 135-139, 145-150, 153, 170, 173
+src/infrastructure/test_services.py     201     49    76%   27-28, 37-38, 82-83, 88-90, 92-94, 107-108, 113-116, 127-129, 151-154, 177, 189-190, 202, 205-209, 212-216, 231-232, 253-254, 263-264, 270, 277, 315-316
 src/infrastructure/vector_store.py      120     64    47%   20-28, 37-42, 46-86, 92-121, 125, 138-139, 145-146, 176-177, 188-189
 src/interfaces/__init__.py                2      0   100%
 src/interfaces/api_router.py             83     23    72%   26-27, 42-44, 48-50, 61-63, 71-73, 84-85, 100-101, 118-120, 133-134
@@ -71,7 +72,7 @@ src/interfaces/dependencies.py          149     86    42%   75-76, 102-113, 117-
 src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1606    406    75%
-================== 89 passed, 4 warnings in 123.48s (0:02:03) ==================
+TOTAL                                  1628    408    75%
+================== 89 passed, 4 warnings in 113.46s (0:01:53) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

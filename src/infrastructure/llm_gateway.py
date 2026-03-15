@@ -37,7 +37,9 @@ class OpenRouterGateway:
         # Fernet tokens start with 'gAAAAA' and are URL-safe base64.
         import re
 
-        if not re.match(r"^gAAAAA[A-Za-z0-9\-_=]+$", encrypted_key):
+        from src.config.security_constants import FERNET_TOKEN_PATTERN
+
+        if not re.match(FERNET_TOKEN_PATTERN, encrypted_key):
             msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
             raise ValueError(msg)
 
@@ -132,7 +134,9 @@ class OpenRouterGateway:
         # Fernet tokens start with 'gAAAAA' and are URL-safe base64.
         import re
 
-        if not re.match(r"^gAAAAA[A-Za-z0-9\-_=]+$", encrypted_key):
+        from src.config.security_constants import FERNET_TOKEN_PATTERN
+
+        if not re.match(FERNET_TOKEN_PATTERN, encrypted_key):
             msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
             raise ValueError(msg)
 
@@ -153,17 +157,19 @@ class OpenRouterGateway:
 
     def _sanitize_prompt(self, prompt: str) -> str:
         """Sanitizes input prompt string using robust security validation."""
+        from src.config.security_constants import MAX_PROMPT_LENGTH, MAX_PROMPT_TOKENS
+
         if not prompt:
             msg = "Prompt cannot be empty."
             raise ValueError(msg)
 
-        if len(prompt) > 100000:
+        if len(prompt) > MAX_PROMPT_LENGTH:
             msg = "Prompt exceeds maximum allowed length."
             raise ValueError(msg)
 
         # Basic token approximation. Most models max out around 128k - 200k tokens. We use 25000 max.
         approx_tokens = len(prompt) / 4
-        if approx_tokens > 25000:
+        if approx_tokens > MAX_PROMPT_TOKENS:
             msg = "Prompt exceeds approximate token limits."
             raise ValueError(msg)
 

@@ -99,9 +99,6 @@ def test_nlp_service_malicious_input() -> None:
     service.tag_entities_and_axes([chunk])
 
 
-
-
-
 @pytest.mark.asyncio
 async def test_raptor_engine_cluster_chunks() -> None:
     from src.infrastructure.clustering import UMAPGMMClusteringStrategy

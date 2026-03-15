@@ -47,7 +47,9 @@ class OpenRouterClient(LLMProtocol):
         if client is not None:
             self._client = client
         else:
-            self._client = httpx.AsyncClient(timeout=30.0)
+            from src.config.security_constants import DEFAULT_LLM_TIMEOUT
+
+            self._client = httpx.AsyncClient(timeout=DEFAULT_LLM_TIMEOUT)
 
     def _handle_invalid_response(self) -> str:
         msg = "Invalid response format: 'choices' missing or empty."
@@ -90,11 +92,13 @@ class OpenRouterClient(LLMProtocol):
         }
 
         try:
+            from src.config.security_constants import DEFAULT_LLM_TIMEOUT
+
             response = await self._client.post(
                 self._base_url,
                 headers=headers,
                 json=payload,
-                timeout=30.0,
+                timeout=DEFAULT_LLM_TIMEOUT,
                 auth=OpenRouterAuth(self._api_key),
             )
             response.raise_for_status()
@@ -106,9 +110,11 @@ class OpenRouterClient(LLMProtocol):
 
             content = str(data["choices"][0]["message"]["content"])
 
+            from src.config.security_constants import MAX_CONTENT_LENGTH
+
             # Security: Validate the response content is reasonable and doesn't contain injected malicious instructions
             # or massive payloads that could cause downstream denial of service.
-            if len(content) > 100000:
+            if len(content) > MAX_CONTENT_LENGTH:
                 self._handle_massive_payload()
 
             import bleach
