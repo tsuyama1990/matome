@@ -132,6 +132,9 @@ async def pivot_document(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
+        # Check if the exception name indicates a specific domain error that should be a 400
+        if "PivotGenerationError" in type(e).__name__:
+            raise HTTPException(status_code=400, detail=str(e)) from e
         raise HTTPException(status_code=500, detail=str(e)) from e
     else:
         return result

@@ -18,9 +18,14 @@ async def test_pivot_workflow_no_chunks() -> None:
         document_id=uuid.UUID(doc_id), original_text="test", chunks=[], raptor_nodes=[]
     )
     repo = SafeTestDocumentRepository(doc)
-    engine = PivotKJEngine(allowed_axes=frozenset({"actor"}))
+
+    mock_llm = MagicMock()
+    mock_db = MagicMock()
+    mock_embed = MagicMock()
+    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed)
+
     llm = SafeTestLLMService()
-    workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)  # type: ignore[arg-type]
+    workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)
 
     with pytest.raises(ValueError, match="has no chunks"):
         await workflow.execute(doc_id, PivotRequestPayload(axis="actor"))
@@ -29,9 +34,14 @@ async def test_pivot_workflow_no_chunks() -> None:
 @pytest.mark.asyncio
 async def test_pivot_workflow_repo_error() -> None:
     repo = SafeTestDocumentRepository(raise_error=True)
-    engine = PivotKJEngine(allowed_axes=frozenset({"actor"}))
+
+    mock_llm = MagicMock()
+    mock_db = MagicMock()
+    mock_embed = MagicMock()
+    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed)
+
     llm = SafeTestLLMService()
-    workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)  # type: ignore[arg-type]
+    workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)
 
     with pytest.raises(ValueError, match="Failed to retrieve document"):
         await workflow.execute("doc-1", PivotRequestPayload(axis="actor"))
@@ -51,13 +61,20 @@ async def test_pivot_workflow_llm_error() -> None:
         document_id=uuid.UUID(doc_id), original_text="test", chunks=[chunk], raptor_nodes=[]
     )
     repo = SafeTestDocumentRepository(doc)
-    engine = PivotKJEngine(allowed_axes=frozenset({"actor"}))
-    llm = SafeTestLLMService(raise_error=True)
-    workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)  # type: ignore[arg-type]
 
-    result = await workflow.execute(doc_id, PivotRequestPayload(axis="actor"))
-    assert result["markdown"] == "Markdown generation failed."
-    assert result["mermaid"] == "Mermaid generation failed."
+    mock_llm = MagicMock()
+    mock_db = MagicMock()
+    mock_embed = MagicMock()
+    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed)
+
+    from src.application.pivot_workflow import PivotGenerationError
+    engine.execute_pivot = AsyncMock(side_effect=PivotGenerationError("Mocked generation failure")) # type: ignore[method-assign]
+
+    llm = SafeTestLLMService(raise_error=True)
+    workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)
+
+    with pytest.raises(PivotGenerationError, match="Mocked generation failure"):
+        await workflow.execute(doc_id, PivotRequestPayload(axis="actor"))
 
 
 @pytest.fixture

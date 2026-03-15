@@ -82,10 +82,9 @@ class FileProcessingService:
             import mimetypes
 
             mime_type, _ = mimetypes.guess_type(resolved_path.name)
-            if not resolved_path.name.endswith(".safe"):
-                if not mime_type or not mime_type.startswith("text/"):
-                    msg = "Invalid file type. Only text files are permitted."
-                    raise FileProcessingError(msg)
+            if not resolved_path.name.endswith(".safe") and (not mime_type or not mime_type.startswith("text/")):
+                msg = "Invalid file type. Only text files are permitted."
+                raise FileProcessingError(msg)
 
             # Open with strict encoding to catch malformed characters
             with resolved_path.open(encoding="utf-8", errors="strict") as f:
@@ -305,7 +304,7 @@ class SafeTestDocumentRepository:
 
         if not isinstance(self.doc, EnrichedDocument):
             msg = "Database returned malformed document structure."
-            raise ValueError(msg)
+            raise TypeError(msg)
 
         return self.doc
 

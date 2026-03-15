@@ -4,7 +4,7 @@ import typing
 import uuid
 
 if typing.TYPE_CHECKING:
-    from src.application import PivotKJEngine
+    pass
 
 
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -119,10 +119,15 @@ class ExportService:
 
     def generate_markdown(self, state: PivotState) -> str:
         """Converts the PivotState into a Markdown document."""
+        if not state.nodes:
+            return f"# {state.axis_name}\n\nNo structured concepts were found for this axis."
+
         lines = [f"# {state.axis_name}"]
         lines.append("")
 
         for node in state.nodes:
+            if not node:
+                continue
             lines.append(f"## {node.label}")
             lines.append(node.summary)
             lines.append("")
@@ -136,7 +141,7 @@ class PivotWorkflow:
     def __init__(
         self,
         repository: DocumentRepositoryProtocol,
-        pivot_engine: "PivotKJEngine",
+        pivot_engine: PivotEngine,
         llm: LLMProtocol,
     ) -> None:
         self._repository = repository
@@ -158,14 +163,14 @@ class PivotWorkflow:
             msg = f"Document {document_id} has no chunks."
             raise ValueError(msg)
 
-        clusters = self._pivot_engine.pivot(document.chunks, payload.axis)
+        # 1. Reconstruct knowledge via Pivot Engine
+        pivot_state = await self._pivot_engine.execute_pivot(document, payload.axis)
 
-        # Serialize clusters for the prompt
+        # 2. Serialize clusters for the prompt based on PivotState
         cluster_text = ""
-        for cluster_name, chunks in clusters.items():
-            cluster_text += f"\n## Cluster: {cluster_name}\n"
-            for chunk in chunks:
-                cluster_text += f"- {chunk.content}\n"
+        for node in pivot_state.nodes:
+            cluster_text += f"\n## Cluster: {node.label}\n"
+            cluster_text += f"Summary: {node.summary}\n"
 
         markdown_prompt = (
             "You are a system architect. Based on the following clustered requirements, "
@@ -205,8 +210,10 @@ class PivotWorkflow:
             )
 
         serialized_clusters = {}
-        for key, value in clusters.items():
-            serialized_clusters[key] = [{"id": str(c.id), "content": c.content} for c in value]
+        for node in pivot_state.nodes:
+            # We don't have the original chunk content directly on the node without mapping back to document.chunks
+            # But we can serialize the source_chunk_ids
+            serialized_clusters[node.label] = [{"id": str(chunk_id)} for chunk_id in node.source_chunk_ids]
 
         return {
             "markdown": markdown,

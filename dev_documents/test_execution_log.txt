@@ -7,7 +7,7 @@ asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None,
 collected 110 items
 
 tests/e2e/test_api.py .....                                              [  4%]
-tests/e2e/test_pivot_api.py ..                                           [  6%]
+tests/e2e/test_pivot_api.py EE                                           [  6%]
 tests/e2e/test_uat.py .........                                          [ 14%]
 tests/e2e/test_uat_04_raptor.py ...                                      [ 17%]
 tests/integration/test_di_integration.py ..                              [ 19%]
@@ -28,6 +28,27 @@ tests/unit/test_security_errors.py ..                                    [ 93%]
 tests/unit/test_services.py ......                                       [ 99%]
 tests/unit/test_vector_store.py .                                        [100%]
 
+==================================== ERRORS ====================================
+___________________ ERROR at setup of test_pivot_valid_axis ____________________
+
+    @pytest.fixture
+    def pivot_client() -> Generator[TestClient, None, None]:
+        container = DIContainer()
+>       container.register_singleton(LLMProtocol, MockE2EPivotLLM())  # type: ignore[type-abstract]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DIContainer' object has no attribute 'register_singleton'
+
+tests/e2e/test_pivot_api.py:49: AttributeError
+__________________ ERROR at setup of test_pivot_invalid_axis ___________________
+
+    @pytest.fixture
+    def pivot_client() -> Generator[TestClient, None, None]:
+        container = DIContainer()
+>       container.register_singleton(LLMProtocol, MockE2EPivotLLM())  # type: ignore[type-abstract]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'DIContainer' object has no attribute 'register_singleton'
+
+tests/e2e/test_pivot_api.py:49: AttributeError
 =============================== warnings summary ===============================
 tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
 tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
@@ -48,7 +69,7 @@ Name                                  Stmts   Miss  Cover   Missing
 src/__init__.py                           0      0   100%
 src/application/__init__.py             166     31    81%   46-47, 49-50, 58, 60, 68-69, 77-78, 94, 108, 117-118, 135-136, 141, 159-160, 206, 216, 219-229
 src/application/di_container.py          63      9    86%   21-22, 36-37, 56-57, 76, 85-86
-src/application/pivot_workflow.py       107     14    87%   48-50, 53, 56-57, 103-110
+src/application/pivot_workflow.py       110     39    65%   48-50, 53, 56-57, 103-110, 123, 130, 170-218
 src/application/raptor_engine.py         53      9    83%   37-38, 41-42, 52-54, 73, 83
 src/application/sq3r_service.py          39      8    79%   28-30, 38-39, 56-58
 src/config/__init__.py                    3      0   100%
@@ -65,16 +86,19 @@ src/infrastructure/clustering.py        110     33    70%   34-35, 77-79, 87-88,
 src/infrastructure/llm_gateway.py       170     53    69%   41-42, 50-51, 56-57, 66-67, 73-74, 85-86, 93-97, 113-114, 116-117, 120-121, 139-140, 143-144, 149-150, 154-155, 176-177, 182-183, 192-193, 208-209, 212-213, 230-231, 268-271, 276-280, 282-284
 src/infrastructure/network.py            51      8    84%   51, 105-135
 src/infrastructure/openrouter.py        102     20    80%   48-49, 52-53, 61, 108, 115, 124, 141-146, 152-156, 159, 176, 179
-src/infrastructure/test_services.py     244     60    75%   25-26, 36-37, 55-56, 86-88, 98-99, 104-106, 108-110, 123-124, 129-132, 143-145, 167-170, 204, 212, 234, 237-241, 244-248, 263-264, 293-294, 301-302, 307-308, 331-332, 341-342, 348, 355, 358, 396-397
+src/infrastructure/test_services.py     243     61    75%   25-26, 36-37, 55-56, 86-87, 97-98, 103-105, 107-109, 122-123, 128-131, 142-144, 166-169, 203, 211, 214, 219, 233, 236-240, 243-247, 262-263, 292-293, 300-301, 306-307, 330-331, 340-341, 347, 354, 357, 395-396
 src/infrastructure/vector_store.py      120     64    47%   20-28, 37-42, 46-86, 92-121, 125, 138-139, 145-146, 176-177, 188-189
 src/interfaces/__init__.py                2      0   100%
-src/interfaces/api_router.py             84     23    73%   26-27, 42-44, 48-50, 62-64, 72-74, 85-86, 101-102, 119-121, 134-135
+src/interfaces/api_router.py             86     32    63%   26-27, 42-44, 48-50, 62-64, 72-74, 85-86, 101-102, 117-121, 130-140
 src/interfaces/clustering.py              6      0   100%
-src/interfaces/dependencies.py          215    135    37%   89-90, 116-127, 131-167, 171-177, 181-188, 196-199, 202, 218-246, 260-276, 280-285, 289-325, 329-363, 368-384
+src/interfaces/dependencies.py          214    147    31%   89-90, 116-127, 131-167, 171-177, 181-188, 192-212, 216-244, 258-274, 278-283, 287-323, 327-361, 366-382
 src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1897    497    74%
-================= 110 passed, 4 warnings in 128.74s (0:02:08) ==================
+TOTAL                                  1900    544    71%
+=========================== short test summary info ============================
+ERROR tests/e2e/test_pivot_api.py::test_pivot_valid_axis - AttributeError: 'D...
+ERROR tests/e2e/test_pivot_api.py::test_pivot_invalid_axis - AttributeError: ...
+============ 108 passed, 4 warnings, 2 errors in 111.67s (0:01:51) =============
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

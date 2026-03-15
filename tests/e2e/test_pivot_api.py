@@ -5,10 +5,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.application import PivotKJEngine
+from src.application.pivot_workflow import PivotEngine, ExportService
 from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
 from src.interfaces.api_router import router
-from src.interfaces.dependencies import DIContainer, LLMProtocol
+from src.interfaces.dependencies import DIContainer, LLMProtocol, VectorDBProtocol, EmbeddingProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
 
 app = FastAPI()
@@ -46,14 +46,38 @@ class MockE2EPivotRepository(DocumentRepositoryProtocol):
 @pytest.fixture
 def pivot_client() -> Generator[TestClient, None, None]:
     container = DIContainer()
-    container.register(LLMProtocol, MockE2EPivotLLM)  # type: ignore[type-abstract]
-    container.register(DocumentRepositoryProtocol, MockE2EPivotRepository)  # type: ignore[type-abstract]
+    container.register_singleton(LLMProtocol, MockE2EPivotLLM())  # type: ignore[type-abstract]
+    container.register_singleton(DocumentRepositoryProtocol, MockE2EPivotRepository())  # type: ignore[type-abstract]
 
-    # We must also register PivotKJEngine for the API
-    def test_pivot_factory() -> PivotKJEngine:
-        return PivotKJEngine(allowed_axes=frozenset({"actor", "time", "entities"}))
+    # We must also register PivotEngine for the API
+    def test_pivot_factory() -> PivotEngine:
+        from unittest.mock import AsyncMock, MagicMock
+        from src.domain_models.pivot import PivotState, PivotNode
+        mock_db = MagicMock(spec=VectorDBProtocol)
+        mock_embed = MagicMock(spec=EmbeddingProtocol)
+        mock_engine = MagicMock(spec=PivotEngine)
 
-    container.register(PivotKJEngine, test_pivot_factory)
+        chunk_id = uuid.uuid4()
+        mock_state = PivotState(
+            original_document_id=uuid.uuid4(),
+            axis_name="actor",
+            nodes=[PivotNode(node_id="1", label="Actor", summary="Actor test", source_chunk_ids=[chunk_id])]
+        )
+        mock_engine.execute_pivot = AsyncMock(return_value=mock_state) # type: ignore[method-assign]
+
+        # In actual pivot_workflow execute uses payload.axis which triggers the validation and logic
+        # For the invalid axis test, we should mock the exception thrown if it's invalid_axis
+        async def mock_execute(document, axis):
+            if axis == "invalid_axis":
+                from src.application.pivot_workflow import PivotGenerationError
+                raise PivotGenerationError("Invalid axis")
+            return mock_state
+
+        mock_engine.execute_pivot.side_effect = mock_execute
+        return mock_engine
+
+    container.register_singleton(PivotEngine, test_pivot_factory())
+    container.register_singleton(ExportService, ExportService())
 
     from src.interfaces.dependencies import register_pivot_workflow
 

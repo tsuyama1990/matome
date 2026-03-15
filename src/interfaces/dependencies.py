@@ -202,12 +202,10 @@ def register_pivot_workflow(container: DIContainer) -> None:
         return ExportService()
 
     def pivot_workflow_factory() -> PivotWorkflow:
-        from src.application import PivotKJEngine
-
         repository = container.resolve(DocumentRepositoryProtocol)  # type: ignore[type-abstract]
-        pivot_engine_old = container.resolve(PivotKJEngine)
+        pivot_engine_new = container.resolve(PivotEngine)
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
-        return PivotWorkflow(repository=repository, pivot_engine=pivot_engine_old, llm=llm)
+        return PivotWorkflow(repository=repository, pivot_engine=pivot_engine_new, llm=llm)
 
     container.register(PivotEngine, pivot_engine_factory)
     container.register(ExportService, export_service_factory)
