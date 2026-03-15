@@ -1,6 +1,4 @@
-"""
-End-to-End tests mapping to the entire user journey.
-"""
+"""End-to-End tests mapping to the entire user journey."""
 
 import uuid
 
@@ -8,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from src.application import IngestionPipeline, PivotKJEngine, RaptorEngine, SQ3REngine
-from src.domain_models import ChunkMetadata, SemanticChunk
+from src.domain_models import ChunkMetadata, LearningProgress, RaptorNode, SemanticChunk
 from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 from src.infrastructure.test_services import (
     DummyEmbeddingService,
@@ -16,6 +14,7 @@ from src.infrastructure.test_services import (
     SafeTestLLMService,
     SimpleParsingService,
 )
+from src.interfaces.dependencies import LLMProtocol
 
 
 class MockE2ELLM:
@@ -79,8 +78,8 @@ async def test_uat_01_quick_start() -> None:
     assert "what is" in question.lower()
 
     # 3. Active Recall (Recite)
-    feedback = await sq3r.evaluate_answer("I think it is 5000.", target_node)
-    assert "Good job" in feedback
+    feedback = await sq3r.evaluate_answer(target_node, "I think it is 5000.")
+    assert feedback is False
 
     # 4. Transformation (Pivot KJ)
     pivot_engine = PivotKJEngine(allowed_axes=frozenset({"actor", "time", "entities"}))
@@ -230,3 +229,91 @@ async def test_uat_03_03_strict_domain_validation_enforcement() -> None:
     assert "Embedding length 3 is invalid" in str(excinfo.value)
     # The validation originates from SemanticChunk
     assert "SemanticChunk" in str(excinfo.traceback) or "SemanticChunk" in str(excinfo)
+
+
+class PromptSpyLLMService(LLMProtocol):
+    def __init__(self, return_text: str) -> None:
+        self.return_text = return_text
+        self.received_prompt = ""
+
+    async def generate(self, prompt: str, **kwargs: str) -> str:
+        self.received_prompt = prompt
+        return self.return_text
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        self.received_prompt = prompt
+        return self.return_text
+
+
+class MockEvaluationLLMService(LLMProtocol):
+    def __init__(self) -> None:
+        self.next_response = "YES"
+
+    def set_next_response(self, response: str) -> None:
+        self.next_response = response
+
+    async def generate(self, prompt: str, **kwargs: str) -> str:
+        return self.next_response
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        return self.next_response
+
+
+@pytest.mark.asyncio
+async def test_uat_05_01_contextual_question_generation() -> None:
+    """
+    Scenario ID: UAT-05-01
+    Description: Verifies that the application can take a locked section of the document tree
+    and prompt the AI to generate a relevant question, ensuring prompt construction includes
+    necessary context and difficulty parameters.
+    """
+    spy_service = PromptSpyLLMService("Generated Question")
+    engine = SQ3REngine(llm=spy_service)
+
+    node = RaptorNode(
+        node_id="node_1",
+        level=0,
+        summarized_content="The capital of France is Paris, known for the Eiffel Tower.",
+    )
+
+    await engine.generate_question(node, difficulty="factual")
+
+    # Prove the engine successfully parameterized the AI request
+    assert (
+        "The capital of France is Paris, known for the Eiffel Tower." in spy_service.received_prompt
+    )
+    assert "factual" in spy_service.received_prompt
+
+
+@pytest.mark.asyncio
+async def test_uat_05_02_ai_answer_evaluation_and_node_unlocking() -> None:
+    """
+    Scenario ID: UAT-05-02
+    Description: Tests the critical evaluation loop. Simulates a user submitting an answer
+    and verifies that only a "correct" evaluation results in the node being unlocked.
+    """
+    mock_service = MockEvaluationLLMService()
+    engine = SQ3REngine(llm=mock_service)
+
+    progress = LearningProgress(document_id=uuid.uuid4())
+    node = RaptorNode(
+        node_id="node_123", level=0, summarized_content="The capital of France is Paris."
+    )
+
+    # Initially locked
+    assert "node_123" not in progress.unlocked_node_ids
+
+    # User submits bad answer "London", mock service returns "NO"
+    mock_service.set_next_response("NO")
+    result_fail = await engine.evaluate_answer(node, "London")
+    assert result_fail is False
+    assert "node_123" not in progress.unlocked_node_ids
+
+    # User submits good answer "Paris", mock service returns "YES"
+    mock_service.set_next_response("YES")
+    result_pass = await engine.evaluate_answer(node, "Paris")
+    assert result_pass is True
+
+    # System processes successful result and unlocks node
+    engine.unlock_node(progress, "node_123")
+    assert "node_123" in progress.unlocked_node_ids

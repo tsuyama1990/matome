@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_core.core_schema import ValidationInfo
 
 from src.application.pivot_workflow import PivotWorkflow
-from src.application.sq3r_service import SQ3RService
+from src.application.sq3r_service import SQ3REngine, SQ3RService
 from src.domain_models.pivot import PivotRequestPayload
 from src.interfaces.dependencies import DIContainer, LLMProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
@@ -57,7 +57,8 @@ def get_sq3r_service(
 ) -> SQ3RService:
     try:
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
-        return SQ3RService(llm=llm)
+        engine = SQ3REngine(llm=llm)
+        return SQ3RService(engine=engine)
     except Exception as e:
         msg = "LLM not configured."
         raise HTTPException(status_code=500, detail=msg) from e

@@ -19,6 +19,11 @@ class MockLLM(LLMProtocol):
             return "What is the capital of France?"
         return "Good job. You are correct. Keep it up!"
 
+    async def generate_text(self, prompt: str, model: str) -> str:
+        if "generate a single, thought-provoking question" in prompt:
+            return "What is the capital of France?"
+        return "YES. Good job. You are correct. Keep it up!"
+
 
 class MockRepository(DocumentRepositoryProtocol):
     def get_node_by_id(self, node_id: str) -> RaptorNode:

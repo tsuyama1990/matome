@@ -10,8 +10,9 @@ import bleach
 
 from src.application.pivot_workflow import PivotWorkflow
 from src.application.raptor_engine import RaptorEngine
-from src.domain_models import ChunkMetadata, EnrichedDocument, RaptorNode, SemanticChunk
-from src.domain_models.exceptions import NLPModelLoadError, ProcessingError
+from src.application.sq3r_service import SQ3REngine
+from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
+from src.domain_models.exceptions import NLPModelLoadError
 from src.interfaces.clustering import PivotEngineProtocol
 from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, TextParserProtocol
 
@@ -61,8 +62,9 @@ class NLPService:
 
     def _validate_and_sanitize(self, content: str) -> str:
         """Isolates the validation logic to keep complexity low."""
+        import unicodedata
 
-        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", content):
+        if any(unicodedata.category(c).startswith('C') for c in content):
             msg = "Content contains forbidden control characters."
             raise ValueError(msg)
 
@@ -117,54 +119,6 @@ class NLPService:
 
             chunk.metadata.extracted_entities = list(set(extracted_entities[: self.max_entities]))
             chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
-
-
-class SQ3REngine:
-    """
-    Engine for interactive Question and Recite features in the SQ3R loop.
-    Generates questions to unlock nodes, and evaluates user recited summaries.
-    """
-
-    def __init__(self, llm: LLMProtocol) -> None:
-        self._llm = llm
-
-    async def generate_question(self, node: RaptorNode) -> str:
-        """Generates a contextual question based on the node's hidden summary."""
-        prompt = (
-            "Based on the following summary, generate a single, thought-provoking question "
-            "that tests the reader's understanding of the core concept. The question should "
-            "not directly reveal the answer.\n\n"
-            f"Summary: {node.summarized_content}\n\n"
-            "Question:"
-        )
-        try:
-            question = await self._llm.generate(prompt)
-            return question.strip()
-        except Exception as e:
-            msg = "Failed to generate question."
-            raise ProcessingError(msg) from e
-
-    async def evaluate_answer(self, user_answer: str, node: RaptorNode) -> str:
-        if len(user_answer) > 10000:
-            msg = "Answer too long"
-            raise ValueError(msg)
-        """Evaluates the user's answer against the node's summary, providing 'Sandwich Feedback'."""
-        prompt = (
-            "You are an AI tutor. A student has just read the following summary and provided an answer "
-            "to a question about it. Provide 'Sandwich Feedback': "
-            "1. Praise their effort.\n"
-            "2. Gently correct any errors or hallucinations.\n"
-            "3. Praise their overall structure and encourage them.\n\n"
-            f"Original Summary: {node.summarized_content}\n"
-            f"Student Answer: {user_answer}\n\n"
-            "Feedback:"
-        )
-        try:
-            feedback = await self._llm.generate(prompt)
-            return feedback.strip()
-        except Exception as e:
-            msg = "Failed to evaluate answer."
-            raise ProcessingError(msg) from e
 
 
 class PivotKJEngine(PivotEngineProtocol):
