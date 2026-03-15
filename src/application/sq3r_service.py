@@ -63,8 +63,8 @@ class SQ3REngine:
         return progress
 
 class SQ3RService:
-    def __init__(self, llm: LLMProtocol) -> None:
-        self.engine = SQ3REngine(llm=llm)
+    def __init__(self, engine: SQ3REngine) -> None:
+        self.engine = engine
 
     async def get_question(self, node: RaptorNode) -> str:
         return await self.engine.generate_question(node)
