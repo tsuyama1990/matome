@@ -8,7 +8,8 @@ from typing import Any
 import bleach
 
 from src.application.pivot_workflow import PivotWorkflow
-from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
+from src.application.raptor_engine import RaptorEngine
+from src.domain_models import ChunkMetadata, EnrichedDocument, RaptorNode, SemanticChunk
 from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
 from src.interfaces.clustering import ClusteringStrategy
 from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, TextParserProtocol
@@ -343,6 +344,7 @@ class IngestionPipeline:
         self._llm = llm
         self._embedding = embedding
         self._text_parser = text_parser
+        self._raptor_engine = RaptorEngine(llm=llm)
         try:
             import spacy
 
@@ -453,6 +455,23 @@ class IngestionPipeline:
 
         return semantic_chunks  # type: ignore[return-value]
 
+    async def build_enriched_document(self, file_content: bytes, filename: str) -> EnrichedDocument:
+        """
+        Processes the document into chunks and then builds the RAPTOR tree,
+        returning the fully populated EnrichedDocument.
+        """
+        chunks = await self.process_document(file_content, filename)
+        nodes = await self._raptor_engine.build_tree(chunks)
+
+        from src.domain_models.document import DocumentFactory
+
+        return DocumentFactory.create(
+            document_id=uuid.uuid4(),
+            original_text=filename,  # In a full flow, you might preserve original_text from text parser
+            chunks=chunks,
+            raptor_nodes=nodes,
+        )
+
 
 __all__ = [
     "IngestionPipeline",
@@ -461,5 +480,6 @@ __all__ = [
     "PivotKJEngine",
     "PivotWorkflow",
     "RAPTOREngine",
+    "RaptorEngine",
     "SQ3REngine",
 ]
