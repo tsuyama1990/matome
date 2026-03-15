@@ -88,6 +88,36 @@ class DIContainer:
                 if not is_scoped:
                     self._singletons[interface] = instance
 
-            return cast(T, instance)
+            return instance
         finally:
             resolving.remove(interface)
+
+    def close(self) -> None:
+        """Properly shuts down and disposes of all singleton instances to prevent memory leaks."""
+        with self._lock:
+            for instance in self._singletons.values():
+                try:
+                    if hasattr(instance, "close") and callable(instance.close):
+                        instance.close()
+                except Exception:  # noqa: S110
+                    pass
+            self._singletons.clear()
+
+    async def aclose(self) -> None:
+        """Asynchronously shuts down all singleton instances, handling async closures."""
+        import inspect
+
+        with self._lock:
+            instances = list(self._singletons.values())
+            self._singletons.clear()
+
+        for instance in instances:
+            try:
+                if hasattr(instance, "aclose") and callable(instance.aclose):
+                    res = instance.aclose()
+                    if inspect.isawaitable(res):
+                        await res
+                elif hasattr(instance, "close") and callable(instance.close):
+                    instance.close()
+            except Exception:  # noqa: S110
+                pass

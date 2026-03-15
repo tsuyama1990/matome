@@ -1,3 +1,5 @@
+import asyncio
+import json
 import logging
 import uuid
 from collections import defaultdict
@@ -6,10 +8,10 @@ from typing import Any
 import bleach
 
 from src.application.pivot_workflow import PivotWorkflow
-from src.domain_models import RaptorNode, SemanticChunk
+from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
 from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
 from src.interfaces.clustering import ClusteringStrategy
-from src.interfaces.dependencies import LLMProtocol
+from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, TextParserProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -64,18 +66,28 @@ class NLPService:
         """Isolates the validation logic to keep complexity low."""
         import re
 
-        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", content):
+        if re.search(r"[\x00-\x1F\x7F-\x9F]", content):
             msg = "Content contains forbidden control characters."
             raise ValueError(msg)
 
-        # Secure whitelist approach: Only allow printable characters, newlines, and standard punctuation.
-        # This implicitly blocks complex semantic injection payloads without brittle regex blocklists.
-        # We allow standard word characters, whitespace, and basic punctuation.
-        if not re.match(r"^[\w\s\.,;:!?\-\(\)\[\]\{\}\'\"\$£€]+$", content, re.UNICODE):
-            msg = "Content rejected due to semantic injection patterns."
+        import html
+
+        # Use strict HTML/script sanitization with Bleach instead of brittle regex whitelists
+        # that break on multi-language content and allow logic injections.
+        # Also strictly escape the result to completely neutralize any XSS tags escaping bleach.
+        sanitized = bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
+        sanitized = html.escape(sanitized, quote=True)
+
+        # Enforce basic constraints
+        from src.config.settings import AppConfig
+
+        max_content_length = AppConfig().max_content_length
+
+        if len(sanitized) > max_content_length:
+            msg = "Content exceeds maximum length."
             raise ValueError(msg)
 
-        return bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
+        return sanitized
 
     def tag_entities_and_axes(self, chunks: list[SemanticChunk]) -> None:
         """
@@ -144,7 +156,11 @@ class RAPTOREngine:
             msg = "Texts cannot be empty or contain only whitespace."
             raise ValueError(msg)
 
-        if any(len(t) > 100000 for t in texts):
+        from src.config.settings import AppConfig
+
+        max_content_length = AppConfig().max_content_length
+
+        if any(len(t) > max_content_length for t in texts):
             msg = "Text chunk too large."
             raise ValueError(msg)
 
@@ -316,7 +332,134 @@ class PivotKJEngine:
         return dict(clusters)
 
 
+class IngestionPipeline:
+    """
+    Orchestrates the document ingestion process: parsing, chunking, embedding,
+    entity extraction, and mapping to the domain model format.
+    """
+
+    def __init__(
+        self,
+        llm: LLMProtocol,
+        embedding: EmbeddingProtocol,
+        text_parser: TextParserProtocol,
+    ) -> None:
+        self._llm = llm
+        self._embedding = embedding
+        self._text_parser = text_parser
+        try:
+            import spacy
+
+            # Use the lightweight model for robust sentence splitting in the pipeline
+            self._nlp = spacy.load("en_core_web_sm")
+        except (ImportError, OSError):
+            self._nlp = None  # type: ignore[assignment]
+            logger.warning(
+                "Spacy model 'en_core_web_sm' not found. Falling back to simple chunking."
+            )
+
+    async def _extract_entities_and_tags(self, text: str) -> dict[str, Any]:
+        """Calls the LLM to extract metadata tags (entities, time axis)."""
+        prompt = (
+            "Analyze the following text. Extract proper nouns (entities) and "
+            "categorize the text along the time axis (Past, Present, or Future). "
+            "Respond ONLY with a valid JSON object in the following exact format:\n"
+            '{"entities": ["Entity1", "Entity2"], "time_axis": "Present"}\n\n'
+            f"Text:\n{text}"
+        )
+        try:
+            # We assume a text_fast_model for these metadata extractions
+            response_text = await self._llm.generate_text(prompt, model="google/gemini-2.5-flash")
+            # Parse the JSON string
+            # LLMs sometimes wrap json in markdown block
+            response_text = response_text.replace("```json", "").replace("```", "").strip()
+            data = json.loads(response_text)
+
+            entities = data.get("entities", [])
+            time_axis = data.get("time_axis", "Present")
+            if not isinstance(entities, list):
+                entities = []
+
+            return {"entities": [str(e) for e in entities], "time_axis": str(time_axis)}
+        except Exception as e:
+            logger.warning(f"Failed to extract metadata from chunk: {e}")
+            return {"entities": [], "time_axis": None}
+
+    def _chunk_text(self, text: str) -> list[str]:
+        """Chunks text semantically if spacy is available, else naively."""
+        if not text:
+            return []
+
+        if self._nlp:
+            doc = self._nlp(text)
+            sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
+            # A basic semantic chunker: group up to 5 sentences together to maintain some context
+            chunks = []
+            current_chunk = []
+            for i, sent in enumerate(sentences):
+                current_chunk.append(sent)
+                if len(current_chunk) >= 5 or i == len(sentences) - 1:
+                    chunks.append(" ".join(current_chunk))
+                    current_chunk = []
+            return chunks
+        # Fallback simple logic
+        import re
+
+        return [c.strip() for c in re.split(r"(?<=[.!?])\s+", text) if c.strip()]
+
+    async def _process_single_chunk(self, text: str, filename: str) -> SemanticChunk:
+        """Processes a single text chunk: embedding, metadata extraction, validation."""
+        embed_task = self._embedding.embed_text(text)
+        metadata_task = self._extract_entities_and_tags(text)
+
+        embedding_vector, metadata_dict = await asyncio.gather(embed_task, metadata_task)
+
+        metadata = ChunkMetadata(
+            source_file=filename,
+            extracted_entities=metadata_dict["entities"],
+            time_axis=metadata_dict["time_axis"],
+        )
+
+        return SemanticChunk(
+            id=uuid.uuid4(), content=text, embedding=embedding_vector, metadata=metadata
+        )
+
+    async def process_document(self, file_content: bytes, filename: str) -> list[SemanticChunk]:
+        """
+        Main pipeline to parse the document, chunk it, embed it, extract tags,
+        and validate it all against the domain model rules.
+        """
+        parsed_text = await self._text_parser.parse(file_content, filename)
+
+        raw_chunks = self._chunk_text(parsed_text)
+
+        semantic_chunks = []
+        # Process sequentially to not overwhelm limits in this cycle
+        # although gather could be used, processing chunks requires care for rate limits.
+        # But wait, FR-1.2 says concurrently (using asyncio.gather). I will use it for chunks.
+        tasks = [self._process_single_chunk(text, filename) for text in raw_chunks]
+
+        # We can gather them
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"Chunk processing failed: {result}")
+                # We can either fail the whole process or continue.
+                # Let's fail if anything raises to maintain strict domain validation for UAT-03-03
+                raise result
+            semantic_chunks.append(result)
+
+        # Additionally, validate that all chunk embeddings are consistent
+        from src.domain_models.document import DocumentValidator
+
+        DocumentValidator.validate_embedding_consistency(semantic_chunks)  # type: ignore[arg-type]
+
+        return semantic_chunks  # type: ignore[return-value]
+
+
 __all__ = [
+    "IngestionPipeline",
     "NLPModelLoadError",
     "NLPService",
     "PivotKJEngine",

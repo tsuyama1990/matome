@@ -13,6 +13,8 @@ class LLMProtocol(Protocol):
 
     async def generate(self, prompt: str) -> str: ...
 
+    async def generate_text(self, prompt: str, model: str) -> str: ...
+
 
 @runtime_checkable
 class VectorStoreProtocol(Protocol):
@@ -25,6 +27,20 @@ class VectorStoreProtocol(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+@runtime_checkable
+class EmbeddingProtocol(Protocol):
+    """Protocol for generating vector embeddings."""
+
+    async def embed_text(self, text: str) -> list[float]: ...
+
+
+@runtime_checkable
+class TextParserProtocol(Protocol):
+    """Protocol for extracting raw string content from various document formats."""
+
+    async def parse(self, file_content: bytes, filename: str) -> str: ...
+
+
 T = TypeVar("T")
 
 
@@ -35,7 +51,12 @@ class DIContainer:
         self._factories: dict[type[Any], Callable[[], Any]] = {}
         self._singletons: dict[type[Any], Any] = {}
         self._lock = threading.RLock()
-        self._resolving: set[type[Any]] = set()
+        self._local = threading.local()
+
+    def _get_resolving_set(self) -> set[type[Any]]:
+        if not hasattr(self._local, "resolving"):
+            self._local.resolving = set()
+        return self._local.resolving  # type: ignore[no-any-return]
 
     def register(self, interface: type[T], factory: Callable[[], T]) -> None:
         """Registers a factory function for an interface."""
@@ -48,7 +69,9 @@ class DIContainer:
             if interface in self._singletons:
                 return self._singletons[interface]  # type: ignore[no-any-return]
 
-            if interface in self._resolving:
+            resolving = self._get_resolving_set()
+
+            if interface in resolving:
                 msg = f"Circular dependency detected while resolving: {interface}"
                 raise RuntimeError(msg)
 
@@ -56,22 +79,52 @@ class DIContainer:
                 msg = f"Dependency not registered: {interface}"
                 raise RuntimeError(msg)
 
-            self._resolving.add(interface)
+            resolving.add(interface)
             try:
                 # We do not hold the lock during factory instantiation to avoid deadlocks
                 # if factory also calls resolve. But wait, if factory calls resolve, it re-enters.
                 # Re-entrant locks or maintaining tracking thread-locally is better,
-                # but for this scale, simply tracking during the single pass is fine.
+                # but for this scale, simply tracking during the single pass
                 instance = self._factories[interface]()
                 self._singletons[interface] = instance
                 return instance  # type: ignore[no-any-return]
             finally:
-                self._resolving.remove(interface)
+                resolving.remove(interface)
 
     def load_dynamic_class(self, module_path: str, class_name: str) -> type[Any]:
         """Dynamically loads a class from a module."""
         module = importlib.import_module(module_path)
         return getattr(module, class_name)  # type: ignore[no-any-return]
+
+    def close(self) -> None:
+        """Properly shuts down and disposes of all singleton instances to prevent memory leaks."""
+        with self._lock:
+            for instance in self._singletons.values():
+                try:
+                    if hasattr(instance, "close") and callable(instance.close):
+                        instance.close()
+                except Exception:  # noqa: S110
+                    pass
+            self._singletons.clear()
+
+    async def aclose(self) -> None:
+        """Asynchronously shuts down all singleton instances, handling async closures."""
+        import inspect
+
+        with self._lock:
+            instances = list(self._singletons.values())
+            self._singletons.clear()
+
+        for instance in instances:
+            try:
+                if hasattr(instance, "aclose") and callable(instance.aclose):
+                    res = instance.aclose()
+                    if inspect.isawaitable(res):
+                        await res
+                elif hasattr(instance, "close") and callable(instance.close):
+                    instance.close()
+            except Exception:  # noqa: S110
+                pass
 
 
 def validate_container(container: DIContainer) -> None:

@@ -33,7 +33,7 @@ async def test_uat_02_01_successful_llm_text_generation(uat_config: AppConfig) -
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Hello, world!"}}]}
     )
-    client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
+    client = httpx.AsyncClient(transport=transport)
 
     openrouter = OpenRouterClient(config=uat_config, client=client)
     result = await openrouter.generate_text("Say hello", "claude-3-opus")
@@ -55,7 +55,7 @@ async def test_uat_02_02_network_resilience(uat_config: AppConfig) -> None:
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Recovered!"}}]}
     )
-    client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
+    client = httpx.AsyncClient(transport=transport)
 
     openrouter = OpenRouterClient(config=uat_config, client=client)
     result = await openrouter.generate_text("Say hello", "claude-3-opus")
@@ -80,7 +80,7 @@ async def test_uat_02_03_automatic_model_fallback(uat_config: AppConfig) -> None
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Fallback used"}}]}
     )
-    client = httpx.AsyncClient(transport=transport)  # type: ignore[arg-type]
+    client = httpx.AsyncClient(transport=transport)
 
     openrouter = OpenRouterClient(config=uat_config, client=client)
     result = await openrouter.generate_text("Say hello", "claude-3-opus")

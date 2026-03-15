@@ -50,6 +50,54 @@ class AppConfig(BaseSettings):
         default_factory=ModelRoutingRules,
         description="Rules for routing tasks to models.",
     )
+    max_file_size_limit: int = Field(
+        default=100 * 1024 * 1024,
+        gt=0,
+        description="The absolute upper boundary for max_file_size.",
+    )
+    file_read_chunk_size: int = Field(
+        default=1024 * 1024, gt=0, description="Chunk size for file reading operations."
+    )
+    max_content_length: int = Field(
+        default=100000,
+        description="Maximum allowed character length for returned or parsed content.",
+    )
+    fernet_token_pattern: str = Field(
+        default=r"^gAAAAA[A-Za-z0-9\-_=]+$",
+        description="Regex pattern for validating Fernet tokens.",
+    )
+    openrouter_key_pattern: str = Field(
+        default=r"^sk-or-v1-[a-f0-9]{64}$",
+        description="Regex pattern for validating OpenRouter API keys.",
+    )
+    openrouter_key_length: int = Field(
+        default=73,
+        description="Exact required length of OpenRouter API keys.",
+    )
+    max_prompt_length: int = Field(
+        default=100000,
+        description="Maximum allowed character length for LLM prompts.",
+    )
+    max_prompt_tokens: int = Field(
+        default=25000,
+        description="Maximum estimated token count for LLM prompts.",
+    )
+    llm_timeout: float = Field(
+        default=30.0,
+        description="Default timeout in seconds for LLM API requests.",
+    )
+    max_retry_attempts: int = Field(
+        default=3,
+        description="Maximum number of retry attempts for transient network errors.",
+    )
+    retry_min_wait: float = Field(
+        default=1.0,
+        description="Minimum wait time between retries in seconds.",
+    )
+    retry_max_wait: float = Field(
+        default=10.0,
+        description="Maximum wait time between retries in seconds.",
+    )
 
     @field_validator("openrouter_api_key")
     @classmethod
