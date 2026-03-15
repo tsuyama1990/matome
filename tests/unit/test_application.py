@@ -210,7 +210,10 @@ async def test_ingestion_pipeline_process_document() -> None:
     embedding = DummyEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+    raptor = RaptorEngine(llm=llm, clustering_strategy=UMAPGMMClusteringStrategy())
+    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser, raptor_engine=raptor, fast_model_name="default")
 
     # We provide raw bytes and test successful chunking
     raw_text = "This is sentence one. This is sentence two. Here is a third sentence."
@@ -235,7 +238,10 @@ async def test_ingestion_pipeline_embedding_validation_failure() -> None:
     embedding = DummyEmbeddingService(dimension=123)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+    raptor = RaptorEngine(llm=llm, clustering_strategy=UMAPGMMClusteringStrategy())
+    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser, raptor_engine=raptor, fast_model_name="default")
     content_bytes = b"A simple text to trigger failure."
 
     with pytest.raises(ValidationError, match="Embedding length 123 is invalid"):

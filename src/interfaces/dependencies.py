@@ -213,19 +213,7 @@ def register_nlp_service(container: DIContainer) -> None:
     container.register(NLPService, nlp_factory)
 
 
-def bootstrap_application_services(container: DIContainer) -> None:
-    """Helper to cleanly register application services to the DI container."""
-    logger.info("Starting bootstrap of application services...")
-
-    # Pre-Core Validation (Per audit requirements)
-    try:
-        validate_container(container)
-    except Exception as e:
-        logger.exception("Container pre-validation failed.")
-        msg = "Bootstrap failed."
-        raise RuntimeError(msg) from e
-
-    # Core Infrastructure
+def _register_core_infrastructure(container: DIContainer) -> None:
     try:
         register_vector_store(container)
     except Exception as e:
@@ -233,6 +221,43 @@ def bootstrap_application_services(container: DIContainer) -> None:
         msg = "Bootstrap failed due to core infrastructure failure."
         raise RuntimeError(msg) from e
 
+
+def register_ingestion_pipeline(container: DIContainer) -> None:
+    from src.application import IngestionPipeline, RaptorEngine
+    from src.config.settings import AppConfig as SettingsAppConfig
+    from src.domain_models.config import AppConfig as DomainAppConfig
+
+    def ingestion_factory() -> IngestionPipeline:
+        llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+        embedding = container.resolve(EmbeddingProtocol)  # type: ignore[type-abstract]
+        text_parser = container.resolve(TextParserProtocol)  # type: ignore[type-abstract]
+        raptor_engine = container.resolve(RaptorEngine)
+
+        try:
+            settings_config = container.resolve(SettingsAppConfig)
+            max_sentences = getattr(settings_config, "max_sentences_per_chunk", 5)
+        except Exception:
+            max_sentences = 5
+
+        try:
+            domain_config = container.resolve(DomainAppConfig)
+            fast_model = domain_config.routing_rules.text_fast_model
+        except Exception:
+            fast_model = "default"
+
+        return IngestionPipeline(
+            llm=llm,
+            embedding=embedding,
+            text_parser=text_parser,
+            raptor_engine=raptor_engine,
+            fast_model_name=fast_model,
+            max_sentences_per_chunk=max_sentences,
+        )
+
+    container.register(IngestionPipeline, ingestion_factory)
+
+
+def _register_application_services(container: DIContainer) -> None:
     try:
         register_raptor_engine(container)
     except Exception:
@@ -263,5 +288,29 @@ def bootstrap_application_services(container: DIContainer) -> None:
         register_nlp_service(container)
     except Exception:
         logger.exception("NLPService failed to register. Entity tagging will fail.")
+
+    try:
+        register_ingestion_pipeline(container)
+    except Exception:
+        logger.exception("IngestionPipeline failed to register. Document ingestion will fail.")
+
+
+def bootstrap_application_services(container: DIContainer) -> None:
+    """Helper to cleanly register application services to the DI container."""
+    logger.info("Starting bootstrap of application services...")
+
+    # Pre-Core Validation (Per audit requirements)
+    try:
+        validate_container(container)
+    except Exception as e:
+        logger.exception("Container pre-validation failed.")
+        msg = "Bootstrap failed."
+        raise RuntimeError(msg) from e
+
+    # Core Infrastructure
+    _register_core_infrastructure(container)
+
+    # Domain Services
+    _register_application_services(container)
 
     logger.info("Bootstrap complete.")

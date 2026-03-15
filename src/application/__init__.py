@@ -238,25 +238,17 @@ class IngestionPipeline:
         llm: LLMProtocol,
         embedding: EmbeddingProtocol,
         text_parser: TextParserProtocol,
+        raptor_engine: RaptorEngine,
+        fast_model_name: str,
         max_sentences_per_chunk: int = 5,
     ) -> None:
         self._llm = llm
         self._embedding = embedding
         self._text_parser = text_parser
+        self._raptor_engine = raptor_engine
+        self._fast_model_name = fast_model_name
         self._max_sentences_per_chunk = max_sentences_per_chunk
 
-        from src.config.settings import AppConfig
-
-        self._config = AppConfig()
-
-        from src.infrastructure.clustering import UMAPGMMClusteringStrategy
-
-        self._raptor_engine = RaptorEngine(
-            llm=llm,
-            clustering_strategy=UMAPGMMClusteringStrategy(),
-            max_clusters=self._config.raptor_max_clusters,
-            max_content_length=self._config.max_content_length,
-        )
         try:
             import spacy
 
@@ -273,11 +265,7 @@ class IngestionPipeline:
         prompt = _LLM_JSON_FORMAT_PROMPT.format(text=text)
         try:
             # We assume a text_fast_model for these metadata extractions
-            from src.domain_models.config import ModelRoutingRules
-
-            # Fallback for settings configuration mismatches
-            model_name = getattr(self._config, "routing_rules", ModelRoutingRules()).text_fast_model
-            response_text = await self._llm.generate_text(prompt, model=model_name)
+            response_text = await self._llm.generate_text(prompt, model=self._fast_model_name)
             # Parse the JSON string
             # LLMs sometimes wrap json in markdown block
             response_text = response_text.replace("```json", "").replace("```", "").strip()

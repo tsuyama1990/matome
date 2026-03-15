@@ -232,9 +232,18 @@ class OpenRouterGateway:
 
         security_service = SecurityService()
         with security_service.get_decrypted_key(self._encrypted_api_key) as api_key:
-            # Stricter validation: specific prefix, strict alphanumeric payload, minimum and maximum lengths
-            if len(api_key) != 73 or not re.match(r"^sk-or-v1-[a-f0-9]{64}$", api_key):
-                msg = "Decrypted API key does not match expected OpenRouter format."
+            # Pluggable validation: uses configured length and regex patterns.
+            if (
+                self._config.llm_api_key_length > 0
+                and len(api_key) != self._config.llm_api_key_length
+            ):
+                msg = f"Decrypted API key does not match expected length of {self._config.llm_api_key_length}."
+                raise ValueError(msg)
+
+            if self._config.llm_api_key_pattern and not re.match(
+                self._config.llm_api_key_pattern, api_key
+            ):
+                msg = "Decrypted API key does not match expected provider format."
                 raise ValueError(msg)
 
             headers = {

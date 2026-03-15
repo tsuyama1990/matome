@@ -1,5 +1,6 @@
 import logging
 import urllib.parse
+from typing import Any
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_core.core_schema import ValidationInfo
@@ -13,6 +14,10 @@ class DatabaseConfig(BaseSettings):
 
     database_uri_encrypted: str = Field(
         description="The encrypted URI for the operational database."
+    )
+    allow_local_database_connections: bool = Field(
+        default=False,
+        description="Whether to permit database connections to localhost or loopback addresses.",
     )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -61,12 +66,13 @@ class DatabaseConfig(BaseSettings):
 
         return SecretStr(clean_uri)
 
-    @property
-    def get_decrypted_database_uri(self) -> SecretStr:
+    def get_decrypted_database_uri(self, security_service: Any = None) -> SecretStr:
         """Returns the decrypted database URI securely."""
         from src.config.security import DecryptionError, SecurityService
 
-        service = SecurityService()
+        # We fall back to standard instantiation to prevent breaking existing usages,
+        # but prefer injection through the method args.
+        service = security_service if security_service is not None else SecurityService()
         try:
             with service.get_decrypted_key(self.database_uri_encrypted) as uri:
                 return self._validate_uri(uri)
@@ -157,13 +163,13 @@ class ModelConfig(BaseSettings):
         default=r"^gAAAAA[A-Za-z0-9\-_=]+$",
         description="Regex pattern for validating Fernet tokens.",
     )
-    openrouter_key_pattern: str = Field(
-        default=r"^sk-or-v1-[a-f0-9]{64}$",
-        description="Regex pattern for validating OpenRouter API keys.",
+    llm_api_key_pattern: str = Field(
+        default="",
+        description="Regex pattern for validating external LLM API keys. Empty string disables validation.",
     )
-    openrouter_key_length: int = Field(
-        default=73,
-        description="Exact required length of OpenRouter API keys.",
+    llm_api_key_length: int = Field(
+        default=0,
+        description="Exact required length of external LLM API keys. 0 disables length checking.",
     )
     max_prompt_length: int = Field(
         default=100000,

@@ -107,7 +107,11 @@ async def test_uat_03_01_end_to_end_ingestion() -> None:
     embedding = DummyEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+    raptor = RaptorEngine(llm=llm, clustering_strategy=UMAPGMMClusteringStrategy())
+
+    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser, raptor_engine=raptor, fast_model_name="default")
 
     raw_text = (
         "Artificial Intelligence (AI) is rapidly evolving. It promises to revolutionize many industries. "
@@ -135,7 +139,11 @@ async def test_uat_03_02_semantic_boundary_adherence() -> None:
     embedding = DummyEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+    raptor = RaptorEngine(llm=llm, clustering_strategy=UMAPGMMClusteringStrategy())
+
+    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser, raptor_engine=raptor, fast_model_name="default")
 
     long_sentence = (
         "This is a very long sentence that discusses the complexities of natural language processing "
@@ -162,7 +170,11 @@ async def test_uat_03_03_strict_domain_validation_enforcement() -> None:
     faulty_embedding = DummyEmbeddingService(dimension=3)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=faulty_embedding, text_parser=parser)
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+    raptor = RaptorEngine(llm=llm, clustering_strategy=UMAPGMMClusteringStrategy())
+
+    pipeline = IngestionPipeline(llm=llm, embedding=faulty_embedding, text_parser=parser, raptor_engine=raptor, fast_model_name="default")
 
     raw_text = "Standard text document."
 
