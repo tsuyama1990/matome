@@ -62,8 +62,9 @@ class NLPService:
 
     def _validate_and_sanitize(self, content: str) -> str:
         """Isolates the validation logic to keep complexity low."""
+        import unicodedata
 
-        if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", content):
+        if any(unicodedata.category(c).startswith('C') for c in content):
             msg = "Content contains forbidden control characters."
             raise ValueError(msg)
 

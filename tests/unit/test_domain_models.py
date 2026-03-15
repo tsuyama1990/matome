@@ -285,13 +285,13 @@ def test_unlock_attempt_forbids_extra_fields() -> None:
         "is_correct": True,
         "timestamp": datetime.now(UTC),
     }
-    attempt = UnlockAttempt(**valid_data)
+    attempt = UnlockAttempt(**valid_data)  # type: ignore[arg-type]
     assert attempt.node_id == "test_node_1"
 
     invalid_data = valid_data.copy()
     invalid_data["extra_field"] = "not allowed"
     with pytest.raises(ValidationError) as excinfo:
-        UnlockAttempt(**invalid_data)
+        UnlockAttempt(**invalid_data)  # type: ignore[arg-type]
 
     assert "Extra inputs are not permitted" in str(excinfo.value)
 
@@ -300,13 +300,13 @@ def test_learning_progress_forbids_extra_fields() -> None:
     from src.domain_models import LearningProgress
 
     valid_data = {"document_id": uuid.uuid4()}
-    progress = LearningProgress(**valid_data)
+    progress = LearningProgress(**valid_data)  # type: ignore[arg-type]
     assert progress.unlocked_node_ids == set()
     assert progress.history == []
 
     invalid_data = valid_data.copy()
-    invalid_data["score"] = 100
+    invalid_data["score"] = 100  # type: ignore[assignment]
     with pytest.raises(ValidationError) as excinfo:
-        LearningProgress(**invalid_data)
+        LearningProgress(**invalid_data)  # type: ignore[arg-type]
 
     assert "Extra inputs are not permitted" in str(excinfo.value)

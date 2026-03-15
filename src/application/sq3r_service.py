@@ -31,9 +31,14 @@ class SQ3REngine:
 
     async def evaluate_answer(self, node: RaptorNode, user_answer: str) -> bool:
         """Evaluates the user's answer against the node's summary."""
+        import bleach
+
+        # Add input sanitization and length validation before LLM call
         if len(user_answer) > 10000:
             msg = "Answer too long"
             raise ValueError(msg)
+
+        sanitized_answer = bleach.clean(user_answer, tags=[], attributes={}, protocols=[], strip=True)
 
         prompt = (
             "You are an AI tutor. A student has just read the following summary and provided an answer "
@@ -41,7 +46,7 @@ class SQ3REngine:
             "is the user's answer fundamentally correct or demonstrating understanding? "
             "Respond only with 'YES' or 'NO'.\n\n"
             f"Original Summary: {node.summarized_content}\n"
-            f"Student Answer: {user_answer}\n\n"
+            f"Student Answer: {sanitized_answer}\n\n"
             "Evaluation:"
         )
         try:
