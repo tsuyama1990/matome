@@ -2,6 +2,8 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 from pydantic_core.core_schema import ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+DEFAULT_FORBIDDEN_HOSTS = ["127.0.0.1", "localhost", "0.0.0.0", "::1"]  # noqa: S104
+
 
 class ModelRoutingRules(BaseModel):
     """Routing rules for different model tasks."""
@@ -91,7 +93,7 @@ class AppConfig(BaseSettings):
         description="Maximum number of retry attempts for transient network errors.",
     )
     forbidden_internal_hosts: list[str] = Field(
-        default=["127.0.0.1", "localhost", "0.0.0.0", "::1"],  # noqa: S104
+        default=DEFAULT_FORBIDDEN_HOSTS,
         description="List of forbidden internal hostnames for external API calls to prevent SSRF.",
     )
     retry_min_wait: float = Field(

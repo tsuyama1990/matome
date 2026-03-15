@@ -61,7 +61,7 @@ async def test_uat_04_01_hierarchical_tree_construction_mock_mode() -> None:
     # Let the pipeline split by sentences, so we get 6 sentences -> 2 chunks if spacy groups 5.
     # To ensure 6 chunks, we must format it so spacy isn't loaded or bypass the 5-sentence grouping.
     # We will use exactly 6 distinct large sentences and disable the spacy nlp model explicitly.
-    pipeline._nlp = None  # type: ignore[assignment]
+    pipeline._nlp = None
 
     doc = await pipeline.build_enriched_document(raw_text.encode("utf-8"), "test.txt")
 
@@ -138,7 +138,7 @@ async def test_uat_04_03_tree_relational_integrity_and_schema() -> None:
     )
 
     raw_text = "Data one. Data two."
-    pipeline._nlp = None  # type: ignore[assignment]
+    pipeline._nlp = None
     doc = await pipeline.build_enriched_document(raw_text.encode("utf-8"), "test.txt")
 
     # Verify Relational Consistency (no dangling pointers)

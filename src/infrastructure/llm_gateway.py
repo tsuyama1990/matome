@@ -35,7 +35,9 @@ class OpenRouterGateway:
 
         # Security: Allow SecurityService (Fernet) to handle format integrity strictly
         # upon decryption. Only perform basic length sanity check prior to use.
-        if len(encrypted_key) < 50:
+        # A Fernet token encodes 32 bytes to exactly 44 base64 chars at minimum,
+        # usually 100 characters overall with timestamps and headers.
+        if len(encrypted_key) < 44:
             msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
             raise ValueError(msg)
 
@@ -117,18 +119,6 @@ class OpenRouterGateway:
         if self._config.llm_timeout <= 0 or self._config.llm_timeout > 120.0:
             msg = "Invalid ModelConfig: timeout must be between 0 and 120 seconds."
             raise ValueError(msg)
-
-        # Security: strictly validate the encrypted API key before assigning it
-        encrypted_key = os.environ.get("OPENROUTER_API_KEY_ENCRYPTED")
-        if not encrypted_key or not encrypted_key.strip():
-            msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
-            raise ValueError(msg)
-
-        if len(encrypted_key) < 50:
-            msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
-            raise ValueError(msg)
-
-        self._encrypted_api_key = encrypted_key
 
     async def __aenter__(self) -> "OpenRouterGateway":
         from src.infrastructure.network import SecureAsyncHTTPTransport

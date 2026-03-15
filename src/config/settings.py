@@ -6,6 +6,8 @@ from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_core.core_schema import ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.domain_models.config import DEFAULT_FORBIDDEN_HOSTS
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +22,7 @@ class DatabaseConfig(BaseSettings):
         description="Whether to permit database connections to localhost or loopback addresses.",
     )
     forbidden_internal_hosts: list[str] = Field(
-        default=["127.0.0.1", "localhost", "0.0.0.0", "::1"],  # noqa: S104
+        default=DEFAULT_FORBIDDEN_HOSTS,
         description="List of forbidden internal hostnames for database URIs to prevent SSRF.",
     )
 
@@ -235,7 +237,7 @@ class ModelConfig(BaseSettings):
         # Hardblock internal networks explicitly
         forbidden_internal_hosts = info.data.get(
             "forbidden_internal_hosts",
-            ["127.0.0.1", "localhost", "0.0.0.0", "::1"],  # noqa: S104
+            DEFAULT_FORBIDDEN_HOSTS,
         )
         if v.host in forbidden_internal_hosts:
             msg = "Internal network hostnames are forbidden for external API calls."
