@@ -4,38 +4,40 @@ rootdir: /app
 configfile: pyproject.toml
 plugins: cov-7.0.0, asyncio-1.3.0, anyio-4.12.1
 asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
-collected 89 items
+collected 97 items
 
 tests/e2e/test_api.py .....                                              [  5%]
 tests/e2e/test_pivot_api.py ..                                           [  7%]
-tests/e2e/test_uat.py ....                                               [ 12%]
-tests/integration/test_di_integration.py ..                              [ 14%]
-tests/integration/test_openrouter_di.py ..                               [ 16%]
-tests/uat/test_uat_02_llm.py ...                                         [ 20%]
-tests/unit/test_application.py ............                              [ 33%]
+tests/e2e/test_uat.py ....                                               [ 11%]
+tests/e2e/test_uat_04_raptor.py ...                                      [ 14%]
+tests/integration/test_di_integration.py ..                              [ 16%]
+tests/integration/test_openrouter_di.py ..                               [ 18%]
+tests/uat/test_uat_02_llm.py ...                                         [ 21%]
+tests/unit/test_application.py ............                              [ 34%]
 tests/unit/test_config.py ....                                           [ 38%]
 tests/unit/test_dependencies.py ....                                     [ 42%]
-tests/unit/test_di_container.py .....                                    [ 48%]
-tests/unit/test_domain_config.py ....                                    [ 52%]
-tests/unit/test_domain_models.py .............                           [ 67%]
-tests/unit/test_llm_gateway.py ..........                                [ 78%]
-tests/unit/test_openrouter.py .....                                      [ 84%]
-tests/unit/test_pivot_workflow.py ...                                    [ 87%]
-tests/unit/test_security.py ..                                           [ 89%]
+tests/unit/test_di_container.py .....                                    [ 47%]
+tests/unit/test_domain_config.py ....                                    [ 51%]
+tests/unit/test_domain_models.py .............                           [ 64%]
+tests/unit/test_llm_gateway.py ..........                                [ 75%]
+tests/unit/test_openrouter.py .....                                      [ 80%]
+tests/unit/test_pivot_workflow.py ...                                    [ 83%]
+tests/unit/test_raptor_engine.py .....                                   [ 88%]
+tests/unit/test_security.py ..                                           [ 90%]
 tests/unit/test_security_errors.py ..                                    [ 92%]
 tests/unit/test_services.py ......                                       [ 98%]
 tests/unit/test_vector_store.py .                                        [100%]
 
 =============================== warnings summary ===============================
-tests/unit/test_application.py::test_raptor_engine_cluster_chunks
-  /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
-    warn(
-
 tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
 tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
 tests/unit/test_application.py::test_raptor_engine_cluster_edge_cases
   /app/.venv/lib/python3.12/site-packages/sklearn/base.py:1336: ConvergenceWarning: Number of distinct clusters (1) found smaller than n_clusters (2). Possibly due to duplicate points in X.
     return fit_method(estimator, *args, **kwargs)
+
+tests/unit/test_raptor_engine.py::test_semantic_clusterer_basic
+  /app/.venv/lib/python3.12/site-packages/umap/umap_.py:1952: UserWarning: n_jobs value 1 overridden to 1 by setting random_state. Use no seed for parallelism.
+    warn(
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
 ================================ tests coverage ================================
@@ -44,34 +46,35 @@ _______________ coverage: platform linux, python 3.12.13-final-0 _______________
 Name                                  Stmts   Miss  Cover   Missing
 -------------------------------------------------------------------
 src/__init__.py                           0      0   100%
-src/application/__init__.py             255     43    83%   33-34, 36-37, 60, 62, 70-71, 83-84, 100, 114, 123-124, 152-153, 160-161, 172-174, 183, 203, 260-262, 266-267, 282-284, 298-299, 304, 322-323, 351-353, 377, 387, 402-404
+src/application/__init__.py             187     39    79%   45-46, 48-49, 57, 59, 66-67, 75-76, 92, 106, 115-116, 143-145, 149-150, 165-167, 181-182, 187, 205-206, 252, 262, 265-275
 src/application/di_container.py          63      9    86%   21-22, 36-37, 56-57, 76, 85-86
 src/application/pivot_workflow.py        47      0   100%
+src/application/raptor_engine.py         53      9    83%   37-38, 41-42, 52-54, 73, 83
 src/application/sq3r_service.py          12      0   100%
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   45      7    84%   17-18, 42-43, 52-54
-src/config/settings.py                   90     14    84%   23-24, 27, 30-31, 34-35, 49, 74-75, 203-204, 208-209
+src/config/settings.py                  103     14    86%   34-35, 38, 41-42, 45-46, 75, 101-102, 234-235, 243-244
 src/domain_models/__init__.py             5      0   100%
-src/domain_models/config.py              43      4    91%   116-117, 120-121
-src/domain_models/document.py            65      4    94%   49-50, 99, 119
+src/domain_models/config.py              50      4    92%   137-138, 141-142
+src/domain_models/document.py            65      3    95%   49-50, 99
 src/domain_models/exceptions.py           6      0   100%
 src/domain_models/graph_state.py         33      0   100%
 src/domain_models/pivot.py               15      2    87%   27-28
 src/infrastructure/__init__.py            2      0   100%
-src/infrastructure/clustering.py         70     20    71%   15-16, 24-25, 30-31, 39, 55-63, 68-69, 97-99
-src/infrastructure/llm_gateway.py       172     55    68%   33-34, 41-42, 50-51, 56-57, 66-67, 73-74, 85-86, 93-97, 113-114, 116-117, 120-121, 134-135, 155-156, 159-160, 165-166, 170-171, 192-193, 198-199, 208-209, 224-225, 228-229, 261-264, 269-273, 275-277
+src/infrastructure/clustering.py        110     33    70%   34-35, 77-79, 87-88, 94-98, 101-129, 134-135
+src/infrastructure/llm_gateway.py       170     53    69%   41-42, 50-51, 56-57, 66-67, 73-74, 85-86, 93-97, 113-114, 116-117, 120-121, 139-140, 143-144, 149-150, 154-155, 176-177, 182-183, 192-193, 208-209, 212-213, 230-231, 268-271, 276-280, 282-284
 src/infrastructure/network.py            51      8    84%   51, 105-135
 src/infrastructure/openrouter.py        102     20    80%   48-49, 52-53, 61, 108, 115, 124, 141-146, 152-156, 159, 176, 179
 src/infrastructure/test_services.py     225     58    74%   25-26, 36-37, 55-56, 86-88, 98-99, 104-106, 108-110, 123-124, 129-132, 143-145, 167-170, 204, 212, 234, 237-241, 244-248, 263-264, 271-272, 277-278, 301-302, 311-312, 318, 325, 328, 366-367
 src/infrastructure/vector_store.py      120     64    47%   20-28, 37-42, 46-86, 92-121, 125, 138-139, 145-146, 176-177, 188-189
 src/interfaces/__init__.py                2      0   100%
 src/interfaces/api_router.py             83     23    72%   26-27, 42-44, 48-50, 61-63, 71-73, 84-85, 100-101, 118-120, 133-134
-src/interfaces/clustering.py              3      0   100%
-src/interfaces/dependencies.py          149     86    42%   75-76, 102-113, 117-140, 144-150, 154-161, 180-196, 200-212, 217-266
+src/interfaces/clustering.py              6      0   100%
+src/interfaces/dependencies.py          199    126    37%   75-76, 102-113, 117-153, 157-163, 167-174, 193-209, 223-239, 243-248, 252-288, 292-326, 331-347
 src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1674    417    75%
-================== 89 passed, 4 warnings in 130.94s (0:02:10) ==================
+TOTAL                                  1770    472    73%
+================== 97 passed, 4 warnings in 115.15s (0:01:55) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")

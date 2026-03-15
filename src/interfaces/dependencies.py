@@ -114,10 +114,10 @@ def validate_container(container: DIContainer) -> None:
 
 
 def register_raptor_engine(container: DIContainer) -> None:
-    from src.application import RAPTOREngine
+    from src.application import RaptorEngine
     from src.config.settings import AppConfig
 
-    def raptor_factory() -> RAPTOREngine:
+    def raptor_factory() -> RaptorEngine:
         from src.infrastructure.clustering import UMAPGMMClusteringStrategy
         from src.interfaces.clustering import ClusteringStrategy
 
@@ -125,19 +125,32 @@ def register_raptor_engine(container: DIContainer) -> None:
             ClusteringStrategy not in container._factories
             and ClusteringStrategy not in container._singletons
         ):
-            container.register(ClusteringStrategy, UMAPGMMClusteringStrategy)  # type: ignore[type-abstract]
+            try:
+                import umap.umap_ as umap
+                from sklearn.mixture import GaussianMixture
+
+                umap_lib = umap
+                gmm_cls = GaussianMixture
+            except ImportError:
+                umap_lib = None
+                gmm_cls = None
+
+            def _clustering_factory() -> ClusteringStrategy:
+                return UMAPGMMClusteringStrategy(umap_lib=umap_lib, gmm_cls=gmm_cls)
+
+            container.register(ClusteringStrategy, _clustering_factory)  # type: ignore[type-abstract]
 
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
         clustering_strategy = container.resolve(ClusteringStrategy)  # type: ignore[type-abstract]
         config = container.resolve(AppConfig)
-        return RAPTOREngine(
+        return RaptorEngine(
             llm=llm,
             clustering_strategy=clustering_strategy,
-            max_levels=config.raptor_max_levels,
             max_clusters=config.raptor_max_clusters,
+            max_content_length=config.max_content_length,
         )
 
-    container.register(RAPTOREngine, raptor_factory)
+    container.register(RaptorEngine, raptor_factory)
 
 
 def register_sq3r_engine(container: DIContainer) -> None:
@@ -196,35 +209,37 @@ def register_vector_store(container: DIContainer) -> None:
     container.register(VectorStoreProtocol, vector_store_factory)  # type: ignore[type-abstract]
 
 
+def _load_spacy_model(model_name: str) -> Any | None:
+    try:
+        import spacy
+
+        return spacy.load(model_name)
+    except (ImportError, OSError):
+        logger.warning(f"Spacy model '{model_name}' not found. Falling back to simple processing.")
+        return None
+
+
 def register_nlp_service(container: DIContainer) -> None:
     from src.application import NLPService
     from src.config.settings import AppConfig
 
     def nlp_factory() -> NLPService:
         config = container.resolve(AppConfig)
+
+        nlp_model = _load_spacy_model(config.spacy_model)
+
         return NLPService(
-            model_name=config.spacy_model,
+            nlp_model=nlp_model,
             max_entities=config.nlp_max_entities,
             time_axis_past_words=config.nlp_time_axis_past_words,
             time_axis_future_words=config.nlp_time_axis_future_words,
+            max_content_length=config.max_content_length,
         )
 
     container.register(NLPService, nlp_factory)
 
 
-def bootstrap_application_services(container: DIContainer) -> None:
-    """Helper to cleanly register application services to the DI container."""
-    logger.info("Starting bootstrap of application services...")
-
-    # Pre-Core Validation (Per audit requirements)
-    try:
-        validate_container(container)
-    except Exception as e:
-        logger.exception("Container pre-validation failed.")
-        msg = "Bootstrap failed."
-        raise RuntimeError(msg) from e
-
-    # Core Infrastructure
+def _register_core_infrastructure(container: DIContainer) -> None:
     try:
         register_vector_store(container)
     except Exception as e:
@@ -232,11 +247,53 @@ def bootstrap_application_services(container: DIContainer) -> None:
         msg = "Bootstrap failed due to core infrastructure failure."
         raise RuntimeError(msg) from e
 
+
+def register_ingestion_pipeline(container: DIContainer) -> None:
+    from src.application import IngestionPipeline, RaptorEngine
+    from src.config.settings import AppConfig as SettingsAppConfig
+    from src.domain_models.config import AppConfig as DomainAppConfig
+
+    def ingestion_factory() -> IngestionPipeline:
+        llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+        embedding = container.resolve(EmbeddingProtocol)  # type: ignore[type-abstract]
+        text_parser = container.resolve(TextParserProtocol)  # type: ignore[type-abstract]
+        raptor_engine = container.resolve(RaptorEngine)
+
+        try:
+            settings_config = container.resolve(SettingsAppConfig)
+            max_sentences = getattr(settings_config, "max_sentences_per_chunk", 5)
+            spacy_model_name = settings_config.spacy_model
+        except Exception:
+            max_sentences = 5
+            spacy_model_name = "en_core_web_sm"
+
+        try:
+            domain_config = container.resolve(DomainAppConfig)
+            fast_model = domain_config.routing_rules.text_fast_model
+        except Exception:
+            fast_model = "default"
+
+        nlp_model = _load_spacy_model(spacy_model_name)
+
+        return IngestionPipeline(
+            llm=llm,
+            embedding=embedding,
+            text_parser=text_parser,
+            raptor_engine=raptor_engine,
+            fast_model_name=fast_model,
+            nlp_model=nlp_model,
+            max_sentences_per_chunk=max_sentences,
+        )
+
+    container.register(IngestionPipeline, ingestion_factory)
+
+
+def _register_application_services(container: DIContainer) -> None:
     try:
         register_raptor_engine(container)
     except Exception:
         logger.exception(
-            "RAPTOREngine failed to register. Document summarizing will be unavailable."
+            "RaptorEngine failed to register. Document summarizing will be unavailable."
         )
 
     try:
@@ -262,5 +319,29 @@ def bootstrap_application_services(container: DIContainer) -> None:
         register_nlp_service(container)
     except Exception:
         logger.exception("NLPService failed to register. Entity tagging will fail.")
+
+    try:
+        register_ingestion_pipeline(container)
+    except Exception:
+        logger.exception("IngestionPipeline failed to register. Document ingestion will fail.")
+
+
+def bootstrap_application_services(container: DIContainer) -> None:
+    """Helper to cleanly register application services to the DI container."""
+    logger.info("Starting bootstrap of application services...")
+
+    # Pre-Core Validation (Per audit requirements)
+    try:
+        validate_container(container)
+    except Exception as e:
+        logger.exception("Container pre-validation failed.")
+        msg = "Bootstrap failed."
+        raise RuntimeError(msg) from e
+
+    # Core Infrastructure
+    _register_core_infrastructure(container)
+
+    # Domain Services
+    _register_application_services(container)
 
     logger.info("Bootstrap complete.")

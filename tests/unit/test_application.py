@@ -5,10 +5,9 @@ from pydantic import ValidationError
 
 from src.application import (
     IngestionPipeline,
-    NLPModelLoadError,
     NLPService,
     PivotKJEngine,
-    RAPTOREngine,
+    RaptorEngine,
     SQ3REngine,
 )
 from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
@@ -21,8 +20,11 @@ from src.infrastructure.test_services import (
 
 def test_nlp_service_load_success() -> None:
     # Test real loading of the lightweight model without mocking
+    from src.interfaces.dependencies import _load_spacy_model
+
+    nlp_model = _load_spacy_model("en_core_web_sm")
     service = NLPService(
-        model_name="en_core_web_sm", time_axis_past_words=["was"], time_axis_future_words=["will"]
+        nlp_model=nlp_model, time_axis_past_words=["was"], time_axis_future_words=["will"]
     )
     assert service.nlp is not None
 
@@ -33,29 +35,24 @@ def test_nlp_service_load_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delitem(sys.modules, "spacy", raising=False)
     # Actually monkeypatching sys.modules to None is how it was done:
     monkeypatch.setitem(sys.modules, "spacy", None)
-    with pytest.raises(NLPModelLoadError, match="Spacy library is not installed."):
-        NLPService(
-            model_name="en_core_web_sm",
-            time_axis_past_words=["was"],
-            time_axis_future_words=["will"],
-        )
+    from src.interfaces.dependencies import _load_spacy_model
+
+    assert _load_spacy_model("en_core_web_sm") is None
 
 
 def test_nlp_service_load_os_error() -> None:
     # Test error handling explicitly using a non-existent model name
-    with pytest.raises(
-        NLPModelLoadError, match="Spacy model 'nonexistent_model' is missing. Please install it."
-    ):
-        NLPService(
-            model_name="nonexistent_model",
-            time_axis_past_words=["was"],
-            time_axis_future_words=["will"],
-        )
+    from src.interfaces.dependencies import _load_spacy_model
+
+    assert _load_spacy_model("nonexistent_model") is None
 
 
 def test_nlp_service_tag_entities() -> None:
+    from src.interfaces.dependencies import _load_spacy_model
+
+    nlp_model = _load_spacy_model("en_core_web_sm")
     service = NLPService(
-        model_name="en_core_web_sm", time_axis_past_words=["was"], time_axis_future_words=["will"]
+        nlp_model=nlp_model, time_axis_past_words=["was"], time_axis_future_words=["will"]
     )
     chunk = SemanticChunk(
         id=uuid.uuid4(),
@@ -76,17 +73,18 @@ def test_nlp_service_tag_entities() -> None:
 
 def test_nlp_service_tag_entities_not_loaded() -> None:
     service = NLPService(
-        model_name="en_core_web_sm", time_axis_past_words=["was"], time_axis_future_words=["will"]
+        nlp_model=None, time_axis_past_words=["was"], time_axis_future_words=["will"]
     )
-    # Manually unset nlp attribute to simulate uninitialized state without mocking
-    service.nlp = None
     with pytest.raises(RuntimeError, match="NLP model is not loaded."):
         service.tag_entities_and_axes([])
 
 
 def test_nlp_service_malicious_input() -> None:
+    from src.interfaces.dependencies import _load_spacy_model
+
+    nlp_model = _load_spacy_model("en_core_web_sm")
     service = NLPService(
-        model_name="en_core_web_sm", time_axis_past_words=["was"], time_axis_future_words=["will"]
+        nlp_model=nlp_model, time_axis_past_words=["was"], time_axis_future_words=["will"]
     )
     chunk = SemanticChunk(
         id=uuid.uuid4(),
@@ -101,11 +99,14 @@ def test_nlp_service_malicious_input() -> None:
 
 @pytest.mark.asyncio
 async def test_raptor_engine_cluster_chunks() -> None:
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
     from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 
     llm = SafeTestLLMService()
-    clustering = UMAPGMMClusteringStrategy()
-    engine = RAPTOREngine(llm=llm, clustering_strategy=clustering, max_levels=2, max_clusters=2)
+    clustering = UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture)
+    engine = RaptorEngine(llm=llm, clustering_strategy=clustering, max_clusters=2)
 
     # Create test chunks
     chunks = []
@@ -118,7 +119,7 @@ async def test_raptor_engine_cluster_chunks() -> None:
         )
         chunks.append(chunk)
 
-    nodes = await engine.cluster_chunks(chunks)
+    nodes = await engine.build_tree(chunks)
     assert len(nodes) > 0
     assert all(isinstance(node, RaptorNode) for node in nodes)
     assert all(node.summarized_content == "Test Summary or Question." for node in nodes)
@@ -126,10 +127,12 @@ async def test_raptor_engine_cluster_chunks() -> None:
 
 def test_raptor_engine_cluster_edge_cases() -> None:
     import numpy as np
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
 
     from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 
-    clustering = UMAPGMMClusteringStrategy()
+    clustering = UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture)
 
     # Test empty array (must have shape length 2 but empty size)
     empty = np.array([[]])
@@ -210,7 +213,23 @@ async def test_ingestion_pipeline_process_document() -> None:
     embedding = DummyEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
+    )
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
 
     # We provide raw bytes and test successful chunking
     raw_text = "This is sentence one. This is sentence two. Here is a third sentence."
@@ -235,7 +254,23 @@ async def test_ingestion_pipeline_embedding_validation_failure() -> None:
     embedding = DummyEmbeddingService(dimension=123)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
+    )
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
     content_bytes = b"A simple text to trigger failure."
 
     with pytest.raises(ValidationError, match="Embedding length 123 is invalid"):

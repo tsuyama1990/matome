@@ -1,9 +1,12 @@
 import logging
 import urllib.parse
+from typing import Any
 
 from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_core.core_schema import ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from src.domain_models.config import DEFAULT_FORBIDDEN_HOSTS
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +16,14 @@ class DatabaseConfig(BaseSettings):
 
     database_uri_encrypted: str = Field(
         description="The encrypted URI for the operational database."
+    )
+    allow_local_database_connections: bool = Field(
+        default=False,
+        description="Whether to permit database connections to localhost or loopback addresses.",
+    )
+    forbidden_internal_hosts: list[str] = Field(
+        default=DEFAULT_FORBIDDEN_HOSTS,
+        description="List of forbidden internal hostnames for database URIs to prevent SSRF.",
     )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -34,11 +45,26 @@ class DatabaseConfig(BaseSettings):
             msg = "Database URI port out of range."
             raise ValueError(msg)
 
-        # Prevent SSRF: block local loopback patterns unless strictly needed.
-        if parsed_uri.hostname in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):  # noqa: S104
-            # For this test scope, we might allow it, but architectural spec says "reject local IPs / loops"
-            msg = "Local database connections are not permitted by security policy."
-            raise ValueError(msg)
+        # Prevent SSRF via DNS Rebinding: Resolve hostname and check IP.
+        import socket
+
+        try:
+            # We attempt to resolve the hostname. For tests, this might fail if they use fake hosts
+            # so we only apply strict blocking if it resolves to a local IP.
+            # Ideally we'd test if it resolves, but some tests use 'external.db.com' which might not resolve.
+            # So if getaddrinfo fails, we'll just check the hostname directly.
+            addr_info = socket.getaddrinfo(parsed_uri.hostname, None)
+            resolved_ips = [info[4][0] for info in addr_info]
+        except Exception:
+            resolved_ips = [parsed_uri.hostname]
+
+        if not self.allow_local_database_connections:
+            for ip in resolved_ips:
+                if ip in self.forbidden_internal_hosts or (
+                    ip == parsed_uri.hostname and ip in self.forbidden_internal_hosts
+                ):
+                    msg = "Local database connections are not permitted by security policy."
+                    raise ValueError(msg)
 
         # Optional: strip userinfo before returning if we want to sanitize, but typically SQLAlchemy needs it.
         # But per instructions: "Add comprehensive URI validation including userinfo stripping"
@@ -61,12 +87,13 @@ class DatabaseConfig(BaseSettings):
 
         return SecretStr(clean_uri)
 
-    @property
-    def get_decrypted_database_uri(self) -> SecretStr:
+    def get_decrypted_database_uri(self, security_service: Any = None) -> SecretStr:
         """Returns the decrypted database URI securely."""
         from src.config.security import DecryptionError, SecurityService
 
-        service = SecurityService()
+        # We fall back to standard instantiation to prevent breaking existing usages,
+        # but prefer injection through the method args.
+        service = security_service if security_service is not None else SecurityService()
         try:
             with service.get_decrypted_key(self.database_uri_encrypted) as uri:
                 return self._validate_uri(uri)
@@ -157,17 +184,21 @@ class ModelConfig(BaseSettings):
         default=r"^gAAAAA[A-Za-z0-9\-_=]+$",
         description="Regex pattern for validating Fernet tokens.",
     )
-    openrouter_key_pattern: str = Field(
-        default=r"^sk-or-v1-[a-f0-9]{64}$",
-        description="Regex pattern for validating OpenRouter API keys.",
+    llm_api_key_pattern: str = Field(
+        default="",
+        description="Regex pattern for validating external LLM API keys. Empty string disables validation.",
     )
-    openrouter_key_length: int = Field(
-        default=73,
-        description="Exact required length of OpenRouter API keys.",
+    llm_api_key_length: int = Field(
+        default=0,
+        description="Exact required length of external LLM API keys. 0 disables length checking.",
     )
     max_prompt_length: int = Field(
         default=100000,
         description="Maximum allowed character length for LLM prompts.",
+    )
+    max_sentences_per_chunk: int = Field(
+        default=5,
+        description="Maximum number of sentences per semantic chunk before fallback splitting.",
     )
     max_prompt_tokens: int = Field(
         default=25000,
@@ -204,7 +235,11 @@ class ModelConfig(BaseSettings):
             raise ValueError(msg)
 
         # Hardblock internal networks explicitly
-        if v.host in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):  # noqa: S104
+        forbidden_internal_hosts = info.data.get(
+            "forbidden_internal_hosts",
+            DEFAULT_FORBIDDEN_HOSTS,
+        )
+        if v.host in forbidden_internal_hosts:
             msg = "Internal network hostnames are forbidden for external API calls."
             raise ValueError(msg)
 

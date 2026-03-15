@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import uuid
 from collections import defaultdict
 from typing import Any
@@ -8,12 +9,22 @@ from typing import Any
 import bleach
 
 from src.application.pivot_workflow import PivotWorkflow
-from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
-from src.domain_models.exceptions import NLPModelLoadError, ProcessingError, RaptorError
-from src.interfaces.clustering import ClusteringStrategy
+from src.application.raptor_engine import RaptorEngine
+from src.domain_models import ChunkMetadata, EnrichedDocument, RaptorNode, SemanticChunk
+from src.domain_models.exceptions import NLPModelLoadError, ProcessingError
+from src.interfaces.clustering import PivotEngineProtocol
 from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, TextParserProtocol
 
 logger = logging.getLogger(__name__)
+
+
+_LLM_JSON_FORMAT_PROMPT = (
+    "Analyze the following text. Extract proper nouns (entities) and "
+    "categorize the text along the time axis (Past, Present, or Future). "
+    "Respond ONLY with a valid JSON object in the following exact format:\n"
+    '{{"entities": ["Entity1", "Entity2"], "time_axis": "Present"}}\n\n'
+    "Text:\n{text}"
+)
 
 
 class NLPService:
@@ -21,13 +32,14 @@ class NLPService:
 
     def __init__(
         self,
-        model_name: str,
+        nlp_model: Any | None,
         time_axis_past_words: list[str],
         time_axis_future_words: list[str],
+        max_content_length: int = 100000,
         max_entities: int = 50,
     ) -> None:
-        self.nlp: Any | None = None
-        self.model_name = model_name
+        self.max_content_length = max_content_length
+        self.nlp = nlp_model
         self.max_entities = max_entities
         if not time_axis_past_words:
             msg = "time_axis_past_words must not be empty"
@@ -38,21 +50,6 @@ class NLPService:
 
         self.time_axis_past_words = time_axis_past_words
         self.time_axis_future_words = time_axis_future_words
-        self._load_model()
-
-    def _load_model(self) -> None:
-        """Loads the Spacy model safely."""
-        try:
-            import spacy
-        except ImportError as e:
-            msg = "Spacy library is not installed."
-            raise NLPModelLoadError(msg) from e
-
-        try:
-            self.nlp = spacy.load(self.model_name)
-        except OSError as e:
-            msg = f"Spacy model '{self.model_name}' is missing. Please install it."
-            raise NLPModelLoadError(msg) from e
 
     def _detect_time_axis(self, content_lower: str) -> str:
         """Detects the time axis of the text using configured temporal keywords."""
@@ -64,7 +61,6 @@ class NLPService:
 
     def _validate_and_sanitize(self, content: str) -> str:
         """Isolates the validation logic to keep complexity low."""
-        import re
 
         if re.search(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", content):
             msg = "Content contains forbidden control characters."
@@ -75,11 +71,7 @@ class NLPService:
         sanitized = bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
 
         # Enforce basic constraints
-        from src.config.settings import AppConfig
-
-        max_content_length = AppConfig().max_content_length
-
-        if len(sanitized) > max_content_length:
+        if len(sanitized) > self.max_content_length:
             msg = "Content exceeds maximum length."
             raise ValueError(msg)
 
@@ -125,115 +117,6 @@ class NLPService:
 
             chunk.metadata.extracted_entities = list(set(extracted_entities[: self.max_entities]))
             chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
-
-
-class RAPTOREngine:
-    """
-    Engine to orchestrate clustering to form a RAPTOR tree.
-    Builds the tree bottom-up by clustering chunks, summarising them, and recursively
-    clustering the summaries until a single root remains (or max depth is reached).
-    """
-
-    def __init__(
-        self,
-        llm: LLMProtocol,
-        clustering_strategy: ClusteringStrategy,
-        max_levels: int,
-        max_clusters: int,
-    ) -> None:
-        self._llm = llm
-        self._clustering_strategy = clustering_strategy
-        self._max_levels = max_levels
-        self._max_clusters = max_clusters
-
-    async def _summarize_cluster(self, texts: list[str]) -> str:
-        """Summarizes a list of texts using the Chain of Density concept."""
-        if not texts or any(not t.strip() for t in texts):
-            msg = "Texts cannot be empty or contain only whitespace."
-            raise ValueError(msg)
-
-        from src.config.settings import AppConfig
-
-        max_content_length = AppConfig().max_content_length
-
-        if any(len(t) > max_content_length for t in texts):
-            msg = "Text chunk too large."
-            raise ValueError(msg)
-
-        combined_text = "\n".join(texts)
-        prompt = (
-            "Summarize the following texts into a single, highly dense paragraph. "
-            "Extract the core entities and relationships. "
-            f"Texts:\n{combined_text}"
-        )
-        try:
-            summary = await self._llm.generate(prompt)
-            return summary.strip()
-        except Exception as e:
-            msg = "Failed to summarize cluster."
-            raise RaptorError(msg) from e
-
-    async def cluster_chunks(self, chunks: list[SemanticChunk]) -> list[RaptorNode]:
-        """
-        Builds a RAPTOR hierarchical tree from chunks.
-        Strictly applies clustering strategy for mathematically sound clustering.
-        """
-
-        if not chunks:
-            return []
-
-        all_nodes: list[RaptorNode] = []
-        current_level_texts = [c.content for c in chunks]
-        current_level_embeddings = [c.embedding for c in chunks]
-        current_level_ids = [str(c.id) for c in chunks]
-
-        level = 0
-        while level < self._max_levels and len(current_level_texts) > 1:
-            reduced_embeddings = self._clustering_strategy.reduce_dimensions(
-                current_level_embeddings
-            )
-            clusters = self._clustering_strategy.cluster(reduced_embeddings, self._max_clusters)
-
-            next_level_texts = []
-            next_level_embeddings = []
-            next_level_ids = []
-
-            for _cluster_idx, indices in clusters.items():
-                if not indices:
-                    continue
-
-                cluster_texts = [current_level_texts[i] for i in indices]
-                child_ids = [current_level_ids[i] for i in indices]
-
-                summary = await self._summarize_cluster(cluster_texts)
-                node_id = str(uuid.uuid4())
-
-                node = RaptorNode(
-                    node_id=node_id,
-                    level=level,
-                    children_ids=child_ids,
-                    summarized_content=summary,
-                    is_unlocked=False,
-                )
-                all_nodes.append(node)
-
-                next_level_texts.append(summary)
-                next_level_ids.append(node_id)
-
-                # Mean pooling for embeddings list fallback
-                cluster_embs = [current_level_embeddings[i] for i in indices]
-                if cluster_embs:
-                    import numpy as np
-
-                    mean_emb = np.mean(np.array(cluster_embs, dtype=float), axis=0).tolist()
-                    next_level_embeddings.append(mean_emb)
-
-            current_level_texts = next_level_texts
-            current_level_embeddings = next_level_embeddings
-            current_level_ids = next_level_ids
-            level += 1
-
-        return all_nodes
 
 
 class SQ3REngine:
@@ -284,7 +167,7 @@ class SQ3REngine:
             raise ProcessingError(msg) from e
 
 
-class PivotKJEngine:
+class PivotKJEngine(PivotEngineProtocol):
     """
     Engine to orchestrate dynamic re-clustering (Pivot KJ) of semantic chunks based
     on specific multi-dimensional axes (e.g., actor, timeline).
@@ -339,33 +222,25 @@ class IngestionPipeline:
         llm: LLMProtocol,
         embedding: EmbeddingProtocol,
         text_parser: TextParserProtocol,
+        raptor_engine: RaptorEngine,
+        fast_model_name: str,
+        nlp_model: Any | None = None,
+        max_sentences_per_chunk: int = 5,
     ) -> None:
         self._llm = llm
         self._embedding = embedding
         self._text_parser = text_parser
-        try:
-            import spacy
-
-            # Use the lightweight model for robust sentence splitting in the pipeline
-            self._nlp = spacy.load("en_core_web_sm")
-        except (ImportError, OSError):
-            self._nlp = None  # type: ignore[assignment]
-            logger.warning(
-                "Spacy model 'en_core_web_sm' not found. Falling back to simple chunking."
-            )
+        self._raptor_engine = raptor_engine
+        self._fast_model_name = fast_model_name
+        self._nlp = nlp_model
+        self._max_sentences_per_chunk = max_sentences_per_chunk
 
     async def _extract_entities_and_tags(self, text: str) -> dict[str, Any]:
         """Calls the LLM to extract metadata tags (entities, time axis)."""
-        prompt = (
-            "Analyze the following text. Extract proper nouns (entities) and "
-            "categorize the text along the time axis (Past, Present, or Future). "
-            "Respond ONLY with a valid JSON object in the following exact format:\n"
-            '{"entities": ["Entity1", "Entity2"], "time_axis": "Present"}\n\n'
-            f"Text:\n{text}"
-        )
+        prompt = _LLM_JSON_FORMAT_PROMPT.format(text=text)
         try:
             # We assume a text_fast_model for these metadata extractions
-            response_text = await self._llm.generate_text(prompt, model="google/gemini-2.5-flash")
+            response_text = await self._llm.generate_text(prompt, model=self._fast_model_name)
             # Parse the JSON string
             # LLMs sometimes wrap json in markdown block
             response_text = response_text.replace("```json", "").replace("```", "").strip()
@@ -389,18 +264,16 @@ class IngestionPipeline:
         if self._nlp:
             doc = self._nlp(text)
             sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
-            # A basic semantic chunker: group up to 5 sentences together to maintain some context
+            # A basic semantic chunker: group up to max_sentences_per_chunk sentences together to maintain some context
             chunks = []
             current_chunk = []
             for i, sent in enumerate(sentences):
                 current_chunk.append(sent)
-                if len(current_chunk) >= 5 or i == len(sentences) - 1:
+                if len(current_chunk) >= self._max_sentences_per_chunk or i == len(sentences) - 1:
                     chunks.append(" ".join(current_chunk))
                     current_chunk = []
             return chunks
         # Fallback simple logic
-        import re
-
         return [c.strip() for c in re.split(r"(?<=[.!?])\s+", text) if c.strip()]
 
     async def _process_single_chunk(self, text: str, filename: str) -> SemanticChunk:
@@ -453,6 +326,23 @@ class IngestionPipeline:
 
         return semantic_chunks  # type: ignore[return-value]
 
+    async def build_enriched_document(self, file_content: bytes, filename: str) -> EnrichedDocument:
+        """
+        Processes the document into chunks and then builds the RAPTOR tree,
+        returning the fully populated EnrichedDocument.
+        """
+        chunks = await self.process_document(file_content, filename)
+        nodes = await self._raptor_engine.build_tree(chunks)
+
+        from src.domain_models.document import DocumentFactory
+
+        return DocumentFactory.create(
+            document_id=uuid.uuid4(),
+            original_text=filename,  # In a full flow, you might preserve original_text from text parser
+            chunks=chunks,
+            raptor_nodes=nodes,
+        )
+
 
 __all__ = [
     "IngestionPipeline",
@@ -460,6 +350,6 @@ __all__ = [
     "NLPService",
     "PivotKJEngine",
     "PivotWorkflow",
-    "RAPTOREngine",
+    "RaptorEngine",
     "SQ3REngine",
 ]

@@ -7,7 +7,7 @@ import uuid
 import pytest
 from pydantic import ValidationError
 
-from src.application import IngestionPipeline, PivotKJEngine, RAPTOREngine, SQ3REngine
+from src.application import IngestionPipeline, PivotKJEngine, RaptorEngine, SQ3REngine
 from src.domain_models import ChunkMetadata, SemanticChunk
 from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 from src.infrastructure.test_services import (
@@ -58,12 +58,17 @@ async def test_uat_01_quick_start() -> None:
             )
         )
 
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
     llm = MockE2ELLM()
-    raptor = RAPTOREngine(
-        llm=llm, clustering_strategy=UMAPGMMClusteringStrategy(), max_levels=2, max_clusters=2
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
+        max_clusters=2,
     )
 
-    nodes = await raptor.cluster_chunks(chunks)
+    nodes = await raptor.build_tree(chunks)
     assert len(nodes) > 0
 
     # 2. Interaction (Question & Read)
@@ -109,7 +114,24 @@ async def test_uat_03_01_end_to_end_ingestion() -> None:
     embedding = DummyEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
+    )
+
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
 
     raw_text = (
         "Artificial Intelligence (AI) is rapidly evolving. It promises to revolutionize many industries. "
@@ -137,7 +159,24 @@ async def test_uat_03_02_semantic_boundary_adherence() -> None:
     embedding = DummyEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser)
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
+    )
+
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
 
     long_sentence = (
         "This is a very long sentence that discusses the complexities of natural language processing "
@@ -164,7 +203,24 @@ async def test_uat_03_03_strict_domain_validation_enforcement() -> None:
     faulty_embedding = DummyEmbeddingService(dimension=3)
     parser = PlainTextParser()
 
-    pipeline = IngestionPipeline(llm=llm, embedding=faulty_embedding, text_parser=parser)
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
+    )
+
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=faulty_embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
 
     raw_text = "Standard text document."
 
