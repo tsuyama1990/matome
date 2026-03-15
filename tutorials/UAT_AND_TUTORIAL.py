@@ -1,9 +1,18 @@
+import asyncio
 import os
+import uuid
 
 from pydantic import ValidationError
 
 from src.application.di_container import DIContainer
+from src.application.pivot_workflow import ExportService, PivotEngine
+from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
 from src.domain_models.config import AppConfig, ModelRoutingRules
+from src.infrastructure.test_services import (
+    DummyEmbeddingService,
+    DummyVectorDB,
+    MockReasoningLLMService,
+)
 from src.interfaces.llm_protocol import LLMProtocol
 
 # UAT-01-01: Secure Application Configuration and Startup
@@ -104,4 +113,47 @@ if os.environ.get("MATOME_MOCK_MODE", "true") == "true":
 
 assert isinstance(mock_container.resolve(LLMProtocol), MockLLMService)  # type: ignore[type-abstract]
 print("Success: Mock Mode Execution successfully resolved to mock implementation.")
+print()
+
+# UAT-06: Pivot KJ Engine & Export Generation
+
+
+
+async def run_uat_06() -> None:
+    print("Running UAT-06: Multi-Dimensional Knowledge Reconstruction (Pivot)")
+    mock_db = DummyVectorDB()
+    chunk_id = uuid.uuid4()
+    chunk = SemanticChunk(
+        id=chunk_id,
+        content="User admin manages settings.",
+        embedding=[0.1] * 384,
+        metadata=ChunkMetadata(source_file="test.txt", actor_axis="Admin User")
+    )
+    await mock_db.upsert([chunk])
+
+    json_resp = f'{{"nodes": [{{"label": "Admin User", "summary": "Manages system settings.", "source_chunk_ids": ["{chunk_id!s}"]}}]}}'
+    mock_llm = MockReasoningLLMService(response_json=json_resp)
+    mock_embed = DummyEmbeddingService(dimension=384)
+
+    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed)
+    doc_id = uuid.uuid4()
+    doc = EnrichedDocument(document_id=doc_id, original_text="...", chunks=[chunk], raptor_nodes=[])
+
+    state = await engine.execute_pivot(doc, "System Actors")
+
+    assert state is not None
+    assert state.axis_name == "System Actors"
+    assert len(state.nodes) == 1
+    assert state.nodes[0].label == "Admin User"
+    print("Success: PivotState generated successfully from Mock LLM and VectorDB.")
+
+    print("Running UAT-06-03: Artifact Export Generation (Markdown)")
+    export_service = ExportService()
+    markdown_output = export_service.generate_markdown(state)
+    assert "# System Actors" in markdown_output
+    assert "## Admin User" in markdown_output
+    print("Success: Markdown generated correctly from PivotState.")
+
+asyncio.run(run_uat_06())
+
 print("UATs passed successfully.")
