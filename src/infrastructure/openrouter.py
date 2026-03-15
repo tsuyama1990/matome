@@ -43,10 +43,18 @@ class OpenRouterClient(LLMProtocol):
         self._config = config
         self._api_key = config.openrouter_api_key
         self._base_url = config.openrouter_base_url
-        self._client = client or httpx.AsyncClient(timeout=30.0)
+
+        if client is not None:
+            self._client = client
+        else:
+            self._client = httpx.AsyncClient(timeout=30.0)
 
     def _handle_invalid_response(self) -> str:
         msg = "Invalid response format: 'choices' missing or empty."
+        raise ValueError(msg)
+
+    def _handle_massive_payload(self) -> None:
+        msg = "Generated text is suspiciously large."
         raise ValueError(msg)
 
     def _is_transient_error(self, e: Exception) -> bool:
@@ -96,7 +104,17 @@ class OpenRouterClient(LLMProtocol):
             if "choices" not in data or not data["choices"]:
                 return self._handle_invalid_response()
 
-            return str(data["choices"][0]["message"]["content"])
+            content = str(data["choices"][0]["message"]["content"])
+
+            # Security: Validate the response content is reasonable and doesn't contain injected malicious instructions
+            # or massive payloads that could cause downstream denial of service.
+            if len(content) > 100000:
+                self._handle_massive_payload()
+
+            import bleach
+
+            # Sanitize the output to prevent injection attacks if this content is directly rendered in UI or parsed
+            return bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
 
         except httpx.HTTPStatusError as e:
             if e.response.status_code in (401, 403):

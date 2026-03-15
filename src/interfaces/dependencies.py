@@ -51,7 +51,12 @@ class DIContainer:
         self._factories: dict[type[Any], Callable[[], Any]] = {}
         self._singletons: dict[type[Any], Any] = {}
         self._lock = threading.RLock()
-        self._resolving: set[type[Any]] = set()
+        self._local = threading.local()
+
+    def _get_resolving_set(self) -> set[type[Any]]:
+        if not hasattr(self._local, "resolving"):
+            self._local.resolving = set()
+        return self._local.resolving  # type: ignore[no-any-return]
 
     def register(self, interface: type[T], factory: Callable[[], T]) -> None:
         """Registers a factory function for an interface."""
@@ -64,7 +69,9 @@ class DIContainer:
             if interface in self._singletons:
                 return self._singletons[interface]  # type: ignore[no-any-return]
 
-            if interface in self._resolving:
+            resolving = self._get_resolving_set()
+
+            if interface in resolving:
                 msg = f"Circular dependency detected while resolving: {interface}"
                 raise RuntimeError(msg)
 
@@ -72,7 +79,7 @@ class DIContainer:
                 msg = f"Dependency not registered: {interface}"
                 raise RuntimeError(msg)
 
-            self._resolving.add(interface)
+            resolving.add(interface)
             try:
                 # We do not hold the lock during factory instantiation to avoid deadlocks
                 # if factory also calls resolve. But wait, if factory calls resolve, it re-enters.
@@ -82,7 +89,7 @@ class DIContainer:
                 self._singletons[interface] = instance
                 return instance  # type: ignore[no-any-return]
             finally:
-                self._resolving.remove(interface)
+                resolving.remove(interface)
 
     def load_dynamic_class(self, module_path: str, class_name: str) -> type[Any]:
         """Dynamically loads a class from a module."""

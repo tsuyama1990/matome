@@ -137,7 +137,12 @@ class PlainTextParser:
 
     async def parse(self, file_content: bytes, filename: str) -> str:
         """Parses the text from the bytes."""
-        return file_content.decode("utf-8", errors="replace")
+        try:
+            return file_content.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as e:
+            logger.exception(f"Failed to decode content of {filename}")
+            msg = f"Invalid encoding in file: {filename}"
+            raise ValueError(msg) from e
 
 
 class DummyEmbeddingService:
@@ -223,6 +228,7 @@ class MockHTTPTransport(httpx.AsyncBaseTransport):
     """A clean, protocol-compliant mock transport avoiding direct class-level httpx instantiation state."""
 
     def __init__(self) -> None:
+        super().__init__()
         self.responses: list[Any] = []
         self.call_count = 0
         self.requests: list[Any] = []
@@ -286,7 +292,7 @@ class MockHTTPTransport(httpx.AsyncBaseTransport):
 MockHttpxTransport = MockHTTPTransport
 
 
-class SafeTestHTTPTransport:
+class SafeTestHTTPTransport(httpx.AsyncBaseTransport):
     """Minimal test implementation of httpx.AsyncBaseTransport without mocking."""
 
     def __init__(
@@ -295,6 +301,7 @@ class SafeTestHTTPTransport:
         status_code: int = 200,
         raise_exception: Exception | None = None,
     ) -> None:
+        super().__init__()
         if raise_exception is not None and not isinstance(raise_exception, Exception):
             msg = "raise_exception must be an Exception"
             raise ValueError(msg)

@@ -8,7 +8,7 @@ from src.infrastructure.test_services import SafeTestHTTPTransport
 
 def setup_encryption_env(
     monkeypatch: pytest.MonkeyPatch,
-    key: str = "sk-valid-key-longer-than-50-characters-for-testing-12345",
+    key: str = "sk-or-v1-abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
 ) -> None:
     """Helper to setup encrypted API key and encryption key."""
     from src.config.security import SecurityService
@@ -39,7 +39,7 @@ async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
         test_transport = SafeTestHTTPTransport(
             response_data={"choices": [{"message": {"content": "Hello World"}}]}
         )
-        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+        gateway._client = httpx.AsyncClient(transport=test_transport)
 
         result = await gateway.generate("test prompt")
         assert result == "Hello World"
@@ -100,7 +100,7 @@ async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
     async with OpenRouterGateway(config) as gateway:
         test_transport = SafeTestHTTPTransport(response_data={}, status_code=400)
-        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+        gateway._client = httpx.AsyncClient(transport=test_transport)
 
         with pytest.raises(LLMError, match="LLM API request failed due to an HTTP error: 400."):
             await gateway.generate("test prompt")
@@ -124,7 +124,7 @@ async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> Non
         test_transport = SafeTestHTTPTransport(
             response_data={}, raise_exception=httpx.RequestError("error", request=req)
         )
-        gateway._client = httpx.AsyncClient(transport=test_transport)  # type: ignore[arg-type]
+        gateway._client = httpx.AsyncClient(transport=test_transport)
 
         with pytest.raises(
             LLMError, match="LLM API request failed due to a network error after retries."

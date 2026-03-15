@@ -70,14 +70,16 @@ class NLPService:
             msg = "Content contains forbidden control characters."
             raise ValueError(msg)
 
-        # Secure whitelist approach: Only allow printable characters, newlines, and standard punctuation.
-        # This implicitly blocks complex semantic injection payloads without brittle regex blocklists.
-        # We allow standard word characters, whitespace, and basic punctuation.
-        if not re.match(r"^[\w\s\.,;:!?\-\(\)\[\]\{\}\'\"\$£€]+$", content, re.UNICODE):
-            msg = "Content rejected due to semantic injection patterns."
+        # Use strict HTML/script sanitization with Bleach instead of brittle regex whitelists
+        # that break on multi-language content and allow logic injections.
+        sanitized = bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
+
+        # Enforce basic constraints
+        if len(sanitized) > 100000:
+            msg = "Content exceeds maximum length."
             raise ValueError(msg)
 
-        return bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
+        return sanitized
 
     def tag_entities_and_axes(self, chunks: list[SemanticChunk]) -> None:
         """

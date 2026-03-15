@@ -32,6 +32,15 @@ class OpenRouterGateway:
         if not encrypted_key or not encrypted_key.strip():
             msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
             raise ValueError(msg)
+
+        # Format validation for Fernet encrypted token:
+        # Fernet tokens start with 'gAAAAA' and are URL-safe base64.
+        import re
+
+        if not re.match(r"^gAAAAA[A-Za-z0-9\-_=]+$", encrypted_key):
+            msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
+            raise ValueError(msg)
+
         self._encrypted_api_key = encrypted_key
 
     def _validate_environment(self) -> None:
@@ -118,6 +127,15 @@ class OpenRouterGateway:
         if not encrypted_key or not encrypted_key.strip():
             msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
             raise ValueError(msg)
+
+        # Format validation for Fernet encrypted token:
+        # Fernet tokens start with 'gAAAAA' and are URL-safe base64.
+        import re
+
+        if not re.match(r"^gAAAAA[A-Za-z0-9\-_=]+$", encrypted_key):
+            msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
+            raise ValueError(msg)
+
         self._encrypted_api_key = encrypted_key
 
     async def __aenter__(self) -> "OpenRouterGateway":
@@ -217,11 +235,7 @@ class OpenRouterGateway:
         security_service = SecurityService()
         with security_service.get_decrypted_key(self._encrypted_api_key) as api_key:
             # Stricter validation: specific prefix, strict alphanumeric payload, minimum and maximum lengths
-            if (
-                len(api_key) < 51
-                or len(api_key) > 100
-                or not re.match(r"^sk-[A-Za-z0-9\-_]{48,97}$", api_key)
-            ):
+            if len(api_key) != 73 or not re.match(r"^sk-or-v1-[a-f0-9]{64}$", api_key):
                 msg = "Decrypted API key does not match expected OpenRouter format."
                 raise ValueError(msg)
 
