@@ -3,7 +3,6 @@ import json
 import logging
 import re
 import uuid
-from collections import defaultdict
 from typing import Any
 
 import bleach
@@ -13,7 +12,6 @@ from src.application.raptor_engine import RaptorEngine
 from src.application.sq3r_service import SQ3REngine
 from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
 from src.domain_models.exceptions import NLPModelLoadError
-from src.interfaces.clustering import PivotEngineProtocol
 from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, TextParserProtocol
 
 logger = logging.getLogger(__name__)
@@ -121,48 +119,6 @@ class NLPService:
             chunk.metadata.time_axis = self._detect_time_axis(sanitized_content.lower())
 
 
-class PivotKJEngine(PivotEngineProtocol):
-    """
-    Engine to orchestrate dynamic re-clustering (Pivot KJ) of semantic chunks based
-    on specific multi-dimensional axes (e.g., actor, timeline).
-    """
-
-    def __init__(self, allowed_axes: frozenset[str]) -> None:
-        self._allowed_axes = allowed_axes
-
-    def pivot(self, chunks: list[SemanticChunk], axis: str) -> dict[str, list[SemanticChunk]]:
-        if not axis.isidentifier():
-            msg = "Axis must be a valid identifier"
-            raise ValueError(msg)
-        """
-        Dynamically relocates and clusters chunks based on explicitly defined metadata tags.
-        """
-        if not chunks:
-            return {}
-
-        axis_lower = axis.lower()
-        if axis_lower not in self._allowed_axes:
-            msg = f"Invalid axis '{axis}'. Supported axes are {', '.join(sorted(self._allowed_axes))}."
-            logger.exception(msg)
-            raise ValueError(msg)
-
-        clusters: dict[str, list[SemanticChunk]] = defaultdict(list)
-
-        for chunk in chunks:
-            # Map dynamic axes to concrete metadata fields based on axis name
-            target_value = "Uncategorized"
-
-            if "actor" in axis_lower:
-                target_value = chunk.metadata.actor_axis or "Uncategorized"
-            elif "time" in axis_lower:
-                target_value = chunk.metadata.time_axis or "Uncategorized"
-            elif "entities" in axis_lower and chunk.metadata.extracted_entities:
-                target_value = chunk.metadata.extracted_entities[0]
-
-            clusters[target_value].append(chunk)
-
-        # Convert defaultdict to standard dict for strict typing
-        return dict(clusters)
 
 
 class IngestionPipeline:
@@ -302,7 +258,6 @@ __all__ = [
     "IngestionPipeline",
     "NLPModelLoadError",
     "NLPService",
-    "PivotKJEngine",
     "PivotWorkflow",
     "RaptorEngine",
     "SQ3REngine",

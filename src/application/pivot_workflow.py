@@ -194,12 +194,24 @@ class PivotWorkflow:
         self, document_id: uuid.UUID, payload: PivotRequestPayload
     ) -> PivotResponse:
         """Executes the Pivot workflow."""
+        import bleach
+
+        # Validate payload axis before hitting engine
+        sanitized_axis = bleach.clean(payload.axis.strip().lower(), tags=[], attributes={}, protocols=[], strip=True)
+        if not sanitized_axis:
+            msg = "Invalid or empty axis provided"
+            raise PivotGenerationError(msg)
+
         try:
-            document = self._repository.get_document_by_id(str(document_id))
-        except Exception as e:
+            document = self._repository.get_document_by_id(document_id)
+        except ValueError as e:
             msg = f"Failed to retrieve document {document_id}"
             logger.exception(msg)
             raise ValueError(msg) from e
+        except Exception as e:
+            msg = f"Failed to retrieve document {document_id}"
+            logger.exception(msg)
+            raise PivotGenerationError(msg) from e
 
         if not document.chunks:
             msg = f"Document {document_id} has no chunks."
@@ -214,6 +226,28 @@ class PivotWorkflow:
             cluster_text += f"\n## Cluster: {node.label}\n"
             cluster_text += f"Summary: {node.summary}\n"
 
+        markdown, mermaid = await self._generate_artifacts(cluster_text)
+
+        serialized_clusters = {}
+        for node in pivot_state.nodes:
+            # We don't have the original chunk content directly on the node without mapping back to document.chunks
+            # But we can serialize the source_chunk_ids safely
+            validated_ids = []
+            for chunk_id in node.source_chunk_ids:
+                if not isinstance(chunk_id, uuid.UUID):
+                    msg = "Invalid chunk ID"
+                    raise PivotGenerationError(msg)
+                validated_ids.append({"id": str(chunk_id)})
+            serialized_clusters[node.label] = validated_ids
+
+        return PivotResponse(
+            markdown=markdown,
+            mermaid=mermaid,
+            clusters=serialized_clusters,
+        )
+
+    async def _generate_artifacts(self, cluster_text: str) -> tuple[str, str]:
+        """Helper to generate markdown and mermaid artifacts based on clusters."""
         markdown_prompt = (
             "You are a system architect. Based on the following clustered requirements, "
             "generate a formal Markdown requirements document (PRD format). "
@@ -251,20 +285,4 @@ class PivotWorkflow:
                 "Failed to generate mermaid artifact, continuing with partial success."
             )
 
-        serialized_clusters = {}
-        for node in pivot_state.nodes:
-            # We don't have the original chunk content directly on the node without mapping back to document.chunks
-            # But we can serialize the source_chunk_ids safely
-            validated_ids = []
-            for chunk_id in node.source_chunk_ids:
-                if not isinstance(chunk_id, uuid.UUID):
-                    msg = "Invalid chunk ID"
-                    raise PivotGenerationError(msg)
-                validated_ids.append({"id": str(chunk_id)})
-            serialized_clusters[node.label] = validated_ids
-
-        return PivotResponse(
-            markdown=markdown,
-            mermaid=mermaid,
-            clusters=serialized_clusters,
-        )
+        return markdown, mermaid

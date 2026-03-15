@@ -191,17 +191,6 @@ def register_sq3r_engine(container: DIContainer) -> None:
     container.register(SQ3REngine, sq3r_factory)
 
 
-def register_pivot_kj_engine(container: DIContainer) -> None:
-    from src.application import PivotKJEngine
-    from src.config.settings import AppConfig
-
-    def pivot_factory() -> PivotKJEngine:
-        config = container.resolve(AppConfig)
-        return PivotKJEngine(allowed_axes=frozenset(config.pivot_allowed_axes))
-
-    container.register(PivotKJEngine, pivot_factory)
-
-
 def register_pivot_workflow(container: DIContainer) -> None:
     from src.application.pivot_workflow import ExportService, PivotEngine, PivotWorkflow
     from src.interfaces.repository import DocumentRepositoryProtocol
@@ -364,16 +353,11 @@ def _register_application_services(container: DIContainer) -> None:
         )
 
     try:
-        register_pivot_kj_engine(container)
-    except Exception:
-        logger.exception(
-            "PivotKJEngine failed to register. Pivot KJ clustering will be unavailable."
-        )
-
-    try:
         register_pivot_workflow(container)
-    except Exception:
+    except Exception as e:
         logger.exception("PivotWorkflow failed to register. Pivot API features will be degraded.")
+        msg = "Critical registration failure for PivotWorkflow"
+        raise RuntimeError(msg) from e
 
     try:
         register_nlp_service(container)

@@ -48,18 +48,18 @@ Name                                  Stmts   Miss  Cover   Missing
 src/__init__.py                           0      0   100%
 src/application/__init__.py             166     31    81%   46-47, 49-50, 58, 60, 68-69, 77-78, 94, 108, 117-118, 135-136, 141, 159-160, 206, 216, 219-229
 src/application/di_container.py          63      9    86%   21-22, 36-37, 56-57, 76, 85-86
-src/application/pivot_workflow.py       129     28    78%   53-55, 58, 61-62, 76-77, 82-83, 123-134, 149, 156, 226-227, 233-234
+src/application/pivot_workflow.py       143     34    76%   36-37, 64-66, 69, 72-73, 88-89, 94-95, 135-146, 161-162, 165, 172, 242-243, 249-250, 261-262
 src/application/raptor_engine.py         53      9    83%   37-38, 41-42, 52-54, 73, 83
 src/application/sq3r_service.py          39      8    79%   28-30, 38-39, 56-58
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   45      7    84%   17-18, 42-43, 52-54
-src/config/settings.py                  103     14    86%   34-35, 38, 41-42, 45-46, 75, 101-102, 234-235, 243-244
+src/config/settings.py                  104     14    87%   34-35, 38, 41-42, 45-46, 75, 101-102, 240-241, 249-250
 src/domain_models/__init__.py             5      0   100%
 src/domain_models/config.py              50      4    92%   137-138, 141-142
 src/domain_models/document.py            65      3    95%   49-50, 99
 src/domain_models/exceptions.py           6      0   100%
 src/domain_models/graph_state.py         46      0   100%
-src/domain_models/pivot.py               27      2    93%   54-55
+src/domain_models/pivot.py               32      2    94%   65-66
 src/infrastructure/__init__.py            2      0   100%
 src/infrastructure/clustering.py        110     33    70%   34-35, 77-79, 87-88, 94-98, 101-129, 134-135
 src/infrastructure/llm_gateway.py       170     53    69%   41-42, 50-51, 56-57, 66-67, 73-74, 85-86, 93-97, 113-114, 116-117, 120-121, 139-140, 143-144, 149-150, 154-155, 176-177, 182-183, 192-193, 208-209, 212-213, 230-231, 268-271, 276-280, 282-284
@@ -70,11 +70,11 @@ src/infrastructure/vector_store.py      120     64    47%   20-28, 37-42, 46-86,
 src/interfaces/__init__.py                2      0   100%
 src/interfaces/api_router.py             86     23    73%   24-25, 40-42, 46-48, 60-62, 70-72, 83-84, 99-100, 117-119, 133, 138
 src/interfaces/clustering.py              6      0   100%
-src/interfaces/dependencies.py          220    139    37%   101-102, 128-139, 143-179, 183-189, 193-200, 209-214, 217-219, 231-259, 273-289, 293-298, 302-338, 342-376, 381-397
+src/interfaces/dependencies.py          222    141    36%   103-104, 130-141, 145-181, 185-191, 195-202, 211-224, 227-229, 241-269, 283-299, 303-308, 312-348, 352-386, 391-407
 src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              9      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1941    522    73%
-================= 110 passed, 4 warnings in 113.39s (0:01:53) ==================
+TOTAL                                  1963    530    73%
+================= 110 passed, 4 warnings in 114.34s (0:01:54) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
