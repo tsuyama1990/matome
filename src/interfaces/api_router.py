@@ -6,7 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic_core.core_schema import ValidationInfo
 
 from src.application.sq3r_service import SQ3REngine, SQ3RService
-from src.domain_models.pivot import PivotRequestPayload
+from src.domain_models.pivot import PivotRequestPayload, PivotResponse
 from src.interfaces.dependencies import DIContainer, LLMProtocol, PivotWorkflowProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
 
@@ -124,7 +124,7 @@ async def pivot_document(
     document_id: str,
     payload: PivotRequestPayload,
     workflow: Annotated[PivotWorkflowProtocol, Depends(get_pivot_workflow)],
-) -> dict[str, Any]:
+) -> PivotResponse:
     try:
         import uuid as _uuid
         doc_uuid = _uuid.UUID(document_id)

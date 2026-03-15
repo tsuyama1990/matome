@@ -10,7 +10,7 @@ if typing.TYPE_CHECKING:
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from src.domain_models.document import EnrichedDocument, SemanticChunk
-from src.domain_models.pivot import PivotNode, PivotRequestPayload, PivotState
+from src.domain_models.pivot import PivotNode, PivotRequestPayload, PivotResponse, PivotState
 from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, VectorDBProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
 
@@ -25,11 +25,22 @@ class PivotEngine:
     """Core service for knowledge reconstruction based on Multi-Dimensional axes."""
 
     def __init__(
-        self, llm: LLMProtocol, vector_db: VectorDBProtocol, embedding: EmbeddingProtocol
+        self,
+        llm: LLMProtocol,
+        vector_db: VectorDBProtocol,
+        embedding: EmbeddingProtocol,
+        allowed_axes: frozenset[str],
+        llm_timeout: float = 30.0,
     ) -> None:
+        if not hasattr(llm, "generate") or not hasattr(vector_db, "search") or not hasattr(embedding, "embed_text"):
+            msg = "Invalid protocol implementations provided to PivotEngine"
+            raise ValueError(msg)
+
         self._llm = llm
         self._vector_db = vector_db
         self._embedding = embedding
+        self._allowed_axes = allowed_axes
+        self._llm_timeout = llm_timeout
 
     @retry(
         stop=stop_after_attempt(3),
@@ -68,24 +79,25 @@ class PivotEngine:
         Executes the Pivot analysis using Vector search and LLM synthesis.
         """
         import asyncio
-        import re
+
+        import bleach
 
         # Sanitize and validate axis parameter
-        sanitized_axis = axis.strip().lower()
-        if not re.match(r"^[a-zA-Z0-9\s_-]+$", sanitized_axis):
-            msg = "Invalid axis format. Allowed characters are alphanumeric, spaces, dashes, or underscores."
+        sanitized_axis = bleach.clean(axis.strip().lower(), tags=[], attributes={}, protocols=[], strip=True)
+        if sanitized_axis not in self._allowed_axes:
+            msg = "Invalid axis"
             raise PivotGenerationError(msg)
 
         chunks = await self._retrieve_chunks(document, sanitized_axis)
 
         if not chunks:
-            msg = "No chunks available for Pivot processing."
+            msg = "Pivot processing failed"
             raise PivotGenerationError(msg)
 
-        chunk_context = "".join([f"Chunk ID: {c.id}\nContent: {c.content}\n---\n" for c in chunks])
+        chunk_context = "".join([f"Chunk ID: {c.id}\nContent: {bleach.clean(c.content, tags=[], attributes={}, protocols=[], strip=True)}\n---\n" for c in chunks])
 
         prompt = (
-            f"Analyze these text chunks. Organize them into the conceptual axis: '{axis}'.\n"
+            f"Analyze these text chunks. Organize them into the conceptual axis: '{sanitized_axis}'.\n"
             "Identify distinct categories or concepts based on this axis.\n"
             "Return ONLY a strictly formatted JSON object matching this schema:\n"
             "{\n"
@@ -102,8 +114,8 @@ class PivotEngine:
         )
 
         try:
-            # Add timeout protection for LLM call
-            response_json = await asyncio.wait_for(self._llm.generate(prompt), timeout=60.0)
+            # Add timeout protection for LLM call based on config
+            response_json = await asyncio.wait_for(self._llm.generate(prompt), timeout=self._llm_timeout)
             response_json = response_json.replace("```json", "").replace("```", "").strip()
             data = json.loads(response_json)
 
@@ -128,9 +140,9 @@ class PivotEngine:
             logger.exception("LLM pivot generation timed out.")
             msg = "LLM pivot generation timed out."
             raise PivotGenerationError(msg) from e
-        except Exception as e:
-            logger.exception("Failed to generate Pivot state.")
-            msg = "Failed to generate Pivot state due to invalid LLM format or constraints."
+        except ValueError as e:
+            logger.exception("Validation error while generating Pivot state.")
+            msg = "Failed to generate Pivot state due to invalid data constraints."
             raise PivotGenerationError(msg) from e
         else:
             state = PivotState(
@@ -145,6 +157,10 @@ class ExportService:
 
     def generate_markdown(self, state: PivotState) -> str:
         """Converts the PivotState into a Markdown document."""
+        if not isinstance(state, PivotState):
+            msg = "Invalid state"
+            raise TypeError(msg)
+
         if not state.nodes:
             return f"# {state.axis_name}\n\nNo structured concepts were found for this axis."
 
@@ -176,7 +192,7 @@ class PivotWorkflow:
 
     async def execute(
         self, document_id: uuid.UUID, payload: PivotRequestPayload
-    ) -> dict[str, typing.Any]:
+    ) -> PivotResponse:
         """Executes the Pivot workflow."""
         try:
             document = self._repository.get_document_by_id(str(document_id))
@@ -238,11 +254,17 @@ class PivotWorkflow:
         serialized_clusters = {}
         for node in pivot_state.nodes:
             # We don't have the original chunk content directly on the node without mapping back to document.chunks
-            # But we can serialize the source_chunk_ids
-            serialized_clusters[node.label] = [{"id": str(chunk_id)} for chunk_id in node.source_chunk_ids]
+            # But we can serialize the source_chunk_ids safely
+            validated_ids = []
+            for chunk_id in node.source_chunk_ids:
+                if not isinstance(chunk_id, uuid.UUID):
+                    msg = "Invalid chunk ID"
+                    raise PivotGenerationError(msg)
+                validated_ids.append({"id": str(chunk_id)})
+            serialized_clusters[node.label] = validated_ids
 
-        return {
-            "markdown": markdown,
-            "mermaid": mermaid,
-            "clusters": serialized_clusters,
-        }
+        return PivotResponse(
+            markdown=markdown,
+            mermaid=mermaid,
+            clusters=serialized_clusters,
+        )

@@ -347,7 +347,7 @@ async def test_uat_06_01_pivot_reconstruction() -> None:
     mock_llm = MockReasoningLLMService(response_json=json_resp)
     mock_embed = DummyEmbeddingService(dimension=384)
 
-    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed)
+    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed, allowed_axes=frozenset({"system actors"}))
     doc_id = uuid.uuid4()
     doc = EnrichedDocument(document_id=doc_id, original_text="...", chunks=[chunk], raptor_nodes=[])
 

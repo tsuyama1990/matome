@@ -31,6 +31,17 @@ class PivotState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class PivotResponse(BaseModel):
+    """
+    Response model for Pivot Workflow.
+    """
+    markdown: str = Field(description="Generated markdown string.")
+    mermaid: str = Field(description="Generated mermaid string.")
+    clusters: dict[str, list[dict[str, str]]] = Field(description="Serialized clusters mappings.")
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class PivotRequestPayload(BaseModel):
     """
     Payload for requesting a pivot KJ analysis.

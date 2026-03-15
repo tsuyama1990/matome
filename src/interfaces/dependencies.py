@@ -6,7 +6,7 @@ from collections.abc import Callable
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from src.domain_models.document import SemanticChunk
-from src.domain_models.pivot import PivotRequestPayload
+from src.domain_models.pivot import PivotRequestPayload, PivotResponse
 
 logger = logging.getLogger(__name__)
 
@@ -53,11 +53,13 @@ class EmbeddingProtocol(Protocol):
     async def embed_text(self, text: str) -> list[float]: ...
 
 
+
+
 @runtime_checkable
 class PivotWorkflowProtocol(Protocol):
     """Protocol defining the facade for Pivot Workflow orchestration."""
 
-    async def execute(self, document_id: uuid.UUID, payload: PivotRequestPayload) -> dict[str, Any]: ...
+    async def execute(self, document_id: uuid.UUID, payload: PivotRequestPayload) -> PivotResponse: ...
 
 
 @runtime_checkable
@@ -207,10 +209,18 @@ def register_pivot_workflow(container: DIContainer) -> None:
     # If the user overrides PivotEngine directly, don't try to resolve its internal dependencies
     if PivotEngine not in container._factories and PivotEngine not in container._singletons:
         def pivot_engine_factory() -> PivotEngine:
+            from src.config.settings import AppConfig
+            config = container.resolve(AppConfig)
             llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
             vector_db = container.resolve(VectorDBProtocol)  # type: ignore[type-abstract]
             embedding = container.resolve(EmbeddingProtocol)  # type: ignore[type-abstract]
-            return PivotEngine(llm=llm, vector_db=vector_db, embedding=embedding)
+            return PivotEngine(
+                llm=llm,
+                vector_db=vector_db,
+                embedding=embedding,
+                allowed_axes=frozenset(config.pivot_allowed_axes),
+                llm_timeout=config.llm_timeout
+            )
         container.register(PivotEngine, pivot_engine_factory)
 
     if ExportService not in container._factories and ExportService not in container._singletons:
