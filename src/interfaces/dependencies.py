@@ -134,6 +134,7 @@ def register_raptor_engine(container: DIContainer) -> None:
             llm=llm,
             clustering_strategy=clustering_strategy,
             max_clusters=config.raptor_max_clusters,
+            max_content_length=config.max_content_length,
         )
 
     container.register(RaptorEngine, raptor_factory)
@@ -206,6 +207,7 @@ def register_nlp_service(container: DIContainer) -> None:
             max_entities=config.nlp_max_entities,
             time_axis_past_words=config.nlp_time_axis_past_words,
             time_axis_future_words=config.nlp_time_axis_future_words,
+            max_content_length=config.max_content_length,
         )
 
     container.register(NLPService, nlp_factory)

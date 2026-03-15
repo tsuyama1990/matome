@@ -18,6 +18,15 @@ from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, TextPars
 logger = logging.getLogger(__name__)
 
 
+_LLM_JSON_FORMAT_PROMPT = (
+    "Analyze the following text. Extract proper nouns (entities) and "
+    "categorize the text along the time axis (Past, Present, or Future). "
+    "Respond ONLY with a valid JSON object in the following exact format:\n"
+    '{{"entities": ["Entity1", "Entity2"], "time_axis": "Present"}}\n\n'
+    "Text:\n{text}"
+)
+
+
 class NLPService:
     """Service dedicated to natural language processing and entity tagging."""
 
@@ -26,8 +35,10 @@ class NLPService:
         model_name: str,
         time_axis_past_words: list[str],
         time_axis_future_words: list[str],
+        max_content_length: int = 100000,
         max_entities: int = 50,
     ) -> None:
+        self.max_content_length = max_content_length
         self.nlp: Any | None = None
         self.model_name = model_name
         self.max_entities = max_entities
@@ -76,11 +87,7 @@ class NLPService:
         sanitized = bleach.clean(content, tags=[], attributes={}, protocols=[], strip=True)
 
         # Enforce basic constraints
-        from src.config.settings import AppConfig
-
-        max_content_length = AppConfig().max_content_length
-
-        if len(sanitized) > max_content_length:
+        if len(sanitized) > self.max_content_length:
             msg = "Content exceeds maximum length."
             raise ValueError(msg)
 
@@ -231,10 +238,12 @@ class IngestionPipeline:
         llm: LLMProtocol,
         embedding: EmbeddingProtocol,
         text_parser: TextParserProtocol,
+        max_sentences_per_chunk: int = 5,
     ) -> None:
         self._llm = llm
         self._embedding = embedding
         self._text_parser = text_parser
+        self._max_sentences_per_chunk = max_sentences_per_chunk
 
         from src.config.settings import AppConfig
 
@@ -246,6 +255,7 @@ class IngestionPipeline:
             llm=llm,
             clustering_strategy=UMAPGMMClusteringStrategy(),
             max_clusters=self._config.raptor_max_clusters,
+            max_content_length=self._config.max_content_length,
         )
         try:
             import spacy
@@ -260,13 +270,7 @@ class IngestionPipeline:
 
     async def _extract_entities_and_tags(self, text: str) -> dict[str, Any]:
         """Calls the LLM to extract metadata tags (entities, time axis)."""
-        prompt = (
-            "Analyze the following text. Extract proper nouns (entities) and "
-            "categorize the text along the time axis (Past, Present, or Future). "
-            "Respond ONLY with a valid JSON object in the following exact format:\n"
-            '{"entities": ["Entity1", "Entity2"], "time_axis": "Present"}\n\n'
-            f"Text:\n{text}"
-        )
+        prompt = _LLM_JSON_FORMAT_PROMPT.format(text=text)
         try:
             # We assume a text_fast_model for these metadata extractions
             from src.domain_models.config import ModelRoutingRules
@@ -297,12 +301,12 @@ class IngestionPipeline:
         if self._nlp:
             doc = self._nlp(text)
             sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
-            # A basic semantic chunker: group up to 5 sentences together to maintain some context
+            # A basic semantic chunker: group up to max_sentences_per_chunk sentences together to maintain some context
             chunks = []
             current_chunk = []
             for i, sent in enumerate(sentences):
                 current_chunk.append(sent)
-                if len(current_chunk) >= 5 or i == len(sentences) - 1:
+                if len(current_chunk) >= self._max_sentences_per_chunk or i == len(sentences) - 1:
                     chunks.append(" ".join(current_chunk))
                     current_chunk = []
             return chunks

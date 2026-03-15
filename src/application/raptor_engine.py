@@ -20,11 +20,16 @@ class RaptorEngine:
     """
 
     def __init__(
-        self, llm: LLMProtocol, clustering_strategy: ClusteringStrategy, max_clusters: int = 10
+        self,
+        llm: LLMProtocol,
+        clustering_strategy: ClusteringStrategy,
+        max_clusters: int = 10,
+        max_content_length: int = 100000,
     ) -> None:
         self.llm = llm
         self.clustering_strategy = clustering_strategy
         self.max_clusters = max_clusters
+        self.max_content_length = max_content_length
 
     async def _generate_cod_summary(self, text: str) -> str:
         """Helper method to generate Chain of Density summary using LLMProtocol."""
@@ -32,10 +37,7 @@ class RaptorEngine:
             msg = "Texts cannot be empty or contain only whitespace."
             raise ValueError(msg)
 
-        from src.config.settings import AppConfig
-
-        max_content_length = AppConfig().max_content_length
-        if len(text) > max_content_length:
+        if len(text) > self.max_content_length:
             msg = "Text chunk too large."
             raise ValueError(msg)
 

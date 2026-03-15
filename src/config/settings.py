@@ -169,6 +169,10 @@ class ModelConfig(BaseSettings):
         default=100000,
         description="Maximum allowed character length for LLM prompts.",
     )
+    max_sentences_per_chunk: int = Field(
+        default=5,
+        description="Maximum number of sentences per semantic chunk before fallback splitting.",
+    )
     max_prompt_tokens: int = Field(
         default=25000,
         description="Maximum estimated token count for LLM prompts.",
