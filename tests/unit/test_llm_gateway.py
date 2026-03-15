@@ -28,9 +28,9 @@ async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
     # we need to use a domain that resolves natively, such as example.com
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
@@ -55,9 +55,9 @@ async def test_llm_gateway_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> N
     # Validation logic will fail early, but config can be valid structurally
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     with pytest.raises(
@@ -72,9 +72,9 @@ async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatc
 
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch, key="invalid-format-key")
@@ -91,9 +91,9 @@ async def test_llm_gateway_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
 
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
@@ -112,9 +112,9 @@ async def test_llm_gateway_request_error(monkeypatch: pytest.MonkeyPatch) -> Non
 
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
-        text_fast_model="test-model",
-        text_reasoning_model="test-model",
-        multimodal_model="test-model",
+        text_fast_model="test/model",
+        text_reasoning_model="test/model",
+        multimodal_model="test/model",
         allowed_hosts=["example.com"],
     )
     setup_encryption_env(monkeypatch)
