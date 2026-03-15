@@ -32,15 +32,14 @@ class NLPService:
 
     def __init__(
         self,
-        model_name: str,
+        nlp_model: Any | None,
         time_axis_past_words: list[str],
         time_axis_future_words: list[str],
         max_content_length: int = 100000,
         max_entities: int = 50,
     ) -> None:
         self.max_content_length = max_content_length
-        self.nlp: Any | None = None
-        self.model_name = model_name
+        self.nlp = nlp_model
         self.max_entities = max_entities
         if not time_axis_past_words:
             msg = "time_axis_past_words must not be empty"
@@ -51,21 +50,6 @@ class NLPService:
 
         self.time_axis_past_words = time_axis_past_words
         self.time_axis_future_words = time_axis_future_words
-        self._load_model()
-
-    def _load_model(self) -> None:
-        """Loads the Spacy model safely."""
-        try:
-            import spacy
-        except ImportError as e:
-            msg = "Spacy library is not installed."
-            raise NLPModelLoadError(msg) from e
-
-        try:
-            self.nlp = spacy.load(self.model_name)
-        except OSError as e:
-            msg = f"Spacy model '{self.model_name}' is missing. Please install it."
-            raise NLPModelLoadError(msg) from e
 
     def _detect_time_axis(self, content_lower: str) -> str:
         """Detects the time axis of the text using configured temporal keywords."""
@@ -240,6 +224,7 @@ class IngestionPipeline:
         text_parser: TextParserProtocol,
         raptor_engine: RaptorEngine,
         fast_model_name: str,
+        nlp_model: Any | None = None,
         max_sentences_per_chunk: int = 5,
     ) -> None:
         self._llm = llm
@@ -247,18 +232,8 @@ class IngestionPipeline:
         self._text_parser = text_parser
         self._raptor_engine = raptor_engine
         self._fast_model_name = fast_model_name
+        self._nlp = nlp_model
         self._max_sentences_per_chunk = max_sentences_per_chunk
-
-        try:
-            import spacy
-
-            # Use the lightweight model for robust sentence splitting in the pipeline
-            self._nlp = spacy.load("en_core_web_sm")
-        except (ImportError, OSError):
-            self._nlp = None  # type: ignore[assignment]
-            logger.warning(
-                "Spacy model 'en_core_web_sm' not found. Falling back to simple chunking."
-            )
 
     async def _extract_entities_and_tags(self, text: str) -> dict[str, Any]:
         """Calls the LLM to extract metadata tags (entities, time axis)."""

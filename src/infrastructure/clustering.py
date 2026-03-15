@@ -82,16 +82,13 @@ class SemanticClusterer:
 class UMAPGMMClusteringStrategy(ClusteringStrategy):
     """Clustering strategy using UMAP for dimension reduction and GMM for clustering."""
 
-    def __init__(self) -> None:
-        try:
-            import umap.umap_ as umap
-            from sklearn.mixture import GaussianMixture
-
-            self.umap_lib = umap
-            self.gmm_cls = GaussianMixture
-        except ImportError as e:
+    def __init__(self, umap_lib: Any, gmm_cls: Any) -> None:
+        if umap_lib is None or gmm_cls is None:
             msg = "Missing required ML dependencies (umap-learn, scikit-learn)."
-            raise RuntimeError(msg) from e
+            raise RuntimeError(msg)
+
+        self.umap_lib = umap_lib
+        self.gmm_cls = gmm_cls
 
     def _validate_embeddings(self, embeddings: list[list[float]]) -> np.ndarray:
         arr = np.array(embeddings, dtype=np.float32)

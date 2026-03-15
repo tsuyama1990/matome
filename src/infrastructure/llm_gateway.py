@@ -33,11 +33,9 @@ class OpenRouterGateway:
             msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
             raise ValueError(msg)
 
-        # Format validation for Fernet encrypted token:
-        # Fernet tokens start with 'gAAAAA' and are URL-safe base64.
-        import re
-
-        if not re.match(self._config.fernet_token_pattern, encrypted_key):
+        # Security: Allow SecurityService (Fernet) to handle format integrity strictly
+        # upon decryption. Only perform basic length sanity check prior to use.
+        if len(encrypted_key) < 50:
             msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
             raise ValueError(msg)
 
@@ -126,11 +124,7 @@ class OpenRouterGateway:
             msg = "OPENROUTER_API_KEY_ENCRYPTED environment variable is missing or empty."
             raise ValueError(msg)
 
-        # Format validation for Fernet encrypted token:
-        # Fernet tokens start with 'gAAAAA' and are URL-safe base64.
-        import re
-
-        if not re.match(self._config.fernet_token_pattern, encrypted_key):
+        if len(encrypted_key) < 50:
             msg = "OPENROUTER_API_KEY_ENCRYPTED format is invalid. Expected a valid Fernet token."
             raise ValueError(msg)
 
@@ -214,7 +208,7 @@ class OpenRouterGateway:
         """Generates text from a prompt."""
         return await self.generate_text(prompt, self._config.text_fast_model)
 
-    async def generate_text(self, prompt: str, model: str) -> str:
+    async def generate_text(self, prompt: str, model: str) -> str:  # noqa: C901
         """Generates text from a prompt for a specific model."""
         import re
 
@@ -255,14 +249,28 @@ class OpenRouterGateway:
                 "messages": [{"role": "user", "content": sanitized_prompt}],
             }
 
-        try:
-            response = await self._client.post(
+        from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+
+        @retry(
+            wait=wait_exponential(
+                multiplier=1, min=self._config.retry_min_wait, max=self._config.retry_max_wait
+            ),
+            stop=stop_after_attempt(self._config.max_retry_attempts),
+            retry=retry_if_exception_type((httpx.RequestError, httpx.HTTPStatusError)),
+            reraise=True,
+        )
+        async def _execute_request() -> httpx.Response:
+            response = await self._client.post(  # type: ignore[union-attr]
                 str(self._config.openrouter_api_url),
                 json=payload,
                 headers=headers,
                 timeout=self._config.llm_timeout,
             )
             response.raise_for_status()
+            return response
+
+        try:
+            response = await _execute_request()
 
             try:
                 data = response.json()

@@ -81,9 +81,7 @@ async def test_llm_gateway_invalid_api_key_format(monkeypatch: pytest.MonkeyPatc
     )
     setup_encryption_env(monkeypatch, key="invalid-format-key")
     async with OpenRouterGateway(config) as gateway:
-        with pytest.raises(
-            ValueError, match="Decrypted API key does not match expected length"
-        ):
+        with pytest.raises(ValueError, match="Decrypted API key does not match expected length"):
             await gateway.generate("test prompt")
 
 

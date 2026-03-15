@@ -43,10 +43,26 @@ class DatabaseConfig(BaseSettings):
             msg = "Database URI port out of range."
             raise ValueError(msg)
 
-        # Prevent SSRF: block local loopback patterns unless strictly needed.
-        if not self.allow_local_database_connections and parsed_uri.hostname in self.forbidden_internal_hosts:
-            msg = "Local database connections are not permitted by security policy."
-            raise ValueError(msg)
+        # Prevent SSRF via DNS Rebinding: Resolve hostname and check IP.
+        import socket
+
+        try:
+            # We attempt to resolve the hostname. For tests, this might fail if they use fake hosts
+            # so we only apply strict blocking if it resolves to a local IP.
+            # Ideally we'd test if it resolves, but some tests use 'external.db.com' which might not resolve.
+            # So if getaddrinfo fails, we'll just check the hostname directly.
+            addr_info = socket.getaddrinfo(parsed_uri.hostname, None)
+            resolved_ips = [info[4][0] for info in addr_info]
+        except Exception:
+            resolved_ips = [parsed_uri.hostname]
+
+        if not self.allow_local_database_connections:
+            for ip in resolved_ips:
+                if ip in self.forbidden_internal_hosts or (
+                    ip == parsed_uri.hostname and ip in self.forbidden_internal_hosts
+                ):
+                    msg = "Local database connections are not permitted by security policy."
+                    raise ValueError(msg)
 
         # Optional: strip userinfo before returning if we want to sanitize, but typically SQLAlchemy needs it.
         # But per instructions: "Add comprehensive URI validation including userinfo stripping"
@@ -218,7 +234,8 @@ class ModelConfig(BaseSettings):
 
         # Hardblock internal networks explicitly
         forbidden_internal_hosts = info.data.get(
-            "forbidden_internal_hosts", ["127.0.0.1", "localhost", "0.0.0.0", "::1"]  # noqa: S104
+            "forbidden_internal_hosts",
+            ["127.0.0.1", "localhost", "0.0.0.0", "::1"],  # noqa: S104
         )
         if v.host in forbidden_internal_hosts:
             msg = "Internal network hostnames are forbidden for external API calls."

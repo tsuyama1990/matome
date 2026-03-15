@@ -39,9 +39,19 @@ async def test_uat_04_01_hierarchical_tree_construction_mock_mode() -> None:
     parser = PlainTextParser()
 
     from src.application import RaptorEngine
-    raptor = RaptorEngine(llm=llm, clustering_strategy=MockSemanticClusterer(mocked_output={0: [0, 1], 1: [2, 3], 2: [4, 5]}))
 
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser, raptor_engine=raptor, fast_model_name="default")
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=MockSemanticClusterer(mocked_output={0: [0, 1], 1: [2, 3], 2: [4, 5]}),
+    )
+
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
 
     raw_text = (
         "Chunk one text. Chunk two text. Chunk three text. "
@@ -78,8 +88,17 @@ async def test_uat_04_02_chain_of_density_prompt() -> None:
     parser = PlainTextParser()
 
     from src.application import RaptorEngine
-    raptor = RaptorEngine(llm=spy_llm, clustering_strategy=MockSemanticClusterer(mocked_output={0: [0]}))
-    pipeline = IngestionPipeline(llm=spy_llm, embedding=embedding, text_parser=parser, raptor_engine=raptor, fast_model_name="default")
+
+    raptor = RaptorEngine(
+        llm=spy_llm, clustering_strategy=MockSemanticClusterer(mocked_output={0: [0]})
+    )
+    pipeline = IngestionPipeline(
+        llm=spy_llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
 
     raw_text = "Some text."
     await pipeline.build_enriched_document(raw_text.encode("utf-8"), "test.txt")
@@ -106,8 +125,17 @@ async def test_uat_04_03_tree_relational_integrity_and_schema() -> None:
     parser = PlainTextParser()
 
     from src.application import RaptorEngine
-    raptor = RaptorEngine(llm=llm, clustering_strategy=MockSemanticClusterer(mocked_output={0: [0, 1]}))
-    pipeline = IngestionPipeline(llm=llm, embedding=embedding, text_parser=parser, raptor_engine=raptor, fast_model_name="default")
+
+    raptor = RaptorEngine(
+        llm=llm, clustering_strategy=MockSemanticClusterer(mocked_output={0: [0, 1]})
+    )
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
 
     raw_text = "Data one. Data two."
     pipeline._nlp = None  # type: ignore[assignment]

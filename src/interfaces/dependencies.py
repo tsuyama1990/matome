@@ -125,7 +125,20 @@ def register_raptor_engine(container: DIContainer) -> None:
             ClusteringStrategy not in container._factories
             and ClusteringStrategy not in container._singletons
         ):
-            container.register(ClusteringStrategy, UMAPGMMClusteringStrategy)  # type: ignore[type-abstract]
+            try:
+                import umap.umap_ as umap
+                from sklearn.mixture import GaussianMixture
+
+                umap_lib = umap
+                gmm_cls = GaussianMixture
+            except ImportError:
+                umap_lib = None
+                gmm_cls = None
+
+            def _clustering_factory() -> ClusteringStrategy:
+                return UMAPGMMClusteringStrategy(umap_lib=umap_lib, gmm_cls=gmm_cls)
+
+            container.register(ClusteringStrategy, _clustering_factory)  # type: ignore[type-abstract]
 
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
         clustering_strategy = container.resolve(ClusteringStrategy)  # type: ignore[type-abstract]
@@ -196,14 +209,27 @@ def register_vector_store(container: DIContainer) -> None:
     container.register(VectorStoreProtocol, vector_store_factory)  # type: ignore[type-abstract]
 
 
+def _load_spacy_model(model_name: str) -> Any | None:
+    try:
+        import spacy
+
+        return spacy.load(model_name)
+    except (ImportError, OSError):
+        logger.warning(f"Spacy model '{model_name}' not found. Falling back to simple processing.")
+        return None
+
+
 def register_nlp_service(container: DIContainer) -> None:
     from src.application import NLPService
     from src.config.settings import AppConfig
 
     def nlp_factory() -> NLPService:
         config = container.resolve(AppConfig)
+
+        nlp_model = _load_spacy_model(config.spacy_model)
+
         return NLPService(
-            model_name=config.spacy_model,
+            nlp_model=nlp_model,
             max_entities=config.nlp_max_entities,
             time_axis_past_words=config.nlp_time_axis_past_words,
             time_axis_future_words=config.nlp_time_axis_future_words,
@@ -236,8 +262,10 @@ def register_ingestion_pipeline(container: DIContainer) -> None:
         try:
             settings_config = container.resolve(SettingsAppConfig)
             max_sentences = getattr(settings_config, "max_sentences_per_chunk", 5)
+            spacy_model_name = settings_config.spacy_model
         except Exception:
             max_sentences = 5
+            spacy_model_name = "en_core_web_sm"
 
         try:
             domain_config = container.resolve(DomainAppConfig)
@@ -245,12 +273,15 @@ def register_ingestion_pipeline(container: DIContainer) -> None:
         except Exception:
             fast_model = "default"
 
+        nlp_model = _load_spacy_model(spacy_model_name)
+
         return IngestionPipeline(
             llm=llm,
             embedding=embedding,
             text_parser=text_parser,
             raptor_engine=raptor_engine,
             fast_model_name=fast_model,
+            nlp_model=nlp_model,
             max_sentences_per_chunk=max_sentences,
         )
 
