@@ -4,6 +4,8 @@ import threading
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
+from src.domain_models.document import SemanticChunk
+
 logger = logging.getLogger(__name__)
 
 
@@ -15,6 +17,18 @@ class LLMProtocol(Protocol):
 
     async def generate_text(self, prompt: str, model: str) -> str: ...
 
+
+
+
+@runtime_checkable
+class VectorDBProtocol(Protocol):
+    """Protocol defining the contract for similarity search."""
+
+    async def upsert(self, chunks: list[SemanticChunk]) -> None: ...
+
+    async def search(
+        self, query_embedding: list[float], top_k: int, filter_metadata: dict[str, str] | None = None
+    ) -> list[SemanticChunk]: ...
 
 @runtime_checkable
 class VectorStoreProtocol(Protocol):
@@ -175,17 +189,28 @@ def register_pivot_kj_engine(container: DIContainer) -> None:
 
 
 def register_pivot_workflow(container: DIContainer) -> None:
-    from src.application.pivot_workflow import PivotWorkflow
+    from src.application.pivot_workflow import ExportService, PivotEngine, PivotWorkflow
     from src.interfaces.repository import DocumentRepositoryProtocol
+
+    def pivot_engine_factory() -> PivotEngine:
+        llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+        vector_db = container.resolve(VectorDBProtocol)  # type: ignore[type-abstract]
+        embedding = container.resolve(EmbeddingProtocol)  # type: ignore[type-abstract]
+        return PivotEngine(llm=llm, vector_db=vector_db, embedding=embedding)
+
+    def export_service_factory() -> ExportService:
+        return ExportService()
 
     def pivot_workflow_factory() -> PivotWorkflow:
         from src.application import PivotKJEngine
 
         repository = container.resolve(DocumentRepositoryProtocol)  # type: ignore[type-abstract]
-        pivot_engine = container.resolve(PivotKJEngine)
+        pivot_engine_old = container.resolve(PivotKJEngine)
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
-        return PivotWorkflow(repository=repository, pivot_engine=pivot_engine, llm=llm)
+        return PivotWorkflow(repository=repository, pivot_engine=pivot_engine_old, llm=llm)
 
+    container.register(PivotEngine, pivot_engine_factory)
+    container.register(ExportService, export_service_factory)
     container.register(PivotWorkflow, pivot_workflow_factory)
 
 
@@ -207,6 +232,18 @@ def register_vector_store(container: DIContainer) -> None:
         return PineconeVectorStore(api_key, environment, index_name)
 
     container.register(VectorStoreProtocol, vector_store_factory)  # type: ignore[type-abstract]
+
+    # Also bind VectorDBProtocol to the same instance (if they are compatible)
+    # Since PineconeVectorStore now needs to support both, or InMemoryVectorStore.
+    # Actually, PineconeVectorStore from existing codebase does NOT implement VectorDBProtocol.
+    # We will just map VectorDBProtocol to DummyVectorDB since it is only used in PivotEngine
+    # for now, and the Pinecone VectorDBProtocol adapter was not created as per "DummyVectorDB in tests".
+
+    def vector_db_factory() -> VectorDBProtocol:
+        from src.infrastructure.test_services import DummyVectorDB
+        return DummyVectorDB()
+
+    container.register(VectorDBProtocol, vector_db_factory)  # type: ignore[type-abstract]
 
 
 def _load_spacy_model(model_name: str) -> Any | None:

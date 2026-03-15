@@ -317,3 +317,112 @@ async def test_uat_05_02_ai_answer_evaluation_and_node_unlocking() -> None:
     # System processes successful result and unlocks node
     engine.unlock_node(progress, "node_123")
     assert "node_123" in progress.unlocked_node_ids
+
+
+@pytest.mark.asyncio
+async def test_uat_06_01_pivot_reconstruction() -> None:
+    """UAT-06-01: Multi-Dimensional Knowledge Reconstruction (Pivot)"""
+    import uuid
+
+    from src.application.pivot_workflow import PivotEngine
+    from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
+    from src.infrastructure.test_services import (
+        DummyEmbeddingService,
+        DummyVectorDB,
+        MockReasoningLLMService,
+    )
+
+    # Mock DB and LLM setup
+    mock_db = DummyVectorDB()
+    chunk_id = uuid.uuid4()
+    chunk = SemanticChunk(
+        id=chunk_id,
+        content="User admin manages settings.",
+        embedding=[0.1] * 384,
+        metadata=ChunkMetadata(source_file="test.txt", actor_axis="Admin User")
+    )
+    await mock_db.upsert([chunk])
+
+    json_resp = f'{{"nodes": [{{"label": "Admin User", "summary": "Manages system settings.", "source_chunk_ids": ["{chunk_id!s}"]}}]}}'
+    mock_llm = MockReasoningLLMService(response_json=json_resp)
+    mock_embed = DummyEmbeddingService(dimension=384)
+
+    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed)
+    doc_id = uuid.uuid4()
+    doc = EnrichedDocument(document_id=doc_id, original_text="...", chunks=[chunk], raptor_nodes=[])
+
+    state = await engine.execute_pivot(doc, "System Actors")
+
+    assert state is not None
+    assert state.axis_name == "System Actors"
+    assert len(state.nodes) == 1
+    assert state.nodes[0].label == "Admin User"
+    assert state.nodes[0].summary == "Manages system settings."
+    assert state.nodes[0].source_chunk_ids[0] == chunk_id
+
+
+@pytest.mark.asyncio
+async def test_uat_06_02_data_traceability() -> None:
+    """UAT-06-02: Data Traceability and Schema Integrity in Pivot State"""
+    import uuid
+
+    from pydantic import ValidationError
+
+    from src.domain_models.pivot import PivotNode, PivotState
+
+    chunk_id = uuid.uuid4()
+
+    # Valid instantiation
+    node = PivotNode(
+        node_id="node_1",
+        label="Test",
+        summary="Test summary",
+        source_chunk_ids=[chunk_id]
+    )
+    state = PivotState(
+        original_document_id=uuid.uuid4(),
+        axis_name="Test Axis",
+        nodes=[node]
+    )
+
+    assert len(state.nodes) == 1
+    assert state.nodes[0].source_chunk_ids[0] == chunk_id
+
+    # Schema validation failure on invalid ID format
+    with pytest.raises(ValidationError):
+        PivotNode(
+            node_id="node_2",
+            label="Test2",
+            summary="Invalid sources",
+            source_chunk_ids=["this is not a list of UUIDs"] # type: ignore
+        )
+
+
+@pytest.mark.asyncio
+async def test_uat_06_03_artifact_export_generation() -> None:
+    """UAT-06-03: Artifact Export Generation (Markdown)"""
+    import uuid
+
+    from src.application.pivot_workflow import ExportService
+    from src.domain_models.pivot import PivotNode, PivotState
+
+    node = PivotNode(
+        node_id="node_1",
+        label="Strength",
+        summary="Strong brand presence.",
+        source_chunk_ids=[uuid.uuid4()]
+    )
+    state = PivotState(
+        original_document_id=uuid.uuid4(),
+        axis_name="SWOT Analysis",
+        nodes=[node]
+    )
+
+    export_service = ExportService()
+    markdown_output = export_service.generate_markdown(state)
+
+    assert isinstance(markdown_output, str)
+    assert len(markdown_output) > 0
+    assert "# SWOT Analysis" in markdown_output
+    assert "## Strength" in markdown_output
+    assert "Strong brand presence." in markdown_output

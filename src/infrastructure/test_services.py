@@ -248,6 +248,36 @@ class DummyLLMService:
         return "Test Summary or Question."
 
 
+class MockReasoningLLMService(SafeTestLLMService):
+    """Specific dummy LLM returning structured JSON for Pivot scenarios."""
+
+    def __init__(self, response_json: str) -> None:
+        super().__init__()
+        self.response_json = response_json
+
+    async def generate(self, prompt: str) -> str:
+        self._call_count += 1
+        return self.response_json
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        self._call_count += 1
+        return self.response_json
+
+
+class DummyVectorDB:
+    """Mock Vector DB for E2E tests."""
+    def __init__(self) -> None:
+        self.chunks: list[Any] = []
+        self._search_called_with_filter: dict[str, str] | None = None
+
+    async def upsert(self, chunks: list[Any]) -> None:
+        self.chunks.extend(chunks)
+
+    async def search(self, query_embedding: list[float], top_k: int, filter_metadata: dict[str, str] | None = None) -> list[Any]:
+        self._search_called_with_filter = filter_metadata
+        return self.chunks[:top_k]
+
+
 class SafeTestDocumentRepository:
     """Minimal test implementation of DocumentRepositoryProtocol without mocking."""
 

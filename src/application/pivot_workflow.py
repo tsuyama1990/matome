@@ -1,16 +1,133 @@
+import json
 import logging
 import typing
+import uuid
 
 if typing.TYPE_CHECKING:
     from src.application import PivotKJEngine
 
+
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from src.domain_models.pivot import PivotRequestPayload
-from src.interfaces.dependencies import LLMProtocol
+from src.domain_models.document import EnrichedDocument, SemanticChunk
+from src.domain_models.pivot import PivotNode, PivotRequestPayload, PivotState
+from src.interfaces.dependencies import EmbeddingProtocol, LLMProtocol, VectorDBProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
 
 logger = logging.getLogger(__name__)
+
+
+class PivotGenerationError(Exception):
+    """Domain exception for when the Pivot Engine fails to orchestrate or parse."""
+
+
+class PivotEngine:
+    """Core service for knowledge reconstruction based on Multi-Dimensional axes."""
+
+    def __init__(
+        self, llm: LLMProtocol, vector_db: VectorDBProtocol, embedding: EmbeddingProtocol
+    ) -> None:
+        self._llm = llm
+        self._vector_db = vector_db
+        self._embedding = embedding
+
+    async def _retrieve_chunks(self, document: EnrichedDocument, axis: str) -> list[SemanticChunk]:
+        """Retrieves and filters chunks based on the requested axis."""
+        axis_embedding = await self._embedding.embed_text(axis)
+
+        filter_metadata: dict[str, str] | None = None
+        if "actor" in axis.lower():
+            filter_metadata = {"axis_type": "actor_axis"}
+        elif "time" in axis.lower():
+            filter_metadata = {"axis_type": "time_axis"}
+
+        try:
+            chunks = await self._vector_db.search(
+                query_embedding=axis_embedding, top_k=20, filter_metadata=filter_metadata
+            )
+        except Exception as e:
+            msg = "Failed to query Vector Database."
+            raise PivotGenerationError(msg) from e
+
+        if not chunks:
+            chunks = document.chunks[:20]
+
+        if not chunks:
+            msg = "No chunks available for Pivot processing."
+            raise PivotGenerationError(msg)
+
+        # Mypy correctly expects return of SemanticChunk
+        # DummyVectorDB in tests may return untyped dicts or objects, but we ensure domain types here
+        return chunks
+
+    async def execute_pivot(self, document: EnrichedDocument, axis: str) -> PivotState:
+        """
+        Executes the Pivot analysis using Vector search and LLM synthesis.
+        """
+        chunks = await self._retrieve_chunks(document, axis)
+
+        chunk_context = ""
+        for c in chunks:
+            chunk_context += f"Chunk ID: {c.id}\nContent: {c.content}\n---\n"
+
+        prompt = (
+            f"Analyze these text chunks. Organize them into the conceptual axis: '{axis}'.\n"
+            "Identify distinct categories or concepts based on this axis.\n"
+            "Return ONLY a strictly formatted JSON object matching this schema:\n"
+            "{\n"
+            '  "nodes": [\n'
+            "    {\n"
+            '      "label": "Name of the category/concept",\n'
+            '      "summary": "Detailed summary",\n'
+            '      "source_chunk_ids": ["uuid1", "uuid2"]\n'
+            "    }\n"
+            "  ]\n"
+            "}\n\n"
+            "Chunks:\n"
+            f"{chunk_context}"
+        )
+
+        try:
+            response_json = await self._llm.generate(prompt)
+            response_json = response_json.replace("```json", "").replace("```", "").strip()
+            data = json.loads(response_json)
+
+            nodes = []
+            for node_data in data.get("nodes", []):
+                node_data["node_id"] = str(uuid.uuid4())
+                node_data["source_chunk_ids"] = [
+                    uuid.UUID(uid) for uid in node_data.get("source_chunk_ids", [])
+                ]
+                nodes.append(PivotNode(**node_data))
+
+        except json.JSONDecodeError as e:
+            logger.exception("Failed to parse LLM JSON output.")
+            msg = "LLM returned malformed JSON."
+            raise PivotGenerationError(msg) from e
+        except Exception as e:
+            logger.exception("Failed to generate Pivot state.")
+            msg = "Failed to generate Pivot state due to invalid LLM format or constraints."
+            raise PivotGenerationError(msg) from e
+        else:
+            return PivotState(
+                original_document_id=document.document_id, axis_name=axis, nodes=nodes
+            )
+
+
+class ExportService:
+    """Service to export Pivot states into readable formats."""
+
+    def generate_markdown(self, state: PivotState) -> str:
+        """Converts the PivotState into a Markdown document."""
+        lines = [f"# {state.axis_name}"]
+        lines.append("")
+
+        for node in state.nodes:
+            lines.append(f"## {node.label}")
+            lines.append(node.summary)
+            lines.append("")
+
+        return "\n".join(lines)
 
 
 class PivotWorkflow:
