@@ -110,7 +110,7 @@ async def test_pivot_engine_orchestration(mock_llm: LLMProtocol, mock_vector_db:
     state = await engine.execute_pivot(doc, "Timeline")
 
     assert isinstance(state, PivotState)
-    assert state.axis_name == "Timeline"
+    assert state.axis_name == "timeline"
     assert len(state.nodes) == 1
     assert state.nodes[0].source_chunk_ids == [chunk_id]
     mock_vector_db.search.assert_called_once()

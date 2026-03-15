@@ -354,7 +354,7 @@ async def test_uat_06_01_pivot_reconstruction() -> None:
     state = await engine.execute_pivot(doc, "System Actors")
 
     assert state is not None
-    assert state.axis_name == "System Actors"
+    assert state.axis_name == "system actors"
     assert len(state.nodes) == 1
     assert state.nodes[0].label == "Admin User"
     assert state.nodes[0].summary == "Manages system settings."

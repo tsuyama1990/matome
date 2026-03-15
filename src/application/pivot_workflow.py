@@ -31,6 +31,11 @@ class PivotEngine:
         self._vector_db = vector_db
         self._embedding = embedding
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        reraise=True,
+    )
     async def _retrieve_chunks(self, document: EnrichedDocument, axis: str) -> list[SemanticChunk]:
         """Retrieves and filters chunks based on the requested axis."""
         axis_embedding = await self._embedding.embed_text(axis)
@@ -56,19 +61,28 @@ class PivotEngine:
             msg = "No chunks available for Pivot processing."
             raise PivotGenerationError(msg)
 
-        # Mypy correctly expects return of SemanticChunk
-        # DummyVectorDB in tests may return untyped dicts or objects, but we ensure domain types here
         return chunks
 
     async def execute_pivot(self, document: EnrichedDocument, axis: str) -> PivotState:
         """
         Executes the Pivot analysis using Vector search and LLM synthesis.
         """
-        chunks = await self._retrieve_chunks(document, axis)
+        import asyncio
+        import re
 
-        chunk_context = ""
-        for c in chunks:
-            chunk_context += f"Chunk ID: {c.id}\nContent: {c.content}\n---\n"
+        # Sanitize and validate axis parameter
+        sanitized_axis = axis.strip().lower()
+        if not re.match(r"^[a-zA-Z0-9\s_-]+$", sanitized_axis):
+            msg = "Invalid axis format. Allowed characters are alphanumeric, spaces, dashes, or underscores."
+            raise PivotGenerationError(msg)
+
+        chunks = await self._retrieve_chunks(document, sanitized_axis)
+
+        if not chunks:
+            msg = "No chunks available for Pivot processing."
+            raise PivotGenerationError(msg)
+
+        chunk_context = "".join([f"Chunk ID: {c.id}\nContent: {c.content}\n---\n" for c in chunks])
 
         prompt = (
             f"Analyze these text chunks. Organize them into the conceptual axis: '{axis}'.\n"
@@ -88,7 +102,8 @@ class PivotEngine:
         )
 
         try:
-            response_json = await self._llm.generate(prompt)
+            # Add timeout protection for LLM call
+            response_json = await asyncio.wait_for(self._llm.generate(prompt), timeout=60.0)
             response_json = response_json.replace("```json", "").replace("```", "").strip()
             data = json.loads(response_json)
 
@@ -109,14 +124,20 @@ class PivotEngine:
             logger.exception("Failed to parse LLM JSON output.")
             msg = "LLM returned malformed JSON."
             raise PivotGenerationError(msg) from e
+        except TimeoutError as e:
+            logger.exception("LLM pivot generation timed out.")
+            msg = "LLM pivot generation timed out."
+            raise PivotGenerationError(msg) from e
         except Exception as e:
             logger.exception("Failed to generate Pivot state.")
             msg = "Failed to generate Pivot state due to invalid LLM format or constraints."
             raise PivotGenerationError(msg) from e
         else:
-            return PivotState(
-                original_document_id=document.document_id, axis_name=axis, nodes=nodes
+            state = PivotState(
+                original_document_id=document.document_id, axis_name=sanitized_axis, nodes=nodes
             )
+            logger.info(f"Successfully generated PivotState for axis: {sanitized_axis}")
+            return state
 
 
 class ExportService:

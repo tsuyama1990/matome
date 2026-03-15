@@ -293,7 +293,7 @@ class SafeTestDocumentRepository:
         self.raise_error = raise_error
         self.permission_denied = permission_denied
 
-    def get_document_by_id(self, document_id: str) -> EnrichedDocument:
+    def get_document_by_id(self, document_id: Any) -> EnrichedDocument:
         if self.permission_denied:
             msg = "Permission denied: Invalid credentials or role."
             raise PermissionError(msg)

@@ -31,7 +31,7 @@ class MockE2EPivotLLM(LLMProtocol):
 
 
 class MockE2EPivotRepository(DocumentRepositoryProtocol):
-    def get_document_by_id(self, document_id: str) -> EnrichedDocument:
+    def get_document_by_id(self, document_id: str | uuid.UUID) -> EnrichedDocument:
         chunk = SemanticChunk(
             id=uuid.uuid4(),
             content="Line managers approve budgets.",
@@ -39,7 +39,7 @@ class MockE2EPivotRepository(DocumentRepositoryProtocol):
             metadata=ChunkMetadata(source_file="test.txt", actor_axis="Manager"),
         )
         return EnrichedDocument(
-            document_id=uuid.UUID(document_id),
+            document_id=uuid.UUID(str(document_id)),
             original_text="Line managers approve budgets.",
             chunks=[chunk],
             raptor_nodes=[],

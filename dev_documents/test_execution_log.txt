@@ -48,7 +48,7 @@ Name                                  Stmts   Miss  Cover   Missing
 src/__init__.py                           0      0   100%
 src/application/__init__.py             166     31    81%   46-47, 49-50, 58, 60, 68-69, 77-78, 94, 108, 117-118, 135-136, 141, 159-160, 206, 216, 219-229
 src/application/di_container.py          63      9    86%   21-22, 36-37, 56-57, 76, 85-86
-src/application/pivot_workflow.py       115     20    83%   48-50, 53, 56-57, 108-115, 128, 135, 205-206, 212-213
+src/application/pivot_workflow.py       129     28    78%   53-55, 58, 61-62, 76-77, 82-83, 123-134, 149, 156, 226-227, 233-234
 src/application/raptor_engine.py         53      9    83%   37-38, 41-42, 52-54, 73, 83
 src/application/sq3r_service.py          39      8    79%   28-30, 38-39, 56-58
 src/config/__init__.py                    3      0   100%
@@ -72,9 +72,9 @@ src/interfaces/api_router.py             86     23    73%   24-25, 40-42, 46-48,
 src/interfaces/clustering.py              6      0   100%
 src/interfaces/dependencies.py          220    139    37%   101-102, 128-139, 143-179, 183-189, 193-200, 209-214, 217-219, 231-259, 273-289, 293-298, 302-338, 342-376, 381-397
 src/interfaces/llm_protocol.py            5      0   100%
-src/interfaces/repository.py              8      0   100%
+src/interfaces/repository.py              9      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1926    514    73%
-================= 110 passed, 4 warnings in 112.91s (0:01:52) ==================
+TOTAL                                  1941    522    73%
+================= 110 passed, 4 warnings in 113.39s (0:01:53) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
