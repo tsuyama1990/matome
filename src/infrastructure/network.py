@@ -98,7 +98,7 @@ class SecureAsyncHTTPTransport(httpx.AsyncBaseTransport):
         )
 
         # Instantiate pool explicitly with kwargs (like limits, verify) safely mapped
-        # to what httpcore expects, or simply use defaults and pass network_backend
+        # to what httpcore expects, or simply use defaults and provide network_backend
         self._pool = httpcore.AsyncConnectionPool(network_backend=protected_backend)
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:

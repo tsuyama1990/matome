@@ -11,7 +11,7 @@ from src.application import (
 )
 from src.domain_models import ChunkMetadata, LearningProgress, RaptorNode, SemanticChunk
 from src.infrastructure.test_services import (
-    DummyEmbeddingService,
+    FallbackEmbeddingService,
     PlainTextParser,
     SafeTestLLMService,
 )
@@ -19,7 +19,7 @@ from src.interfaces.dependencies import LLMProtocol
 
 
 def test_nlp_service_load_success() -> None:
-    # Test real loading of the lightweight model without mocking
+    # Test real loading of the lightweight model without external dependencies
     from src.interfaces.dependencies import _load_spacy_model
 
     nlp_model = _load_spacy_model("en_core_web_sm")
@@ -172,7 +172,7 @@ async def test_sq3r_engine() -> None:
 @pytest.mark.asyncio
 async def test_ingestion_pipeline_process_document() -> None:
     llm = SafeTestLLMService()
-    embedding = DummyEmbeddingService(dimension=384)
+    embedding = FallbackEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
     import umap.umap_ as umap
@@ -213,7 +213,7 @@ async def test_ingestion_pipeline_process_document() -> None:
 async def test_ingestion_pipeline_embedding_validation_failure() -> None:
     llm = SafeTestLLMService()
     # Provide an invalid dimension to test domain model constraint enforcement
-    embedding = DummyEmbeddingService(dimension=123)
+    embedding = FallbackEmbeddingService(dimension=123)
     parser = PlainTextParser()
 
     import umap.umap_ as umap
@@ -239,10 +239,7 @@ async def test_ingestion_pipeline_embedding_validation_failure() -> None:
         await pipeline.process_document(content_bytes, "test_doc.txt")
 
 
-
-
-
-class DummyLLMService(LLMProtocol):
+class FallbackLLMService(LLMProtocol):
     def __init__(self, return_text: str) -> None:
         self.return_text = return_text
 
@@ -322,7 +319,7 @@ async def test_sq3r_evaluate_answer_no() -> None:
 
 def test_sq3r_unlock_node() -> None:
     """Test unlock_node adds the node_id to the unlocked_node_ids set."""
-    engine = SQ3REngine(llm=DummyLLMService(""))
+    engine = SQ3REngine(llm=FallbackLLMService(""))
     progress = LearningProgress(document_id=uuid.uuid4())
 
     assert "node_1" not in progress.unlocked_node_ids

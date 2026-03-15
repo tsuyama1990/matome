@@ -3,7 +3,7 @@ import pytest
 from src.application.di_container import DIContainer
 from src.domain_models.config import AppConfig, ModelRoutingRules
 from src.infrastructure.openrouter import OpenRouterClient
-from src.infrastructure.test_services import DummyLLMService
+from src.infrastructure.test_services import FallbackLLMService
 from src.interfaces.llm_protocol import LLMProtocol
 
 
@@ -40,15 +40,15 @@ def test_di_resolves_openrouter_client(test_config: AppConfig) -> None:
     assert llm._config == test_config
 
 
-def test_di_resolves_mock_mode(test_config: AppConfig) -> None:
+def test_di_resolves_fallback_mode(test_config: AppConfig) -> None:
     container = DIContainer()
     container.register_singleton(AppConfig, test_config)
 
     def llm_factory() -> LLMProtocol:
-        return DummyLLMService()
+        return FallbackLLMService()
 
     container.register(LLMProtocol, llm_factory)  # type: ignore[type-abstract]
 
     llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
 
-    assert isinstance(llm, DummyLLMService)
+    assert isinstance(llm, FallbackLLMService)

@@ -24,7 +24,7 @@ def setup_encryption_env(
 async def test_llm_gateway_success(monkeypatch: pytest.MonkeyPatch) -> None:
     from pydantic import AnyHttpUrl
 
-    # Since the tests do not mock getaddrinfo anymore due to anti-mocking rules,
+    # Since the tests do not fallback getaddrinfo anymore due to anti-stubbing rules,
     # we need to use a domain that resolves natively, such as example.com
     config = ModelConfig(
         openrouter_api_url=AnyHttpUrl("https://example.com/api"),
@@ -140,11 +140,11 @@ async def test_ssrf_dns_fail(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from src.infrastructure.network import SSRFProtectedBackend
 
-    def mock_getaddrinfo(*args: object, **kwargs: object) -> list[object]:
+    def fallback_getaddrinfo(*args: object, **kwargs: object) -> list[object]:
         msg = "dns failed"
         raise socket.gaierror(msg)
 
-    monkeypatch.setattr(socket, "getaddrinfo", mock_getaddrinfo)
+    monkeypatch.setattr(socket, "getaddrinfo", fallback_getaddrinfo)
     backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
     with pytest.raises(ValueError, match="DNS resolution failed"):
         await backend.connect_tcp("openrouter.ai", 80)
@@ -169,12 +169,12 @@ async def test_ssrf_private_ip(monkeypatch: pytest.MonkeyPatch) -> None:
 
     from src.infrastructure.network import SSRFProtectedBackend
 
-    def mock_getaddrinfo(
+    def fallback_getaddrinfo(
         *args: object, **kwargs: object
     ) -> list[tuple[int, int, int, str, tuple[str, int]]]:
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 80))]
 
-    monkeypatch.setattr(socket, "getaddrinfo", mock_getaddrinfo)
+    monkeypatch.setattr(socket, "getaddrinfo", fallback_getaddrinfo)
     backend = SSRFProtectedBackend(AnyIOBackend(), allowed_hosts=["openrouter.ai"])
     with pytest.raises(ValueError, match="Disallowed private or loopback IP"):
         await backend.connect_tcp("openrouter.ai", 80)

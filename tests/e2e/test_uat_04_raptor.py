@@ -3,12 +3,12 @@ from pydantic import ValidationError
 
 from src.application import IngestionPipeline
 from src.infrastructure.test_services import (
-    DummyEmbeddingService,
+    FallbackEmbeddingService,
     PlainTextParser,
     SafeTestLLMService,
 )
 from src.interfaces.dependencies import LLMProtocol
-from tests.unit.test_raptor_engine import MockSemanticClusterer
+from tests.unit.test_raptor_engine import FallbackSemanticClusterer
 
 
 class PromptSpyLLMService(LLMProtocol):
@@ -28,21 +28,23 @@ class PromptSpyLLMService(LLMProtocol):
 
 
 @pytest.mark.asyncio
-async def test_uat_04_01_hierarchical_tree_construction_mock_mode() -> None:
+async def test_uat_04_01_hierarchical_tree_construction_fallback_mode() -> None:
     """
     Scenario ID: UAT-04-01
-    Title: Hierarchical Tree Construction (Mock Mode)
+    Title: Hierarchical Tree Construction (Fallback Mode)
     """
     base_llm = SafeTestLLMService()
     llm = PromptSpyLLMService(wrapped_llm=base_llm)
-    embedding = DummyEmbeddingService(dimension=384)
+    embedding = FallbackEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
     from src.application import RaptorEngine
 
     raptor = RaptorEngine(
         llm=llm,
-        clustering_strategy=MockSemanticClusterer(mocked_output={0: [0, 1], 1: [2, 3], 2: [4, 5]}),
+        clustering_strategy=FallbackSemanticClusterer(
+            fallbacked_output={0: [0, 1], 1: [2, 3], 2: [4, 5]}
+        ),
     )
 
     pipeline = IngestionPipeline(
@@ -70,7 +72,7 @@ async def test_uat_04_01_hierarchical_tree_construction_mock_mode() -> None:
     assert len(doc.chunks) == 6
     assert len(doc.raptor_nodes) == 3
 
-    # Assert children mapped according to mocked grouping
+    # Assert children mapped according to fallbacked grouping
     assert "Test Summary or Question." in doc.raptor_nodes[0].summarized_content
     assert len(doc.raptor_nodes[0].children_ids) == 2
     assert set(doc.raptor_nodes[0].children_ids) == {str(doc.chunks[0].id), str(doc.chunks[1].id)}
@@ -84,13 +86,13 @@ async def test_uat_04_02_chain_of_density_prompt() -> None:
     """
     base_llm = SafeTestLLMService()
     spy_llm = PromptSpyLLMService(wrapped_llm=base_llm)
-    embedding = DummyEmbeddingService(dimension=384)
+    embedding = FallbackEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
     from src.application import RaptorEngine
 
     raptor = RaptorEngine(
-        llm=spy_llm, clustering_strategy=MockSemanticClusterer(mocked_output={0: [0]})
+        llm=spy_llm, clustering_strategy=FallbackSemanticClusterer(fallbacked_output={0: [0]})
     )
     pipeline = IngestionPipeline(
         llm=spy_llm,
@@ -121,13 +123,13 @@ async def test_uat_04_03_tree_relational_integrity_and_schema() -> None:
     Title: Tree Relational Integrity and Schema Enforcement
     """
     llm = SafeTestLLMService()
-    embedding = DummyEmbeddingService(dimension=384)
+    embedding = FallbackEmbeddingService(dimension=384)
     parser = PlainTextParser()
 
     from src.application import RaptorEngine
 
     raptor = RaptorEngine(
-        llm=llm, clustering_strategy=MockSemanticClusterer(mocked_output={0: [0, 1]})
+        llm=llm, clustering_strategy=FallbackSemanticClusterer(fallbacked_output={0: [0, 1]})
     )
     pipeline = IngestionPipeline(
         llm=llm,

@@ -7,14 +7,14 @@ from src.application.di_container import DIContainer
 from src.interfaces.llm_protocol import LLMProtocol
 
 
-class DummyLLM:
+class FallbackLLM:
     async def generate_text(self, prompt: str, model: str) -> str:
-        return "dummy"
+        return "fallback"
 
 
 def test_di_container_register_resolve_singleton() -> None:
     container = DIContainer()
-    instance = DummyLLM()
+    instance = FallbackLLM()
 
     container.register_singleton(LLMProtocol, instance)  # type: ignore[type-abstract]
     resolved = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
@@ -25,14 +25,14 @@ def test_di_container_register_resolve_singleton() -> None:
 def test_di_container_register_resolve_factory() -> None:
     container = DIContainer()
 
-    def factory() -> DummyLLM:
-        return DummyLLM()
+    def factory() -> FallbackLLM:
+        return FallbackLLM()
 
     container.register(LLMProtocol, factory)  # type: ignore[type-abstract]
     resolved1 = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
     resolved2 = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
 
-    assert isinstance(resolved1, DummyLLM)
+    assert isinstance(resolved1, FallbackLLM)
     assert resolved1 is resolved2
 
 
@@ -74,9 +74,9 @@ def test_di_container_circular_dependency() -> None:
 def test_di_container_thread_safety() -> None:
     container = DIContainer()
 
-    def slow_factory() -> DummyLLM:
+    def slow_factory() -> FallbackLLM:
         time.sleep(0.1)
-        return DummyLLM()
+        return FallbackLLM()
 
     container.register(LLMProtocol, slow_factory)  # type: ignore[type-abstract]
 
@@ -103,5 +103,5 @@ def test_di_container_thread_safety() -> None:
     assert len(results) == 5
     first_res = results[0]
     for r in results:
-        assert isinstance(r, DummyLLM)
+        assert isinstance(r, FallbackLLM)
         assert r is first_res

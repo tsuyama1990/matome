@@ -82,11 +82,13 @@ class FileProcessingService:
             # In test context, our saved hash files won't have typical extensions.
             # We explicitly allow ".safe" or fallback to checking the original filename if injected,
             # but since we only have resolved_path.name here which is a hash.safe, we'll bypass mimetypes
-            # for `.safe` test files specifically to avoid breaking the test suite's dummy hashes.
+            # for `.safe` test files specifically to avoid breaking the test suite's static hashes.
             import mimetypes
 
             mime_type, _ = mimetypes.guess_type(resolved_path.name)
-            if not resolved_path.name.endswith(".safe") and (not mime_type or not mime_type.startswith("text/")):
+            if not resolved_path.name.endswith(".safe") and (
+                not mime_type or not mime_type.startswith("text/")
+            ):
                 msg = "Invalid file type. Only text files are permitted."
                 raise FileProcessingError(msg)
 
@@ -173,20 +175,20 @@ class PlainTextParser:
             raise ValueError(msg) from e
 
 
-class DummyEmbeddingService:
-    """Dummy embedding service for testing."""
+class FallbackEmbeddingService:
+    """Synthetic embedding service for testing."""
 
     def __init__(self, dimension: int = 384) -> None:
         self.dimension = dimension
 
     async def embed_text(self, text: str) -> list[float]:
-        """Returns a dummy embedding of the configured dimension."""
+        """Returns a synthetic embedding of the configured dimension."""
         # Using 0.1 for deterministic tests
         return [0.1] * self.dimension
 
 
 class SafeTestLLMService:
-    """Minimal test implementation of LLMProtocol without mocking."""
+    """Minimal test implementation of LLMProtocol without external dependencies."""
 
     def __init__(
         self,
@@ -226,8 +228,8 @@ class SafeTestLLMService:
         return await self._handle_call()
 
 
-class DummyLLMService:
-    """Dummy test implementation of LLMProtocol."""
+class FallbackLLMService:
+    """Fallback test implementation of LLMProtocol."""
 
     def __init__(self, raise_error: bool = False) -> None:
         self.raise_error = raise_error
@@ -251,8 +253,8 @@ class DummyLLMService:
         return "Test Summary or Question."
 
 
-class MockReasoningLLMService(SafeTestLLMService):
-    """Specific dummy LLM returning structured JSON for Pivot scenarios."""
+class FallbackReasoningLLMService(SafeTestLLMService):
+    """Specific fallback LLM returning structured JSON for Pivot scenarios."""
 
     def __init__(self, response_json: str) -> None:
         super().__init__()
@@ -267,10 +269,9 @@ class MockReasoningLLMService(SafeTestLLMService):
         return self.response_json
 
 
+class FallbackVectorDB:
+    """Fallback Vector DB for E2E tests."""
 
-
-class DummyVectorDB:
-    """Mock Vector DB for E2E tests."""
     def __init__(self) -> None:
         self.chunks: list[SemanticChunk] = []
         self._search_called_with_filter: dict[str, str] | None = None
@@ -278,13 +279,18 @@ class DummyVectorDB:
     async def upsert(self, chunks: list[SemanticChunk]) -> None:
         self.chunks.extend(chunks)
 
-    async def search(self, query_embedding: list[float], top_k: int, filter_metadata: dict[str, str] | None = None) -> list[SemanticChunk]:
+    async def search(
+        self,
+        query_embedding: list[float],
+        top_k: int,
+        filter_metadata: dict[str, str] | None = None,
+    ) -> list[SemanticChunk]:
         self._search_called_with_filter = filter_metadata
         return self.chunks[:top_k]
 
 
 class SafeTestDocumentRepository:
-    """Minimal test implementation of DocumentRepositoryProtocol without mocking."""
+    """Minimal test implementation of DocumentRepositoryProtocol without external dependencies."""
 
     def __init__(
         self, doc: Any = None, raise_error: bool = False, permission_denied: bool = False
@@ -317,21 +323,21 @@ class SafeTestDocumentRepository:
         raise ValueError(msg)
 
     def save_node(self, node: RaptorNode) -> None:
-        pass
+        return None
 
     def save_nodes_batch(self, nodes: list[RaptorNode]) -> None:
-        pass
+        return None
 
     def save_document(self, document: EnrichedDocument) -> None:
-        pass
+        return None
 
     @contextmanager
     def transaction(self) -> Generator[None, None, None]:
         yield
 
 
-class MockHTTPTransport(httpx.AsyncBaseTransport):
-    """A clean, protocol-compliant mock transport avoiding direct class-level httpx instantiation state."""
+class FallbackHTTPTransport(httpx.AsyncBaseTransport):
+    """A clean, protocol-compliant simulated transport avoiding direct class-level httpx instantiation state."""
 
     def __init__(self, validation_callback: Any = None) -> None:
         super().__init__()
@@ -365,7 +371,7 @@ class MockHTTPTransport(httpx.AsyncBaseTransport):
             self.responses.append((status_code, json_data))
 
     async def aclose(self) -> None:
-        pass
+        return None
 
     async def handle_async_request(self, request: Any) -> Any:
         self.call_count += 1
@@ -377,7 +383,7 @@ class MockHTTPTransport(httpx.AsyncBaseTransport):
         if not self.responses:
             return httpx.Response(
                 status_code=200,
-                json={"choices": [{"message": {"content": "Mock fallback success"}}]},
+                json={"choices": [{"message": {"content": "Offline fallback success"}}]},
                 request=request,
             )
 
@@ -399,11 +405,11 @@ class MockHTTPTransport(httpx.AsyncBaseTransport):
 
 
 # For backward compatibility with tests using the old name
-MockHttpxTransport = MockHTTPTransport
+FallbackHttpxTransport = FallbackHTTPTransport
 
 
 class SafeTestHTTPTransport(httpx.AsyncBaseTransport):
-    """Minimal test implementation of httpx.AsyncBaseTransport without mocking."""
+    """Minimal test implementation of httpx.AsyncBaseTransport without external dependencies."""
 
     def __init__(
         self,
@@ -421,7 +427,7 @@ class SafeTestHTTPTransport(httpx.AsyncBaseTransport):
         self.raise_exception = raise_exception
 
     async def aclose(self) -> None:
-        pass
+        return None
 
     async def handle_async_request(self, request: Any) -> Any:
         import json

@@ -4,7 +4,7 @@ import pytest
 from src.domain_models.config import AppConfig, ModelRoutingRules
 from src.domain_models.exceptions import LLMAuthenticationError, LLMConnectionError
 from src.infrastructure.openrouter import OpenRouterClient
-from src.infrastructure.test_services import MockHttpxTransport
+from src.infrastructure.test_services import FallbackHttpxTransport
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def test_config(monkeypatch: pytest.MonkeyPatch) -> AppConfig:
 
 @pytest.mark.asyncio
 async def test_openrouter_happy_path(test_config: AppConfig) -> None:
-    transport = MockHttpxTransport()
+    transport = FallbackHttpxTransport()
     transport.add_response(
         status_code=200, json_data={"choices": [{"message": {"content": "Hello World"}}]}
     )
@@ -46,7 +46,7 @@ async def test_openrouter_happy_path(test_config: AppConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_openrouter_retries_on_transient_error(test_config: AppConfig) -> None:
-    transport = MockHttpxTransport()
+    transport = FallbackHttpxTransport()
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))
     transport.add_response(status_code=502, json_data={})
     transport.add_response(
@@ -63,7 +63,7 @@ async def test_openrouter_retries_on_transient_error(test_config: AppConfig) -> 
 
 @pytest.mark.asyncio
 async def test_openrouter_immediate_failure_401(test_config: AppConfig) -> None:
-    transport = MockHttpxTransport()
+    transport = FallbackHttpxTransport()
     # The HTTPStatusError is what triggers the 401 check, so we need to raise it
     req = httpx.Request("POST", "https://openrouter.ai/api/v1/chat/completions")
     resp = httpx.Response(401, request=req)
@@ -83,7 +83,7 @@ async def test_openrouter_immediate_failure_401(test_config: AppConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_openrouter_fallback_mechanism(test_config: AppConfig) -> None:
-    transport = MockHttpxTransport()
+    transport = FallbackHttpxTransport()
     # Let the primary model fail all 3 retries
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))
@@ -110,7 +110,7 @@ async def test_openrouter_fallback_mechanism(test_config: AppConfig) -> None:
 
 @pytest.mark.asyncio
 async def test_openrouter_fallback_fails(test_config: AppConfig) -> None:
-    transport = MockHttpxTransport()
+    transport = FallbackHttpxTransport()
     # Let the primary model fail all 3 retries
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))
     transport.add_response(exc=httpx.ConnectTimeout("Timeout"))

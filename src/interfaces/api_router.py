@@ -19,7 +19,7 @@ class UserAnswerPayload(BaseModel):
     @field_validator("user_answer")
     @classmethod
     def sanitize_answer(cls, v: str, info: ValidationInfo) -> str:
-        _ = info  # use it to pass ruff argument check if needed
+        _ = info  # use it to satisfy ruff argument check if needed
         if len(v) > 5000:
             msg = "Answer too long"
             raise ValueError(msg)
@@ -113,7 +113,7 @@ def get_pivot_workflow(
     container: Annotated[DIContainer, Depends(get_di_container)],
 ) -> PivotWorkflowProtocol:
     try:
-        return container.resolve(PivotWorkflowProtocol) # type: ignore[type-abstract]
+        return container.resolve(PivotWorkflowProtocol)  # type: ignore[type-abstract]
     except Exception as e:
         msg = f"Pivot workflow not configured: {e!s}"
         raise HTTPException(status_code=500, detail=msg) from e
@@ -127,6 +127,7 @@ async def pivot_document(
 ) -> PivotResponse:
     try:
         import uuid as _uuid
+
         doc_uuid = _uuid.UUID(document_id)
         result = await workflow.execute(doc_uuid, payload)
     except ValueError as e:

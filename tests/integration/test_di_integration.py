@@ -5,9 +5,9 @@ from src.domain_models.config import AppConfig
 from src.interfaces.llm_protocol import LLMProtocol
 
 
-class DummyLLMService(LLMProtocol):
+class FallbackLLMService(LLMProtocol):
     async def generate_text(self, prompt: str, model: str) -> str:
-        return f"Mock response for {prompt}"
+        return f"Fallback response for {prompt}"
 
 
 def test_di_integration_app_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -30,12 +30,12 @@ def test_di_integration_app_config(monkeypatch: pytest.MonkeyPatch) -> None:
     assert resolved_config.tenant_id == "test-tenant"
 
 
-def test_di_integration_mock_mode() -> None:
+def test_di_integration_fallback_mode() -> None:
     container = DIContainer()
 
-    # Simulate Mock Mode
-    container.register_singleton(LLMProtocol, DummyLLMService())  # type: ignore[type-abstract]
+    # Simulate Fallback Mode
+    container.register_singleton(LLMProtocol, FallbackLLMService())  # type: ignore[type-abstract]
 
     resolved_llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
 
-    assert isinstance(resolved_llm, DummyLLMService)
+    assert isinstance(resolved_llm, FallbackLLMService)

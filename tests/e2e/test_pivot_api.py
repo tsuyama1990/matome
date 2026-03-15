@@ -18,7 +18,7 @@ app = FastAPI()
 app.include_router(router)
 
 
-class MockE2EPivotLLM(LLMProtocol):
+class FallbackE2EPivotLLM(LLMProtocol):
     async def generate(self, prompt: str) -> str:
         if "sequence diagram" in prompt.lower() or "mermaid" in prompt.lower():
             return "```mermaid\nsequenceDiagram\n    A->>B: message\n```"
@@ -30,7 +30,7 @@ class MockE2EPivotLLM(LLMProtocol):
         return await self.generate(prompt)
 
 
-class MockE2EPivotRepository(DocumentRepositoryProtocol):
+class FallbackE2EPivotRepository(DocumentRepositoryProtocol):
     def get_document_by_id(self, document_id: str | uuid.UUID) -> EnrichedDocument:
         chunk = SemanticChunk(
             id=uuid.uuid4(),
@@ -50,7 +50,8 @@ class MockE2EPivotRepository(DocumentRepositoryProtocol):
 
     def get_node_by_id(self, node_id: str) -> "RaptorNode":
         from src.domain_models import RaptorNode
-        return RaptorNode(node_id=node_id, level=0, summarized_content="mock")
+
+        return RaptorNode(node_id=node_id, level=0, summarized_content="fallback")
 
     def save_node(self, node: "RaptorNode") -> None:
         pass
@@ -68,11 +69,12 @@ class MockE2EPivotRepository(DocumentRepositoryProtocol):
 @pytest.fixture
 def pivot_client() -> Generator[TestClient, None, None]:
     container = DIContainer()
+
     def llm_factory() -> LLMProtocol:
-        return MockE2EPivotLLM()
+        return FallbackE2EPivotLLM()
 
     def repo_factory() -> DocumentRepositoryProtocol:
-        return MockE2EPivotRepository()
+        return FallbackE2EPivotRepository()
 
     container.register(LLMProtocol, llm_factory)  # type: ignore[type-abstract]
     container.register(DocumentRepositoryProtocol, repo_factory)  # type: ignore[type-abstract]
@@ -82,27 +84,33 @@ def pivot_client() -> Generator[TestClient, None, None]:
         from unittest.mock import AsyncMock, MagicMock
 
         from src.domain_models.pivot import PivotNode, PivotState
-        mock_engine = MagicMock(spec=PivotEngine)
+
+        fallback_engine = MagicMock(spec=PivotEngine)
 
         chunk_id = uuid.uuid4()
-        mock_state = PivotState(
+        fallback_state = PivotState(
             original_document_id=uuid.uuid4(),
             axis_name="actor",
-            nodes=[PivotNode(node_id="1", label="Actor", summary="Actor test", source_chunk_ids=[chunk_id])]
+            nodes=[
+                PivotNode(
+                    node_id="1", label="Actor", summary="Actor test", source_chunk_ids=[chunk_id]
+                )
+            ],
         )
-        mock_engine.execute_pivot = AsyncMock(return_value=mock_state)
+        fallback_engine.execute_pivot = AsyncMock(return_value=fallback_state)
 
         # In actual pivot_workflow execute uses payload.axis which triggers the validation and logic
-        # For the invalid axis test, we should mock the exception thrown if it's invalid_axis
-        async def mock_execute(document: EnrichedDocument, axis: str) -> PivotState:
+        # For the invalid axis test, we should fallback the exception thrown if it's invalid_axis
+        async def fallback_execute(document: EnrichedDocument, axis: str) -> PivotState:
             if axis == "invalid_axis":
                 from src.application.pivot_workflow import PivotGenerationError
+
                 msg = "Invalid axis"
                 raise PivotGenerationError(msg)
-            return mock_state
+            return fallback_state
 
-        mock_engine.execute_pivot.side_effect = mock_execute
-        return mock_engine
+        fallback_engine.execute_pivot.side_effect = fallback_execute
+        return fallback_engine
 
     container.register(PivotEngine, test_pivot_factory)
 

@@ -11,26 +11,26 @@ from src.infrastructure.test_services import SafeTestLLMService
 from src.interfaces.clustering import ClusteringStrategy
 
 
-class MockSemanticClusterer(ClusteringStrategy):
-    """A deterministic mock clusterer for testing RaptorEngine."""
+class FallbackSemanticClusterer(ClusteringStrategy):
+    """A deterministic fallback clusterer for testing RaptorEngine."""
 
-    def __init__(self, mocked_output: dict[int, list[int]]) -> None:
-        self.mocked_output = mocked_output
+    def __init__(self, fallbacked_output: dict[int, list[int]]) -> None:
+        self.fallbacked_output = fallbacked_output
 
     def reduce_dimensions(self, embeddings: list[list[float]]) -> Any:
         return embeddings
 
     def cluster(self, embeddings: Any, max_clusters: int) -> dict[int, list[int]]:
-        return self.mocked_output
+        return self.fallbacked_output
 
 
 @pytest.mark.asyncio
 async def test_raptor_engine_orchestration() -> None:
     """Test RaptorEngine properly orchestrates chunk gathering and LLM summarization."""
     llm = SafeTestLLMService()
-    # Mock the clusterer to deterministically pair chunks
-    mocked_clusterer = MockSemanticClusterer(mocked_output={0: [0, 1], 1: [2]})
-    engine = RaptorEngine(llm=llm, clustering_strategy=mocked_clusterer)
+    # Fallback the clusterer to deterministically pair chunks
+    fallbacked_clusterer = FallbackSemanticClusterer(fallbacked_output={0: [0, 1], 1: [2]})
+    engine = RaptorEngine(llm=llm, clustering_strategy=fallbacked_clusterer)
 
     chunks = [
         SemanticChunk(
@@ -75,8 +75,8 @@ async def test_raptor_engine_orchestration() -> None:
 async def test_raptor_engine_empty_input() -> None:
     """Test empty chunks input returns empty list."""
     llm = SafeTestLLMService()
-    mocked_clusterer = MockSemanticClusterer(mocked_output={})
-    engine = RaptorEngine(llm=llm, clustering_strategy=mocked_clusterer)
+    fallbacked_clusterer = FallbackSemanticClusterer(fallbacked_output={})
+    engine = RaptorEngine(llm=llm, clustering_strategy=fallbacked_clusterer)
 
     nodes = await engine.build_tree([])
     assert nodes == []

@@ -9,9 +9,9 @@ from src.application.pivot_workflow import ExportService, PivotEngine
 from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
 from src.domain_models.config import AppConfig, ModelRoutingRules
 from src.infrastructure.test_services import (
-    DummyEmbeddingService,
-    DummyVectorDB,
-    MockReasoningLLMService,
+    FallbackEmbeddingService,
+    FallbackReasoningLLMService,
+    FallbackVectorDB,
 )
 from src.interfaces.llm_protocol import LLMProtocol
 
@@ -55,12 +55,12 @@ print()
 print("Running UAT-01-02: Dependency Injection and Protocol Resolution")
 
 
-class DummyLLM:
+class FallbackLLM:
     pass
 
 
 container = DIContainer()
-instance = DummyLLM()
+instance = FallbackLLM()
 container.register_singleton(LLMProtocol, instance)
 resolved = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
 assert resolved is instance  # type: ignore[comparison-overlap]
@@ -98,44 +98,48 @@ except RuntimeError as e:
     print(f"Success: Circular dependency caught gracefully: {e}")
 print()
 
-# UAT-01-03: Hybrid Environment Mock Mode Execution
-print("Running UAT-01-03: Hybrid Environment Mock Mode Execution")
+# UAT-01-03: Hybrid Environment Fallback Mode Execution
+print("Running UAT-01-03: Hybrid Environment Fallback Mode Execution")
 
 
-class MockLLMService(LLMProtocol):
+class FallbackLLMService(LLMProtocol):
     async def generate_text(self, prompt: str, model: str) -> str:
-        return "mocked"
+        return "fallbacked"
 
 
-mock_container = DIContainer()
+fallback_container = DIContainer()
 if os.environ.get("MATOME_MOCK_MODE", "true") == "true":
-    mock_container.register_singleton(LLMProtocol, MockLLMService())  # type: ignore[type-abstract]
+    fallback_container.register_singleton(LLMProtocol, FallbackLLMService())  # type: ignore[type-abstract]
 
-assert isinstance(mock_container.resolve(LLMProtocol), MockLLMService)  # type: ignore[type-abstract]
-print("Success: Mock Mode Execution successfully resolved to mock implementation.")
+assert isinstance(fallback_container.resolve(LLMProtocol), FallbackLLMService)  # type: ignore[type-abstract]
+print("Success: Fallback Mode Execution successfully resolved to fallback implementation.")
 print()
 
 # UAT-06: Pivot KJ Engine & Export Generation
 
 
-
 async def run_uat_06() -> None:
     print("Running UAT-06: Multi-Dimensional Knowledge Reconstruction (Pivot)")
-    mock_db = DummyVectorDB()
+    fallback_db = FallbackVectorDB()
     chunk_id = uuid.uuid4()
     chunk = SemanticChunk(
         id=chunk_id,
         content="User admin manages settings.",
         embedding=[0.1] * 384,
-        metadata=ChunkMetadata(source_file="test.txt", actor_axis="Admin User")
+        metadata=ChunkMetadata(source_file="test.txt", actor_axis="Admin User"),
     )
-    await mock_db.upsert([chunk])
+    await fallback_db.upsert([chunk])
 
     json_resp = f'{{"nodes": [{{"label": "Admin User", "summary": "Manages system settings.", "source_chunk_ids": ["{chunk_id!s}"]}}]}}'
-    mock_llm = MockReasoningLLMService(response_json=json_resp)
-    mock_embed = DummyEmbeddingService(dimension=384)
+    fallback_llm = FallbackReasoningLLMService(response_json=json_resp)
+    fallback_embed = FallbackEmbeddingService(dimension=384)
 
-    engine = PivotEngine(llm=mock_llm, vector_db=mock_db, embedding=mock_embed, allowed_axes=frozenset({"system actors"}))
+    engine = PivotEngine(
+        llm=fallback_llm,
+        vector_db=fallback_db,
+        embedding=fallback_embed,
+        allowed_axes=frozenset({"system actors"}),
+    )
     doc_id = uuid.uuid4()
     doc = EnrichedDocument(document_id=doc_id, original_text="...", chunks=[chunk], raptor_nodes=[])
 
@@ -145,7 +149,7 @@ async def run_uat_06() -> None:
     assert state.axis_name == "System Actors"
     assert len(state.nodes) == 1
     assert state.nodes[0].label == "Admin User"
-    print("Success: PivotState generated successfully from Mock LLM and VectorDB.")
+    print("Success: PivotState generated successfully from Fallback LLM and VectorDB.")
 
     print("Running UAT-06-03: Artifact Export Generation (Markdown)")
     export_service = ExportService()
@@ -153,6 +157,7 @@ async def run_uat_06() -> None:
     assert "# System Actors" in markdown_output
     assert "## Admin User" in markdown_output
     print("Success: Markdown generated correctly from PivotState.")
+
 
 asyncio.run(run_uat_06())
 

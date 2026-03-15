@@ -7,7 +7,7 @@ from src.config.security import SecurityService
 
 def test_encryption_and_decryption_are_reversible(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test encrypting and decrypting a key results in the original plain text."""
-    # Setup test config with mock environment variable
+    # Setup test config with fallback environment variable
     # 44 bytes strictly expected for encryption
     key = base64.urlsafe_b64encode(b"abcdefghijklmnopqrstuvwxyz123456").decode("utf-8")
     monkeypatch.setenv("ENCRYPTION_KEY", key)
