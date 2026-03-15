@@ -9,6 +9,7 @@ import httpx
 
 from src.config.settings import AppConfig
 from src.domain_models import EnrichedDocument, RaptorNode
+from src.domain_models.document import SemanticChunk
 
 logger = logging.getLogger(__name__)
 
@@ -266,16 +267,18 @@ class MockReasoningLLMService(SafeTestLLMService):
         return self.response_json
 
 
+
+
 class DummyVectorDB:
     """Mock Vector DB for E2E tests."""
     def __init__(self) -> None:
-        self.chunks: list[Any] = []
+        self.chunks: list[SemanticChunk] = []
         self._search_called_with_filter: dict[str, str] | None = None
 
-    async def upsert(self, chunks: list[Any]) -> None:
+    async def upsert(self, chunks: list[SemanticChunk]) -> None:
         self.chunks.extend(chunks)
 
-    async def search(self, query_embedding: list[float], top_k: int, filter_metadata: dict[str, str] | None = None) -> list[Any]:
+    async def search(self, query_embedding: list[float], top_k: int, filter_metadata: dict[str, str] | None = None) -> list[SemanticChunk]:
         self._search_called_with_filter = filter_metadata
         return self.chunks[:top_k]
 

@@ -50,8 +50,8 @@ class PivotRequestPayload(BaseModel):
         """Validates that the axis string is alphanumeric and safe from injection."""
         _ = info
         v = v.strip().lower()
-        if not re.match(r"^[a-zA-Z0-9_-]+$", v):
-            msg = "Axis must contain only alphanumeric characters, dashes, or underscores."
+        if not re.match(r"^[a-zA-Z0-9\s_-]+$", v):
+            msg = "Axis must contain only alphanumeric characters, spaces, dashes, or underscores."
             raise ValueError(msg)
         return v
 

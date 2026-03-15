@@ -27,7 +27,7 @@ async def test_pivot_workflow_no_chunks() -> None:
     workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)
 
     with pytest.raises(ValueError, match="has no chunks"):
-        await workflow.execute(doc_id, PivotRequestPayload(axis="actor"))
+        await workflow.execute(uuid.UUID(doc_id), PivotRequestPayload(axis="actor"))
 
 
 @pytest.mark.asyncio
@@ -43,7 +43,7 @@ async def test_pivot_workflow_repo_error() -> None:
     workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)
 
     with pytest.raises(ValueError, match="Failed to retrieve document"):
-        await workflow.execute("doc-1", PivotRequestPayload(axis="actor"))
+        await workflow.execute(uuid.UUID("00000000-0000-0000-0000-000000000001"), PivotRequestPayload(axis="actor"))
 
 
 @pytest.mark.asyncio
@@ -73,7 +73,7 @@ async def test_pivot_workflow_llm_error() -> None:
     workflow = PivotWorkflow(repository=repo, pivot_engine=engine, llm=llm)
 
     with pytest.raises(PivotGenerationError, match="Mocked generation failure"):
-        await workflow.execute(doc_id, PivotRequestPayload(axis="actor"))
+        await workflow.execute(uuid.UUID(doc_id), PivotRequestPayload(axis="actor"))
 
 
 @pytest.fixture

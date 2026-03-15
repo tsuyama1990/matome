@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.application.pivot_workflow import ExportService, PivotEngine
-from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
+from src.domain_models import ChunkMetadata, EnrichedDocument, RaptorNode, SemanticChunk
 from src.interfaces.api_router import router
 from src.interfaces.dependencies import (
     DIContainer,
@@ -48,20 +48,19 @@ class MockE2EPivotRepository(DocumentRepositoryProtocol):
     def save_document(self, document: EnrichedDocument) -> None:
         pass
 
-    def get_node_by_id(self, node_id: str):
+    def get_node_by_id(self, node_id: str) -> "RaptorNode":
         from src.domain_models import RaptorNode
         return RaptorNode(node_id=node_id, level=0, summarized_content="mock")
 
-    def save_node(self, node) -> None:
+    def save_node(self, node: "RaptorNode") -> None:
         pass
 
-    def save_nodes_batch(self, nodes) -> None:
+    def save_nodes_batch(self, nodes: list["RaptorNode"]) -> None:
         pass
 
-    from collections.abc import Generator
-    from contextlib import contextmanager
+    import contextlib
 
-    @contextmanager
+    @contextlib.contextmanager
     def transaction(self) -> Generator[None, None, None]:
         yield
 
@@ -91,11 +90,11 @@ def pivot_client() -> Generator[TestClient, None, None]:
             axis_name="actor",
             nodes=[PivotNode(node_id="1", label="Actor", summary="Actor test", source_chunk_ids=[chunk_id])]
         )
-        mock_engine.execute_pivot = AsyncMock(return_value=mock_state) # type: ignore[method-assign]
+        mock_engine.execute_pivot = AsyncMock(return_value=mock_state)
 
         # In actual pivot_workflow execute uses payload.axis which triggers the validation and logic
         # For the invalid axis test, we should mock the exception thrown if it's invalid_axis
-        async def mock_execute(document, axis):
+        async def mock_execute(document: EnrichedDocument, axis: str) -> PivotState:
             if axis == "invalid_axis":
                 from src.application.pivot_workflow import PivotGenerationError
                 msg = "Invalid axis"

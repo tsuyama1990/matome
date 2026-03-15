@@ -95,9 +95,14 @@ class PivotEngine:
             nodes = []
             for node_data in data.get("nodes", []):
                 node_data["node_id"] = str(uuid.uuid4())
-                node_data["source_chunk_ids"] = [
-                    uuid.UUID(uid) for uid in node_data.get("source_chunk_ids", [])
-                ]
+
+                # Extract chunk IDs safely, validating they are valid UUID strings
+                valid_chunk_ids = []
+                for uid in node_data.get("source_chunk_ids", []):
+                    import contextlib
+                    with contextlib.suppress(ValueError, TypeError, AttributeError):
+                        valid_chunk_ids.append(uuid.UUID(uid))
+                node_data["source_chunk_ids"] = valid_chunk_ids
                 nodes.append(PivotNode(**node_data))
 
         except json.JSONDecodeError as e:
@@ -149,11 +154,11 @@ class PivotWorkflow:
         self._llm = llm
 
     async def execute(
-        self, document_id: str, payload: PivotRequestPayload
-    ) -> dict[str, str | dict[str, list[dict[str, str]]]]:
+        self, document_id: uuid.UUID, payload: PivotRequestPayload
+    ) -> dict[str, typing.Any]:
         """Executes the Pivot workflow."""
         try:
-            document = self._repository.get_document_by_id(document_id)
+            document = self._repository.get_document_by_id(str(document_id))
         except Exception as e:
             msg = f"Failed to retrieve document {document_id}"
             logger.exception(msg)

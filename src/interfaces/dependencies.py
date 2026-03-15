@@ -1,10 +1,12 @@
 import importlib
 import logging
 import threading
+import uuid
 from collections.abc import Callable
 from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from src.domain_models.document import SemanticChunk
+from src.domain_models.pivot import PivotRequestPayload
 
 logger = logging.getLogger(__name__)
 
@@ -41,11 +43,21 @@ class VectorStoreProtocol(Protocol):
     ) -> list[dict[str, Any]]: ...
 
 
+
+
+
 @runtime_checkable
 class EmbeddingProtocol(Protocol):
     """Protocol for generating vector embeddings."""
 
     async def embed_text(self, text: str) -> list[float]: ...
+
+
+@runtime_checkable
+class PivotWorkflowProtocol(Protocol):
+    """Protocol defining the facade for Pivot Workflow orchestration."""
+
+    async def execute(self, document_id: uuid.UUID, payload: PivotRequestPayload) -> dict[str, Any]: ...
 
 
 @runtime_checkable
@@ -206,13 +218,13 @@ def register_pivot_workflow(container: DIContainer) -> None:
             return ExportService()
         container.register(ExportService, export_service_factory)
 
-    def pivot_workflow_factory() -> PivotWorkflow:
+    def pivot_workflow_factory() -> PivotWorkflowProtocol:
         repository = container.resolve(DocumentRepositoryProtocol)  # type: ignore[type-abstract]
         pivot_engine_new = container.resolve(PivotEngine)
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
         return PivotWorkflow(repository=repository, pivot_engine=pivot_engine_new, llm=llm)
 
-    container.register(PivotWorkflow, pivot_workflow_factory)
+    container.register(PivotWorkflowProtocol, pivot_workflow_factory) # type: ignore[type-abstract]
 
 
 def register_vector_store(container: DIContainer) -> None:
