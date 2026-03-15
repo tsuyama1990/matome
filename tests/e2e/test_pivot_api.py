@@ -5,10 +5,13 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from src.application.pivot_workflow import PivotEngine, ExportService
+from src.application.pivot_workflow import ExportService, PivotEngine
 from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
 from src.interfaces.api_router import router
-from src.interfaces.dependencies import DIContainer, LLMProtocol, VectorDBProtocol, EmbeddingProtocol
+from src.interfaces.dependencies import (
+    DIContainer,
+    LLMProtocol,
+)
 from src.interfaces.repository import DocumentRepositoryProtocol
 
 app = FastAPI()
@@ -22,6 +25,9 @@ class MockE2EPivotLLM(LLMProtocol):
         if "markdown" in prompt.lower() or "requirements" in prompt.lower():
             return "## Requirements\n\n- System must approve budget."
         return "Generic response."
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        return await self.generate(prompt)
 
 
 class MockE2EPivotRepository(DocumentRepositoryProtocol):
@@ -42,19 +48,41 @@ class MockE2EPivotRepository(DocumentRepositoryProtocol):
     def save_document(self, document: EnrichedDocument) -> None:
         pass
 
+    def get_node_by_id(self, node_id: str):
+        from src.domain_models import RaptorNode
+        return RaptorNode(node_id=node_id, level=0, summarized_content="mock")
+
+    def save_node(self, node) -> None:
+        pass
+
+    def save_nodes_batch(self, nodes) -> None:
+        pass
+
+    from collections.abc import Generator
+    from contextlib import contextmanager
+
+    @contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        yield
+
 
 @pytest.fixture
 def pivot_client() -> Generator[TestClient, None, None]:
     container = DIContainer()
-    container.register_singleton(LLMProtocol, MockE2EPivotLLM())  # type: ignore[type-abstract]
-    container.register_singleton(DocumentRepositoryProtocol, MockE2EPivotRepository())  # type: ignore[type-abstract]
+    def llm_factory() -> LLMProtocol:
+        return MockE2EPivotLLM()
+
+    def repo_factory() -> DocumentRepositoryProtocol:
+        return MockE2EPivotRepository()
+
+    container.register(LLMProtocol, llm_factory)  # type: ignore[type-abstract]
+    container.register(DocumentRepositoryProtocol, repo_factory)  # type: ignore[type-abstract]
 
     # We must also register PivotEngine for the API
     def test_pivot_factory() -> PivotEngine:
         from unittest.mock import AsyncMock, MagicMock
-        from src.domain_models.pivot import PivotState, PivotNode
-        mock_db = MagicMock(spec=VectorDBProtocol)
-        mock_embed = MagicMock(spec=EmbeddingProtocol)
+
+        from src.domain_models.pivot import PivotNode, PivotState
         mock_engine = MagicMock(spec=PivotEngine)
 
         chunk_id = uuid.uuid4()
@@ -70,14 +98,19 @@ def pivot_client() -> Generator[TestClient, None, None]:
         async def mock_execute(document, axis):
             if axis == "invalid_axis":
                 from src.application.pivot_workflow import PivotGenerationError
-                raise PivotGenerationError("Invalid axis")
+                msg = "Invalid axis"
+                raise PivotGenerationError(msg)
             return mock_state
 
         mock_engine.execute_pivot.side_effect = mock_execute
         return mock_engine
 
-    container.register_singleton(PivotEngine, test_pivot_factory())
-    container.register_singleton(ExportService, ExportService())
+    container.register(PivotEngine, test_pivot_factory)
+
+    def test_export_factory() -> ExportService:
+        return ExportService()
+
+    container.register(ExportService, test_export_factory)
 
     from src.interfaces.dependencies import register_pivot_workflow
 
@@ -92,7 +125,7 @@ def pivot_client() -> Generator[TestClient, None, None]:
 def test_pivot_valid_axis(pivot_client: TestClient) -> None:
     doc_id = str(uuid.uuid4())
     response = pivot_client.post(f"/documents/{doc_id}/pivot", json={"axis": "actor"})
-    assert response.status_code == 200
+    assert response.status_code == 200, f"Response detail: {response.json()}"
     data = response.json()
     assert "mermaid" in data
     assert "markdown" in data

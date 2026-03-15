@@ -117,7 +117,7 @@ def get_pivot_workflow(
     try:
         return container.resolve(PivotWorkflow)
     except Exception as e:
-        msg = "Pivot workflow not configured."
+        msg = f"Pivot workflow not configured: {e!s}"
         raise HTTPException(status_code=500, detail=msg) from e
 
 

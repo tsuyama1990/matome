@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.application import PivotKJEngine
 from src.application.pivot_workflow import ExportService, PivotEngine, PivotWorkflow
 from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
 from src.domain_models.pivot import PivotNode, PivotRequestPayload, PivotState

@@ -1,11 +1,14 @@
 import logging
 import re
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
 import httpx
 
 from src.config.settings import AppConfig
+from src.domain_models import EnrichedDocument, RaptorNode
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +290,7 @@ class SafeTestDocumentRepository:
         self.raise_error = raise_error
         self.permission_denied = permission_denied
 
-    def get_document_by_id(self, document_id: str) -> Any:
+    def get_document_by_id(self, document_id: str) -> EnrichedDocument:
         if self.permission_denied:
             msg = "Permission denied: Invalid credentials or role."
             raise PermissionError(msg)
@@ -300,13 +303,28 @@ class SafeTestDocumentRepository:
             msg = "Not found"
             raise ValueError(msg)
 
-        from src.domain_models import EnrichedDocument
-
         if not isinstance(self.doc, EnrichedDocument):
             msg = "Database returned malformed document structure."
             raise TypeError(msg)
 
         return self.doc
+
+    def get_node_by_id(self, node_id: str) -> RaptorNode:
+        msg = "Node not found."
+        raise ValueError(msg)
+
+    def save_node(self, node: RaptorNode) -> None:
+        pass
+
+    def save_nodes_batch(self, nodes: list[RaptorNode]) -> None:
+        pass
+
+    def save_document(self, document: EnrichedDocument) -> None:
+        pass
+
+    @contextmanager
+    def transaction(self) -> Generator[None, None, None]:
+        yield
 
 
 class MockHTTPTransport(httpx.AsyncBaseTransport):

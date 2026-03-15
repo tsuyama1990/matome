@@ -192,14 +192,19 @@ def register_pivot_workflow(container: DIContainer) -> None:
     from src.application.pivot_workflow import ExportService, PivotEngine, PivotWorkflow
     from src.interfaces.repository import DocumentRepositoryProtocol
 
-    def pivot_engine_factory() -> PivotEngine:
-        llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
-        vector_db = container.resolve(VectorDBProtocol)  # type: ignore[type-abstract]
-        embedding = container.resolve(EmbeddingProtocol)  # type: ignore[type-abstract]
-        return PivotEngine(llm=llm, vector_db=vector_db, embedding=embedding)
+    # If the user overrides PivotEngine directly, don't try to resolve its internal dependencies
+    if PivotEngine not in container._factories and PivotEngine not in container._singletons:
+        def pivot_engine_factory() -> PivotEngine:
+            llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
+            vector_db = container.resolve(VectorDBProtocol)  # type: ignore[type-abstract]
+            embedding = container.resolve(EmbeddingProtocol)  # type: ignore[type-abstract]
+            return PivotEngine(llm=llm, vector_db=vector_db, embedding=embedding)
+        container.register(PivotEngine, pivot_engine_factory)
 
-    def export_service_factory() -> ExportService:
-        return ExportService()
+    if ExportService not in container._factories and ExportService not in container._singletons:
+        def export_service_factory() -> ExportService:
+            return ExportService()
+        container.register(ExportService, export_service_factory)
 
     def pivot_workflow_factory() -> PivotWorkflow:
         repository = container.resolve(DocumentRepositoryProtocol)  # type: ignore[type-abstract]
@@ -207,8 +212,6 @@ def register_pivot_workflow(container: DIContainer) -> None:
         llm = container.resolve(LLMProtocol)  # type: ignore[type-abstract]
         return PivotWorkflow(repository=repository, pivot_engine=pivot_engine_new, llm=llm)
 
-    container.register(PivotEngine, pivot_engine_factory)
-    container.register(ExportService, export_service_factory)
     container.register(PivotWorkflow, pivot_workflow_factory)
 
 
