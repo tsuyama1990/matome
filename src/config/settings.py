@@ -19,6 +19,10 @@ class DatabaseConfig(BaseSettings):
         default=False,
         description="Whether to permit database connections to localhost or loopback addresses.",
     )
+    forbidden_internal_hosts: list[str] = Field(
+        default=["127.0.0.1", "localhost", "0.0.0.0", "::1"],  # noqa: S104
+        description="List of forbidden internal hostnames for database URIs to prevent SSRF.",
+    )
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
@@ -40,8 +44,7 @@ class DatabaseConfig(BaseSettings):
             raise ValueError(msg)
 
         # Prevent SSRF: block local loopback patterns unless strictly needed.
-        if parsed_uri.hostname in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):  # noqa: S104
-            # For this test scope, we might allow it, but architectural spec says "reject local IPs / loops"
+        if not self.allow_local_database_connections and parsed_uri.hostname in self.forbidden_internal_hosts:
             msg = "Local database connections are not permitted by security policy."
             raise ValueError(msg)
 
@@ -214,7 +217,10 @@ class ModelConfig(BaseSettings):
             raise ValueError(msg)
 
         # Hardblock internal networks explicitly
-        if v.host in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):  # noqa: S104
+        forbidden_internal_hosts = info.data.get(
+            "forbidden_internal_hosts", ["127.0.0.1", "localhost", "0.0.0.0", "::1"]  # noqa: S104
+        )
+        if v.host in forbidden_internal_hosts:
             msg = "Internal network hostnames are forbidden for external API calls."
             raise ValueError(msg)
 

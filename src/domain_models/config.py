@@ -90,6 +90,10 @@ class AppConfig(BaseSettings):
         default=3,
         description="Maximum number of retry attempts for transient network errors.",
     )
+    forbidden_internal_hosts: list[str] = Field(
+        default=["127.0.0.1", "localhost", "0.0.0.0", "::1"],  # noqa: S104
+        description="List of forbidden internal hostnames for external API calls to prevent SSRF.",
+    )
     retry_min_wait: float = Field(
         default=1.0,
         description="Minimum wait time between retries in seconds.",
@@ -99,24 +103,39 @@ class AppConfig(BaseSettings):
         description="Maximum wait time between retries in seconds.",
     )
 
+    min_api_key_length: int = Field(
+        default=32,
+        description="Minimum character length for API keys.",
+    )
+    min_api_key_entropy: int = Field(
+        default=8,
+        description="Minimum unique character count (entropy) for API keys.",
+    )
+    base_api_key_pattern: str = Field(
+        default=r"^[A-Za-z0-9\-_]+$",
+        description="Base regex pattern for validating API keys.",
+    )
+
     @field_validator("openrouter_api_key")
     @classmethod
     def validate_api_key(cls, v: SecretStr, info: ValidationInfo) -> SecretStr:
-        _ = info
         import re
 
         val = v.get_secret_value()
-        # Security: Allow various provider formats (OpenRouter, OpenAI, Anthropic, etc.)
-        # Most keys are minimum 32 chars and mostly alphanumeric with hyphens or underscores
-        if len(val) < 32:
-            msg = "Invalid API key format: length must be at least 32 characters."
+
+        min_length = info.data.get("min_api_key_length", 32)
+        min_entropy = info.data.get("min_api_key_entropy", 8)
+        base_pattern = info.data.get("base_api_key_pattern", r"^[A-Za-z0-9\-_]+$")
+
+        if len(val) < min_length:
+            msg = f"Invalid API key format: length must be at least {min_length} characters."
             raise ValueError(msg)
 
-        if not re.match(r"^[A-Za-z0-9\-_]+$", val):
+        if not re.match(base_pattern, val):
             msg = "Invalid API key format: contains invalid characters."
             raise ValueError(msg)
 
-        if len(set(val)) < 8:
+        if len(set(val)) < min_entropy:
             msg = "Invalid API key: appears to be a dummy or repeating pattern."
             raise ValueError(msg)
 

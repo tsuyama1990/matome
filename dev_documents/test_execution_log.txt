@@ -53,9 +53,9 @@ src/application/raptor_engine.py         53      9    83%   37-38, 41-42, 52-54,
 src/application/sq3r_service.py          12      0   100%
 src/config/__init__.py                    3      0   100%
 src/config/security.py                   45      7    84%   17-18, 42-43, 52-54
-src/config/settings.py                   92     14    85%   28-29, 32, 35-36, 39-40, 54, 80-81, 213-214, 218-219
+src/config/settings.py                   94     14    85%   32-33, 36, 39-40, 43-44, 57, 83-84, 216-217, 224-225
 src/domain_models/__init__.py             5      0   100%
-src/domain_models/config.py              43      4    91%   116-117, 120-121
+src/domain_models/config.py              49      4    92%   135-136, 139-140
 src/domain_models/document.py            65      3    95%   49-50, 99
 src/domain_models/exceptions.py           6      0   100%
 src/domain_models/graph_state.py         33      0   100%
@@ -74,7 +74,7 @@ src/interfaces/dependencies.py          178    112    37%   75-76, 102-113, 117-
 src/interfaces/llm_protocol.py            5      0   100%
 src/interfaces/repository.py              8      0   100%
 -------------------------------------------------------------------
-TOTAL                                  1757    456    74%
-================== 97 passed, 4 warnings in 119.87s (0:01:59) ==================
+TOTAL                                  1765    456    74%
+================== 97 passed, 4 warnings in 119.60s (0:01:59) ==================
 /app/.venv/lib/python3.12/site-packages/coverage/inorout.py:561: CoverageWarning: Module dev_src was never imported. (module-not-imported); see https://coverage.readthedocs.io/en/7.13.4/messages.html#warning-module-not-imported
   self.warn(f"Module {pkg} was never imported.", slug="module-not-imported")
