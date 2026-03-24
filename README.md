@@ -1,69 +1,54 @@
 # matome
 
-![Build Status](https://img.shields.io/badge/build-passing-brightgreen)
-![Python Version](https://img.shields.io/badge/python-3.12%2B-blue)
-![License](https://img.shields.io/badge/license-MIT-green)
+"To liberate humanity from the pain of digesting information, transforming knowledge acquisition and the creation of new insights into an exhilarating intellectual game."
 
-**matome** ("summary" in Japanese) is a revolutionary frictionless active learning platform and knowledge workspace. It relieves users from cognitive overload when reading exceptionally long and complex documents by intelligently generating interactive semantic knowledge graphs.
-
-## Core Capabilities (Currently Verified)
-- **Zero-Data Retention Enterprise Security:** A robust Bring Your Own Key (BYOK) system natively encrypts internal API keys and OpenRouter API keys in-memory to meet stringent enterprise security constraints. All secrets are securely loaded using `pydantic-settings` via environmental variables.
-- **Architectural Flexibility:** Fully decoupled dependency injection container system capable of routing LLM connections and metadata storage through dynamically initialized interface models.
-- **Strict Configuration Enforcement:** Predictable fail-fast capabilities utilizing strict data modeling that rejects any initialization missing explicit application or database strings.
-
-## Installation & Setup
-
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-repo/matome.git
-   cd matome
-   ```
-
-2. **Sync dependencies using `uv`:**
-   ```bash
-   uv sync
-   ```
-
-3. **Configure the environment:**
-   Create an `.env` file in the root of the repository matching the required initialization keys (or copy the example).
-   ```bash
-   cp .env.example .env
-   ```
+## Overview
+`matome` (Japanese for "summary") is an interactive knowledge workspace that seamlessly integrates cognitive psychology principles with cutting-edge generative AI technologies. It enables professionals, researchers, and learners to instantly analyze massive documents, visualize structural hierarchies, and seamlessly pivot information across custom business or research axes.
 
 ## Features
-- **Semantic Chunking:** Context-preserving noise normalization and semantic chunking of massive text data.
-- **RAPTOR Tree Generation:** Hierarchical clustering (UMAP+GMM) to summarize documents dynamically from bottom up.
-- **Interactive Active Learning (SQ3R):** Unlock knowledge nodes by answering AI-generated questions and reciting information to solidify memory.
-- **MD-SKJ Pivot Engine:** Dynamically re-arrange clustered knowledge along custom, multi-dimensional business axes (e.g., actors vs. state transitions) to instantly output actionable UML diagrams and Markdown Requirements.
+*   **Document Ingestion & Semantic Chunking**: Dynamically slice unstructured documents into intelligent `SemanticChunk` models that avoid abrupt "mid-sentence" cuts.
+*   **RAPTOR Hierarchical Tree Generation**: Automatically mathematically cluster and summarize text chunks bottom-up using UMAP and GMM algorithms, creating an interactive, multi-layered knowledge graph (the "Chain of Density").
+*   **Entity Extraction & Multi-Dimensional Tagging**: Automatically tag recognized entities and map content along custom domains like "Time axis" using NLP and Vision-Language Models.
+*   **Interactive Learning Loop (SQ3R)**: Dynamically generates contextual questions based on document sections and uses AI to evaluate user answers before unlocking new content.
+*   **Robust LLM Integration via OpenRouter**: Seamlessly communicate with various AI models (Claude, GPT-4o, Gemini) through a unified interface.
+*   **Network Resilience and High Availability**: Built-in automatic retries for transient network errors and intelligent model fallback mechanisms ensure your workflows never crash due to third-party API instability.
+*   **Secure BYOK Configuration**: Bring Your Own Key (BYOK) support natively powered by OpenRouter. Your API keys are strictly validated and handled securely in memory.
+*   **Dependency Injection Architecture**: Designed under the rigorous AC-CDD methodology, all external dependencies are decoupled, ensuring extreme stability and mock-free CI testing capabilities.
+*   **Hybrid Execution Modes**: Supports running in local CI or offline environments gracefully using "Mock Mode," dynamically rerouting to functional deterministic models without complex infrastructure requirements.
+*   **Configurable Model Routing**: Configure multiple distinct AI models optimized for different capabilities (e.g., text chunking vs logical reasoning tasks).
+
+## Installation
+
+Ensure you have Python 3.12+ installed. We use `uv` for lightning-fast package management.
+
+```bash
+# Clone the repository
+git clone https://github.com/your-username/matome.git
+cd matome
+
+# Install dependencies using uv
+uv sync
+```
 
 ## Usage
 
-**Execute the foundation system setup**:
-```bash
-uv run python main.py
+Create a `.env` file in the root directory.
+
+```dotenv
+OPENROUTER_API_KEY=your_secret_key_here
+TENANT_ID=your_org_id
 ```
 
-**Testing the end-to-end capabilities**:
-```bash
-uv run pytest
-```
+Run the core application verification and interactive tutorial to explore configuration routing and DI execution:
 
-Currently, the platform exposes a hardened underlying base fully capable of handling LangGraph node orchestration, Semantic Zoom API generation, SQ3R active learning verification, and multi-dimensional Pivot KJ insights.
+```bash
+uv run pytest tests/e2e/test_uat.py
+```
 
 ## Project Structure
 
-```text
-matome/
-├── main.py
-├── src/
-│   ├── config/          # Pydantic Settings and Cryptographic Security Services
-│   ├── domain_models/   # Core schemas
-│   ├── application/     # Orchestration Workflow abstractions
-│   ├── infrastructure/  # Gateway clients and logic implementation
-│   └── interfaces/      # Dependency Injection Container and Protocol definitions
-├── tests/               # Pytest Suite
-```
-
-## License
-
-This project is licensed under the MIT License.
+*   `src/domain_models/`: Core Pydantic schemas and configuration objects enforcing strict bounds.
+*   `src/application/`: Application layer logic including the DI Container and Ingestion Pipeline orchestrator.
+*   `src/interfaces/`: Abstract protocols defining system boundaries.
+*   `src/infrastructure/`: Implementations of models, web transports, and local file processors.
+*   `tests/`: Executable tests covering UAT, E2E integrations, and robust Unit logic.

@@ -197,3 +197,94 @@ class InMemoryVectorStore(VectorStoreProtocol):
 
         scored_records.sort(key=lambda x: x[0], reverse=True)
         return [r for _, r in scored_records[:limit]]
+
+
+import asyncio
+import uuid
+
+from src.domain_models.document import ChunkMetadata, SemanticChunk
+from src.interfaces.dependencies import VectorDBProtocol
+
+
+class VectorDBAdapter(VectorDBProtocol):
+    """Adapts the generic VectorStoreProtocol to the domain-specific VectorDBProtocol."""
+
+    def __init__(self, vector_store: VectorStoreProtocol, collection_name: str = "matome") -> None:
+        self._store = vector_store
+        self._collection_name = collection_name
+
+    async def upsert(self, chunks: list[SemanticChunk]) -> None:
+        records = []
+        for c in chunks:
+            if not c.embedding:
+                continue
+            rec: dict[str, Any] = {
+                "id": str(c.id),
+                "embedding": c.embedding,
+                "text": c.content,
+            }
+            if c.metadata:
+                rec.update(c.metadata.model_dump())
+            records.append(rec)
+
+        await asyncio.to_thread(self._store.upsert, self._collection_name, records)
+
+    async def search(
+        self,
+        query_embedding: list[float],
+        top_k: int,
+        filter_metadata: dict[str, str] | None = None,
+    ) -> list[SemanticChunk]:
+        # Retrieve slightly more in case we need to filter
+        limit = top_k * 2 if filter_metadata else top_k
+        results = await asyncio.to_thread(
+            self._store.search, self._collection_name, query_embedding, limit
+        )
+
+        chunks = []
+        for r in results:
+            metadata_dict = r.copy()
+            chunk_id_str = metadata_dict.pop("id")
+            metadata_dict.pop("score", None)
+            metadata_dict.pop("embedding", None)
+            text = metadata_dict.pop("text", "")
+
+            # Client metadata is nested inside "metadata" or flat depending on store
+            if "metadata" in metadata_dict and isinstance(metadata_dict["metadata"], dict):
+                meta_source = metadata_dict["metadata"]
+            else:
+                meta_source = metadata_dict
+
+            # Apply exact match filtering if requested
+            if filter_metadata:
+                match = True
+                for k, v in filter_metadata.items():
+                    if meta_source.get(k) != v:
+                        match = False
+                        break
+                if not match:
+                    continue
+
+            # Construct safe ChunkMetadata mapping
+            safe_meta = {}
+            for k, v in meta_source.items():
+                if k in ("source_file", "time_axis", "summary", "keywords", "author"):
+                    safe_meta[k] = v
+
+            if "source_file" not in safe_meta:
+                safe_meta["source_file"] = "unknown"
+            meta = ChunkMetadata(**safe_meta)
+
+            chunks.append(
+                SemanticChunk(
+                    id=uuid.UUID(chunk_id_str),
+                    content=text,
+                    embedding=r.get("embedding") or query_embedding,
+                    metadata=meta,
+                )
+            )
+
+            if len(chunks) == top_k:
+                break
+
+        return chunks

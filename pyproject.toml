@@ -14,6 +14,7 @@ dependencies = [
     "fastapi>=0.135.1",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
+    "spacy>=3.8.11",
     "tenacity>=9.1.4",
     "uvicorn>=0.41.0",
 ]
@@ -27,7 +28,6 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.15.5",
     "scikit-learn>=1.8.0",
-    "spacy>=3.8.11",
     "types-bleach>=6.3.0.20251115",
     "umap-learn>=0.5.11",
 ]
@@ -52,6 +52,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["S101"]  # Allow assert in tests
+"tutorials/**/*.py" = ["T201", "S101", "EM101", "PT017"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # Exceeding this prompts function splitting (prevent AI long functions)
@@ -62,6 +63,10 @@ suppress-dummy-args = true  # Arguments starting with _ do not require type hint
 [tool.pytest.ini_options]
 addopts = "--cov=src --cov-report=term-missing"
 testpaths = ["tests"]
+filterwarnings = [
+    "ignore::UserWarning",
+    "ignore::FutureWarning",
+]
 
 [tool.mypy]
 strict = true

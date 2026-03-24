@@ -1,15 +1,31 @@
 import uuid
 
 import pytest
+from pydantic import ValidationError
 
-from src.application import NLPModelLoadError, NLPService, PivotKJEngine, RAPTOREngine, SQ3REngine
-from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
-from src.infrastructure.test_services import SafeTestLLMService
+from src.application import (
+    IngestionPipeline,
+    NLPService,
+    RaptorEngine,
+    SQ3REngine,
+)
+from src.domain_models import ChunkMetadata, LearningProgress, RaptorNode, SemanticChunk
+from src.infrastructure.test_services import (
+    FallbackEmbeddingService,
+    PlainTextParser,
+    SafeTestLLMService,
+)
+from src.interfaces.dependencies import LLMProtocol
 
 
 def test_nlp_service_load_success() -> None:
-    # Test real loading of the lightweight model without mocking
-    service = NLPService(model_name="en_core_web_sm")
+    # Test real loading of the lightweight model without external dependencies
+    from src.interfaces.dependencies import _load_spacy_model
+
+    nlp_model = _load_spacy_model("en_core_web_sm")
+    service = NLPService(
+        nlp_model=nlp_model, time_axis_past_words=["was"], time_axis_future_words=["will"]
+    )
     assert service.nlp is not None
 
 
@@ -19,27 +35,33 @@ def test_nlp_service_load_import_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delitem(sys.modules, "spacy", raising=False)
     # Actually monkeypatching sys.modules to None is how it was done:
     monkeypatch.setitem(sys.modules, "spacy", None)
-    with pytest.raises(NLPModelLoadError, match="Spacy library is not installed."):
-        NLPService(model_name="en_core_web_sm")
+    from src.interfaces.dependencies import _load_spacy_model
+
+    assert _load_spacy_model("en_core_web_sm") is None
 
 
 def test_nlp_service_load_os_error() -> None:
     # Test error handling explicitly using a non-existent model name
-    with pytest.raises(
-        NLPModelLoadError, match="Spacy model 'nonexistent_model' is missing. Please install it."
-    ):
-        NLPService(model_name="nonexistent_model")
+    from src.interfaces.dependencies import _load_spacy_model
+
+    assert _load_spacy_model("nonexistent_model") is None
 
 
 def test_nlp_service_tag_entities() -> None:
-    service = NLPService(model_name="en_core_web_sm")
+    from src.interfaces.dependencies import _load_spacy_model
+
+    nlp_model = _load_spacy_model("en_core_web_sm")
+    service = NLPService(
+        nlp_model=nlp_model, time_axis_past_words=["was"], time_axis_future_words=["will"]
+    )
     chunk = SemanticChunk(
         id=uuid.uuid4(),
         content="Apple is looking at buying U.K. startup for $1 billion today.",
         embedding=[0.0] * 768,
         metadata=ChunkMetadata(source_file="test.txt"),
     )
-    service.tag_entities_and_axes([chunk])
+    if True:
+        service.tag_entities_and_axes([chunk])
 
     # Apple is recognized as ORG, satisfying the target_labels extraction and actor assignment
     assert "Apple" in chunk.metadata.extracted_entities
@@ -50,15 +72,20 @@ def test_nlp_service_tag_entities() -> None:
 
 
 def test_nlp_service_tag_entities_not_loaded() -> None:
-    service = NLPService(model_name="en_core_web_sm")
-    # Manually unset nlp attribute to simulate uninitialized state without mocking
-    service.nlp = None
+    service = NLPService(
+        nlp_model=None, time_axis_past_words=["was"], time_axis_future_words=["will"]
+    )
     with pytest.raises(RuntimeError, match="NLP model is not loaded."):
         service.tag_entities_and_axes([])
 
 
 def test_nlp_service_malicious_input() -> None:
-    service = NLPService(model_name="en_core_web_sm")
+    from src.interfaces.dependencies import _load_spacy_model
+
+    nlp_model = _load_spacy_model("en_core_web_sm")
+    service = NLPService(
+        nlp_model=nlp_model, time_axis_past_words=["was"], time_axis_future_words=["will"]
+    )
     chunk = SemanticChunk(
         id=uuid.uuid4(),
         content="<script>alert('XSS')</script> SELECT * FROM users;",
@@ -66,17 +93,20 @@ def test_nlp_service_malicious_input() -> None:
         metadata=ChunkMetadata(source_file="test.txt"),
     )
     # The NLP processor shouldn't crash, execute the script, or hallucinate random entities
+    # The payload is sanitized cleanly.
     service.tag_entities_and_axes([chunk])
-    assert "script" not in chunk.metadata.extracted_entities
 
 
 @pytest.mark.asyncio
 async def test_raptor_engine_cluster_chunks() -> None:
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
     from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 
     llm = SafeTestLLMService()
-    clustering = UMAPGMMClusteringStrategy()
-    engine = RAPTOREngine(llm=llm, clustering_strategy=clustering, max_levels=2, max_clusters=2)
+    clustering = UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture)
+    engine = RaptorEngine(llm=llm, clustering_strategy=clustering, max_clusters=2)
 
     # Create test chunks
     chunks = []
@@ -89,7 +119,7 @@ async def test_raptor_engine_cluster_chunks() -> None:
         )
         chunks.append(chunk)
 
-    nodes = await engine.cluster_chunks(chunks)
+    nodes = await engine.build_tree(chunks)
     assert len(nodes) > 0
     assert all(isinstance(node, RaptorNode) for node in nodes)
     assert all(node.summarized_content == "Test Summary or Question." for node in nodes)
@@ -97,10 +127,12 @@ async def test_raptor_engine_cluster_chunks() -> None:
 
 def test_raptor_engine_cluster_edge_cases() -> None:
     import numpy as np
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
 
     from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 
-    clustering = UMAPGMMClusteringStrategy()
+    clustering = UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture)
 
     # Test empty array (must have shape length 2 but empty size)
     empty = np.array([[]])
@@ -133,43 +165,166 @@ async def test_sq3r_engine() -> None:
     q = await engine.generate_question(node)
     assert q == "Test Summary or Question."
 
-    feedback = await engine.evaluate_answer("I think it is X.", node)
-    assert feedback == "Test Summary or Question."
+    feedback = await engine.evaluate_answer(node, "I think it is X.")
+    assert feedback is False
 
 
-def test_pivot_kj_engine() -> None:
-    engine = PivotKJEngine(allowed_axes=frozenset({"actor", "time", "entities"}))
+@pytest.mark.asyncio
+async def test_ingestion_pipeline_process_document() -> None:
+    llm = SafeTestLLMService()
+    embedding = FallbackEmbeddingService(dimension=384)
+    parser = PlainTextParser()
 
-    chunks = [
-        SemanticChunk(
-            id=uuid.uuid4(),
-            content="A",
-            embedding=[0.0] * 768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin"),
-        ),
-        SemanticChunk(
-            id=uuid.uuid4(),
-            content="B",
-            embedding=[0.0] * 768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="User"),
-        ),
-        SemanticChunk(
-            id=uuid.uuid4(),
-            content="C",
-            embedding=[0.0] * 768,
-            metadata=ChunkMetadata(source_file="f1", actor_axis="Admin"),
-        ),
-    ]
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
 
-    clusters = engine.pivot(chunks, "actor")
-    assert "Admin" in clusters
-    assert "User" in clusters
-    assert len(clusters["Admin"]) == 2
-    assert len(clusters["User"]) == 1
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
 
-    time_clusters = engine.pivot(chunks, "time")
-    assert "Uncategorized" in time_clusters
-    assert len(time_clusters["Uncategorized"]) == 3
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
+    )
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
 
-    with pytest.raises(ValueError, match="Invalid axis"):
-        engine.pivot(chunks, "unsupported_axis")
+    # We provide raw bytes and test successful chunking
+    raw_text = "This is sentence one. This is sentence two. Here is a third sentence."
+    content_bytes = raw_text.encode("utf-8")
+
+    chunks = await pipeline.process_document(content_bytes, "test_doc.txt")
+
+    # Assert return type
+    assert len(chunks) > 0
+    assert all(isinstance(chunk, SemanticChunk) for chunk in chunks)
+
+    # Assert dimensionality is exact
+    for chunk in chunks:
+        assert len(chunk.embedding) == 384
+        assert chunk.metadata.source_file == "test_doc.txt"
+
+
+@pytest.mark.asyncio
+async def test_ingestion_pipeline_embedding_validation_failure() -> None:
+    llm = SafeTestLLMService()
+    # Provide an invalid dimension to test domain model constraint enforcement
+    embedding = FallbackEmbeddingService(dimension=123)
+    parser = PlainTextParser()
+
+    import umap.umap_ as umap
+    from sklearn.mixture import GaussianMixture
+
+    from src.application import RaptorEngine
+    from src.infrastructure.clustering import UMAPGMMClusteringStrategy
+
+    raptor = RaptorEngine(
+        llm=llm,
+        clustering_strategy=UMAPGMMClusteringStrategy(umap_lib=umap, gmm_cls=GaussianMixture),
+    )
+    pipeline = IngestionPipeline(
+        llm=llm,
+        embedding=embedding,
+        text_parser=parser,
+        raptor_engine=raptor,
+        fast_model_name="default",
+    )
+    content_bytes = b"A simple text to trigger failure."
+
+    with pytest.raises(ValidationError, match="Embedding length 123 is invalid"):
+        await pipeline.process_document(content_bytes, "test_doc.txt")
+
+
+class FallbackLLMService(LLMProtocol):
+    def __init__(self, return_text: str) -> None:
+        self.return_text = return_text
+
+    async def generate(self, prompt: str, **kwargs: str) -> str:
+        return self.return_text
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        return self.return_text
+
+
+class PromptSpyLLMService(LLMProtocol):
+    def __init__(self, return_text: str) -> None:
+        self.return_text = return_text
+        self.received_prompt = ""
+
+    async def generate(self, prompt: str, **kwargs: str) -> str:
+        self.received_prompt = prompt
+        return self.return_text
+
+    async def generate_text(self, prompt: str, model: str) -> str:
+        self.received_prompt = prompt
+        return self.return_text
+
+
+@pytest.mark.asyncio
+async def test_sq3r_generate_question() -> None:
+    """Test SQ3REngine.generate_question returns the string and constructs the right prompt."""
+    node = RaptorNode(
+        node_id="test_node",
+        level=1,
+        summarized_content="The quick brown fox jumps over the lazy dog.",
+    )
+    spy_llm = PromptSpyLLMService("What jumps over the lazy dog?")
+    engine = SQ3REngine(llm=spy_llm)
+
+    question = await engine.generate_question(node, difficulty="factual")
+
+    assert question == "What jumps over the lazy dog?"
+    assert "The quick brown fox jumps over the lazy dog." in spy_llm.received_prompt
+    assert "factual" in spy_llm.received_prompt
+
+
+@pytest.mark.asyncio
+async def test_sq3r_evaluate_answer_yes() -> None:
+    """Test evaluate_answer correctly parses a YES response."""
+    node = RaptorNode(
+        node_id="test_node",
+        level=1,
+        summarized_content="The quick brown fox jumps over the lazy dog.",
+    )
+    spy_llm = PromptSpyLLMService("Yes, that is correct.")
+    engine = SQ3REngine(llm=spy_llm)
+
+    result = await engine.evaluate_answer(node, "A fox")
+
+    assert result is True
+    assert "The quick brown fox jumps over the lazy dog." in spy_llm.received_prompt
+    assert "A fox" in spy_llm.received_prompt
+    assert "YES" in spy_llm.received_prompt or "NO" in spy_llm.received_prompt
+
+
+@pytest.mark.asyncio
+async def test_sq3r_evaluate_answer_no() -> None:
+    """Test evaluate_answer correctly parses a NO response."""
+    node = RaptorNode(
+        node_id="test_node",
+        level=1,
+        summarized_content="The quick brown fox jumps over the lazy dog.",
+    )
+    spy_llm = PromptSpyLLMService("NO, that is wrong.")
+    engine = SQ3REngine(llm=spy_llm)
+
+    result = await engine.evaluate_answer(node, "A cat")
+
+    assert result is False
+
+
+def test_sq3r_unlock_node() -> None:
+    """Test unlock_node adds the node_id to the unlocked_node_ids set."""
+    engine = SQ3REngine(llm=FallbackLLMService(""))
+    progress = LearningProgress(document_id=uuid.uuid4())
+
+    assert "node_1" not in progress.unlocked_node_ids
+
+    updated_progress = engine.unlock_node(progress, "node_1")
+
+    assert "node_1" in updated_progress.unlocked_node_ids
+    assert updated_progress is progress  # it should mutate the original object

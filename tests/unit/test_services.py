@@ -14,7 +14,10 @@ def test_file_processing_service_valid_file(tmp_path: Path) -> None:
     config = AppConfig(upload_dir=str(tmp_path), max_file_size=1024 * 1024)
     service = FileProcessingService(config)
 
-    test_file = tmp_path / "valid_file.txt"
+    import hashlib
+
+    file_hash = hashlib.sha256(b"valid_file.txt").hexdigest()
+    test_file = tmp_path / f"{file_hash}.safe"
     test_file.write_text("Hello, world!", encoding="utf-8")
 
     content = service.read_file("valid_file.txt")
@@ -29,12 +32,12 @@ def test_file_processing_service_invalid_path(tmp_path: Path) -> None:
         service.read_file("../../../etc/passwd")
 
     # Also test null byte injection
-    with pytest.raises(ValueError, match="Invalid file path structure"):
+    with pytest.raises(ValueError, match="Invalid file path structure: null bytes not allowed."):
         service.read_file("file.txt\0.pdf")
 
     # Test extreme filename length
     long_filename = "a" * 260 + ".txt"
-    with pytest.raises(ValueError, match="Filename exceeds maximum allowed length"):
+    with pytest.raises(ValueError, match="Filename exceeds maximum allowed byte length"):
         service.read_file(long_filename)
 
 
@@ -42,8 +45,14 @@ def test_file_processing_service_valid_unicode_filename(tmp_path: Path) -> None:
     config = AppConfig(upload_dir=str(tmp_path), max_file_size=1024 * 1024)
     service = FileProcessingService(config)
 
+    import hashlib
+    import unicodedata
+
     filename = "テスト_ファイル-1.txt"
-    test_file = tmp_path / filename
+    normalized = unicodedata.normalize("NFKD", filename)
+    file_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+    test_file = tmp_path / f"{file_hash}.safe"
     test_file.write_text("Unicode content", encoding="utf-8")
 
     content = service.read_file(filename)
@@ -62,10 +71,13 @@ def test_file_processing_service_file_too_large(tmp_path: Path) -> None:
     config = AppConfig(upload_dir=str(tmp_path), max_file_size=10)
     service = FileProcessingService(config)
 
-    test_file = tmp_path / "large_file.txt"
+    import hashlib
+
+    file_hash = hashlib.sha256(b"large_file.txt").hexdigest()
+    test_file = tmp_path / f"{file_hash}.safe"
     test_file.write_text("This file is way too large for the 10 byte limit.", encoding="utf-8")
 
-    with pytest.raises(FileProcessingError, match="File size exceeds the allowed limit"):
+    with pytest.raises(FileProcessingError, match="File size exceeds the allowed limit."):
         service.read_file("large_file.txt")
 
 
