@@ -36,7 +36,15 @@
 - **Interactive Active Learning (SQ3R):** Unlock knowledge nodes by answering AI-generated questions and reciting information to solidify memory.
 - **MD-SKJ Pivot Engine:** Dynamically re-arrange clustered knowledge along custom, multi-dimensional business axes (e.g., actors vs. state transitions) to instantly output actionable UML diagrams and Markdown Requirements.
 
-## Usage
+## Usage / Quick Start
+
+**Execute the User Acceptance Test & Tutorial**:
+The best way to experience matome's core features (RAPTOR Tree Generation, SQ3R Loop, and MD-SKJ Pivot) is via our interactive Marimo notebook.
+
+```bash
+uv run marimo run tutorials/UAT_AND_TUTORIAL.py
+```
+*(This tutorial runs seamlessly in "Mock Mode" if no API keys are present, or "Real Mode" if an `OPENROUTER_API_KEY` is configured.)*
 
 **Execute the foundation system setup**:
 ```bash
