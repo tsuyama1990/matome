@@ -27,6 +27,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
+      - name: Install FFmpeg (txt2speech tests use the real encoder)
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Install jtc-gov
         run: uv tool install git+https://github.com/tsuyama1990/cheeze_gyudon
 
