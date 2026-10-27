@@ -1,17 +1,20 @@
 name: CI
 
 on:
-  push:
-    branches: [ main, master, "dev/**", "feature/**" ]
   pull_request:
-    branches: [ main, master, "dev/**", "feature/**" ]
+    branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
-  quality:
-    name: Code Quality
+  gate-verification:
+    name: gate-verification
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v4
@@ -21,17 +24,13 @@ jobs:
       - name: Set up Python
         run: uv python install 3.12
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: uv sync --all-extras --dev
 
-      - name: Lint (Ruff)
-        run: uv run ruff check .
+      - name: Install jtc-gov
+        run: uv tool install git+https://github.com/tsuyama1990/cheeze_gyudon
 
-      - name: Check Formatting (Ruff)
-        run: uv run ruff format --check .
-
-      - name: Type Check (Mypy)
-        run: uv run mypy .
-
-      - name: Run Tests (Pytest)
-        run: uv run pytest
+      - name: Run the quality and governance gate
+        env:
+          GATE_BASE: origin/${{ github.base_ref }}
+        run: scripts/gate.sh
