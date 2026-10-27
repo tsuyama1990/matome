@@ -40,7 +40,7 @@ If you have any good suggestions for the  `ALL_SPEC.md` file, you must suggest t
 - **Additive Mindset**: Clearly map out how the *new* requirements integrate with the *existing* system architecture. Explicitly specify which existing files are reused and which ones need to be safely extended.
 
 **Sections & Word Counts (Minimum):**
-1. **Summary** 
+1. **Summary**
    - High-level overview of the system.
 2. **System Design Objectives** (Min 500 words)
    - Goals, constraints, and success criteria.
