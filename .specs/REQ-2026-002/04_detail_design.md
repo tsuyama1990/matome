@@ -56,7 +56,7 @@
 - `mark_chapter_done(index)`: `done_chapters` に足して書く(一時ファイルに書いてから置き換える)。`clear()`: 進捗ファイルと作業ディレクトリを消す。
 
 ## 9. `pipeline.run`
-1. 入力の確認と読み込み: `read_text`(なければ `InputError`。終了コード 2 を、エンジンの確認より先に保証する)、`split_chapters`、辞書の CSV の読み込みと `parse_dictionary`、カバー画像の読み込み(`InputError` はここで出る)。
+1. 入力の確認と読み込み: 拡張子が `.pdf` なら `pdf_input.read_pdf_chapters`、それ以外なら `read_text`(なければ `InputError`。終了コード 2 を、エンジンの確認より先に保証する)と `split_chapters`。さらに、辞書の CSV の読み込みと `parse_dictionary`、カバー画像の読み込み(`InputError` はここで出る)。
 2. 前提の確認: `mp3.check`、`client.check()`。どちらかが失敗したら、何も作らずに例外。その後 `out_dir.mkdir(parents=True, exist_ok=True)`。
 3. `fingerprint` を求め、`Progress` を読む。辞書: 読み込み済みのエントリを `client.register` で順に登録する(再開時も毎回)。
 4. 章 `i`(1 から)ごと: `done_chapters` に含まれ、MP3 が存在すれば飛ばす。`normalize(body)` → `split_chunks`。チャンク `j` の WAV は `work/chNN/JJJJ.wav`。存在すれば再合成しない。なければ `synthesize_with_halving(text) -> bytes`(WAV のバイト列を返す。`ResourceExhausted` なら `halve` で分けて、前半・後半を順に(それぞれ再帰的に)合成し、`audio.concat_wav_bytes` で**ポーズなしに**つないで 1 つの WAV にして返す。`halve` が `None` なら `EngineError`)。
@@ -65,3 +65,17 @@
 
 ## 10. `cli.main`
 `argparse`(`--speaker` は `int`、`--speed-scale` と `--max-chars` は `float`/`int`、`--cover`/`--dictionary`/`--config` は `Path` として型変換する。指定のない引数は `overrides` に入れない)。`load_settings`(引数を `overrides` に)。`tqdm` で章とチャンクの進みを標準エラーに表示する(標準エラーが端末でないときも動く)。`InputError` → 標準エラーにメッセージ、2。`EngineError` → 3。成功時は MP3 のパスを 1 行ずつ標準出力に出す。
+
+## 11. `pdf_input`(F12、F13)
+境界(`pdfminer.six`): `read_outline(path) -> list[OutlineEntry]`、`extract_lines(path, pages) -> Iterator[LineRecord]`。壊れた PDF、暗号化された PDF は `InputError(ファイル名)`。
+```python
+@dataclass(frozen=True) class OutlineEntry: level: int; title: str; page: int      # page は 1 から
+@dataclass(frozen=True) class LineRecord: page: int; text: str; x0: float; y0: float; size: float   # size は行の文字サイズの最頻値
+```
+- `read_outline`: `PDFDocument.get_outlines()` の `(level, title, dest, action, se)` を読み、`dest`(なければ `action` の `D`)の先頭要素のページ ID をページ番号にする。解決できない項目は飛ばす。
+- `clean_title(raw: str) -> str`: (1) 最初の「文字化け」文字(Unicode の一般カテゴリが `Cc`、`Co`、`Cn`、または `U+FFFD`)より後ろを切る。 (2) 空白の両側が、どちらも ASCII の英数字のときだけ 1 つの空白を残し、それ以外(日本語や ASCII 記号の隣、複数の空白)の空白は除く。 (3) 前後の空白と、末尾の開き括弧(`(`、`（`)を除く。 (4) 空なら空文字を返す(呼び出し側が語幹などで補う)。
+- `read_pdf_chapters(path, settings)`: (1) `read_outline`。`level <= pdf_outline_level` の項目を、ページ順(同じページは後を残す)に並べる。しおりがなければ全ページを 1 章(題は PDF のメタデータの Title、なければ入力ファイルの語幹)。 (2) 各章のページ範囲 = 開始ページ ..(次の項目の開始ページ - 1)。最後の章は最終ページまで。最初の項目より前のページは読まない。 (3) 本文の文字サイズの中央値(`median_body_size`)を、章に使う全ページの行の `size` の中央値として求める。 (4) ヘッダー・フッター: 章に使うページの行の `text`(前後の空白を除く)のうち、`pdf_repeat_min_pages` 以上のページがあり、`pdf_repeat_page_ratio` 以上のページに現れるものを、繰り返す行とする。 (5) 章ごとに `drop_noise` → `assemble_paragraphs` → `strip_note_markers`。 (6) 題は `clean_title(title)`(空なら `f"{index:02d}"` ではなく空のまま。`chapter_filename` が空の題を扱う)。本文が空白だけの章は作らない。
+- `drop_noise(lines, body_size, repeated, settings)`: 次の行を除く: `size < body_size * pdf_footnote_size_ratio`、`text.strip()` が数字だけ(全角を含む)、`text.strip()` が `repeated` に含まれる。
+- `assemble_paragraphs(lines, settings) -> str`: ページごとに、行を `y0` の降順(上から下)、同じ `y0` は `x0` の昇順に並べる。ページ内の左端 `margin` = 行の `x0` の最小値(最頻値が望ましいが、字下げの行が多い PDF は最小値で足りる)。通常の行間 `leading` = ページ内の隣り合う行の `y0` の差の中央値。行 `i` を前の行に連結する条件: 同じページで、`x0 <= margin + pdf_indent_tolerance_pt`、かつ前の行との `y0` の差が `leading * pdf_paragraph_gap_ratio` 以下。条件を満たさなければ新しい段落(空行で区切る)。前の行が文末記号(`。！？!?」』）`)で終わり、かつ現在の行が字下げされていれば新しい段落。連結するとき、前の行の最後の文字と現在の行の最初の文字が、どちらも ASCII の英数字なら空白 1 つ、それ以外は空白なし。ページをまたぐ段落は、前のページの最後の段落が文末記号で終わらず、次のページの最初の行が字下げされていなければ連結する。
+- `strip_note_markers(text) -> str`: 正規表現 `注[0-9０-９]+(?=[。、，．）)」』\s]|$)` を除く(脚注の参照記号。文中の「注意」「注文」「注 1 を参照」は後続が数字でないか区切りがないので対象外)。
+

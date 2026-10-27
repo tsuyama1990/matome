@@ -59,3 +59,13 @@ Feature: txt2speech 教科書テキストの音声化
     Given エンジンの URL が外部のホストである設定
     When  コマンドを実行する
     Then  通信せずに終了コード 2 で失敗する
+
+  Scenario: F12 PDF を直接読み、しおりの項目ごとに MP3 ができる [REQ-2026-002-F12]
+    Given しおりに「第1章」「第2章」を持つ PDF と、動作中の(偽の)VOICEVOX Engine
+    When  `python -m src.txt2speech book.pdf -o OUTDIR` を実行する
+    Then  OUTDIR に `01_第1章….mp3` と `02_第2章….mp3` ができ、最初の項目より前のページは読まれない
+
+  Scenario: F13 脚注とページ番号は読まれず、折り返した行は 1 つの文になる [REQ-2026-002-F13]
+    Given 脚注・ページ番号・折り返した行を含む PDF
+    When  コマンドを実行する
+    Then  偽の VOICEVOX が受け取った文字列に、脚注の本文とページ番号は含まれず、折り返しは文として連結されている

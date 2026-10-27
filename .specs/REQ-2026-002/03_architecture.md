@@ -29,6 +29,12 @@ class Settings:
     dictionaries: tuple[Path, ...] = ()
     work_dir_name: str = ".txt2speech_work"
     progress_file_name: str = ".txt2speech_progress.json"
+    pdf_outline_level: int = 1            # 章とするしおりの階層(1 が最上位)
+    pdf_footnote_size_ratio: float = 0.85 # 本文の文字サイズの中央値に対する比。これ未満の行は脚注
+    pdf_repeat_page_ratio: float = 0.4    # この割合以上のページに現れる行は、ヘッダー・フッター
+    pdf_repeat_min_pages: int = 3         # 繰り返しの判定に必要な最小のページ数
+    pdf_indent_tolerance_pt: float = 5.0  # 左端からこれを超えて字下げされた行は、新しい段落
+    pdf_paragraph_gap_ratio: float = 1.4  # 通常の行間のこの倍を超えて空いたら、新しい段落
 
 @dataclass(frozen=True)
 class Chapter: title: str; body: str
@@ -57,12 +63,13 @@ class Chunk: text: str; boundary: Literal["paragraph", "sentence", "comma", "oth
 | `mp3.check(settings)` | ffmpeg の存在を確かめる(`-version`)。なければ `EngineError(案内)` |
 | `mp3.encode(wav_path, out_path, title, album, track, settings)` | 2 パスのラウドネス正規化 + LAME + ID3v2.4 + カバー |
 | `progress.Progress(progress_path, work_dir, fingerprint)` | JSON。`load() -> state`、`mark_chapter_done(index)`、`clear()`。`fingerprint` が違えば空の状態を返す |
+| `pdf_input.read_pdf_chapters(path, settings) -> list[Chapter]` | F12・F13(04 §11)。`pdfminer.six` でしおりと各ページの行(位置、文字サイズ)を読む。しおりの読み込み・行の抽出は境界、題の整形・脚注などの除去・段落の組み立ては純粋な関数 |
 | `pipeline.run(input_path, out_dir, settings, client, encoder, progress_cb) -> list[Path]` | 起動時の確認 → 辞書の登録 → 章ごとの処理(チャンクを順に合成してディスクへ、結合、MP3 化、一時ファイルの削除、章の完了を記録)。完了済みの章は飛ばし、作成済みのチャンクは再合成しない |
 | `cli.main(argv) -> int` | 引数 `INPUT -o OUTDIR --config --speaker --engine-url --speed-scale --max-chars --ffmpeg --cover --album --voice-name --dictionary`。`InputError` は 2、`EngineError` は 3、成功は 0 |
 
 ## 4. 依存の向き
-`cli → pipeline → (voicevox, mp3, audio, text_io, dictionary, progress, chunking, structure, preprocess) → (config, models, errors)`。`preprocess`/`structure`/`chunking` は I/O をしない。
-実行時の依存に `httpx`、`pyyaml`、`tqdm` を加える。
+`cli → pipeline → (voicevox, mp3, audio, text_io, pdf_input, dictionary, progress, chunking, structure, preprocess) → (config, models, errors)`。`preprocess`/`structure`/`chunking` は I/O をしない。
+実行時の依存に `httpx`、`pyyaml`、`tqdm`、`pdfminer.six`(MIT。PDF の読み取り)を加える。
 
 ## 5. テスト構造
 単体 `tests/unit/txt2speech/`(純粋な関数)、結合 `tests/integration/txt2speech/`(`voicevox` を `MockTransport` で、`mp3` と `audio` を実 FFmpeg・実ファイルで)、E2E `tests/e2e/txt2speech/`(実プロセスと偽 HTTP サーバー)。
