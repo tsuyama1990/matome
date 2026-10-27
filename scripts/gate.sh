@@ -5,7 +5,7 @@ BASE="${GATE_BASE:-origin/main}"
 THRESHOLD="$(uv run python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['tool']['coverage']['report']['fail_under'])")"
 
 echo "[1/5] Ruff lint & format..."
-uv run ruff check .
+uv run ruff check --no-fix .
 uv run ruff format --check .
 
 echo "[2/5] Mypy..."
