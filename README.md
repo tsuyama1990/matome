@@ -67,3 +67,21 @@ matome/
 ## License
 
 This project is licensed under the MIT License.
+
+## txt2speech: textbook text to chapter MP3s (local, offline)
+
+Converts `.txt` / `.md` into one MP3 per chapter with a local [VOICEVOX Engine](https://github.com/VOICEVOX/voicevox_engine) (nothing leaves the machine; the engine URL must be loopback).
+
+**Prerequisites**: FFmpeg 5 or newer on `PATH` (or `--ffmpeg /path/to/ffmpeg`) and a running VOICEVOX Engine (default `http://127.0.0.1:50021`; for the GPU use the `nvidia` image, e.g. `docker run --rm --gpus all -p 127.0.0.1:50021:50021 voicevox/voicevox_engine:nvidia-latest`).
+
+```bash
+uv run python -m src.txt2speech textbook.md -o out/ --speaker 1 --album "My Textbook"
+# options: --config config.yaml --engine-url --speed-scale 1.1 --max-chars 80 --ffmpeg --cover cover.jpg --voice-name VOICEVOX --dictionary terms.csv
+```
+
+Output: `out/01_<heading>.mp3`, `out/02_<heading>.mp3`, ... (one path per line on stdout; progress on stderr). Exit codes: 0 ok, 2 bad input or settings, 3 engine or FFmpeg failure. An interrupted run resumes from the progress file in `out/` when rerun with the same input and settings; temporary WAVs are removed once a chapter's MP3 is complete.
+
+`config.yaml` keys match the `Settings` fields in `src/txt2speech/config.py` (speaker, speed_scale, pitch_scale, pause_ms, bitrate, dictionaries, cover, album, voice_name, ffmpeg_path, ...). Dictionary CSV columns: surface, katakana reading, accent position (header row first).
+
+**Manual checks on real hardware** (not covered by automated tests, which use a fake engine): real-time factor <= 0.20, VRAM <= 4 GB during a 100,000-character run, audio quality, and intelligibility at 1.2x playback. The design and test plans are in `.specs/REQ-2026-002/`; deferred items are in its `backlog.md`.
+

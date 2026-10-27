@@ -262,6 +262,8 @@ def test_pipeline_resumes_after_chapter_two_crash_without_resynthesizing(
     assert not (out_dir / "02_第2章.mp3").exists()
     assert (out_dir / settings.progress_file_name).is_file()
     assert (out_dir / settings.work_dir_name / "ch02" / "0001.wav").is_file()
+    # A finished chapter must not keep its temporary files while later chapters run (F09).
+    assert not (out_dir / settings.work_dir_name / "ch01").exists()
 
     resume_client = _FakeClient()
     encoder_resume = _FakeEncoder()
