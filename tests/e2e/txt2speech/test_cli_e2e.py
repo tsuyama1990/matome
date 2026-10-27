@@ -479,6 +479,24 @@ def test_e12_numbered_section_headings_split_into_two_chapters(
     assert result.stdout.splitlines() == [str(p) for p in expected_files]
 
 
+@pytest.mark.requirement("REQ-2026-002-F04")
+def test_e22_sentence_starting_with_chapter_number_is_not_a_heading(
+    tmp_path: Path,
+    fake_voicevox: FakeVoicevoxServer,
+) -> None:
+    """T2S-E22: a body sentence starting with 第1章でも… stays one untitled chapter."""
+    input_path = tmp_path / "book.txt"
+    input_path.write_text(
+        "第1章でも簡単に触れたが、追い風が吹いているのは間違いない。\n", encoding="utf-8"
+    )
+    out_dir = tmp_path / "out"
+
+    result = _run_cli([str(input_path), "-o", str(out_dir), "--engine-url", fake_voicevox.url])
+
+    assert result.returncode == _EXIT_OK
+    assert [p.name for p in out_dir.glob("*.mp3")] == ["01.mp3"]
+
+
 @pytest.mark.requirement("REQ-2026-002-F08")
 def test_e13_mp3_integrated_loudness_and_true_peak(
     tmp_path: Path,

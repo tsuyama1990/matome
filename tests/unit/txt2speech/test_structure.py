@@ -64,3 +64,14 @@ def test_chapter_filename() -> None:
     width = max(2, len(str(total_chapters)))
     assert width == 3
     assert chapter_filename(1, "第1章", width) == "001_第1章.mp3"
+
+
+@pytest.mark.requirement("REQ-2026-002-F04")
+def test_chapter_heading_needs_whitespace_or_end_of_line() -> None:
+    """T2S-U08: 第N章 at the start of a sentence is not a heading; real headings still are."""
+    sentence = "第1章でも簡単に触れたが、日本の株式市場に追い風が吹いている。"
+    assert split_chapters(sentence) == [Chapter(title="", body=sentence)]
+    full_width = split_chapters("第1章\u3000全角空白の見出し\n本文\n")
+    assert [c.title for c in full_width] == ["第1章 全角空白の見出し"]
+    alone = split_chapters("第3章\n本文\n第4節 次\n本文\n")
+    assert [c.title for c in alone] == ["第3章", "第4節 次"]
