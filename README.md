@@ -84,4 +84,3 @@ Output: `out/01_<heading>.mp3`, `out/02_<heading>.mp3`, ... (one path per line o
 `config.yaml` keys match the `Settings` fields in `src/txt2speech/config.py` (speaker, speed_scale, pitch_scale, pause_ms, bitrate, dictionaries, cover, album, voice_name, ffmpeg_path, ...). Dictionary CSV columns: surface, katakana reading, accent position (header row first).
 
 **Manual checks on real hardware** (not covered by automated tests, which use a fake engine): real-time factor <= 0.20, VRAM <= 4 GB during a 100,000-character run, audio quality, and intelligibility at 1.2x playback. The design and test plans are in `.specs/REQ-2026-002/`; deferred items are in its `backlog.md`.
-
