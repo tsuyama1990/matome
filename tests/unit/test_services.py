@@ -3,11 +3,13 @@ from pathlib import Path
 import pytest
 
 from src.config.settings import AppConfig
-from src.infrastructure.test_services import (
+from src.infrastructure.file_services import (
     FileProcessingError,
     FileProcessingService,
     SimpleParsingService,
 )
+
+pytestmark = pytest.mark.requirement("REQ-2026-001-F02")
 
 
 def test_file_processing_service_valid_file(tmp_path: Path) -> None:

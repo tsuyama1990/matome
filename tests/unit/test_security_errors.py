@@ -2,6 +2,8 @@ import pytest
 
 from src.config.security import SecurityService
 
+pytestmark = pytest.mark.requirement("REQ-2026-001-F01")
+
 
 def test_encryption_raises_error_on_invalid_key_length(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test encrypting throws an error if the key is not exactly 44 bytes."""

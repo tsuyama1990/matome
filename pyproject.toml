@@ -20,8 +20,10 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "diff-cover>=11.0.0",
     "httpx>=0.28.1",
     "mypy>=1.19.1",
+    "pre-commit>=4.7.0",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=7.0.0",
@@ -60,7 +62,10 @@ max-complexity = 10  # Exceeding this prompts function splitting (prevent AI lon
 suppress-dummy-args = true  # Arguments starting with _ do not require type hints
 
 [tool.pytest.ini_options]
-addopts = "--cov=src --cov-report=term-missing"
+addopts = "--strict-markers --cov=src --cov-branch --cov-report=term-missing --cov-report=xml:coverage.xml"
+markers = [
+    "requirement: link a test to a feature tag of a requirement spec (e.g. REQ-2026-001-F01)",
+]
 testpaths = ["tests"]
 
 [tool.mypy]
@@ -69,3 +74,10 @@ ignore_missing_imports = true
 
 [tool.uv.sources]
 en-core-web-sm = { url = "https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0.tar.gz" }
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+
+[tool.coverage.report]
+fail_under = 70

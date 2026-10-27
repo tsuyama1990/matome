@@ -1,4 +1,8 @@
+import pytest
+
 from src.infrastructure.vector_store import InMemoryVectorStore
+
+pytestmark = pytest.mark.requirement("REQ-2026-001-F02")
 
 
 def test_vector_store_upsert_and_search() -> None:

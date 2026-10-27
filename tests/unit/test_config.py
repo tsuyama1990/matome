@@ -3,6 +3,8 @@ from pydantic import ValidationError
 
 from src.config.settings import AppConfig, ModelConfig
 
+pytestmark = pytest.mark.requirement("REQ-2026-001-F01")
+
 
 def test_app_config_success(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test AppConfig loads correctly when env variables are provided."""

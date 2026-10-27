@@ -5,6 +5,8 @@ from pydantic import ValidationError
 
 from src.domain_models import ChunkMetadata, EnrichedDocument, GraphState, RaptorNode, SemanticChunk
 
+pytestmark = pytest.mark.requirement("REQ-2026-001-F03")
+
 
 def test_chunk_metadata_forbids_extra_fields() -> None:
     """Test that ChunkMetadata strictly forbids extra fields."""

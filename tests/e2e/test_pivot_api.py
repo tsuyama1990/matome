@@ -11,6 +11,8 @@ from src.interfaces.api_router import router
 from src.interfaces.dependencies import DIContainer, LLMProtocol
 from src.interfaces.repository import DocumentRepositoryProtocol
 
+pytestmark = pytest.mark.requirement("REQ-2026-001-F05")
+
 app = FastAPI()
 app.include_router(router)
 
