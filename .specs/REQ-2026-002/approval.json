@@ -2,13 +2,13 @@
   "requirement": "REQ-2026-002",
   "state": "open",
   "files": {
-    "01_acceptance_tests.feature": "109e89468d254483be45e3b8287e89a0f60bbec8a22345db81ab430615678a58",
-    "01_req_spec.md": "059b9aadeedde7a365b0006caca3efe3b0145e17dd1c9688ca0e5f41fcd220e8",
-    "02_system_design.md": "10fe47fb9c31bf7609551e20a6580f95cfc5b353510842b17b9f18bad7bc3a4b",
-    "02_system_tests.md": "e2ce66d6c8b36e43c113ced4ac67a34264ea95546f8f836f9e48fab02554c855",
-    "03_architecture.md": "8061934d343bbc28cb4100d5f9d85adcf052ac466bc7af8a4562ecccb538a9b4",
-    "03_integration_tests.md": "371cf0132c2efd752b94fbec5538167c939c9078707706576668f0097e6de6e7",
-    "04_detail_design.md": "d6eea81719a3e92fb14252f0e3b9e09d633ec303fd77530918d73bdce761d6bf",
-    "04_unit_tests.md": "3464409b7cdd8e4085a599a09bd98e6c68430a59dbcab697bcf26761e530eb49"
+    "01_acceptance_tests.feature": "fe308f383ca3dc783d9843a51a3397d7d79d3b3aede98ee7ca9accde5f0499ea",
+    "01_req_spec.md": "4697daf6bdc3af79879edd68c4be76ca03ddcfd6c4bb49ea8932875a59bcf59f",
+    "02_system_design.md": "c7d10560b0c886d3ed2a36a6dc5a8507f38d64a1a9d1c473db467c21780a93f9",
+    "02_system_tests.md": "b5aff32baca855f6c1c224bef71f39c0ca58d4859176497bb88f5289f14229a5",
+    "03_architecture.md": "038596b4118abee173b8f1354341ed2952d9ffcf48e3eae08c4b08ecfb3478a0",
+    "03_integration_tests.md": "639a8fa724188716095af699261199e0ff652211f3c85b7930c948c37e099a20",
+    "04_detail_design.md": "337ad2373f3e4351a30549a91ee16e7886b49c5223133caaf856201f4b5e089e",
+    "04_unit_tests.md": "a2b943f934cd52e7939d557a5da10daff9f412aa471d64f965cc482b412c3649"
   }
 }

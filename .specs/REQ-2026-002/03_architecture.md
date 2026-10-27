@@ -6,48 +6,63 @@
 class Settings:
     engine_url: str = "http://127.0.0.1:50021"
     speaker: int = 1
-    speed_scale: float = 1.0
+    speed_scale: float = 1.1          # 1.05〜1.20
+    pitch_scale: float = 0.0
     intonation_scale: float = 1.0
-    volume_scale: float = 1.0
+    volume_scale: float = 1.0         # 固定
     max_chunk_chars: int = 80
-    retries: int = 2
-    retry_wait_seconds: float = 0.5
+    min_chunk_chars: int = 4          # 半減再送の下限
+    retries: int = 3
+    retry_wait_seconds: float = 0.5   # 指数: 0.5, 1.0, 2.0
     request_timeout_seconds: float = 60.0
-    pause_ms: Mapping[str, int] = {"paragraph": 700, "sentence": 400, "comma": 200, "other": 100}
+    pause_ms: Mapping[str, int]       # paragraph 900, sentence 450, comma 200, other 100
     ffmpeg_path: str = "ffmpeg"
-    loudness_target_lufs: float = -16.0
-    mp3_quality: int = 2            # libmp3lame -q:a
-    drop_figure_references: bool = True
+    loudness_lufs: float = -16.0
+    true_peak_dbfs: float = -1.0
+    loudness_range: float = 11.0
+    sample_rate_hz: int = 44100
+    bitrate: str = "128k"
+    voice_name: str = "VOICEVOX"
+    genre: str = "Audiobook"
+    album: str | None = None          # None なら入力ファイルの語幹
+    cover: Path | None = None
+    dictionaries: tuple[Path, ...] = ()
+    work_dir_name: str = ".txt2speech_work"
+    progress_file_name: str = ".txt2speech_progress.json"
 
 @dataclass(frozen=True)
 class Chapter: title: str; body: str
 @dataclass(frozen=True)
-class Chunk: text: str; boundary: Literal["paragraph", "sentence", "comma", "other"]   # このチャンクの後の区切り
+class Chunk: text: str; boundary: Literal["paragraph", "sentence", "comma", "other"]
 ```
-`InputError`、`EngineError` は `errors.py`。
+`InputError`、`EngineError` は `errors.py`。`config.load_settings(path: Path | None, overrides: Mapping[str, object]) -> Settings`: YAML を読み(未知のキーは `InputError`)、`overrides` で上書きする。検証: `speed_scale` は 0.5〜2.0、`max_chunk_chars` は `min_chunk_chars` 以上、`retries` は 0 以上、`pause_ms` のキーは 4 種そろっている、エンジンの URL はループバック(F11。違えば `InputError`)、カバー画像・辞書の CSV・設定ファイルが存在する。
 
-## 2. 関数の契約(純粋)
+## 2. 純粋な関数
 | モジュール | 関数 | 契約 |
 |---|---|---|
-| `preprocess` | `normalize(text, settings) -> str` | F02 の (a)〜(e)。ルビは読みだけ。ページ表記と区切り線の行は行ごと消える。`drop_figure_references` が真なら図表の参照符を消す。英数字と単位は読みの表で置換(長い語を先に)。Markdown の装飾を消す(見出しの `#` は `structure` が先に使うので、`normalize` は章分割の後に各章の本文へ適用する) |
-| `structure` | `split_chapters(text) -> list[Chapter]` | 見出し(`#`/`##`、`第N章`、`第N節`、`1.1` の形)で分ける。見出しの前の本文は、題名が空の章にせず最初の章に含める。見出しがなければ題名なしの 1 章 |
-| `structure` | `chapter_filename(index, title, width) -> str` | `NN_題.mp3`。使えない文字(`/ \ : * ? " < > |` と制御文字)は `_`。題が空なら `NN.mp3`。長さは 80 文字まで |
-| `chunking` | `split_chunks(body, max_chars) -> list[Chunk]` | F04。優先順位は 段落 > 文末 > 読点 > 強制。強制でも文字種の連続の途中で切らない(連続が `max_chars` を超えるときだけ切る)。空のチャンクは作らない。`"".join(c.text for c in chunks)` は、改行を除いた入力に等しい |
-| `audio` | `pause_frames(boundary, settings, sample_rate) -> int` | ポーズの長さ(フレーム数) |
-| `audio` | `join_wavs(wavs: list[bytes], boundaries, settings) -> bytes` | 同じ形式(サンプルレート、チャンネル、幅)の WAV を、区切りに応じた無音を挟んで結合。形式が違えば `EngineError` |
+| `preprocess` | `normalize(text) -> str` | F02 の (a)〜(f)。ページ表記と区切り線は行ごと消える。読みの表で置換(長い語を先に)。章分割の後に各章の本文へ適用する |
+| `structure` | `split_chapters(text) -> list[Chapter]` | 見出し(`#`/`##`、`第N章`、`第N節`、`1.1` の形)で分ける。見出しがなければ題なしの 1 章 |
+| `structure` | `chapter_filename(index, title, width) -> str` | `NN_題.mp3`。使えない文字は `_`。題が空なら `NN.mp3`。題は 80 文字まで |
+| `chunking` | `split_chunks(body, max_chars) -> list[Chunk]` | F05 |
+| `chunking` | `halve(text, min_chars) -> tuple[str, str] | None` | 半減再送用。文字種が変わる位置のうち中央に最も近い位置で 2 つに分ける。`min_chars` 未満になる、または分けられなければ `None` |
+| `audio` | `pause_frames(boundary, settings, sample_rate) -> int` | ポーズのフレーム数 |
+| `dictionary` | `parse_dictionary(text, source) -> list[DictEntry]` | CSV(表記、カタカナ読み、アクセント核位置)。先頭行は見出し。誤りは `InputError(source:行番号)` |
 
 ## 3. 境界
 | モジュール | 契約 |
 |---|---|
-| `text_io.read_text(path) -> str` | UTF-8(BOM 可)→ CP932 の順。どちらも失敗なら `InputError(ファイル名)`。ファイルがなければ `InputError` |
-| `voicevox.VoicevoxClient(settings, transport=None)` | `synthesize(text) -> bytes`(WAV)。`/audio_query?text=..&speaker=..`(POST)の結果に `speedScale`、`intonationScale`、`volumeScale` を設定して `/synthesis?speaker=..`(POST)へ。接続の失敗と 5xx は `retries` 回まで再試行(間は `retry_wait_seconds`)。4xx は再試行せず `EngineError`。最終的な失敗は `EngineError(エンジンの URL)` |
-| `mp3.encode(wav, out_path, title, album, track, settings)` | `settings.ffmpeg_path` を引数のリストで呼ぶ(シェルを使わない)。`loudnorm`、`libmp3lame`、`-id3v2_version 4`、`-metadata`。FFmpeg がなければ `EngineError`。終了コードが 0 でなければ標準エラーを添えて `EngineError` |
-| `pipeline.run(input_path, out_dir, settings, client, encoder) -> list[Path]` | `out_dir` がなければ作る(親も)。読み → 章に分割 → 章ごとに(`normalize` → `split_chunks` → 各チャンクを `client` → `join_wavs` → `encoder`)。進捗は `progress(chapter_index, total_chapters, done_chunks, total_chunks)` コールバック |
-| `cli.main(argv) -> int` | 引数 `INPUT -o OUTDIR --speaker --engine-url --speed-scale --max-chars --ffmpeg`(`--speed-scale` は話速の倍率で、1.0 が標準)。`InputError` は 2、`EngineError` は 3、成功は 0。進捗は標準エラー、出力ファイルは標準出力 |
+| `text_io.read_text(path) -> str` | UTF-8(BOM 可)→ CP932 の順。失敗は `InputError(ファイル名)`。ファイルがなければ `InputError` |
+| `voicevox.VoicevoxClient(settings, transport=None, sleep=time.sleep)` | `check() -> None`(`GET /version`。失敗は `EngineError(URL)`)、`register(entry)`(`POST /user_dict_word`、query: surface, pronunciation, accent_type)、`synthesize(text) -> bytes`(WAV。F06 の再試行と 500 の扱い)。`synthesize` は 500 を受けたとき `ResourceExhausted` を投げ、半減再送は `pipeline` が行う |
+| `audio.write_wav(path, data)` / `audio.join_wav_files(paths, boundaries, settings, out_path)` | ファイルから順に読み、区切りに応じた無音を挟んで `out_path` に書く。形式が違えば `EngineError`。メモリに持つのは 1 チャンク分 |
+| `mp3.check(settings)` | ffmpeg の存在を確かめる(`-version`)。なければ `EngineError(案内)` |
+| `mp3.encode(wav_path, out_path, title, album, track, settings)` | 2 パスのラウドネス正規化 + LAME + ID3v2.4 + カバー |
+| `progress.Progress(path, fingerprint)` | JSON。`load() -> state`、`mark_chapter_done(index)`、`clear()`。`fingerprint` が違えば空の状態を返す |
+| `pipeline.run(input_path, out_dir, settings, client, encoder, progress_cb) -> list[Path]` | 起動時の確認 → 辞書の登録 → 章ごとの処理(チャンクを順に合成してディスクへ、結合、MP3 化、一時ファイルの削除、章の完了を記録)。完了済みの章は飛ばし、作成済みのチャンクは再合成しない |
+| `cli.main(argv) -> int` | 引数 `INPUT -o OUTDIR --config --speaker --engine-url --speed-scale --max-chars --ffmpeg --cover --album --voice-name --dictionary`。`InputError` は 2、`EngineError` は 3、成功は 0 |
 
 ## 4. 依存の向き
-`cli → pipeline → (voicevox, mp3, text_io, audio, chunking, structure, preprocess) → (config, models, errors)`。`preprocess`/`structure`/`chunking`/`audio` は I/O をしない。
-`httpx` を実行時の依存に加える(いまは dev のみ)。
+`cli → pipeline → (voicevox, mp3, audio, text_io, dictionary, progress, chunking, structure, preprocess) → (config, models, errors)`。`preprocess`/`structure`/`chunking` は I/O をしない。
+実行時の依存に `httpx`、`pyyaml`、`tqdm` を加える。
 
 ## 5. テスト構造
-単体 `tests/unit/txt2speech/`(純粋な関数)、結合 `tests/integration/txt2speech/`(`voicevox` を `MockTransport` で、`mp3` を実 FFmpeg で)、E2E `tests/e2e/txt2speech/`(実プロセスと偽 HTTP サーバー)。
+単体 `tests/unit/txt2speech/`(純粋な関数)、結合 `tests/integration/txt2speech/`(`voicevox` を `MockTransport` で、`mp3` と `audio` を実 FFmpeg・実ファイルで)、E2E `tests/e2e/txt2speech/`(実プロセスと偽 HTTP サーバー)。
