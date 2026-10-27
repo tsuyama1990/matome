@@ -6,7 +6,7 @@
 ## 2. `preprocess.normalize(text) -> str`
 順に適用する。
 1. 改行を `\n` にそろえる。
-2. ルビ: 青空文庫 `([一-龥々〆ヶ]+)《([^》]+)》` → `\2`(`|親《読み》` の明示形は、親文字が漢字でなくても読みだけ)。Markdown `\[([^\]]+)\]\(([ぁ-ゟ゠-ヿー]+)\)` → `\2`(括弧の中がかなだけのときだけ。URL のリンクは対象外)。`<ruby>親<rt>読み</rt></ruby>` → `読み`(`<rp>…</rp>` は消す)。
+2. ルビ: 青空文庫 `([一-龥々〆ヶ]+)《([^》]+)》` → `\2`(`|親《読み》` の明示形は `\|[^《\n|]+《([^》]+)》` → `\1`。親文字が漢字でなくても `|` ごと消して読みだけ。この明示形を先に適用する)。Markdown `\[([^\]]+)\]\(([ぁ-ゟ゠-ヿー]+)\)` → `\2`(括弧の中がかなだけのときだけ。URL のリンクは対象外)。`<ruby>親<rt>読み</rt></ruby>` → `読み`(`<rp>…</rp>` は消す)。
 3. 行を単位に、次の行を消す: `^[-=_*─—\s]{3,}$` の区切り線、`^[-—–\s]*\d+\s*ページ[-—–\s]*$`、`^\s*-?\s*\d+\s*-?\s*$`(数字だけの行)。
 4. 図表の参照符: `[図表](?:\d+[-－]\d+|\d+)` の `図1-1`、`表2-3`、`図3` と、`\[写真\]`、`※[^\n]*`(行末まで)を消す。消した後の連続した空白を 1 つにする。
 5. 読みの表(`reading_table.READINGS`、長いキーを先に): `CO2→シーオーツー`、`km/h→キロメートル毎時`、`pH→ペーハー`、`kg→キログラム`、`%→パーセント` など。
@@ -39,29 +39,29 @@
 ## 6. `voicevox.VoicevoxClient`
 - `httpx.Client(base_url=engine_url, transport=transport, timeout=request_timeout_seconds)`。
 - `check()`: `GET /version`。`httpx.TransportError` または 200 以外は `EngineError(f"VOICEVOX Engine に接続できません: {engine_url}")`。
-- `register(entry)`: `POST /user_dict_word` (params: `surface`, `pronunciation`, `accent_type`)。200 以外は `EngineError`。
+- `register(entry)`: `POST /user_dict_word` (params: `surface`, `pronunciation`, `accent_type`)。成功は 2xx(実際のエンジンは 204 を返す)。それ以外は `EngineError`。
 - `synthesize(text)`: `POST /audio_query` (params `text`, `speaker`) → JSON。`speedScale`、`pitchScale`、`intonationScale`、`volumeScale` を設定の値で上書き。`POST /synthesis` (params `speaker`, JSON=問い合わせ) → `response.content`。
 - 再試行: `httpx.TransportError` と 500 以外の 5xx のとき、最大 `retries` 回(合計 `retries + 1` 回の試行)。待ちは `retry_wait_seconds * 2 ** n`(`n` は 0 から)。`sleep` は注入できる。4xx は即 `EngineError`。500 は再試行せず `ResourceExhausted`(`EngineError` の子)を投げる。
 - 最終失敗の `EngineError` のメッセージに `engine_url` を含める。
 
 ## 7. `mp3`
-- `check(settings)`: `[ffmpeg_path, "-version"]` を実行。`FileNotFoundError` または終了コード非 0 は `EngineError(f"ffmpeg が見つかりません: {ffmpeg_path}。FFmpeg 5 以上をインストールして PATH に通すか、--ffmpeg で指定してください")`。
+- `check(settings)`: `[ffmpeg_path, "-version"]` を実行。出力の最初の行 `ffmpeg version <N>…` のメジャーバージョンが 5 未満なら、同じ形式で `EngineError`(バージョンを示す。`N-12345-g…` のように数字で始まらない版は通す)。`FileNotFoundError` または終了コード非 0 は `EngineError(f"ffmpeg が見つかりません: {ffmpeg_path}。FFmpeg 5 以上をインストールして PATH に通すか、--ffmpeg で指定してください")`。
 - `encode(wav_path, out_path, title, album, track, settings)`:
   1. 測定: `[ffmpeg_path, "-hide_banner", "-nostats", "-i", wav, "-af", f"loudnorm=I={I}:TP={TP}:LRA={LRA}:print_format=json", "-f", "null", "-"]`。標準エラーの最後の `{...}` を JSON として読み、`input_i`、`input_tp`、`input_lra`、`input_thresh`、`target_offset` を得る。失敗は `EngineError(stderr)`。
   2. 変換: `[ffmpeg_path, "-y", "-hide_banner", "-loglevel", "error", "-i", wav, ("-i", cover)?, "-map", "0:a", ("-map", "1:v", "-c:v", "copy", "-disposition:v:0", "attached_pic")?, "-af", f"loudnorm=I={I}:TP={TP}:LRA={LRA}:measured_I={input_i}:measured_TP={input_tp}:measured_LRA={input_lra}:measured_thresh={input_thresh}:offset={target_offset}:linear=true", "-ar", rate, "-ac", "1", "-codec:a", "libmp3lame", "-b:a", bitrate, "-id3v2_version", "4", "-metadata", f"title={title}", "-metadata", f"artist={voice_name}", "-metadata", f"album={album}", "-metadata", f"track={track}", "-metadata", f"genre={genre}", out]`。終了コード非 0 は `EngineError(stderr)`。
 
 ## 8. `progress`
-- `fingerprint(input_bytes, settings) -> str`: 入力のバイト列と、合成に影響する設定(話者、話速、音高、抑揚、音量、チャンクの上限、辞書の中身、ポーズ、ラウドネス、ビットレート)の JSON の SHA-256。
-- `Progress.load()`: ファイルがなく、または `fingerprint` が違えば、作業ディレクトリ(`OUTDIR/.txt2speech_work`)を消して空の状態(`done_chapters=[]`)にする。
+- `fingerprint(input_bytes, dictionary_texts, cover_bytes, settings) -> str`: 入力のバイト列、辞書の CSV の中身、カバー画像のバイト列(なければ空)、最終の MP3 までに影響するすべての設定(話者、話速、音高、抑揚、音量、チャンクの上限、ポーズ、ラウドネス、サンプルレート、ビットレート、音声モデル名、書名、ジャンル)の JSON の SHA-256。ファイルのパス自体は含めない(中身が同じなら同じ)。
+- `Progress(progress_path, work_dir, fingerprint)`。`load()`: ファイルがなく、または `fingerprint` が違えば、`work_dir` を消して空の状態(`done_chapters=[]`)にする。
 - `mark_chapter_done(index)`: `done_chapters` に足して書く(一時ファイルに書いてから置き換える)。`clear()`: 進捗ファイルと作業ディレクトリを消す。
 
 ## 9. `pipeline.run`
-1. `settings`、`out_dir` の確認(`out_dir.mkdir(parents=True, exist_ok=True)` は、確認の後)。`mp3.check`、`client.check()` を呼ぶ。どちらかが失敗したら、何も作らずに例外。
-2. `read_text` → `split_chapters`。`fingerprint` を求め、`Progress` を読む。
-3. 辞書: 設定の CSV を `parse_dictionary` で読み、`client.register` を順に呼ぶ(進捗の再開時も毎回)。
-4. 章 `i`(1 から)ごと: `done_chapters` に含まれ、MP3 が存在すれば飛ばす。`normalize(body)` → `split_chunks`。チャンク `j` の WAV は `work/chNN/JJJJ.wav`。存在すれば再合成しない。なければ `synthesize_with_halving(text)`(`ResourceExhausted` なら `halve` で分けて、前半・後半を順に合成し、WAV を結合して返す。`halve` が `None` なら `EngineError`)。
+1. 入力の確認と読み込み: `read_text`(なければ `InputError`。終了コード 2 を、エンジンの確認より先に保証する)、`split_chapters`、辞書の CSV の読み込みと `parse_dictionary`、カバー画像の読み込み(`InputError` はここで出る)。
+2. 前提の確認: `mp3.check`、`client.check()`。どちらかが失敗したら、何も作らずに例外。その後 `out_dir.mkdir(parents=True, exist_ok=True)`。
+3. `fingerprint` を求め、`Progress` を読む。辞書: 読み込み済みのエントリを `client.register` で順に登録する(再開時も毎回)。
+4. 章 `i`(1 から)ごと: `done_chapters` に含まれ、MP3 が存在すれば飛ばす。`normalize(body)` → `split_chunks`。チャンク `j` の WAV は `work/chNN/JJJJ.wav`。存在すれば再合成しない。なければ `synthesize_with_halving(text) -> bytes`(WAV のバイト列を返す。`ResourceExhausted` なら `halve` で分けて、前半・後半を順に(それぞれ再帰的に)合成し、`audio.concat_wav_bytes` で**ポーズなしに**つないで 1 つの WAV にして返す。`halve` が `None` なら `EngineError`)。
 5. `join_wav_files` で `work/chNN/joined.wav` → `encoder(joined, out_dir/chapter_filename(...), title, album, track)` → 成功したら `work/chNN` を消し、`mark_chapter_done`。`title` は章の題(空なら入力ファイルの語幹)、`album` は設定か入力ファイルの語幹。前処理の後に本文が空になる章は飛ばす。
 6. 全章が終わったら `progress.clear()`。作った MP3 のパスのリストを返す。進捗コールバックは `(章の番号, 章の総数, 終えたチャンク, チャンクの総数)` を通知する。
 
 ## 10. `cli.main`
-`argparse`。`load_settings`(引数を `overrides` に)。`tqdm` で章とチャンクの進みを標準エラーに表示する(標準エラーが端末でないときも動く)。`InputError` → 標準エラーにメッセージ、2。`EngineError` → 3。成功時は MP3 のパスを 1 行ずつ標準出力に出す。
+`argparse`(`--speaker` は `int`、`--speed-scale` と `--max-chars` は `float`/`int`、`--cover`/`--dictionary`/`--config` は `Path` として型変換する。指定のない引数は `overrides` に入れない)。`load_settings`(引数を `overrides` に)。`tqdm` で章とチャンクの進みを標準エラーに表示する(標準エラーが端末でないときも動く)。`InputError` → 標準エラーにメッセージ、2。`EngineError` → 3。成功時は MP3 のパスを 1 行ずつ標準出力に出す。

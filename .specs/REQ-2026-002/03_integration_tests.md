@@ -8,10 +8,10 @@
 | T2S-I04 | 4xx | 再試行せず `EngineError`(呼び出し 1 回) | F06 |
 | T2S-I05 | 500(メモリ不足) | 再試行せず `ResourceExhausted` | F06 |
 | T2S-I06 | `check()`: `/version` が応答 / 接続失敗 | 正常 / `EngineError(URL)` | F06 |
-| T2S-I07 | `register`: 行ごとに `/user_dict_word` へ、表記、読み、アクセント核位置がクエリに入る / 4xx | 呼び出しの内容どおり / `EngineError` | F03 |
+| T2S-I07 | `register`: 行ごとに `/user_dict_word` へ、表記、読み、アクセント核位置がクエリに入る / 4xx | 呼び出しの内容どおり(偽の転送は 204 を返す)/ `EngineError` | F03 |
 | T2S-I08 | `mp3.encode`: 実際の WAV(20 秒、低い音量の正弦波)を渡す | MP3 ができる。ffprobe で題名、アーティスト、アルバム、トラック、ジャンル、44100 Hz、モノラル、約 128 kbps。統合ラウドネスが -16 ±1.0 LUFS | F08 |
 | T2S-I09 | `mp3.encode`: カバー画像あり / なし | あり: 画像のストリームが入る。なし: 入らない | F08 |
-| T2S-I10 | `mp3.check` / `encode`: 実行ファイルが見つからない / 壊れた WAV | `EngineError`(不在の案内 / 標準エラーを含む) | F08 |
+| T2S-I10 | `mp3.check` / `encode`: 実行ファイルが見つからない / バージョン 4 の偽の ffmpeg / 壊れた WAV | `EngineError`(不在の案内 / 標準エラーを含む) | F08 |
 | T2S-I11 | `audio.join_wav_files`: 3 つの WAV(ファイル)と区切り | フレーム数 = 合計 + ポーズ。形式が違えば `EngineError`。読み込みは 1 つずつ | F07 |
 | T2S-I12 | `text_io.read_text`: UTF-8(BOM あり・なし)、CP932、どちらでもないバイト列、存在しない | 先の 3 つは同じ日本語。後の 2 つは `InputError` | F01 |
 | T2S-I13 | `pipeline.run`: 2 章、偽クライアント、偽のエンコーダー | 章ごとに `encode` が呼ばれ、ファイル名が `01_…`、`02_…`。進捗が通知される。成功後に一時ファイルと進捗ファイルがない | F04、F09 |

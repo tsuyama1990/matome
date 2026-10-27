@@ -53,10 +53,10 @@ class Chunk: text: str; boundary: Literal["paragraph", "sentence", "comma", "oth
 |---|---|
 | `text_io.read_text(path) -> str` | UTF-8(BOM 可)→ CP932 の順。失敗は `InputError(ファイル名)`。ファイルがなければ `InputError` |
 | `voicevox.VoicevoxClient(settings, transport=None, sleep=time.sleep)` | `check() -> None`(`GET /version`。失敗は `EngineError(URL)`)、`register(entry)`(`POST /user_dict_word`、query: surface, pronunciation, accent_type)、`synthesize(text) -> bytes`(WAV。F06 の再試行と 500 の扱い)。`synthesize` は 500 を受けたとき `ResourceExhausted` を投げ、半減再送は `pipeline` が行う |
-| `audio.write_wav(path, data)` / `audio.join_wav_files(paths, boundaries, settings, out_path)` | ファイルから順に読み、区切りに応じた無音を挟んで `out_path` に書く。形式が違えば `EngineError`。メモリに持つのは 1 チャンク分 |
+| `audio.concat_wav_bytes(parts) -> bytes`(ポーズなしの単純連結。形式が違えば `EngineError`)、`audio.write_wav(path, data)` / `audio.join_wav_files(paths, boundaries, settings, out_path)` | ファイルから順に読み、区切りに応じた無音を挟んで `out_path` に書く。形式が違えば `EngineError`。メモリに持つのは 1 チャンク分 |
 | `mp3.check(settings)` | ffmpeg の存在を確かめる(`-version`)。なければ `EngineError(案内)` |
 | `mp3.encode(wav_path, out_path, title, album, track, settings)` | 2 パスのラウドネス正規化 + LAME + ID3v2.4 + カバー |
-| `progress.Progress(path, fingerprint)` | JSON。`load() -> state`、`mark_chapter_done(index)`、`clear()`。`fingerprint` が違えば空の状態を返す |
+| `progress.Progress(progress_path, work_dir, fingerprint)` | JSON。`load() -> state`、`mark_chapter_done(index)`、`clear()`。`fingerprint` が違えば空の状態を返す |
 | `pipeline.run(input_path, out_dir, settings, client, encoder, progress_cb) -> list[Path]` | 起動時の確認 → 辞書の登録 → 章ごとの処理(チャンクを順に合成してディスクへ、結合、MP3 化、一時ファイルの削除、章の完了を記録)。完了済みの章は飛ばし、作成済みのチャンクは再合成しない |
 | `cli.main(argv) -> int` | 引数 `INPUT -o OUTDIR --config --speaker --engine-url --speed-scale --max-chars --ffmpeg --cover --album --voice-name --dictionary`。`InputError` は 2、`EngineError` は 3、成功は 0 |
 
