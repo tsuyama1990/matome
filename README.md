@@ -15,7 +15,7 @@
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-repo/matome.git
+   git clone https://github.com/tsuyama1990/matome.git
    cd matome
    ```
 
