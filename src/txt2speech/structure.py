@@ -5,7 +5,7 @@ from src.txt2speech.models import Chapter
 
 _MD_HEADING_LINE_RE = re.compile(r"^#{1,2}\s+(\S.*)$")
 _NUMBERED_HEADING_LINE_RE = re.compile(r"^(\d+(?:\.\d+)+)\s+(\S.*)$")
-_CHAPTER_HEADING_LINE_RE = re.compile(r"^(第[0-9０-９一二三四五六七八九十百]+[章節])\s*(.*)$")
+_CHAPTER_HEADING_LINE_RE = re.compile(r"^(第[0-9０-９一二三四五六七八九十百]+[章節])(?:\s+(.*))?$")
 _FORBIDDEN_FILENAME_CHARS_RE = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
 _STRIP_FILENAME_CHARS = " \t\r\n.\u3000"
 
@@ -22,7 +22,7 @@ def _extract_heading_title(line: str) -> str | None:
     chap_match = _CHAPTER_HEADING_LINE_RE.match(line)
     if chap_match is not None:
         prefix = chap_match.group(1)
-        rest = chap_match.group(2).strip()
+        rest = (chap_match.group(2) or "").strip()
         return f"{prefix} {rest}" if rest else prefix
 
     return None
