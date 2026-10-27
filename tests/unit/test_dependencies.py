@@ -2,6 +2,8 @@ import pytest
 
 from src.interfaces.dependencies import DIContainer
 
+pytestmark = pytest.mark.requirement("REQ-2026-001-F04")
+
 
 class TestProtocol:
     def do_something(self) -> str:

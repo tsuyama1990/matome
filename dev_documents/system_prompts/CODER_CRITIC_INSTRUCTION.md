@@ -1,7 +1,7 @@
 # Coder Self-Critic Instruction
 
 You are now entering the **Self-Critic Review** phase.
-Before your work is submitted to the external strict Auditor, you must critically review your own implementation for **Cycle {{cycle_id}}**. 
+Before your work is submitted to the external strict Auditor, you must critically review your own implementation for **Cycle {{cycle_id}}**.
 
 **OPERATIONAL INSTRUCTIONS**:
 1. **SELF-CORRECTION**: Do NOT just output an audit report to me. **YOU MUST FIX THE CODE YOURSELF.** If you find any issues during this self-review, use your tools to modify the files, run tests, and ensure everything is perfect.
@@ -61,7 +61,7 @@ Search your own code for magic numbers, magic strings, unexplained constants, ha
 
 ## 🚨 ANTI-MOCK VERIFICATION (CRITICAL) 🚨
 You must not leave any code half-finished.
-Remove any `TODO`, `FIXME`, empty functions, `pass`, `...`, or fake log outputs (e.g., just printing `logger.info("Processing...")` instead of performing the actual logic). 
+Remove any `TODO`, `FIXME`, empty functions, `pass`, `...`, or fake log outputs (e.g., just printing `logger.info("Processing...")` instead of performing the actual logic).
 You must implement the real logic required by the specification. If any core logic is simulated or stubbed out in the production code, you MUST fully implement it before replying.
 
 ## 🚨 MUST PASS STATIC TESTS 🚨

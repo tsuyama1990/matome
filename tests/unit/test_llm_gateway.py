@@ -2,8 +2,10 @@ import httpx
 import pytest
 
 from src.config.settings import ModelConfig
+from src.infrastructure.file_services import SafeTestHTTPTransport
 from src.infrastructure.llm_gateway import LLMError, OpenRouterGateway
-from src.infrastructure.test_services import SafeTestHTTPTransport
+
+pytestmark = pytest.mark.requirement("REQ-2026-001-F02")
 
 
 def setup_encryption_env(

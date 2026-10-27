@@ -6,7 +6,9 @@ from src.application import PivotKJEngine
 from src.application.pivot_workflow import PivotWorkflow
 from src.domain_models import ChunkMetadata, EnrichedDocument, SemanticChunk
 from src.domain_models.pivot import PivotRequestPayload
-from src.infrastructure.test_services import SafeTestDocumentRepository, SafeTestLLMService
+from src.infrastructure.file_services import SafeTestDocumentRepository, SafeTestLLMService
+
+pytestmark = pytest.mark.requirement("REQ-2026-001-F04")
 
 
 @pytest.mark.asyncio

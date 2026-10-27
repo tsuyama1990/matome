@@ -4,6 +4,8 @@ import pytest
 
 from src.config.security import SecurityService
 
+pytestmark = pytest.mark.requirement("REQ-2026-001-F01")
+
 
 def test_encryption_and_decryption_are_reversible(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test encrypting and decrypting a key results in the original plain text."""

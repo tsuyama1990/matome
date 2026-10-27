@@ -32,7 +32,7 @@ You must generate (create) the following files in the repository:
 ## File Content Requirements
 
 ### 1. dev_documents/system_prompts/SYSTEM_ARCHITECTURE.md
-A comprehensive architectural document. If you find any errors in the `ALL_SPEC.md` file, you must correct them. If you have any good suggestions for the `ALL_SPEC.md` file, you must suggest them. (e.g. Modernize the architectures, codes, add more features, etc.) 
+A comprehensive architectural document. If you find any errors in the `ALL_SPEC.md` file, you must correct them. If you have any good suggestions for the `ALL_SPEC.md` file, you must suggest them. (e.g. Modernize the architectures, codes, add more features, etc.)
 
 **Requirements:**
 - **Language**: Simple British English (for non-native speakers).
@@ -54,7 +54,7 @@ A comprehensive architectural document. If you find any errors in the `ALL_SPEC.
   - **MUST Include**: A strategy for executing these tests without side-effects (e.g. mocking external requests, using temporary directories for file I/O).
 
 ### 2. dev_documents/system_prompts/CYCLE{xx}/SPEC.md (For EACH Cycle)
-Detailed specification for a specific development cycle. 
+Detailed specification for a specific development cycle.
 
 **Requirements:**
 - **Language**: Simple British English.
@@ -79,7 +79,7 @@ Detailed specification for a specific development cycle.
   - Integration Testing Approach, meeting the criteria / spec / feature of design architecture (Min 300 words).
 
 ### 3. dev_documents/system_prompts/CYCLE{xx}/UAT.md (For EACH Cycle)
-User Acceptance Testing plan. 
+User Acceptance Testing plan.
 
 **Requirements:**
 - **Language**: Simple British English.

@@ -9,7 +9,9 @@ import pytest
 from src.application import PivotKJEngine, RAPTOREngine, SQ3REngine
 from src.domain_models import ChunkMetadata, SemanticChunk
 from src.infrastructure.clustering import UMAPGMMClusteringStrategy
-from src.infrastructure.test_services import SimpleParsingService
+from src.infrastructure.file_services import SimpleParsingService
+
+pytestmark = pytest.mark.requirement("REQ-2026-001-F05")
 
 
 class MockE2ELLM:

@@ -4,7 +4,9 @@ import pytest
 
 from src.application import NLPModelLoadError, NLPService, PivotKJEngine, RAPTOREngine, SQ3REngine
 from src.domain_models import ChunkMetadata, RaptorNode, SemanticChunk
-from src.infrastructure.test_services import SafeTestLLMService
+from src.infrastructure.file_services import SafeTestLLMService
+
+pytestmark = pytest.mark.requirement("REQ-2026-001-F04")
 
 
 def test_nlp_service_load_success() -> None:

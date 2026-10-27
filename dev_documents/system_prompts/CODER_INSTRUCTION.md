@@ -35,7 +35,7 @@ You must follow the architectural hierarchy in your reasoning process:
 - `dev_documents/system_prompts/CYCLE{{cycle_id}}/UAT.md`
 
 ## Constraints & Environment
-- **EXISTING PROJECT**: You are working within an EXISTING project. 
+- **EXISTING PROJECT**: You are working within an EXISTING project.
 - **CRITICAL - PRESERVE EXISTING ASSETS**: Do NOT delete, significantly alter, or overwrite existing implementation code or test files unless the Spec EXPLICITLY instructs you to do so.
     - **SYSTEM METADATA PROTECTION**: DO NOT delete, modify, or move any files inside the `.ac_cdd/` directory. These files (e.g., `project_state_local.json`) are critical for the system's state management. Any tampering with this directory will cause the entire development session to fail.
     - **ADDITIVE CHANGES ONLY**: Treat the Spec as "delta" (additional features/modifications) against the existing codebase. If a piece of code is not mentioned in the spec, LEAVE IT ALONE.
@@ -107,7 +107,7 @@ You must follow the architectural hierarchy in your reasoning process:
 - If the schemas and tests are not met and reasonable, fix them. Stop implementations first to align the design.
 
 **🚨 ZERO TOLERANCE FOR MOCKS (CRITICAL)**
-- You MUST implement the actual, functional logic. Do NOT leave any part of the implementation as a mock, dummy, placeholder, `pass`, or `...`. 
+- You MUST implement the actual, functional logic. Do NOT leave any part of the implementation as a mock, dummy, placeholder, `pass`, or `...`.
 - Do NOT simulate complex processing with just `print()` or `logger.info()`. If the specification requires an algorithm, calculation, or API call, you MUST write the real code for it.
 - `TODO` and `FIXME` comments are strictly prohibited. The Auditor has strict rules to examine for mock implementations and will **immediately reject your code (is_passed: false)** if it detects any fake processing.
 
@@ -121,7 +121,7 @@ You must follow the architectural hierarchy in your reasoning process:
 
 1.  **Iteration 1: Syntax & Static Analysis**
     - Run `ruff check` and `mypy` locally.
-    - **Self-Critique**: "Are there any lingering type errors or complexity warnings?" 
+    - **Self-Critique**: "Are there any lingering type errors or complexity warnings?"
     - **Action**: Fix them. Use `# type: ignore` ONLY for external untyped libraries.
 2.  **Iteration 2: Specification Compliance**
     - Re-read `dev_documents/system_prompts/CYCLE{{cycle_id}}/SPEC.md` and `dev_documents/system_prompts/CYCLE{{cycle_id}}/UAT.md`.
