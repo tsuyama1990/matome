@@ -2,13 +2,13 @@
   "requirement": "REQ-2026-002",
   "state": "open",
   "files": {
-    "01_acceptance_tests.feature": "fe308f383ca3dc783d9843a51a3397d7d79d3b3aede98ee7ca9accde5f0499ea",
-    "01_req_spec.md": "c7ed194218d0843463ffe3d3731e65f6f9ee98231c21567beea1595737941a5f",
+    "01_acceptance_tests.feature": "fa198811a5dce0a08c90498cc6c4fdf949460d00994804d418ee6fefef7b0a1d",
+    "01_req_spec.md": "0fe7b2cdb9f52c12e57869437003d3580001be5b9ecc13cf3c7dc97620cccb0d",
     "02_system_design.md": "c7d10560b0c886d3ed2a36a6dc5a8507f38d64a1a9d1c473db467c21780a93f9",
-    "02_system_tests.md": "d44b4aa621507b074f5e0d4ab1614804494a9cf9c5120f94c22001f7c852781b",
-    "03_architecture.md": "a77f537c9413141538f1f74863101c3e34c3c66f8a3ab1e1735d0b588fa0bf36",
-    "03_integration_tests.md": "7067c48f2b0a9e04d92120c673197b797fb3761a6425b1ab83b0f9f4e559285c",
-    "04_detail_design.md": "c4f68bfa2357fbcd725a17c61f2d853e4f8cb649df19c1c5b4b36eb2b68b9dfc",
-    "04_unit_tests.md": "4ab6ec0820687150e327b195d045b3af21767f3f78a4d1225c7d519895a3c6d7"
+    "02_system_tests.md": "885bbd54067aeaa10df73bc08bbbd4d3e37a51265faa23de94264b86bf78ee07",
+    "03_architecture.md": "b1aa0db6851eeb1a90fefdd840f877e527e79988334ab6b62c13707473ad3519",
+    "03_integration_tests.md": "06206da724b92e7caf9c8dd4e4e578e096e66ab0a15892f570ce51c29a1e6b9b",
+    "04_detail_design.md": "0416e5cecd61d3881c7a4a07c1b165aea9a412760939bd1b5d865c9e9cff5e31",
+    "04_unit_tests.md": "39c6bb3f18fecf9b8b78b710dd84bed939449e2f9c1389841c14dfd6104f2c19"
   }
 }

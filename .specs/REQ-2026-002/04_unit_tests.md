@@ -23,3 +23,8 @@
 | T2S-U19 | `Progress` | 書き込み後に読む、`fingerprint` の不一致、`clear` | 一致なら完了した章が読める。不一致は空で、作業ディレクトリも空になる。`clear` の後はファイルがない | F09 |
 | T2S-U20 | `load_settings` の検証 | 正常な YAML、未知のキー、`speed_scale`=3.0、`max_chunk_chars`<`min_chunk_chars`、`pause_ms` のキー不足、外部ホストの URL(`http://example.com:50021`)、`http://localhost:50021`、`http://[::1]:50021` | 正常は値が入る。次の 5 つは `InputError`。ループバックの 2 つは通る | F10、F11 |
 | T2S-U21 | `load_settings` の優先順位 | 既定値、YAML、`overrides` | 既定 < YAML < `overrides` | F10 |
+| T2S-U22 | `clean_title` | `第 1 章 structure - conduct - performance ( SCP ) theory , IO theory`、`序章 経営 理論 とは 何 か`、`第 7 章 transaction cost theory 取引 費用 理論 （ TCE \uff00\u2000\u3100\u3000`(文字化けの尾)、`『 世界標準 の 経営 理論 』 を 手 にさ れ た 方 へ`、`Part 1`、`\ufffd壊れた`、空文字列 | `第1章structure-conduct-performance(SCP)theory,IO theory`、`序章経営理論とは何か`、`第7章transaction cost theory取引費用理論（TCE`、`『世界標準の経営理論』を手にされた方へ`、`Part 1`、空、空(空白は、両側が ASCII の英数字のときだけ 1 つ残す) | F12 |
+| T2S-U23 | `drop_noise` | 本文 10 pt の行、脚注 7.5 pt の行、`124` と `１２５` の行、全ページ(10 ページ中 5 ページ)に現れる行、2 ページだけに現れる行 | 脚注・数字だけ・繰り返す行が除かれる。2 ページだけの行は残る。ページ数が `pdf_repeat_min_pages` 未満なら繰り返し判定をしない | F13 |
+| T2S-U24 | `assemble_paragraphs` | 3 行が折り返した 1 文(日本語)、字下げされた 2 つの段落、前後が広く空いた短い行(見出し)、英数字の語で終わる行と英数字の語で始まる行、ページをまたぐ文、ページをまたぐが次の行が字下げされている | 1 つの文に連結(日本語は空白なし、英数字どうしは空白 1 つ)。字下げごとに段落。見出しは単独の段落。ページをまたぐ文は連結、字下げされていれば新しい段落 | F13 |
+| T2S-U25 | `strip_note_markers` | `使う注１。`、`注意が必要だ`、`注文を受ける`、`注１、注２`、`参照注１`、`注の付いた語` | 参照記号 `注１`/`注２`(後ろに数字の連続と、句読点・閉じ括弧・空白・行末のいずれか)だけが消える。「注意」「注文」「注の付いた語」は変わらない | F13 |
+| T2S-U26 | しおりの章への変換(`select_chapters(entries, max_level, last_page)`) | 1 階層、2 階層(`max_level`=1/2)、同じページを指す 2 項目、順序が逆の項目、最後の項目 | ページ順。同じページは後のものを残す。ページ範囲は次の項目の手前まで。最後は最終ページ。レベルの条件で絞られる | F12 |
