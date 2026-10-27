@@ -78,4 +78,3 @@
 - `drop_noise(lines, body_size, repeated, settings)`: 次の行を除く: `size < body_size * pdf_footnote_size_ratio`、`text.strip()` が数字だけ(全角を含む)、`text.strip()` が `repeated` に含まれる。
 - `assemble_paragraphs(lines, settings) -> str`: ページごとに、行を `y0` の降順(上から下)、同じ `y0` は `x0` の昇順に並べる。ページ内の左端 `margin` = 行の `x0` の最小値(最頻値が望ましいが、字下げの行が多い PDF は最小値で足りる)。通常の行間 `leading` = ページ内の隣り合う行の `y0` の差の中央値。行 `i` を前の行に連結する条件: 同じページで、`x0 <= margin + pdf_indent_tolerance_pt`、かつ前の行との `y0` の差が `leading * pdf_paragraph_gap_ratio` 以下。条件を満たさなければ新しい段落(空行で区切る)。前の行が文末記号(`。！？!?」』）`)で終わり、かつ現在の行が字下げされていれば新しい段落。連結するとき、前の行の最後の文字と現在の行の最初の文字が、どちらも ASCII の英数字なら空白 1 つ、それ以外は空白なし。ページをまたぐ段落は、前のページの最後の段落が文末記号で終わらず、次のページの最初の行が字下げされていなければ連結する。
 - `strip_note_markers(text) -> str`: 正規表現 `注[0-9０-９]+(?=[。、，．）)」』\s]|$)` を除く(脚注の参照記号。文中の「注意」「注文」「注 1 を参照」は後続が数字でないか区切りがないので対象外)。
-
