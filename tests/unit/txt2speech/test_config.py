@@ -2,8 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from src.txt2speech.config import DEFAULT_BITRATE, load_settings
+from src.txt2speech.config import (
+    DEFAULT_BITRATE,
+    Settings,
+    load_settings,
+    parse_chapter_range,
+)
 from src.txt2speech.errors import InputError
+from src.txt2speech.progress import fingerprint
 
 
 @pytest.mark.requirement("REQ-2026-002-F10")
@@ -84,3 +90,25 @@ def test_load_settings_precedence(tmp_path: Path) -> None:
     assert settings.speaker == 2
     assert settings.speed_scale == 1.5
     assert settings.voice_name == "CLI_VOICE"
+
+
+@pytest.mark.requirement("REQ-2026-002-F10")
+def test_parse_chapter_range() -> None:
+    """T2S-U28: parse_chapter_range parses N, A-B, A-, -B and rejects malformed specs."""
+    assert parse_chapter_range("3") == (3, 3)
+    assert parse_chapter_range("2-5") == (2, 5)
+    assert parse_chapter_range("6-") == (6, None)
+    assert parse_chapter_range("-4") == (None, 4)
+
+    for invalid_spec in ("", "0", "5-2", "a", "1-b", "2-3-4", "-"):
+        with pytest.raises(InputError):
+            parse_chapter_range(invalid_spec)
+
+    loaded = load_settings(None, {"chapters": "2-5"})
+    assert loaded.chapters == "2-5"
+    with pytest.raises(InputError):
+        load_settings(None, {"chapters": "5-2"})
+
+    fp_all = fingerprint(b"input", [], None, Settings(chapters=None))
+    fp_range = fingerprint(b"input", [], None, Settings(chapters="2-5"))
+    assert fp_all != fp_range

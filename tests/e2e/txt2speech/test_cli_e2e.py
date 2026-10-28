@@ -843,3 +843,121 @@ def test_e21_progress_output_on_stderr_and_paths_only_on_stdout(
     assert "章 1/2" in result.stderr
     assert "章 2/2" in result.stderr
     assert "chunk" in result.stderr
+
+
+@pytest.mark.requirement("REQ-2026-002-F10")
+def test_e25_chapters_option_filters_chapters_and_rejects_invalid_or_empty_range(
+    tmp_path: Path,
+    fake_voicevox: FakeVoicevoxServer,
+) -> None:
+    """T2S-E25: --chapters selects 2-3 or 4, rejects 9 or x with code 2, and resets on range change."""
+    input_path = tmp_path / "four_chapters.md"
+    input_path.write_text(
+        "# 第1章\n一章の本文です。\n\n"
+        "# 第2章\n二章の本文です。\n\n"
+        "# 第3章\n三章の本文です。\n\n"
+        "# 第4章\n四章の本文です。\n",
+        encoding="utf-8",
+    )
+
+    out_2_3 = tmp_path / "out_2_3"
+    res_2_3 = _run_cli(
+        [
+            str(input_path),
+            "-o",
+            str(out_2_3),
+            "--chapters",
+            "2-3",
+            "--engine-url",
+            fake_voicevox.url,
+        ]
+    )
+    assert res_2_3.returncode == _EXIT_OK
+    assert [p.name for p in sorted(out_2_3.glob("*.mp3"))] == ["02_第2章.mp3", "03_第3章.mp3"]
+    assert fake_voicevox.synthesized_texts == ["二章の本文です。", "三章の本文です。"]
+
+    fake_voicevox.synthesized_texts.clear()
+    out_4 = tmp_path / "out_4"
+    res_4 = _run_cli(
+        [
+            str(input_path),
+            "-o",
+            str(out_4),
+            "--chapters",
+            "4",
+            "--engine-url",
+            fake_voicevox.url,
+        ]
+    )
+    assert res_4.returncode == _EXIT_OK
+    assert [p.name for p in sorted(out_4.glob("*.mp3"))] == ["04_第4章.mp3"]
+    assert fake_voicevox.synthesized_texts == ["四章の本文です。"]
+
+    res_9 = _run_cli(
+        [
+            str(input_path),
+            "-o",
+            str(tmp_path / "out_9"),
+            "--chapters",
+            "9",
+            "--engine-url",
+            fake_voicevox.url,
+        ]
+    )
+    assert res_9.returncode == _EXIT_INPUT_ERROR
+    assert "指定した範囲に章がありません (4章中 9)" in res_9.stderr
+
+    res_x = _run_cli(
+        [
+            str(input_path),
+            "-o",
+            str(tmp_path / "out_x"),
+            "--chapters",
+            "x",
+            "--engine-url",
+            fake_voicevox.url,
+        ]
+    )
+    assert res_x.returncode == _EXIT_INPUT_ERROR
+
+    # Interrupted run with --chapters 2-3 followed by rerun with --chapters 2-4 discards progress.
+    out_change = tmp_path / "out_change"
+    fake_voicevox.fail_after_more_syntheses(_SINGLE_CHUNK_COUNT)
+    first_run = _run_cli(
+        [
+            str(input_path),
+            "-o",
+            str(out_change),
+            "--chapters",
+            "2-3",
+            "--engine-url",
+            fake_voicevox.url,
+        ]
+    )
+    assert first_run.returncode == _EXIT_ENGINE_ERROR
+    assert (out_change / "02_第2章.mp3").is_file()
+    assert (out_change / DEFAULT_PROGRESS_FILE_NAME).is_file()
+
+    fake_voicevox.fail_after_n_synthesis = None
+    fake_voicevox.synthesized_texts.clear()
+    fake_voicevox.requests.clear()
+
+    second_run = _run_cli(
+        [
+            str(input_path),
+            "-o",
+            str(out_change),
+            "--chapters",
+            "2-4",
+            "--engine-url",
+            fake_voicevox.url,
+        ]
+    )
+    assert second_run.returncode == _EXIT_OK
+    assert fake_voicevox.synthesized_texts == [
+        "二章の本文です。",
+        "三章の本文です。",
+        "四章の本文です。",
+    ]
+    assert not (out_change / DEFAULT_WORK_DIR_NAME).exists()
+    assert not (out_change / DEFAULT_PROGRESS_FILE_NAME).exists()

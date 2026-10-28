@@ -24,8 +24,11 @@ _GARBAGE_CATEGORIES: frozenset[str] = frozenset({"Cc", "Co", "Cn"})
 _REPLACEMENT_CHAR = "\ufffd"
 _TRAILING_OPEN_PARENS = " \t\r\n\u3000(（"
 _WHITESPACE_RUN_RE = re.compile(r"\s+")
+_MULTI_SPACE_RE = re.compile(r"[ 　]{2,}")
 _DIGITS_ONLY_RE = re.compile(r"^[0-9０-９]+$")
-_NOTE_MARKER_RE = re.compile(r"注[0-9０-９]+(?=[。、，．）)」』\s]|$)")
+_NOTE_MARKER_RE = re.compile(
+    r"注[0-9０-９]+(?:[・，、,][0-9０-９]+)*(?!を参照|参照|を見|のとおり|の通り)"
+)
 _SENTENCE_END_CHARS: frozenset[str] = frozenset("。！？!?」』）)")
 _IGNORED_META_TITLES: frozenset[str] = frozenset({"untitled", "(anonymous)"})
 
@@ -87,6 +90,49 @@ def clean_title(raw: str) -> str:
 
     compact = _WHITESPACE_RUN_RE.sub(_replace_space, truncated)
     return compact.strip().rstrip(_TRAILING_OPEN_PARENS)
+
+
+def _normalize_for_title_match(text: str) -> str:
+    return "".join(ch for ch in unicodedata.normalize("NFKC", text) if not ch.isspace())
+
+
+def _build_normalized_page_index(page_raw: str) -> tuple[str, list[int]]:
+    norm_chars: list[str] = []
+    end_offsets: list[int] = []
+    for idx, ch in enumerate(page_raw):
+        if ch.isspace():
+            continue
+        for norm_ch in _normalize_for_title_match(ch):
+            norm_chars.append(norm_ch)
+            end_offsets.append(idx + 1)
+    return "".join(norm_chars), end_offsets
+
+
+def reconcile_title(
+    outline_title: str,
+    first_lines: Sequence[str],
+    settings: Settings = _DEFAULT_SETTINGS,
+) -> str:
+    if not outline_title:
+        return ""
+    if not first_lines:
+        return outline_title
+
+    outline_norm = _normalize_for_title_match(outline_title)
+    page_raw = " ".join(first_lines)
+    page_norm, end_offsets = _build_normalized_page_index(page_raw)
+
+    match_len = 0
+    for out_ch, page_ch in zip(outline_norm, page_norm, strict=False):
+        if out_ch != page_ch:
+            break
+        match_len += 1
+
+    if match_len < settings.pdf_title_min_match:
+        return outline_title
+
+    matched_raw = page_raw[: end_offsets[match_len - 1]]
+    return clean_title(matched_raw)
 
 
 def select_chapters(
@@ -270,6 +316,10 @@ def strip_note_markers(text: str) -> str:
     return _NOTE_MARKER_RE.sub("", text)
 
 
+def collapse_spaces(text: str) -> str:
+    return _MULTI_SPACE_RE.sub(" ", text)
+
+
 def _resolve_dest_target(doc: PDFDocument, dest: Any, action: Any) -> Any:
     target = dest
     if target is None and action is not None:
@@ -432,6 +482,37 @@ def extract_lines(
         raise InputError(msg) from exc
 
 
+def _build_chapter_spans(
+    outlines: Sequence[OutlineEntry],
+    meta_title: str,
+    default_stem: str,
+    total_pages: int,
+    outline_level: int,
+) -> list[ChapterSpan]:
+    selected = select_chapters(outlines, outline_level, total_pages)
+    if selected:
+        return [
+            ChapterSpan(
+                title=clean_title(span.title),
+                start_page=span.start_page,
+                end_page=span.end_page,
+            )
+            for span in selected
+        ]
+    fallback_title = meta_title or default_stem
+    return [ChapterSpan(title=fallback_title, start_page=1, end_page=total_pages)]
+
+
+def _start_page_first_lines(
+    filtered_lines: Sequence[LineRecord],
+    start_page: int,
+    max_lines: int,
+) -> list[str]:
+    start_lines = [line for line in filtered_lines if line.page == start_page]
+    start_lines.sort(key=lambda item: (-item.y0, item.x0))
+    return [line.text for line in start_lines[:max_lines]]
+
+
 def read_pdf_chapters(
     path: Path,
     settings: Settings = _DEFAULT_SETTINGS,
@@ -440,20 +521,13 @@ def read_pdf_chapters(
     if total_pages == 0:
         return []
 
-    selected = select_chapters(outlines, settings.pdf_outline_level, total_pages)
-    if selected:
-        spans = [
-            ChapterSpan(
-                title=clean_title(span.title),
-                start_page=span.start_page,
-                end_page=span.end_page,
-            )
-            for span in selected
-        ]
-    else:
-        fallback_title = meta_title or path.stem
-        spans = [ChapterSpan(title=fallback_title, start_page=1, end_page=total_pages)]
-
+    spans = _build_chapter_spans(
+        outlines=outlines,
+        meta_title=meta_title,
+        default_stem=path.stem,
+        total_pages=total_pages,
+        outline_level=settings.pdf_outline_level,
+    )
     used_pages = [
         page_num for span in spans for page_num in range(span.start_page, span.end_page + 1)
     ]
@@ -468,8 +542,10 @@ def read_pdf_chapters(
     for span in spans:
         span_lines = [line for line in all_lines if span.start_page <= line.page <= span.end_page]
         filtered = drop_noise(span_lines, body_size, repeated, settings)
+        first_lines = _start_page_first_lines(filtered, span.start_page, settings.pdf_title_lines)
+        title = reconcile_title(span.title, first_lines, settings)
         assembled = assemble_paragraphs(filtered, settings)
-        body = strip_note_markers(assembled).strip()
+        body = collapse_spaces(strip_note_markers(assembled)).strip()
         if body:
-            chapters.append(Chapter(title=span.title, body=body))
+            chapters.append(Chapter(title=title, body=body))
     return chapters

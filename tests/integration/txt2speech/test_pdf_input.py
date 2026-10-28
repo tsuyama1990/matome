@@ -18,6 +18,7 @@ from tests.support.pdf_factory import (
     body_paragraph,
     build_pdf,
     footnote_line,
+    header_line,
     page_number_line,
 )
 
@@ -308,3 +309,81 @@ def test_unreadable_broken_and_encrypted_pdfs_raise_input_error(
     captured_enc = capsys.readouterr()
     assert code_enc == EXIT_INPUT_ERROR
     assert encrypted_pdf.name in captured_enc.err
+
+
+@pytest.mark.requirement("REQ-2026-002-F12")
+def test_read_pdf_chapters_reconciles_titles_with_start_page(tmp_path: Path) -> None:
+    """T2S-I26: read_pdf_chapters reconciles garbled outline titles with start-page headings."""
+    pdf_path = tmp_path / "reconcile.pdf"
+    pages: list[list[Line]] = [
+        # Page 1: Chapter 1 start page holds the real heading across the first 3 lines.
+        [
+            body_line("第17章  dynamic capabilities", 0),
+            body_line("ダイナミック・ケイパビリティ理論", 1),
+            body_line("企業が変わる", 2),
+            *body_paragraph(["一章の本文の文です。"], start_line_index=4),
+        ],
+        # Page 2: Chapter 2 start page matches only the first 2 characters ("第2").
+        [
+            body_line("第2節 業界構造の分析と本文です。", 0),
+            *body_paragraph(["二章の本文の文です。"], start_line_index=2),
+        ],
+        # Page 3: Chapter 3 start page has no text lines (image-only page).
+        [],
+        # Page 4: Chapter 3 second page has the chapter body.
+        [
+            *body_paragraph(["三章の二ページ目にある本文です。"], start_line_index=0),
+        ],
+    ]
+    outline = [
+        (
+            1,
+            "第 17 章 dynamic capabilities ダイナミック・ケイパビリティ理論 企業が‰夰輰謀",
+            1,
+        ),
+        (1, "第 2 章 競争戦略", 2),
+        (1, "第 3 章 結論", 3),
+    ]
+    build_pdf(pdf_path, pages=pages, outline=outline)
+
+    chapters = read_pdf_chapters(pdf_path, Settings())
+
+    assert [ch.title for ch in chapters] == [
+        "第17章dynamic capabilitiesダイナミック・ケイパビリティ理論企業が",
+        "第2章競争戦略",
+        "第3章結論",
+    ]
+
+
+@pytest.mark.requirement("REQ-2026-002-F13")
+def test_read_pdf_chapters_removes_repeated_headers_across_ten_pages(tmp_path: Path) -> None:
+    """T2S-I27: read_pdf_chapters strips a 10-page repeated header while keeping a 2-page line."""
+    pdf_path = tmp_path / "headers.pdf"
+    pages: list[list[Line]] = []
+    for page_num in range(1, 11):
+        page_lines: list[Line] = [
+            header_line("世界標準の経営理論 共通ヘッダー"),
+            page_number_line(page_num),
+        ]
+        if page_num in {2, 6}:
+            page_lines.append(body_line("2ページだけに現れる補足行。", 0))
+            page_lines.extend(body_paragraph([f"ページ{page_num}の本文です。"], start_line_index=1))
+        else:
+            page_lines.extend(body_paragraph([f"ページ{page_num}の本文です。"], start_line_index=0))
+        pages.append(page_lines)
+
+    outline = [
+        (1, "第 1 章", 1),
+        (1, "第 2 章", 5),
+        (1, "第 3 章", 8),
+    ]
+    build_pdf(pdf_path, pages=pages, outline=outline)
+
+    chapters = read_pdf_chapters(pdf_path, Settings())
+
+    assert len(chapters) == 3
+    for ch in chapters:
+        assert "世界標準の経営理論 共通ヘッダー" not in ch.body
+    assert "2ページだけに現れる補足行。" in chapters[0].body
+    assert "2ページだけに現れる補足行。" in chapters[1].body
+    assert "2ページだけに現れる補足行。" not in chapters[2].body

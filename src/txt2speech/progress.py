@@ -50,6 +50,7 @@ def fingerprint(
             "voice_name": settings.voice_name,
             "album": settings.album,
             "genre": settings.genre,
+            "chapters": settings.chapters,
         },
     }
     serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")

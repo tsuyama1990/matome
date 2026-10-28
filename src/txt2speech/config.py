@@ -38,6 +38,9 @@ DEFAULT_VOICE_NAME = "VOICEVOX"
 DEFAULT_GENRE = "Audiobook"
 DEFAULT_WORK_DIR_NAME = ".txt2speech_work"
 DEFAULT_PROGRESS_FILE_NAME = ".txt2speech_progress.json"
+DEFAULT_CHAPTERS: str | None = None
+DEFAULT_PDF_TITLE_MIN_MATCH = 3
+DEFAULT_PDF_TITLE_LINES = 6
 DEFAULT_PDF_OUTLINE_LEVEL = 1
 DEFAULT_PDF_FOOTNOTE_SIZE_RATIO = 0.85
 DEFAULT_PDF_REPEAT_PAGE_RATIO = 0.4
@@ -48,6 +51,9 @@ DEFAULT_PDF_PARAGRAPH_GAP_RATIO = 1.4
 MIN_SPEED_SCALE = 0.5
 MAX_SPEED_SCALE = 2.0
 MIN_RETRIES = 0
+MIN_CHAPTER_NUMBER = 1
+MIN_PDF_TITLE_MIN_MATCH = 1
+MIN_PDF_TITLE_LINES = 1
 MIN_PDF_OUTLINE_LEVEL = 1
 MIN_PDF_REPEAT_MIN_PAGES = 2
 MAX_PDF_RATIO = 1.0
@@ -86,6 +92,9 @@ class Settings:
     dictionaries: tuple[Path, ...] = ()
     work_dir_name: str = DEFAULT_WORK_DIR_NAME
     progress_file_name: str = DEFAULT_PROGRESS_FILE_NAME
+    chapters: str | None = DEFAULT_CHAPTERS
+    pdf_title_min_match: int = DEFAULT_PDF_TITLE_MIN_MATCH
+    pdf_title_lines: int = DEFAULT_PDF_TITLE_LINES
     pdf_outline_level: int = DEFAULT_PDF_OUTLINE_LEVEL
     pdf_footnote_size_ratio: float = DEFAULT_PDF_FOOTNOTE_SIZE_RATIO
     pdf_repeat_page_ratio: float = DEFAULT_PDF_REPEAT_PAGE_RATIO
@@ -149,6 +158,47 @@ def _normalize_dictionaries(raw: object) -> tuple[Path, ...]:
     raise InputError(msg)
 
 
+def _normalize_chapters(raw: object) -> str | None:
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        return raw
+    if isinstance(raw, int) and not isinstance(raw, bool):
+        return str(raw)
+    msg = "chapters は文字列である必要があります"
+    raise InputError(msg)
+
+
+def _parse_positive_chapter_number(token: str, spec: str) -> int:
+    if not (token.isascii() and token.isdigit()):
+        msg = f"chapters の指定が不正です: {spec}"
+        raise InputError(msg)
+    value = int(token)
+    if value < MIN_CHAPTER_NUMBER:
+        msg = f"chapters の番号は {MIN_CHAPTER_NUMBER} 以上である必要があります: {spec}"
+        raise InputError(msg)
+    return value
+
+
+def parse_chapter_range(spec: str) -> tuple[int | None, int | None]:
+    if not spec or spec == "-":
+        msg = f"chapters の指定が不正です: {spec}"
+        raise InputError(msg)
+    left, sep, right = spec.partition("-")
+    if not sep:
+        number = _parse_positive_chapter_number(spec, spec)
+        return (number, number)
+    if "-" in right:
+        msg = f"chapters の指定が不正です: {spec}"
+        raise InputError(msg)
+    first = _parse_positive_chapter_number(left, spec) if left else None
+    last = _parse_positive_chapter_number(right, spec) if right else None
+    if first is not None and last is not None and first > last:
+        msg = f"chapters の範囲が不正です: {spec}"
+        raise InputError(msg)
+    return (first, last)
+
+
 def _validate_engine_url(engine_url: str) -> None:
     parsed = urlparse(engine_url)
     if parsed.scheme not in ALLOWED_URL_SCHEMES or parsed.hostname not in LOOPBACK_HOSTS:
@@ -156,7 +206,19 @@ def _validate_engine_url(engine_url: str) -> None:
         raise InputError(msg)
 
 
+def _validate_pdf_title_and_chapters(settings: Settings) -> None:
+    if settings.chapters is not None:
+        parse_chapter_range(settings.chapters)
+    if settings.pdf_title_min_match < MIN_PDF_TITLE_MIN_MATCH:
+        msg = f"pdf_title_min_match は {MIN_PDF_TITLE_MIN_MATCH} 以上である必要があります"
+        raise InputError(msg)
+    if settings.pdf_title_lines < MIN_PDF_TITLE_LINES:
+        msg = f"pdf_title_lines は {MIN_PDF_TITLE_LINES} 以上である必要があります"
+        raise InputError(msg)
+
+
 def _validate_pdf_settings(settings: Settings) -> None:
+    _validate_pdf_title_and_chapters(settings)
     if settings.pdf_outline_level < MIN_PDF_OUTLINE_LEVEL:
         msg = f"pdf_outline_level は {MIN_PDF_OUTLINE_LEVEL} 以上である必要があります"
         raise InputError(msg)
@@ -221,6 +283,8 @@ def load_settings(
         merged["cover"] = _normalize_cover(merged["cover"])
     if "dictionaries" in merged:
         merged["dictionaries"] = _normalize_dictionaries(merged["dictionaries"])
+    if "chapters" in merged:
+        merged["chapters"] = _normalize_chapters(merged["chapters"])
 
     settings = Settings(**merged)
     _validate_settings(settings)
