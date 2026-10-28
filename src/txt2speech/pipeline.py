@@ -15,6 +15,7 @@ from src.txt2speech.config import (
 from src.txt2speech.dictionary import DictEntry, parse_dictionary
 from src.txt2speech.errors import EngineError, InputError, ResourceExhausted
 from src.txt2speech.models import Chapter, Chunk
+from src.txt2speech.pdf_input import read_pdf_chapters
 from src.txt2speech.preprocess import normalize
 from src.txt2speech.progress import Progress, fingerprint
 from src.txt2speech.structure import chapter_filename, split_chapters
@@ -22,6 +23,7 @@ from src.txt2speech.text_io import read_text
 
 _CHUNK_INDEX_WIDTH = 4
 _JOINED_WAV_NAME = "joined.wav"
+_PDF_SUFFIX = ".pdf"
 
 
 class SynthClient(Protocol):
@@ -117,13 +119,16 @@ def _read_cover_bytes(cover_path: Path | None) -> bytes | None:
 
 
 def _load_inputs(input_path: Path, settings: Settings) -> _LoadedInputs:
-    text = read_text(input_path)
+    if input_path.suffix.lower() == _PDF_SUFFIX:
+        chapters = read_pdf_chapters(input_path, settings)
+    else:
+        text = read_text(input_path)
+        chapters = split_chapters(text)
     try:
         input_bytes = input_path.read_bytes()
     except OSError as exc:
         msg = f"入力ファイルの読み込みに失敗しました: {input_path}"
         raise InputError(msg) from exc
-    chapters = split_chapters(text)
     dictionary_texts, dict_entries = _load_dictionaries(settings.dictionaries)
     cover_bytes = _read_cover_bytes(settings.cover)
     return _LoadedInputs(
