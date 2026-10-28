@@ -187,7 +187,7 @@ def test_progress_load_mark_mismatch_and_clear(tmp_path: Path) -> None:
     reader = Progress(progress_path, work_dir, "fp_match")
     loaded = reader.load()
     assert loaded.done_chapters == [1, 2]
-    assert loaded["done_chapters"] == [1, 2]
+    assert loaded.done_chapters == [1, 2]
     assert chunk_file.is_file()
 
     mismatch = Progress(progress_path, work_dir, "fp_other")

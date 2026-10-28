@@ -415,11 +415,6 @@ def _read_pdf_structure(path: Path) -> tuple[int, str, list[OutlineEntry]]:
     return len(page_id_to_num), meta_title, outlines
 
 
-def read_outline(path: Path) -> list[OutlineEntry]:
-    _, _, outlines = _read_pdf_structure(path)
-    return outlines
-
-
 def _line_char_size(text_line: LTTextLine) -> float:
     non_space_sizes = [
         round(float(item.size), _CHAR_SIZE_ROUND_DIGITS)

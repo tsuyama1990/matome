@@ -14,13 +14,6 @@ class ProgressState:
     fingerprint: str
     done_chapters: list[int]
 
-    def __getitem__(self, key: str) -> Any:
-        if key == "fingerprint":
-            return self.fingerprint
-        if key == "done_chapters":
-            return self.done_chapters
-        raise KeyError(key)
-
 
 def fingerprint(
     input_bytes: bytes,
@@ -51,6 +44,14 @@ def fingerprint(
             "album": settings.album,
             "genre": settings.genre,
             "chapters": settings.chapters,
+            "pdf_title_min_match": settings.pdf_title_min_match,
+            "pdf_title_lines": settings.pdf_title_lines,
+            "pdf_outline_level": settings.pdf_outline_level,
+            "pdf_footnote_size_ratio": settings.pdf_footnote_size_ratio,
+            "pdf_repeat_page_ratio": settings.pdf_repeat_page_ratio,
+            "pdf_repeat_min_pages": settings.pdf_repeat_min_pages,
+            "pdf_indent_tolerance_pt": settings.pdf_indent_tolerance_pt,
+            "pdf_paragraph_gap_ratio": settings.pdf_paragraph_gap_ratio,
         },
     }
     serialized = json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
