@@ -116,6 +116,10 @@ class FakeVoicevoxServer:
             daemon=True,
         )
 
+    def fail_after_more_syntheses(self, count: int) -> None:
+        """Fail after `count` more successful syntheses, counted from now (not from server start)."""
+        self.fail_after_n_synthesis = self._successful_syntheses + count
+
     def start(self) -> None:
         self._thread.start()
 

@@ -11,6 +11,7 @@ from src.txt2speech.config import (
     DEFAULT_MIN_CHUNK_CHARS,
     MIN_CHAPTER_INDEX_WIDTH,
     Settings,
+    parse_chapter_range,
 )
 from src.txt2speech.dictionary import DictEntry, parse_dictionary
 from src.txt2speech.errors import EngineError, InputError, ResourceExhausted
@@ -42,6 +43,7 @@ ProgressCallback = Callable[[int, int, int, int], None]
 class _LoadedInputs:
     input_bytes: bytes
     chapters: list[Chapter]
+    selected_chapters: list[tuple[int, Chapter]]
     dictionary_texts: list[str]
     dict_entries: list[DictEntry]
     cover_bytes: bytes | None
@@ -118,12 +120,34 @@ def _read_cover_bytes(cover_path: Path | None) -> bytes | None:
         raise InputError(msg) from exc
 
 
+def _in_range(index: int, first: int | None, last: int | None) -> bool:
+    if first is not None and index < first:
+        return False
+    return not (last is not None and index > last)
+
+
+def _select_in_range_chapters(
+    chapters: Sequence[Chapter],
+    spec: str | None,
+) -> list[tuple[int, Chapter]]:
+    indexed = list(enumerate(chapters, start=1))
+    if spec is None:
+        return indexed
+    first, last = parse_chapter_range(spec)
+    selected = [(idx, ch) for idx, ch in indexed if _in_range(idx, first, last)]
+    if not selected:
+        msg = f"指定した範囲に章がありません ({len(chapters)}章中 {spec})"
+        raise InputError(msg)
+    return selected
+
+
 def _load_inputs(input_path: Path, settings: Settings) -> _LoadedInputs:
     if input_path.suffix.lower() == _PDF_SUFFIX:
         chapters = read_pdf_chapters(input_path, settings)
     else:
         text = read_text(input_path)
         chapters = split_chapters(text)
+    selected_chapters = _select_in_range_chapters(chapters, settings.chapters)
     try:
         input_bytes = input_path.read_bytes()
     except OSError as exc:
@@ -134,6 +158,7 @@ def _load_inputs(input_path: Path, settings: Settings) -> _LoadedInputs:
     return _LoadedInputs(
         input_bytes=input_bytes,
         chapters=chapters,
+        selected_chapters=selected_chapters,
         dictionary_texts=dictionary_texts,
         dict_entries=dict_entries,
         cover_bytes=cover_bytes,
@@ -245,16 +270,17 @@ def run(
 
     active_encoder = encoder if encoder is not None else make_encoder(settings)
     active_progress_cb = progress_cb if progress_cb is not None else _noop_progress
-    total_chapters = len(loaded.chapters)
-    width = max(MIN_CHAPTER_INDEX_WIDTH, len(str(total_chapters)))
+    total_detected = len(loaded.chapters)
+    total_in_range = len(loaded.selected_chapters)
+    width = max(MIN_CHAPTER_INDEX_WIDTH, len(str(total_detected)))
     default_stem = input_path.stem
 
     mp3_paths: list[Path] = []
-    for chapter_index, chapter in enumerate(loaded.chapters, start=1):
+    for chapter_index, chapter in loaded.selected_chapters:
         mp3_path = _process_chapter(
             chapter_index=chapter_index,
             chapter=chapter,
-            total_chapters=total_chapters,
+            total_chapters=total_in_range,
             width=width,
             default_stem=default_stem,
             out_dir=out_dir,

@@ -10,6 +10,7 @@ from src.txt2speech.dictionary import DictEntry
 from src.txt2speech.errors import EngineError, InputError, ResourceExhausted
 from src.txt2speech.pipeline import run, synthesize_with_halving
 from src.txt2speech.progress import Progress, fingerprint
+from tests.support.pdf_factory import Line, body_paragraph, build_pdf
 
 _WAV_RATE = 24000
 _WAV_CHANNELS = 1
@@ -396,3 +397,113 @@ def test_pipeline_startup_check_failures_create_nothing_and_register_nothing(
         )
     assert not out_ffmpeg_fail.exists()
     assert ok_client.registered == []
+
+
+@pytest.mark.requirement("REQ-2026-002-F10")
+def test_pipeline_chapter_range_selection_resume_and_empty_error(tmp_path: Path) -> None:
+    """T2S-I28: pipeline.run filters chapters on text/PDF, keeps original numbers, and resets on change."""
+    text_path = tmp_path / "four_chapters.md"
+    text_path.write_text(
+        "# 第1章\n一章の本文です。\n\n"
+        "# 第2章\n二章の本文です。\n\n"
+        "# 第3章\n三章の本文です。\n\n"
+        "# 第4章\n四章の本文です。\n",
+        encoding="utf-8",
+    )
+    out_text = tmp_path / "out_text"
+    text_client = _FakeClient()
+    text_encoder = _FakeEncoder()
+    progress_events: list[tuple[int, int, int, int]] = []
+
+    text_mp3s = run(
+        input_path=text_path,
+        out_dir=out_text,
+        settings=Settings(chapters="2-3"),
+        client=text_client,
+        encoder=text_encoder,
+        progress_cb=lambda ch, total_ch, done_ck, total_ck: progress_events.append(
+            (ch, total_ch, done_ck, total_ck)
+        ),
+    )
+
+    assert [p.name for p in text_mp3s] == ["02_第2章.mp3", "03_第3章.mp3"]
+    assert text_client.synthesized_texts == ["二章の本文です。", "三章の本文です。"]
+    assert [call.track for call in text_encoder.calls] == [2, 3]
+    assert progress_events == [(2, 2, 1, 1), (3, 2, 1, 1)]
+
+    # PDF input with 4 chapters and chapters="2-3".
+    pdf_path = tmp_path / "four_chapters.pdf"
+    pages: list[list[Line]] = [
+        [*body_paragraph(["一章のPDF本文です。"], start_line_index=0)],
+        [*body_paragraph(["二章のPDF本文です。"], start_line_index=0)],
+        [*body_paragraph(["三章のPDF本文です。"], start_line_index=0)],
+        [*body_paragraph(["四章のPDF本文です。"], start_line_index=0)],
+    ]
+    outline = [
+        (1, "第 1 章", 1),
+        (1, "第 2 章", 2),
+        (1, "第 3 章", 3),
+        (1, "第 4 章", 4),
+    ]
+    build_pdf(pdf_path, pages=pages, outline=outline)
+    out_pdf = tmp_path / "out_pdf"
+    pdf_client = _FakeClient()
+    pdf_encoder = _FakeEncoder()
+
+    pdf_mp3s = run(
+        input_path=pdf_path,
+        out_dir=out_pdf,
+        settings=Settings(chapters="2-3"),
+        client=pdf_client,
+        encoder=pdf_encoder,
+    )
+
+    assert [p.name for p in pdf_mp3s] == ["02_第2章.mp3", "03_第3章.mp3"]
+    assert pdf_client.synthesized_texts == ["二章のPDF本文です。", "三章のPDF本文です。"]
+    assert [call.track for call in pdf_encoder.calls] == [2, 3]
+
+    # Changing the chapter range after an interrupted run discards progress and resynthesizes.
+    out_resume = tmp_path / "out_resume"
+    crash_client = _FakeClient(crash_on_call=2)
+    with pytest.raises(EngineError):
+        run(
+            input_path=text_path,
+            out_dir=out_resume,
+            settings=Settings(chapters="2-3"),
+            client=crash_client,
+            encoder=_FakeEncoder(),
+        )
+    assert (out_resume / "02_第2章.mp3").is_file()
+    assert (out_resume / Settings().progress_file_name).is_file()
+
+    rerun_client = _FakeClient()
+    rerun_encoder = _FakeEncoder()
+    rerun_mp3s = run(
+        input_path=text_path,
+        out_dir=out_resume,
+        settings=Settings(chapters="2-4"),
+        client=rerun_client,
+        encoder=rerun_encoder,
+    )
+    assert [p.name for p in rerun_mp3s] == ["02_第2章.mp3", "03_第3章.mp3", "04_第4章.mp3"]
+    assert rerun_client.synthesized_texts == [
+        "二章の本文です。",
+        "三章の本文です。",
+        "四章の本文です。",
+    ]
+
+    # Empty selection raises InputError before any engine or ffmpeg check.
+    empty_client = _FakeClient(fail_check=True)
+    with pytest.raises(InputError) as exc_info:
+        run(
+            input_path=text_path,
+            out_dir=tmp_path / "out_empty",
+            settings=Settings(
+                chapters="9",
+                ffmpeg_path=str(tmp_path / "no_such_ffmpeg"),
+            ),
+            client=empty_client,
+            encoder=_FakeEncoder(),
+        )
+    assert "指定した範囲に章がありません (4章中 9)" in str(exc_info.value)
+    assert empty_client.check_calls == 0

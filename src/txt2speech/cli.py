@@ -24,6 +24,7 @@ _ARG_TO_SETTINGS_KEY: tuple[tuple[str, str], ...] = (
     ("cover", "cover"),
     ("album", "album"),
     ("voice_name", "voice_name"),
+    ("chapters", "chapters"),
 )
 
 
@@ -76,6 +77,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cover", type=Path, default=None, dest="cover")
     parser.add_argument("--album", type=str, default=None, dest="album")
     parser.add_argument("--voice-name", type=str, default=None, dest="voice_name")
+    parser.add_argument("--chapters", type=str, default=None, dest="chapters")
     parser.add_argument(
         "--dictionary",
         type=Path,

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from src.txt2speech.config import Settings, load_settings
@@ -8,12 +10,16 @@ from src.txt2speech.pdf_input import (
     OutlineEntry,
     assemble_paragraphs,
     clean_title,
+    collapse_spaces,
     drop_noise,
     find_repeated_texts,
     median_body_size,
+    read_pdf_chapters,
+    reconcile_title,
     select_chapters,
     strip_note_markers,
 )
+from tests.support.pdf_factory import body_paragraph, build_pdf
 
 _BODY_SIZE = 10.0
 _FOOTNOTE_SIZE = 7.5
@@ -212,13 +218,87 @@ def test_assemble_paragraphs_across_pages() -> None:
 
 @pytest.mark.requirement("REQ-2026-002-F13")
 def test_strip_note_markers() -> None:
-    """T2S-U25: strip_note_markers removes inline footnote markers without touching normal words."""
+    """T2S-U25: strip_note_markers removes footnote markers while keeping prose references."""
     assert strip_note_markers("使う注１。") == "使う。"
+    assert strip_note_markers("のだ注5・6。") == "のだ。"
+    assert strip_note_markers("論文注17では") == "論文では"
+    assert strip_note_markers("EV/EBITDA注15は") == "EV/EBITDAは"
     assert strip_note_markers("注意が必要だ") == "注意が必要だ"
     assert strip_note_markers("注文を受ける") == "注文を受ける"
     assert strip_note_markers("注１、注２") == "、"
-    assert strip_note_markers("参照注１") == "参照"
+    assert strip_note_markers("思考プロセスは注４を参照") == "思考プロセスは注４を参照"
+    assert strip_note_markers("注４参照") == "注４参照"
     assert strip_note_markers("注の付いた語") == "注の付いた語"
+    assert strip_note_markers("注3を見よ") == "注3を見よ"
+    assert strip_note_markers("注2のとおり") == "注2のとおり"
+    assert strip_note_markers("注2の通り") == "注2の通り"
+
+
+@pytest.mark.requirement("REQ-2026-002-F12")
+def test_reconcile_title() -> None:
+    """T2S-U27: reconcile_title matches NFKC/spaceless prefixes and returns cleaned page text."""
+    settings = Settings()
+    assert (
+        reconcile_title(
+            "第17章dynamic capabilitiesダイナミック・ケイパビリティ理論企業が夰輰謀",
+            [
+                "第17章  dynamic capabilities",
+                "ダイナミック・ケイパビリティ理論",
+                "企業が変わる",
+            ],
+            settings,
+        )
+        == "第17章dynamic capabilitiesダイナミック・ケイパビリティ理論企業が"
+    )
+    assert reconcile_title("第1章SCP", ["第1章  SCP理論"], settings) == "第1章SCP"
+    assert reconcile_title("第3章", ["第2章 …"], settings) == "第3章"
+    assert reconcile_title("第1章", ["第1節 …"], settings) == "第1章"
+    assert reconcile_title("", ["第1章  SCP理論"], settings) == ""
+    assert reconcile_title("第1章SCP", [], settings) == "第1章SCP"
+    assert reconcile_title("第1章(SCP)", ["第1章（SCP）"], settings) == "第1章（SCP）"
+    assert reconcile_title("第1章（SCP）", ["第1章 (SCP)"], settings) == "第1章(SCP)"
+
+
+@pytest.mark.requirement("REQ-2026-002-F13")
+def test_collapse_spaces(tmp_path: Path) -> None:
+    """T2S-U29: collapse_spaces collapses consecutive half/full-width spaces and keeps newlines."""
+    assert collapse_spaces("SCPとは  “structure”  です") == "SCPとは “structure” です"
+    assert collapse_spaces("経営\u3000\u3000理論") == "経営 理論"
+    assert collapse_spaces("経営 \u3000理論\u3000 です") == "経営 理論 です"
+    assert collapse_spaces("経営\u3000理論") == "経営\u3000理論"
+    assert (
+        collapse_spaces("段落一  です。\n\n段落二\u3000\u3000です。")
+        == "段落一 です。\n\n段落二 です。"
+    )
+
+    lines = [
+        LineRecord(
+            page=1,
+            text="SCPとは  “structure”  です。",
+            x0=_INDENT_X,
+            y0=700.0,
+            size=_BODY_SIZE,
+        ),
+        LineRecord(
+            page=1,
+            text="二行目\u3000\u3000の文です。",
+            x0=_LEFT_MARGIN,
+            y0=682.0,
+            size=_BODY_SIZE,
+        ),
+    ]
+    assembled = collapse_spaces(strip_note_markers(assemble_paragraphs(lines, Settings())))
+    assert assembled == "SCPとは “structure” です。二行目 の文です。"
+
+    pdf_path = tmp_path / "spaces.pdf"
+    build_pdf(
+        pdf_path,
+        pages=[[*body_paragraph(["SCPとは  “structure”  です"], start_line_index=0)]],
+        outline=[(1, "第1章", 1)],
+    )
+    chapters = read_pdf_chapters(pdf_path, Settings())
+    assert len(chapters) == 1
+    assert chapters[0].body == "SCPとは “structure” です"
 
 
 @pytest.mark.requirement("REQ-2026-002-F12")
@@ -265,10 +345,12 @@ def test_select_chapters() -> None:
 @pytest.mark.requirement("REQ-2026-002-F12")
 @pytest.mark.requirement("REQ-2026-002-F13")
 def test_pdf_settings_validation() -> None:
-    """T2S-U22: load_settings validates the six pdf_* settings fields."""
+    """T2S-U22: load_settings validates the pdf_* settings fields."""
     valid = load_settings(
         None,
         {
+            "pdf_title_min_match": 4,
+            "pdf_title_lines": 8,
             "pdf_outline_level": 2,
             "pdf_footnote_size_ratio": 0.8,
             "pdf_repeat_page_ratio": 0.5,
@@ -277,8 +359,14 @@ def test_pdf_settings_validation() -> None:
             "pdf_paragraph_gap_ratio": 1.5,
         },
     )
+    assert valid.pdf_title_min_match == 4
+    assert valid.pdf_title_lines == 8
     assert valid.pdf_outline_level == 2
 
+    with pytest.raises(InputError):
+        load_settings(None, {"pdf_title_min_match": 0})
+    with pytest.raises(InputError):
+        load_settings(None, {"pdf_title_lines": 0})
     with pytest.raises(InputError):
         load_settings(None, {"pdf_outline_level": 0})
     with pytest.raises(InputError):
