@@ -38,10 +38,19 @@ DEFAULT_VOICE_NAME = "VOICEVOX"
 DEFAULT_GENRE = "Audiobook"
 DEFAULT_WORK_DIR_NAME = ".txt2speech_work"
 DEFAULT_PROGRESS_FILE_NAME = ".txt2speech_progress.json"
+DEFAULT_PDF_OUTLINE_LEVEL = 1
+DEFAULT_PDF_FOOTNOTE_SIZE_RATIO = 0.85
+DEFAULT_PDF_REPEAT_PAGE_RATIO = 0.4
+DEFAULT_PDF_REPEAT_MIN_PAGES = 3
+DEFAULT_PDF_INDENT_TOLERANCE_PT = 5.0
+DEFAULT_PDF_PARAGRAPH_GAP_RATIO = 1.4
 
 MIN_SPEED_SCALE = 0.5
 MAX_SPEED_SCALE = 2.0
 MIN_RETRIES = 0
+MIN_PDF_OUTLINE_LEVEL = 1
+MIN_PDF_REPEAT_MIN_PAGES = 2
+MAX_PDF_RATIO = 1.0
 PAUSE_KEYS: frozenset[str] = frozenset(DEFAULT_PAUSE_MS.keys())
 LOOPBACK_HOSTS: frozenset[str] = frozenset({"127.0.0.1", "localhost", "::1"})
 ALLOWED_URL_SCHEMES: frozenset[str] = frozenset({"http", "https"})
@@ -77,6 +86,12 @@ class Settings:
     dictionaries: tuple[Path, ...] = ()
     work_dir_name: str = DEFAULT_WORK_DIR_NAME
     progress_file_name: str = DEFAULT_PROGRESS_FILE_NAME
+    pdf_outline_level: int = DEFAULT_PDF_OUTLINE_LEVEL
+    pdf_footnote_size_ratio: float = DEFAULT_PDF_FOOTNOTE_SIZE_RATIO
+    pdf_repeat_page_ratio: float = DEFAULT_PDF_REPEAT_PAGE_RATIO
+    pdf_repeat_min_pages: int = DEFAULT_PDF_REPEAT_MIN_PAGES
+    pdf_indent_tolerance_pt: float = DEFAULT_PDF_INDENT_TOLERANCE_PT
+    pdf_paragraph_gap_ratio: float = DEFAULT_PDF_PARAGRAPH_GAP_RATIO
 
 
 def _read_yaml(path: Path) -> dict[str, Any]:
@@ -141,6 +156,27 @@ def _validate_engine_url(engine_url: str) -> None:
         raise InputError(msg)
 
 
+def _validate_pdf_settings(settings: Settings) -> None:
+    if settings.pdf_outline_level < MIN_PDF_OUTLINE_LEVEL:
+        msg = f"pdf_outline_level は {MIN_PDF_OUTLINE_LEVEL} 以上である必要があります"
+        raise InputError(msg)
+    if not (0.0 < settings.pdf_footnote_size_ratio <= MAX_PDF_RATIO):
+        msg = "pdf_footnote_size_ratio は (0, 1] の範囲で指定してください"
+        raise InputError(msg)
+    if not (0.0 < settings.pdf_repeat_page_ratio <= MAX_PDF_RATIO):
+        msg = "pdf_repeat_page_ratio は (0, 1] の範囲で指定してください"
+        raise InputError(msg)
+    if settings.pdf_repeat_min_pages < MIN_PDF_REPEAT_MIN_PAGES:
+        msg = f"pdf_repeat_min_pages は {MIN_PDF_REPEAT_MIN_PAGES} 以上である必要があります"
+        raise InputError(msg)
+    if settings.pdf_indent_tolerance_pt <= 0.0:
+        msg = "pdf_indent_tolerance_pt は 0 より大きい必要があります"
+        raise InputError(msg)
+    if settings.pdf_paragraph_gap_ratio <= 0.0:
+        msg = "pdf_paragraph_gap_ratio は 0 より大きい必要があります"
+        raise InputError(msg)
+
+
 def _validate_settings(settings: Settings) -> None:
     if not (MIN_SPEED_SCALE <= settings.speed_scale <= MAX_SPEED_SCALE):
         msg = f"speed_scale は {MIN_SPEED_SCALE}〜{MAX_SPEED_SCALE} の範囲で指定してください"
@@ -162,6 +198,7 @@ def _validate_settings(settings: Settings) -> None:
         if not dict_path.is_file():
             msg = f"辞書ファイルが見つかりません: {dict_path}"
             raise InputError(msg)
+    _validate_pdf_settings(settings)
 
 
 def load_settings(
