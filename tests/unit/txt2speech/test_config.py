@@ -112,3 +112,23 @@ def test_parse_chapter_range() -> None:
     fp_all = fingerprint(b"input", [], None, Settings(chapters=None))
     fp_range = fingerprint(b"input", [], None, Settings(chapters="2-5"))
     assert fp_all != fp_range
+
+
+@pytest.mark.requirement("REQ-2026-002-F09")
+@pytest.mark.parametrize(
+    "override",
+    [
+        {"pdf_title_min_match": 9},
+        {"pdf_title_lines": 9},
+        {"pdf_outline_level": 2},
+        {"pdf_footnote_size_ratio": 0.5},
+        {"pdf_repeat_page_ratio": 0.9},
+        {"pdf_repeat_min_pages": 9},
+        {"pdf_indent_tolerance_pt": 9.0},
+        {"pdf_paragraph_gap_ratio": 9.0},
+    ],
+    ids=lambda override: next(iter(override)),
+)
+def test_fingerprint_changes_with_each_pdf_setting(override: dict[str, object]) -> None:
+    base = fingerprint(b"input", [], None, Settings())
+    assert fingerprint(b"input", [], None, Settings(**override)) != base  # type: ignore[arg-type]
