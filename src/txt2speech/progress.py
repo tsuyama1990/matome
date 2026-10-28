@@ -14,13 +14,6 @@ class ProgressState:
     fingerprint: str
     done_chapters: list[int]
 
-    def __getitem__(self, key: str) -> Any:
-        if key == "fingerprint":
-            return self.fingerprint
-        if key == "done_chapters":
-            return self.done_chapters
-        raise KeyError(key)
-
 
 def fingerprint(
     input_bytes: bytes,

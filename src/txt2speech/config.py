@@ -206,9 +206,7 @@ def _validate_engine_url(engine_url: str) -> None:
         raise InputError(msg)
 
 
-def _validate_pdf_title_and_chapters(settings: Settings) -> None:
-    if settings.chapters is not None:
-        parse_chapter_range(settings.chapters)
+def _validate_pdf_title_settings(settings: Settings) -> None:
     if settings.pdf_title_min_match < MIN_PDF_TITLE_MIN_MATCH:
         msg = f"pdf_title_min_match は {MIN_PDF_TITLE_MIN_MATCH} 以上である必要があります"
         raise InputError(msg)
@@ -218,7 +216,7 @@ def _validate_pdf_title_and_chapters(settings: Settings) -> None:
 
 
 def _validate_pdf_settings(settings: Settings) -> None:
-    _validate_pdf_title_and_chapters(settings)
+    _validate_pdf_title_settings(settings)
     if settings.pdf_outline_level < MIN_PDF_OUTLINE_LEVEL:
         msg = f"pdf_outline_level は {MIN_PDF_OUTLINE_LEVEL} 以上である必要があります"
         raise InputError(msg)
@@ -260,6 +258,8 @@ def _validate_settings(settings: Settings) -> None:
         if not dict_path.is_file():
             msg = f"辞書ファイルが見つかりません: {dict_path}"
             raise InputError(msg)
+    if settings.chapters is not None:
+        parse_chapter_range(settings.chapters)
     _validate_pdf_settings(settings)
 
 

@@ -165,14 +165,26 @@ def _load_inputs(input_path: Path, settings: Settings) -> _LoadedInputs:
     )
 
 
+@dataclass(frozen=True)
+class _RunContext:
+    total_chapters: int
+    width: int
+    default_stem: str
+    out_dir: Path
+    work_dir: Path
+    done_set: set[int]
+    settings: Settings
+    client: SynthClient
+    encoder: Encoder
+    progress_cb: ProgressCallback
+    prog: Progress
+
+
 def _synthesize_chapter_chunks(
     chunks: Sequence[Chunk],
     chapter_work_dir: Path,
     chapter_index: int,
-    total_chapters: int,
-    settings: Settings,
-    client: SynthClient,
-    progress_cb: ProgressCallback,
+    ctx: _RunContext,
 ) -> list[Path]:
     total_chunks = len(chunks)
     chunk_paths: list[Path] = []
@@ -181,60 +193,38 @@ def _synthesize_chapter_chunks(
         if not chunk_wav_path.is_file():
             wav_bytes = synthesize_with_halving(
                 chunk.text,
-                client,
-                settings.min_chunk_chars,
+                ctx.client,
+                ctx.settings.min_chunk_chars,
             )
             write_wav(chunk_wav_path, wav_bytes)
         chunk_paths.append(chunk_wav_path)
-        progress_cb(chapter_index, total_chapters, chunk_index, total_chunks)
+        ctx.progress_cb(chapter_index, ctx.total_chapters, chunk_index, total_chunks)
     return chunk_paths
 
 
-def _process_chapter(
-    chapter_index: int,
-    chapter: Chapter,
-    total_chapters: int,
-    width: int,
-    default_stem: str,
-    out_dir: Path,
-    work_dir: Path,
-    done_set: set[int],
-    settings: Settings,
-    client: SynthClient,
-    encoder: Encoder,
-    progress_cb: ProgressCallback,
-    prog: Progress,
-) -> Path | None:
-    mp3_path = out_dir / chapter_filename(chapter_index, chapter.title, width)
-    if chapter_index in done_set and mp3_path.is_file():
+def _process_chapter(chapter_index: int, chapter: Chapter, ctx: _RunContext) -> Path | None:
+    mp3_path = ctx.out_dir / chapter_filename(chapter_index, chapter.title, ctx.width)
+    if chapter_index in ctx.done_set and mp3_path.is_file():
         return mp3_path
 
     normalized_body = normalize(chapter.body)
-    chunks = split_chunks(normalized_body, settings.max_chunk_chars)
+    chunks = split_chunks(normalized_body, ctx.settings.max_chunk_chars)
     if not chunks:
         return None
 
-    chapter_work_dir = work_dir / f"ch{chapter_index:0{width}d}"
-    chunk_paths = _synthesize_chapter_chunks(
-        chunks=chunks,
-        chapter_work_dir=chapter_work_dir,
-        chapter_index=chapter_index,
-        total_chapters=total_chapters,
-        settings=settings,
-        client=client,
-        progress_cb=progress_cb,
-    )
+    chapter_work_dir = ctx.work_dir / f"ch{chapter_index:0{ctx.width}d}"
+    chunk_paths = _synthesize_chapter_chunks(chunks, chapter_work_dir, chapter_index, ctx)
 
     joined_wav_path = chapter_work_dir / _JOINED_WAV_NAME
     boundaries = [chunk.boundary for chunk in chunks]
-    join_wav_files(chunk_paths, boundaries, settings, joined_wav_path)
+    join_wav_files(chunk_paths, boundaries, ctx.settings, joined_wav_path)
 
-    effective_title = chapter.title if chapter.title else default_stem
-    effective_album = settings.album if settings.album is not None else default_stem
-    encoder(joined_wav_path, mp3_path, effective_title, effective_album, chapter_index)
+    effective_title = chapter.title if chapter.title else ctx.default_stem
+    effective_album = ctx.settings.album if ctx.settings.album is not None else ctx.default_stem
+    ctx.encoder(joined_wav_path, mp3_path, effective_title, effective_album, chapter_index)
 
     shutil.rmtree(chapter_work_dir)
-    prog.mark_chapter_done(chapter_index)
+    ctx.prog.mark_chapter_done(chapter_index)
     return mp3_path
 
 
@@ -272,26 +262,23 @@ def run(
     active_progress_cb = progress_cb if progress_cb is not None else _noop_progress
     total_detected = len(loaded.chapters)
     total_in_range = len(loaded.selected_chapters)
-    width = max(MIN_CHAPTER_INDEX_WIDTH, len(str(total_detected)))
-    default_stem = input_path.stem
+    ctx = _RunContext(
+        total_chapters=total_in_range,
+        width=max(MIN_CHAPTER_INDEX_WIDTH, len(str(total_detected))),
+        default_stem=input_path.stem,
+        out_dir=out_dir,
+        work_dir=work_dir,
+        done_set=done_set,
+        settings=settings,
+        client=client,
+        encoder=active_encoder,
+        progress_cb=active_progress_cb,
+        prog=prog,
+    )
 
     mp3_paths: list[Path] = []
     for chapter_index, chapter in loaded.selected_chapters:
-        mp3_path = _process_chapter(
-            chapter_index=chapter_index,
-            chapter=chapter,
-            total_chapters=total_in_range,
-            width=width,
-            default_stem=default_stem,
-            out_dir=out_dir,
-            work_dir=work_dir,
-            done_set=done_set,
-            settings=settings,
-            client=client,
-            encoder=active_encoder,
-            progress_cb=active_progress_cb,
-            prog=prog,
-        )
+        mp3_path = _process_chapter(chapter_index, chapter, ctx)
         if mp3_path is not None:
             mp3_paths.append(mp3_path)
 
