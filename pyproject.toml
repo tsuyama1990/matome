@@ -63,7 +63,9 @@ ignore = [
 "tests/**/*.py" = ["S101"]  # Allow assert in tests
 # Japanese text processing uses full-width punctuation on purpose.
 "src/txt2speech/**/*.py" = ["RUF001", "RUF002"]
+"src/summarize/**/*.py" = ["RUF001", "RUF002"]
 "tests/**/txt2speech/**/*.py" = ["S101", "RUF001", "RUF002"]
+"tests/**/summarize/**/*.py" = ["S101", "RUF001", "RUF002"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10  # Exceeding this prompts function splitting (prevent AI long functions)
