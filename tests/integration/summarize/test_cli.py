@@ -1,4 +1,5 @@
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -32,26 +33,34 @@ def test_main_success_prints_summary_path_and_notice(
     captured = capsys.readouterr()
     assert code == EXIT_OK
     assert captured.out.strip() == str(out_dir / "summary.md")
-    assert captured.err.splitlines()[0].startswith("本文を ")
+    assert captured.err.splitlines()[0] == f"本文を {sys.executable} に送ります"
     assert "要約 1/1: 第1章" in captured.err
 
 
 @pytest.mark.requirement("REQ-2026-003-F08")
-def test_main_llm_failure_returns_engine_error_code(tmp_path: Path) -> None:
+def test_main_llm_failure_returns_engine_error_code(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A failing LLM command ends with the engine-error exit code."""
     input_path, config_path = _write_input_and_config(tmp_path, fail_calls=[1])
 
     code = main([str(input_path), "--out-dir", str(tmp_path / "out"), "--config", str(config_path)])
 
+    captured = capsys.readouterr()
     assert code == EXIT_ENGINE_ERROR
+    assert "第1章" in captured.err
 
 
 @pytest.mark.requirement("REQ-2026-003-F08")
-def test_main_missing_input_returns_input_error_code(tmp_path: Path) -> None:
+def test_main_missing_input_returns_input_error_code(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     """A missing input file ends with the input-error exit code."""
     code = main([str(tmp_path / "missing.txt"), "--out-dir", str(tmp_path / "out")])
 
+    captured = capsys.readouterr()
     assert code == EXIT_INPUT_ERROR
+    assert "missing.txt" in captured.err
 
 
 @pytest.mark.requirement("REQ-2026-003-F08")

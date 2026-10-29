@@ -1,4 +1,6 @@
+import contextlib
 import os
+import signal
 import time
 from pathlib import Path
 
@@ -81,11 +83,12 @@ def test_sum_i04_run_llm_empty_stdout_retries_and_raises_engine_error(tmp_path: 
 @pytest.mark.requirement("REQ-2026-003-F07")
 def test_sum_i05_run_llm_timeout_retries_and_raises_engine_error(tmp_path: Path) -> None:
     """SUM-I05: run_llm terminates timed-out process and raises EngineError after retries."""
-    cmd, log = write_fake_llm(tmp_path, sleep=5.0)
+    child_pid_file = tmp_path / "proc.pid"
+    cmd, log = write_fake_llm(tmp_path, sleep=5.0, child_pid_file=str(child_pid_file))
     settings = SummarySettings(
         llm_command=cmd,
         llm_retries=1,
-        llm_timeout_seconds=0.1,
+        llm_timeout_seconds=_SHORT_TIMEOUT_SECONDS,
         llm_retry_wait_seconds=_SHORT_RETRY_WAIT_SECONDS,
     )
 
@@ -93,6 +96,21 @@ def test_sum_i05_run_llm_timeout_retries_and_raises_engine_error(tmp_path: Path)
         run_llm(settings, "プロンプト")
 
     assert len(read_calls(log)) == 2
+
+    assert child_pid_file.is_file()
+    pids = [int(p) for p in child_pid_file.read_text(encoding="utf-8").split()]
+    assert pids
+    for pid in pids:
+        deadline = time.monotonic() + _KILL_POLL_TIMEOUT_SECONDS
+        child_dead = False
+        while time.monotonic() < deadline:
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                child_dead = True
+                break
+            time.sleep(_KILL_POLL_INTERVAL_SECONDS)
+        assert child_dead, f"Child process {pid} remained active"
 
 
 @pytest.mark.requirement("REQ-2026-003-F07")
@@ -114,7 +132,7 @@ def test_sum_i07_run_llm_retries_zero_fails_on_first_attempt(tmp_path: Path) -> 
     cmd, log = write_fake_llm(tmp_path, fail_calls=[1])
     settings = SummarySettings(llm_command=cmd, llm_retries=0)
 
-    with pytest.raises(EngineError):
+    with pytest.raises(EngineError, match="LLM の実行に失敗しました"):
         run_llm(settings, "プロンプト")
 
     assert len(read_calls(log)) == 1
@@ -156,12 +174,38 @@ def test_sum_i16_run_llm_kills_child_process_group_on_timeout(tmp_path: Path) ->
 
     deadline = time.monotonic() + _KILL_POLL_TIMEOUT_SECONDS
     child_dead = False
-    while time.monotonic() < deadline:
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
-            child_dead = True
-            break
-        time.sleep(_KILL_POLL_INTERVAL_SECONDS)
+    try:
+        while time.monotonic() < deadline:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                child_dead = True
+                break
+            time.sleep(_KILL_POLL_INTERVAL_SECONDS)
 
-    assert child_dead, f"Child process {child_pid} was not terminated"
+        assert child_dead, f"Child process {child_pid} was not terminated"
+    finally:
+        if not child_dead:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
+
+
+@pytest.mark.requirement("REQ-2026-003-F07")
+def test_sum_i20_run_llm_nonzero_exit_code_with_stdout_retries_and_fails(tmp_path: Path) -> None:
+    """SUM-I20: run_llm treats nonzero exit code as failure despite stdout and retries."""
+    cmd, log = write_fake_llm(
+        tmp_path,
+        fail_calls=[1, 2],
+        fail_stdout="エラー時の標準出力",
+        exit_code=1,
+    )
+    settings = SummarySettings(
+        llm_command=cmd,
+        llm_retries=1,
+        llm_retry_wait_seconds=_SHORT_RETRY_WAIT_SECONDS,
+    )
+
+    with pytest.raises(EngineError, match="終了コード 1"):
+        run_llm(settings, "プロンプト")
+
+    assert len(read_calls(log)) == 2

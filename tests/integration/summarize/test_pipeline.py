@@ -31,6 +31,9 @@ def test_sum_i10_pipeline_run_invokes_draft_then_density_rounds(tmp_path: Path) 
     summary_path = pipeline.run(input_file, out_dir, settings, run_llm=fake_runner)
 
     assert summary_path.is_file()
+    content = summary_path.read_text(encoding="utf-8")
+    assert "要約結果 2" in content
+    assert "要約結果 4" in content
     # 2 chapters * (1 draft + 1 rewrite) = 4 calls
     assert len(calls) == 4
 
@@ -100,6 +103,7 @@ def test_sum_i12_pipeline_run_preserves_first_chapter_cache_on_second_chapter_fa
     cached_chapter1 = list(work_dir.glob("01_*.txt"))
     assert len(cached_chapter1) == 1
     assert cached_chapter1[0].read_text(encoding="utf-8") == "第1章の完成要約"
+    assert not list(work_dir.glob("02_*.txt"))
 
 
 @pytest.mark.requirement("REQ-2026-003-F07")

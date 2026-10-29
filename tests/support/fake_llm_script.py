@@ -41,7 +41,8 @@ def _spawn_child_if_requested(config: dict[str, Any]) -> None:
     child_proc = subprocess.Popen(  # noqa: S603
         [sys.executable, "-c", f"import time; time.sleep({_DEFAULT_CHILD_SLEEP_SECONDS})"]
     )
-    child_path.write_text(str(child_proc.pid), encoding="utf-8")
+    with child_path.open("a", encoding="utf-8") as file:
+        file.write(f"{child_proc.pid}\n")
     if "sleep" not in config:
         time.sleep(_DEFAULT_CHILD_SLEEP_SECONDS)
 
@@ -97,6 +98,10 @@ def main() -> None:
         time.sleep(float(sleep_sec))
 
     if _should_fail(config, call_index, prompt):
+        fail_stdout = config.get("fail_stdout")
+        if fail_stdout:
+            sys.stdout.write(str(fail_stdout))
+            sys.stdout.flush()
         exit_code_cfg = config.get("exit_code")
         code = (
             int(exit_code_cfg)

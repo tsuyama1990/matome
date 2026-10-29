@@ -62,7 +62,7 @@ def test_sum_u12_validate_rejects_unknown_keys_and_invalid_chapter_spec() -> Non
     with pytest.raises(InputError, match="未知の設定キー"):
         load_summary_settings(overrides={"unexpected_option": "value"})
 
-    with pytest.raises(InputError):
+    with pytest.raises(InputError, match="chapters の範囲が不正です"):
         load_summary_settings(overrides={"chapters": "5-2"})
 
 

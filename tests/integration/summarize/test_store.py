@@ -25,6 +25,12 @@ def test_sum_i08_store_roundtrip_and_missing_keys(tmp_path: Path) -> None:
     # Missing entry for different index
     assert load(work_dir, 2, _SAMPLE_KEY) is None
 
+    # Saving under a different key leaves the existing key intact
+    save(work_dir, 1, _OTHER_KEY, "別の要約本文")
+    assert load(work_dir, 1, _SAMPLE_KEY) == text
+    assert load(work_dir, 1, _OTHER_KEY) == "別の要約本文"
+    assert len(list(work_dir.glob("01_*.txt"))) == 2
+
 
 @pytest.mark.requirement("REQ-2026-003-F05")
 def test_sum_i09_write_atomic_preserves_existing_file_and_cleans_tmp_on_failure(

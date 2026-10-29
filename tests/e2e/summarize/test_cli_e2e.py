@@ -1,5 +1,7 @@
+import contextlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -17,6 +19,7 @@ from src.summarize.prompts import (
 from src.summarize.settings import SummarySettings
 from src.txt2speech.structure import split_chapters
 from tests.support.fake_llm import read_calls, write_fake_llm
+from tests.support.pdf_factory import body_paragraph, build_pdf, page_number_line
 
 _PROJECT_ROOT_DEPTH = 3
 _PROJECT_ROOT = Path(__file__).resolve().parents[_PROJECT_ROOT_DEPTH]
@@ -78,7 +81,10 @@ def test_sum_e01_markdown_summary_and_stdout_path(tmp_path: Path) -> None:
     input_path.write_text(_TWO_CHAPTERS_TEXT, encoding="utf-8")
     out_dir = tmp_path / "out"
 
-    cmd, _log = write_fake_llm(tmp_path, replies=["第1章の要約", "第2章の要約"])
+    cmd, _log = write_fake_llm(
+        tmp_path,
+        replies=["第1章ドラフト", "第1章の要約", "第2章ドラフト", "第2章の要約"],
+    )
     cfg_path = _write_config_json(tmp_path / "config.json", llm_command=cmd)
 
     proc = _run_summarize_cli([str(input_path), "-o", str(out_dir), "--config", str(cfg_path)])
@@ -91,6 +97,8 @@ def test_sum_e01_markdown_summary_and_stdout_path(tmp_path: Path) -> None:
     summary_content = expected_summary_path.read_text(encoding="utf-8")
     assert "# 第1章 序論" in summary_content
     assert "# 第2章 本論" in summary_content
+    assert "第1章の要約" in summary_content
+    assert "第2章の要約" in summary_content
 
 
 @pytest.mark.requirement("REQ-2026-003-F02")
@@ -112,7 +120,7 @@ def test_sum_e02_prompt_records_approximate_300_chars_for_1000_char_body(tmp_pat
     assert proc.returncode == _EXIT_OK
 
     calls = read_calls(log)
-    assert len(calls) >= 1
+    assert len(calls) == 2
     assert "約300字" in calls[0]["prompt"]
 
 
@@ -191,6 +199,7 @@ def test_sum_e05_second_run_reuses_cached_results_without_additional_llm_calls(
     assert calls_after_run2 == calls_after_run1
     content2 = (out_dir / "summary.md").read_text(encoding="utf-8")
     assert content1 == content2
+    assert "要約 1/1: 第1章 序論" in proc2.stderr
 
 
 @pytest.mark.requirement("REQ-2026-003-F06")
@@ -211,6 +220,8 @@ def test_sum_e06_changing_summary_ratio_triggers_recomputation(tmp_path: Path) -
     assert proc2.returncode == _EXIT_OK
     calls_after_run2 = len(read_calls(log))
     assert calls_after_run2 > calls_after_run1
+    cached_files = list((out_dir / ".summarize_work").glob("01_*.txt"))
+    assert len(cached_files) == 2
 
 
 @pytest.mark.requirement("REQ-2026-003-F07")
@@ -237,7 +248,7 @@ def test_sum_e08_second_chapter_llm_failure_aborts_with_exit_code_3(tmp_path: Pa
     input_path.write_text(_TWO_CHAPTERS_TEXT, encoding="utf-8")
     out_dir = tmp_path / "out"
 
-    cmd, _log = write_fake_llm(tmp_path, fail_when="第2章 本論")
+    cmd, log = write_fake_llm(tmp_path, fail_when="第2章 本論")
     cfg_path = _write_config_json(tmp_path / "config.json", llm_command=cmd, llm_retries=1)
 
     proc = _run_summarize_cli([str(input_path), "-o", str(out_dir), "--config", str(cfg_path)])
@@ -245,8 +256,11 @@ def test_sum_e08_second_chapter_llm_failure_aborts_with_exit_code_3(tmp_path: Pa
     assert "第2章 本論" in proc.stderr
     assert not (out_dir / "summary.md").exists()
 
+    calls = read_calls(log)
+    assert len(calls) == 4
     work_dir = out_dir / ".summarize_work"
     assert list(work_dir.glob("01_*.txt"))
+    assert not list(work_dir.glob("02_*.txt"))
 
 
 @pytest.mark.requirement("REQ-2026-003-F01")
@@ -303,9 +317,7 @@ def test_sum_e11_first_stderr_line_announces_llm_command_head(tmp_path: Path) ->
     assert proc.returncode == _EXIT_OK
 
     first_stderr_line = proc.stderr.splitlines()[0]
-    assert cmd[0] in first_stderr_line
-    assert "本文を" in first_stderr_line
-    assert "に送ります" in first_stderr_line
+    assert first_stderr_line == f"本文を {cmd[0]} に送ります"
 
 
 @pytest.mark.requirement("REQ-2026-003-F08")
@@ -340,7 +352,7 @@ def test_sum_e14_approximate_target_chars_caps_at_short_body_length(tmp_path: Pa
     assert proc.returncode == _EXIT_OK
 
     calls = read_calls(log)
-    assert len(calls) >= 1
+    assert len(calls) == 2
     assert "約100字" in calls[0]["prompt"]
 
 
@@ -404,6 +416,7 @@ def test_sum_e16_summary_headings_stripped_preserves_chapter_count(tmp_path: Pat
     chapters = split_chapters(summary_content)
     assert len(chapters) == 1
     assert chapters[0].title == "第1章 序論"
+    assert "見出し行1\n本文行\n見出し行2\n本文行" in chapters[0].body
 
 
 @pytest.mark.requirement("REQ-2026-003-F07")
@@ -432,6 +445,7 @@ def test_sum_e17_first_call_huge_summary_exceeds_rewrite_size_limit(tmp_path: Pa
     assert proc.returncode == _EXIT_INPUT_ERROR
     assert "第1章 序論" in proc.stderr
     assert len(read_calls(log)) == 1
+    assert not (out_dir / "summary.md").exists()
 
 
 @pytest.mark.requirement("REQ-2026-003-F07")
@@ -458,15 +472,20 @@ def test_sum_e18_child_process_killed_on_timeout(tmp_path: Path) -> None:
 
     deadline = time.monotonic() + _KILL_POLL_TIMEOUT_SECONDS
     child_dead = False
-    while time.monotonic() < deadline:
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
-            child_dead = True
-            break
-        time.sleep(_KILL_POLL_INTERVAL_SECONDS)
+    try:
+        while time.monotonic() < deadline:
+            try:
+                os.kill(child_pid, 0)
+            except ProcessLookupError:
+                child_dead = True
+                break
+            time.sleep(_KILL_POLL_INTERVAL_SECONDS)
 
-    assert child_dead, f"Child process {child_pid} remained active"
+        assert child_dead, f"Child process {child_pid} remained active"
+    finally:
+        if not child_dead:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
 
 
 @pytest.mark.requirement("REQ-2026-003-F08")
@@ -508,3 +527,130 @@ def test_sum_e20_command_line_chapters_flag_overrides_config_file(tmp_path: Path
     summary = (out_dir / "summary.md").read_text(encoding="utf-8")
     assert "# 第2章 本論" in summary
     assert "# 第1章 序論" not in summary
+
+
+@pytest.mark.requirement("REQ-2026-003-F01")
+def test_sum_e21_pdf_input_summarization(tmp_path: Path) -> None:
+    """SUM-E21: PDF input with multiple chapters is extracted and summarized via CLI."""
+    pdf_path = tmp_path / "book.pdf"
+    pages = [
+        [page_number_line(1)],
+        [
+            *body_paragraph(["第一章の一行目です。", "第二行目です。"]),
+            page_number_line(2),
+        ],
+        [
+            *body_paragraph(["第二章の一行目です。", "第二行目です。"]),
+            page_number_line(3),
+        ],
+    ]
+    outline = [
+        (1, "第 1 章 序論", 2),
+        (1, "第 2 章 本論", 3),
+    ]
+    build_pdf(pdf_path, pages=pages, outline=outline)
+    out_dir = tmp_path / "out"
+
+    cmd, _log = write_fake_llm(
+        tmp_path,
+        replies=["第1章ドラフト", "第1章のPDF要約", "第2章ドラフト", "第2章のPDF要約"],
+    )
+    cfg_path = _write_config_json(tmp_path / "config.json", llm_command=cmd)
+
+    proc = _run_summarize_cli([str(pdf_path), "-o", str(out_dir), "--config", str(cfg_path)])
+    assert proc.returncode == _EXIT_OK
+
+    summary_file = out_dir / "summary.md"
+    assert summary_file.is_file()
+    summary_content = summary_file.read_text(encoding="utf-8")
+
+    assert "# 第1章序論" in summary_content
+    assert "# 第2章本論" in summary_content
+    assert "第1章のPDF要約" in summary_content
+    assert "第2章のPDF要約" in summary_content
+
+    assert "要約 1/2: 第1章序論" in proc.stderr
+    assert "要約 2/2: 第2章本論" in proc.stderr
+
+
+@pytest.mark.requirement("REQ-2026-003-F01")
+def test_sum_e22_chapters_range_flag_selects_subset(tmp_path: Path) -> None:
+    """SUM-E22: --chapters 1-2 filters input to summarize only first and second chapters."""
+    input_path = tmp_path / "book.txt"
+    input_path.write_text(_THREE_CHAPTERS_TEXT, encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    cmd, log = write_fake_llm(tmp_path)
+    cfg_path = _write_config_json(tmp_path / "config.json", llm_command=cmd)
+
+    proc = _run_summarize_cli(
+        [str(input_path), "-o", str(out_dir), "--config", str(cfg_path), "--chapters", "1-2"]
+    )
+    assert proc.returncode == _EXIT_OK
+
+    summary = (out_dir / "summary.md").read_text(encoding="utf-8")
+    assert "# 第1章 序論" in summary
+    assert "# 第2章 本論" in summary
+    assert "# 第3章 結論" not in summary
+
+    calls = read_calls(log)
+    assert len(calls) == 4
+    assert "要約 1/2: 第1章 序論" in proc.stderr
+    assert "要約 2/2: 第2章 本論" in proc.stderr
+
+
+@pytest.mark.requirement("REQ-2026-003-F02")
+def test_sum_e23_prompt_uses_ratio_calculation_when_exceeding_min_chars(tmp_path: Path) -> None:
+    """SUM-E23: body of 2,500 chars with ratio 0.2 uses calculated 500 chars exceeding min_chars."""
+    input_path = tmp_path / "book.txt"
+    input_path.write_text("# 第1章 序論\n" + "あ" * 2500 + "\n", encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    cmd, log = write_fake_llm(tmp_path)
+    cfg_path = _write_config_json(
+        tmp_path / "config.json",
+        llm_command=cmd,
+        summary_ratio=0.2,
+        summary_min_chars=300,
+    )
+
+    proc = _run_summarize_cli([str(input_path), "-o", str(out_dir), "--config", str(cfg_path)])
+    assert proc.returncode == _EXIT_OK
+
+    calls = read_calls(log)
+    assert len(calls) == 2
+    assert "約500字" in calls[0]["prompt"]
+
+
+@pytest.mark.requirement("REQ-2026-003-F08")
+def test_sum_e24_invalid_config_values_fail_with_exit_code_2(tmp_path: Path) -> None:
+    """SUM-E24: invalid config values fail with exit code 2 and report error to stderr."""
+    input_path = tmp_path / "book.txt"
+    input_path.write_text(_TWO_CHAPTERS_TEXT, encoding="utf-8")
+    out_dir = tmp_path / "out"
+
+    cmd, _log = write_fake_llm(tmp_path)
+    cfg_path = _write_config_json(
+        tmp_path / "config.json",
+        llm_command=cmd,
+        summary_ratio=-1.0,
+    )
+
+    proc = _run_summarize_cli([str(input_path), "-o", str(out_dir), "--config", str(cfg_path)])
+    assert proc.returncode == _EXIT_INPUT_ERROR
+    assert "summary_ratio" in proc.stderr
+
+
+@pytest.mark.requirement("REQ-2026-003-F08")
+def test_sum_e25_nonexistent_config_file_fails_with_exit_code_2(tmp_path: Path) -> None:
+    """SUM-E25: nonexistent config file path exits with code 2 and reports missing file."""
+    input_path = tmp_path / "book.txt"
+    input_path.write_text(_TWO_CHAPTERS_TEXT, encoding="utf-8")
+    out_dir = tmp_path / "out"
+    missing_config = tmp_path / "nonexistent_config.yaml"
+
+    proc = _run_summarize_cli(
+        [str(input_path), "-o", str(out_dir), "--config", str(missing_config)]
+    )
+    assert proc.returncode == _EXIT_INPUT_ERROR
+    assert "設定ファイルが見つかりません" in proc.stderr
