@@ -2,6 +2,7 @@ import contextlib
 import os
 import signal
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable
 
@@ -10,35 +11,29 @@ from src.txt2speech.errors import EngineError
 
 _STDERR_TAIL_CHARS = 200
 _BACKOFF_FACTOR = 2
-_REAP_TIMEOUT_SECONDS = 1.0
-
-
-def _reap(proc: "subprocess.Popen[bytes]") -> None:
-    # A descendant that left the process group can keep the pipes open; do not wait for it.
-    try:
-        proc.communicate(timeout=_REAP_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        for pipe in (proc.stdout, proc.stderr):
-            if pipe is not None:
-                pipe.close()
-        proc.wait()
 
 
 def _attempt(command: list[str], timeout: float) -> tuple[str | None, str]:
-    proc = subprocess.Popen(  # noqa: S603
-        command,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        start_new_session=True,
-    )
-    try:
-        out, err = proc.communicate(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        with contextlib.suppress(ProcessLookupError):
-            os.killpg(proc.pid, signal.SIGKILL)
-        _reap(proc)
-        return None, "タイムアウト"
-    tail = err.decode("utf-8", errors="replace")[-_STDERR_TAIL_CHARS:]
+    # Output goes to files, not pipes: a descendant that outlives the command and keeps
+    # the pipe open would otherwise block until the timeout even after a clean exit.
+    with tempfile.TemporaryFile() as out_file, tempfile.TemporaryFile() as err_file:
+        proc = subprocess.Popen(  # noqa: S603
+            command,
+            stdout=out_file,
+            stderr=err_file,
+            start_new_session=True,
+        )
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(proc.pid, signal.SIGKILL)
+            proc.wait()
+            return None, "タイムアウト"
+        out_file.seek(0)
+        err_file.seek(0)
+        out = out_file.read()
+        tail = err_file.read().decode("utf-8", errors="replace")[-_STDERR_TAIL_CHARS:]
     if proc.returncode != 0:
         return None, f"終了コード {proc.returncode}: {tail}"
     try:
