@@ -36,14 +36,16 @@ def summarize_chapter(
     run: Callable[[str], str],
 ) -> str:
     target = target_chars(body, settings)
-    prompts = [draft_prompt(title, body, target)]
     summary = ""
     try:
         for round_index in range(1 + settings.density_rounds):
-            if round_index:
-                prompts.append(density_prompt(title, body, summary, target))
-            check_prompt_size(title, settings, prompts[-1])
-            summary = run(prompts[-1]).strip()
+            prompt = (
+                density_prompt(title, body, summary, target)
+                if round_index
+                else draft_prompt(title, body, target)
+            )
+            check_prompt_size(title, settings, prompt)
+            summary = run(prompt).strip()
     except EngineError as exc:
         msg = f"章「{title}」の要約に失敗しました: {exc}"
         raise EngineError(msg) from exc

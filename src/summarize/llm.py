@@ -10,6 +10,18 @@ from src.txt2speech.errors import EngineError
 
 _STDERR_TAIL_CHARS = 200
 _BACKOFF_FACTOR = 2
+_REAP_TIMEOUT_SECONDS = 1.0
+
+
+def _reap(proc: "subprocess.Popen[bytes]") -> None:
+    # A descendant that left the process group can keep the pipes open; do not wait for it.
+    try:
+        proc.communicate(timeout=_REAP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        for pipe in (proc.stdout, proc.stderr):
+            if pipe is not None:
+                pipe.close()
+        proc.wait()
 
 
 def _attempt(command: list[str], timeout: float) -> tuple[str | None, str]:
@@ -24,7 +36,7 @@ def _attempt(command: list[str], timeout: float) -> tuple[str | None, str]:
     except subprocess.TimeoutExpired:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(proc.pid, signal.SIGKILL)
-        proc.communicate()
+        _reap(proc)
         return None, "タイムアウト"
     tail = err.decode("utf-8", errors="replace")[-_STDERR_TAIL_CHARS:]
     if proc.returncode != 0:

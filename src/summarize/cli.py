@@ -12,7 +12,7 @@ from src.txt2speech.errors import EngineError, InputError
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="summarize")
     parser.add_argument("input_path", metavar="INPUT", type=Path)
-    parser.add_argument("-o", "--output", required=True, type=Path, dest="output")
+    parser.add_argument("-o", "--out-dir", required=True, type=Path, dest="output")
     parser.add_argument("--config", type=Path, default=None, dest="config")
     parser.add_argument("--chapters", type=str, default=None, dest="chapters")
     return parser
