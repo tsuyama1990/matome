@@ -26,6 +26,8 @@ from src.txt2speech.errors import InputError
         ("llm_retry_wait_seconds", 0),
         ("llm_timeout_seconds", 0),
         ("max_prompt_bytes", 0),
+        ("summary_min_chars", True),
+        ("density_rounds", True),
     ],
 )
 def test_sum_u10_validate_numeric_settings_rejects_out_of_bounds(
