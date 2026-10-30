@@ -6,25 +6,23 @@ from typing import Protocol
 
 from src.txt2speech import mp3
 from src.txt2speech.audio import concat_wav_bytes, join_wav_files, write_wav
+from src.txt2speech.chapters import load_chapters, select_chapters
 from src.txt2speech.chunking import halve, split_chunks
 from src.txt2speech.config import (
     DEFAULT_MIN_CHUNK_CHARS,
     MIN_CHAPTER_INDEX_WIDTH,
     Settings,
-    parse_chapter_range,
 )
 from src.txt2speech.dictionary import DictEntry, parse_dictionary
 from src.txt2speech.errors import EngineError, InputError, ResourceExhausted
 from src.txt2speech.models import Chapter, Chunk
-from src.txt2speech.pdf_input import read_pdf_chapters
 from src.txt2speech.preprocess import normalize
 from src.txt2speech.progress import Progress, fingerprint
-from src.txt2speech.structure import chapter_filename, split_chapters
+from src.txt2speech.structure import chapter_filename
 from src.txt2speech.text_io import read_text
 
 _CHUNK_INDEX_WIDTH = 4
 _JOINED_WAV_NAME = "joined.wav"
-_PDF_SUFFIX = ".pdf"
 
 
 class SynthClient(Protocol):
@@ -120,34 +118,9 @@ def _read_cover_bytes(cover_path: Path | None) -> bytes | None:
         raise InputError(msg) from exc
 
 
-def _in_range(index: int, first: int | None, last: int | None) -> bool:
-    if first is not None and index < first:
-        return False
-    return not (last is not None and index > last)
-
-
-def _select_in_range_chapters(
-    chapters: Sequence[Chapter],
-    spec: str | None,
-) -> list[tuple[int, Chapter]]:
-    indexed = list(enumerate(chapters, start=1))
-    if spec is None:
-        return indexed
-    first, last = parse_chapter_range(spec)
-    selected = [(idx, ch) for idx, ch in indexed if _in_range(idx, first, last)]
-    if not selected:
-        msg = f"指定した範囲に章がありません ({len(chapters)}章中 {spec})"
-        raise InputError(msg)
-    return selected
-
-
 def _load_inputs(input_path: Path, settings: Settings) -> _LoadedInputs:
-    if input_path.suffix.lower() == _PDF_SUFFIX:
-        chapters = read_pdf_chapters(input_path, settings)
-    else:
-        text = read_text(input_path)
-        chapters = split_chapters(text)
-    selected_chapters = _select_in_range_chapters(chapters, settings.chapters)
+    chapters = load_chapters(input_path, settings)
+    selected_chapters = select_chapters(chapters, settings.chapters)
     try:
         input_bytes = input_path.read_bytes()
     except OSError as exc:

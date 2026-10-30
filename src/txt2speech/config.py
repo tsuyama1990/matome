@@ -103,7 +103,7 @@ class Settings:
     pdf_paragraph_gap_ratio: float = DEFAULT_PDF_PARAGRAPH_GAP_RATIO
 
 
-def _read_yaml(path: Path) -> dict[str, Any]:
+def read_yaml(path: Path) -> dict[str, Any]:
     if not path.is_file():
         msg = f"設定ファイルが見つかりません: {path}"
         raise InputError(msg)
@@ -158,7 +158,7 @@ def _normalize_dictionaries(raw: object) -> tuple[Path, ...]:
     raise InputError(msg)
 
 
-def _normalize_chapters(raw: object) -> str | None:
+def normalize_chapters(raw: object) -> str | None:
     if raw is None:
         return None
     if isinstance(raw, str):
@@ -267,7 +267,7 @@ def load_settings(
     path: Path | None = None,
     overrides: Mapping[str, object] | None = None,
 ) -> Settings:
-    merged: dict[str, Any] = _read_yaml(path) if path is not None else {}
+    merged: dict[str, Any] = read_yaml(path) if path is not None else {}
     if overrides is not None:
         merged.update(overrides)
 
@@ -284,7 +284,7 @@ def load_settings(
     if "dictionaries" in merged:
         merged["dictionaries"] = _normalize_dictionaries(merged["dictionaries"])
     if "chapters" in merged:
-        merged["chapters"] = _normalize_chapters(merged["chapters"])
+        merged["chapters"] = normalize_chapters(merged["chapters"])
 
     settings = Settings(**merged)
     _validate_settings(settings)
