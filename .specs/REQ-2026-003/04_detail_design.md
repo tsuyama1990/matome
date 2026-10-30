@@ -16,9 +16,9 @@
 ```
 def run_llm(settings, prompt, sleep=time.sleep) -> str
 ```
-- 試行は `1 + llm_retries` 回。1 回ごとに `subprocess.Popen([*settings.llm_command, prompt], stdout=PIPE, stderr=PIPE, start_new_session=True)` の `communicate(timeout=settings.llm_timeout_seconds)`。
-- `TimeoutExpired` では `os.killpg(proc.pid, SIGKILL)` の後に `communicate()` で回収する。
-- 出力は `bytes` で受け、`decode("utf-8")` が失敗すれば失敗の試行とする。
+- 試行は `1 + llm_retries` 回。1 回ごとに `subprocess.Popen([*settings.llm_command, prompt], stdout=一時ファイル, stderr=一時ファイル, start_new_session=True)` の `wait(timeout=settings.llm_timeout_seconds)`。出力は一時ファイルで受ける(パイプだと、子孫プロセスが書き口を握ったままのとき、終了済みのコマンドやタイムアウトの回収が止まるため)。
+- `TimeoutExpired` では `os.killpg(proc.pid, SIGKILL)` の後に `wait()` で回収する。
+- 出力は一時ファイルから `bytes` で読み、`decode("utf-8")` が失敗すれば失敗の試行とする。
 - 成功の条件: 終了コード 0 かつ `stdout.strip()` が空でない。成功したら `stdout` をそのまま返す。
 - `FileNotFoundError`(コマンドなし)は再試行せず `EngineError`(コマンド名)。`TimeoutExpired`、非 0、空出力、デコード失敗は再試行。`OSError`(引数が長すぎるなど)も再試行せず `EngineError`。待ちは `sleep(llm_retry_wait_seconds * 2**n)`(n は 0 から)。
 - 尽きたら `EngineError`(コマンドの先頭の語、最後の理由、標準エラーの末尾 200 字)。`shell=True` は使わない。
